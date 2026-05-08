@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UX First Screen Scenarios</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Noto+Serif+KR:wght@600;700&display=swap");
+
+      :root {
+        --bg-canvas: #f4f1ea;
+        --bg-gradient: radial-gradient(circle at top left, #fff8ef 0%, #f4f1ea 46%, #ece4d5 100%);
+        --surface: #ffffff;
+        --surface-soft: #f8f4ed;
+        --surface-panel: #eee7da;
+        --border: #d8d0c2;
+        --ink: #1f2937;
+        --muted: #5b6472;
+        --strong: #111827;
+        --teal: #0f766e;
+        --teal-soft: rgba(15, 118, 110, 0.12);
+        --blue: #2563eb;
+        --blue-soft: rgba(37, 99, 235, 0.12);
+        --gray: #64748b;
+        --gray-soft: rgba(100, 116, 139, 0.12);
+        --green: #157347;
+        --green-soft: rgba(21, 115, 71, 0.12);
+        --amber: #c05621;
+        --amber-soft: rgba(192, 86, 33, 0.13);
+        --red: #b91c1c;
+        --red-soft: rgba(185, 28, 28, 0.12);
+        --shadow-lg: 0 22px 48px rgba(70, 59, 39, 0.12);
+        --shadow-md: 0 14px 30px rgba(92, 76, 48, 0.1);
+        --radius-xl: 28px;
+        --radius-lg: 20px;
+        --radius-md: 14px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "IBM Plex Sans KR", sans-serif;
+        background: var(--bg-gradient);
+        color: var(--ink);
+      }
+
+      .page {
+        width: min(1440px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 28px 0 64px;
+      }
+
+      .hero {
+        display: grid;
+        gap: 18px;
+        padding: 28px;
+        border: 1px solid rgba(216, 208, 194, 0.8);
+        border-radius: var(--radius-xl);
+        background: rgba(255, 255, 255, 0.75);
+        box-shadow: var(--shadow-lg);
+        backdrop-filter: blur(14px);
+      }
+
+      .eyebrow,
+      .chip,
+      .state-badge,
+      .mini-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        width: fit-content;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+
+      .eyebrow {
+        padding: 8px 12px;
+        color: var(--teal);
+        background: var(--teal-soft);
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0;
+        color: var(--strong);
+        font-family: "Noto Serif KR", serif;
+      }
+
+      h1 {
+        font-size: clamp(34px, 4vw, 56px);
+        line-height: 1.15;
+      }
+
+      h2 {
+        font-size: clamp(24px, 2.4vw, 34px);
+        line-height: 1.2;
+      }
+
+      h3 {
+        font-size: 18px;
+        line-height: 1.35;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
+      .hero-grid {
+        display: grid;
+        grid-template-columns: 1.35fr 0.95fr;
+        gap: 18px;
+      }
+
+      .hero-note {
+        display: grid;
+        gap: 14px;
+        padding: 22px;
+        border-radius: var(--radius-lg);
+        background: linear-gradient(135deg, rgba(15, 118, 110, 0.1), rgba(255, 255, 255, 0.9));
+        border: 1px solid rgba(15, 118, 110, 0.16);
+      }
+
+      .hero-note ul {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--ink);
+        line-height: 1.7;
+      }
+
+      .scenario-list {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .chip {
+        justify-content: center;
+        padding: 10px 12px;
+        color: var(--ink);
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid var(--border);
+      }
+
+      .screens {
+        display: grid;
+        gap: 22px;
+        margin-top: 26px;
+      }
+
+      .screen {
+        display: grid;
+        gap: 16px;
+        padding: 22px;
+        border-radius: var(--radius-xl);
+        background: rgba(255, 255, 255, 0.82);
+        border: 1px solid rgba(216, 208, 194, 0.9);
+        box-shadow: var(--shadow-md);
+      }
+
+      .screen-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: end;
+        gap: 18px;
+      }
+
+      .screen-meta {
+        display: grid;
+        gap: 8px;
+      }
+
+      .screen-frame {
+        display: grid;
+        gap: 16px;
+        padding: 18px;
+        border-radius: 24px;
+        background: var(--surface-soft);
+        border: 1px solid rgba(216, 208, 194, 0.85);
+      }
+
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .app-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .mono {
+        font-family: "JetBrains Mono", monospace;
+      }
+
+      .mini-label {
+        padding: 6px 10px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--muted);
+      }
+
+      .hero-strip {
+        display: grid;
+        grid-template-columns: 1.25fr 0.75fr;
+        gap: 16px;
+      }
+
+      .state-panel,
+      .action-panel,
+      .metric-card,
+      .desk-card,
+      .insight-card,
+      .copy-card {
+        border-radius: var(--radius-lg);
+        background: var(--surface);
+        border: 1px solid rgba(216, 208, 194, 0.9);
+      }
+
+      .state-panel {
+        display: grid;
+        gap: 14px;
+        padding: 20px;
+      }
+
+      .state-badge {
+        padding: 8px 12px;
+      }
+
+      .waiting .state-badge {
+        color: var(--blue);
+        background: var(--blue-soft);
+      }
+
+      .sample .state-badge {
+        color: var(--gray);
+        background: var(--gray-soft);
+      }
+
+      .calm .state-badge {
+        color: var(--green);
+        background: var(--green-soft);
+      }
+
+      .alert .state-badge {
+        color: var(--amber);
+        background: var(--amber-soft);
+      }
+
+      .stale .state-badge {
+        color: var(--red);
+        background: var(--red-soft);
+      }
+
+      .state-title {
+        font-size: 28px;
+        line-height: 1.18;
+        color: var(--strong);
+        font-family: "Noto Serif KR", serif;
+      }
+
+      .next-action {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding-top: 10px;
+        border-top: 1px solid rgba(216, 208, 194, 0.75);
+        color: var(--ink);
+        font-weight: 600;
+      }
+
+      .action-panel {
+        display: grid;
+        gap: 12px;
+        padding: 18px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 243, 235, 0.95));
+      }
+
+      .summary-grid,
+      .desk-grid,
+      .insight-grid,
+      .copy-grid {
+        display: grid;
+        gap: 14px;
+      }
+
+      .summary-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .metric-card {
+        display: grid;
+        gap: 8px;
+        padding: 16px;
+      }
+
+      .metric-card strong {
+        font-size: 26px;
+        line-height: 1;
+        color: var(--strong);
+      }
+
+      .insight-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .insight-card {
+        display: grid;
+        gap: 10px;
+        padding: 16px;
+      }
+
+      .insight-card.primary {
+        border-color: rgba(15, 118, 110, 0.22);
+        box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.06);
+      }
+
+      .desk-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .desk-card {
+        display: grid;
+        gap: 12px;
+        padding: 16px;
+      }
+
+      .desk-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .desk-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        border-radius: 14px;
+        background: var(--surface-soft);
+      }
+
+      .copy-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .copy-card {
+        display: grid;
+        gap: 10px;
+        padding: 18px;
+        background: linear-gradient(180deg, #fffdf9 0%, #f8f4ed 100%);
+      }
+
+      .mock-box {
+        display: grid;
+        gap: 10px;
+        padding: 14px 16px;
+        border-radius: 16px;
+        background: rgba(238, 231, 218, 0.72);
+        border: 1px dashed rgba(152, 136, 106, 0.55);
+      }
+
+      .mock-box strong {
+        color: var(--strong);
+      }
+
+      .mock-line {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        color: var(--ink);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .mock-preview {
+        white-space: pre-line;
+        font-size: 13px;
+        line-height: 1.7;
+        color: var(--ink);
+      }
+
+      .copy-card strong {
+        color: var(--strong);
+      }
+
+      .muted-note {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      @media (max-width: 1120px) {
+        .hero-grid,
+        .hero-strip,
+        .summary-grid,
+        .insight-grid,
+        .desk-grid,
+        .copy-grid,
+        .scenario-list {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .page {
+          width: min(100vw - 20px, 100%);
+          padding-top: 16px;
+          padding-bottom: 28px;
+        }
+
+        .hero,
+        .screen {
+          padding: 18px;
+        }
+
+        .screen-header,
+        .topbar {
+          flex-direction: column;
+          align-items: start;
+        }
+
+        .state-title {
+          font-size: 24px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <span class="eyebrow">Direct Ingest UX Example</span>
+        <div class="hero-grid">
+          <div>
+            <h1>State-first triage desk를 예시 화면으로 먼저 잠근다</h1>
+            <p>
+              이 HTML은 architecture 이전에 first-screen semantics를 잠그기 위한 시각 예시다.
+              핵심은 차트보다 먼저 상태를 읽고, insight가 없더라도 이유와 next step을 분명히 보여주는 것이다.
+            </p>
+          </div>
+          <aside class="hero-note">
+            <h3>이 페이지가 고정하는 것</h3>
+            <ul>
+              <li>상태와 freshness가 항상 first read라는 점</li>
+              <li>`0~3 insight`와 `0 insight`의 다른 의미들</li>
+              <li>`Split Desk`가 next-check surface라는 점</li>
+              <li>`Calm Ops Desk` 톤과 가벼운 recovery-first 흐름</li>
+            </ul>
+          </aside>
+        </div>
+        <div class="scenario-list">
+          <span class="chip">1. Waiting First Data</span>
+          <span class="chip">2. Insufficient Sample</span>
+          <span class="chip">3. Nothing Worth Surfacing</span>
+          <span class="chip">4. Active Triage</span>
+          <span class="chip">5. Stale Recovery</span>
+        </div>
+      </section>
+
+      <section class="screens">
+        <!-- 주의: waiting state는 장애처럼 보이면 안 된다. "아직 안 옴"보다 "지금 무엇을 하면 되는지"가 먼저 보여야 한다. -->
+        <article class="screen waiting">
+          <div class="screen-header">
+            <div class="screen-meta">
+              <span class="eyebrow">Scenario 1</span>
+              <h2>Waiting First Data</h2>
+              <p>첫 bucket이 아직 충분히 보이지 않을 때. 공포가 아니라 진행 중 상태처럼 느껴져야 한다.</p>
+            </div>
+            <span class="mini-label mono">FIRST SIGNAL / 30-60s</span>
+          </div>
+          <div class="screen-frame">
+            <div class="topbar">
+              <div class="app-meta">
+                <strong>checkout-api</strong>
+                <span class="mini-label">prod</span>
+                <span class="mini-label mono">window 15m / baseline 15m</span>
+              </div>
+              <span class="mini-label mono">last ingest: not yet</span>
+            </div>
+            <div class="hero-strip">
+              <div class="state-panel">
+                <span class="state-badge">WAITING FIRST DATA</span>
+                <div class="state-title">첫 데이터를 기다리는 중입니다.</div>
+                <p>starter는 연결되었습니다. 첫 bucket이 아직 도착하지 않았거나 UI에 충분한 신호가 쌓이지 않았습니다.</p>
+                <div class="next-action">Next step: 앱을 30초 더 실행하거나 몇 개의 요청을 발생시켜 보세요.</div>
+              </div>
+              <div class="action-panel">
+                <h3>Recovery guide</h3>
+                <p>1. 앱이 실행 중인지 확인합니다.</p>
+                <p>2. outbound HTTPS가 막혀 있지 않은지 확인합니다.</p>
+                <p>3. project key와 base URL 설정을 다시 봅니다.</p>
+              </div>
+            </div>
+            <div class="summary-grid">
+              <div class="metric-card"><span class="muted-note">request count</span><strong>--</strong><span class="muted-note">first bucket pending</span></div>
+              <div class="metric-card"><span class="muted-note">error rate</span><strong>--</strong><span class="muted-note">not enough data</span></div>
+              <div class="metric-card"><span class="muted-note">p95 latency</span><strong>--</strong><span class="muted-note">waiting for mergeable buckets</span></div>
+              <div class="metric-card"><span class="muted-note">resource hint</span><strong>--</strong><span class="muted-note">signals not ready</span></div>
+            </div>
+            <div class="desk-grid">
+              <div class="desk-card">
+                <h3>What to verify now</h3>
+                <div class="desk-list">
+                  <div class="desk-item"><span>Starter installed</span><strong>Yes</strong></div>
+                  <div class="desk-item"><span>Project key valid</span><strong>Check</strong></div>
+                  <div class="desk-item"><span>Outbound ingest path</span><strong>Check</strong></div>
+                </div>
+              </div>
+              <div class="desk-card">
+                <h3>Why no insight yet</h3>
+                <div class="desk-list">
+                  <div class="desk-item"><span>Accepted bucket</span><strong>0</strong></div>
+                  <div class="desk-item"><span>Current judgement</span><strong>Waiting</strong></div>
+                  <div class="desk-item"><span>System tone</span><strong>Progress, not alarm</strong></div>
+                </div>
+              </div>
+            </div>
+            <div class="mock-box">
+              <strong>Mock data snapshot</strong>
+              <div class="mock-line"><span>starter version</span><span class="mono">0.8.0-mvp</span></div>
+              <div class="mock-line"><span>project key</span><span class="mono">pk_live_ckout_01</span></div>
+              <div class="mock-line"><span>flush attempt</span><span class="mono">0 / first bucket pending</span></div>
+              <div class="mock-line"><span>expected user copy</span><span>“앱을 30초 더 실행하거나 몇 개의 요청을 발생시켜 보세요.”</span></div>
+            </div>
+          </div>
+        </article>
+
+        <!-- 주의: insufficient sample은 "정상"이 아니다. 신호는 도착했지만 비교형 판단이 아직 이르다는 뜻으로 읽혀야 한다. -->
+        <article class="screen sample">
+          <div class="screen-header">
+            <div class="screen-meta">
+              <span class="eyebrow">Scenario 2</span>
+              <h2>Insufficient Sample</h2>
+              <p>신호는 오지만 비교형 판단에는 아직 이른 상태. `문제 없음`으로 읽히면 안 된다.</p>
+            </div>
+            <span class="mini-label mono">SIGNALS ARRIVING</span>
+          </div>
+          <div class="screen-frame">
+            <div class="topbar">
+              <div class="app-meta">
+                <strong>checkout-api</strong>
+                <span class="mini-label">prod</span>
+                <span class="mini-label mono">2 accepted buckets</span>
+              </div>
+              <span class="mini-label mono">last ingest: 28s ago</span>
+            </div>
+            <div class="hero-strip">
+              <div class="state-panel">
+                <span class="state-badge">INSUFFICIENT SAMPLE</span>
+                <div class="state-title">아직 판단 표본이 부족합니다.</div>
+                <p>데이터는 들어오고 있지만, latency와 error를 비교해서 이름 붙일 만큼 요청 표본이 충분하지 않습니다.</p>
+                <div class="next-action">Next step: 짧은 시나리오 요청을 더 재생하거나 조금 더 기다려 보세요.</div>
+              </div>
+              <div class="action-panel">
+                <h3>What we can say now</h3>
+                <p>앱과 ingest 경로는 살아 있습니다.</p>
+                <p>지금은 성능 저하나 오류 증가를 확정하지 않습니다.</p>
+                <p>추가 표본이 쌓이면 자동으로 triage를 평가합니다.</p>
+              </div>
+            </div>
+            <div class="summary-grid">
+              <div class="metric-card"><span class="muted-note">request count</span><strong>18</strong><span class="muted-note">sample still thin</span></div>
+              <div class="metric-card"><span class="muted-note">error rate</span><strong>0%</strong><span class="muted-note">insufficient baseline</span></div>
+              <div class="metric-card"><span class="muted-note">p95 latency</span><strong>184ms</strong><span class="muted-note">no trend claim yet</span></div>
+              <div class="metric-card"><span class="muted-note">resource hint</span><strong>Stable</strong><span class="muted-note">signals only</span></div>
+            </div>
+            <div class="desk-grid">
+              <div class="desk-card">
+                <h3>Next check surface</h3>
+                <div class="desk-list">
+                  <div class="desk-item"><span>Traffic volume</span><strong>Low</strong></div>
+                  <div class="desk-item"><span>Suggested replay</span><strong>20-50 req</strong></div>
+                  <div class="desk-item"><span>Re-evaluate in</span><strong>30s</strong></div>
+                </div>
+              </div>
+              <div class="desk-card">
+                <h3>Why this is different from calm</h3>
+                <div class="desk-list">
+                  <div class="desk-item"><span>Signals present</span><strong>Yes</strong></div>
+                  <div class="desk-item"><span>Enough evidence</span><strong>No</strong></div>
+                  <div class="desk-item"><span>Tone</span><strong>Pending judgment</strong></div>
+                </div>
+              </div>
+            </div>
+            <div class="mock-box">
+              <strong>Mock scoring context</strong>
+              <div class="mock-line"><span>accepted buckets</span><span class="mono">2</span></div>
+              <div class="mock-line"><span>total requests</span><span class="mono">18 req / 60s</span></div>
+              <div class="mock-line"><span>minimum sample rule</span><span class="mono">50 req before latency/error compare</span></div>
+              <div class="mock-line"><span>reason code</span><span class="mono">SAMPLE_LOW_HTTP_TRAFFIC</span></div>
+            </div>
+          </div>
+        </article>
+
+        <!-- 주의: no triage worth surfacing은 "무가치"가 아니라 "지금 우선 띄울 concern이 없음"이다. 기준선 가치와 next step을 같이 보여줘야 한다. -->
+        <article class="screen calm">
+          <div class="screen-header">
+            <div class="screen-meta">
+              <span class="eyebrow">Scenario 3</span>
+              <h2>No Triage Worth Surfacing</h2>
+              <p>충분히 봤지만 지금 우선 띄울 급한 concern이 없는 상태. `아무것도 안 함`처럼 보이면 실패다.</p>
+            </div>
+            <span class="mini-label mono">CALM BASELINE</span>
+          </div>
+          <div class="screen-frame">
+            <div class="topbar">
+              <div class="app-meta">
+                <strong>checkout-api</strong>
+                <span class="mini-label">prod</span>
+                <span class="mini-label mono">10 accepted buckets</span>
+              </div>
+              <span class="mini-label mono">last ingest: 14s ago</span>
+            </div>
+            <div class="hero-strip">
+              <div class="state-panel">
+                <span class="state-badge">NO TRIAGE WORTH SURFACING</span>
+                <div class="state-title">지금 우선 노출할 triage는 없습니다.</div>
+                <p>현재 신호를 기준으로는 가장 먼저 띄워야 할 error/latency concern이 보이지 않습니다. 이 화면을 기준선으로 삼을 수 있습니다.</p>
+                <div class="next-action">Next step: slow/error endpoint를 훑거나 이 시점을 기준선으로 저장해서 비교에 사용하세요.</div>
+              </div>
+              <div class="action-panel">
+                <h3>What this does not mean</h3>
+                <p>문제가 절대 없다는 뜻은 아닙니다.</p>
+                <p>다만 지금 이 화면이 먼저 외쳐야 할 concern은 없습니다.</p>
+                <p>제품은 침묵 대신 차분한 기준선을 제공합니다.</p>
+              </div>
+            </div>
+            <div class="summary-grid">
+              <div class="metric-card"><span class="muted-note">request count</span><strong>2.1k</strong><span class="muted-note">baseline ready</span></div>
+              <div class="metric-card"><span class="muted-note">error rate</span><strong>0.2%</strong><span class="muted-note">within normal range</span></div>
+              <div class="metric-card"><span class="muted-note">p95 latency</span><strong>238ms</strong><span class="muted-note">stable vs baseline</span></div>
+              <div class="metric-card"><span class="muted-note">resource hint</span><strong>Balanced</strong><span class="muted-note">no supporting issue</span></div>
+            </div>
+            <div class="desk-grid">
+              <div class="desk-card">
+                <h3>Slow endpoints</h3>
+                <div class="desk-list">
+                  <div class="desk-item"><span>GET /catalog</span><strong>p95 312ms</strong></div>
+                  <div class="desk-item"><span>POST /checkout</span><strong>p95 298ms</strong></div>
+                  <div class="desk-item"><span>GET /orders</span><strong>p95 280ms</strong></div>
+                </div>
+              </div>
+              <div class="desk-card">
+                <h3>Error endpoints</h3>
+                <div class="desk-list">
+                  <div class="desk-item"><span>POST /checkout</span><strong>0.6%</strong></div>
+                  <div class="desk-item"><span>GET /orders</span><strong>0.3%</strong></div>
+                  <div class="desk-item"><span>GET /catalog</span><strong>0.1%</strong></div>
+                </div>
+              </div>
+            </div>
+            <div class="mock-box">
+              <strong>Why no card fired</strong>
+              <div class="mock-line"><span>error delta</span><span class="mono">+0.1%p (threshold +1.5%p not met)</span></div>
+              <div class="mock-line"><span>latency delta</span><span class="mono">+4% (threshold +25% not met)</span></div>
+              <div class="mock-line"><span>baseline quality</span><span class="mono">sufficient / stable</span></div>
+              <div class="mock-line"><span>recommended use</span><span>기준선으로 저장하고 다음 이상 시점과 비교</span></div>
+            </div>
+          </div>
+        </article>
+
+        <!-- 주의: active triage는 최대 3개만 노출한다. Discord alert도 이 화면보다 더 강한 진단 문장을 쓰면 안 된다. -->
+        <article class="screen alert">
+          <div class="screen-header">
+            <div class="screen-meta">
+              <span class="eyebrow">Scenario 4</span>
+              <h2>Active Triage</h2>
+              <p>상위 0~3개의 concern만 보여주고, split desk가 같은 이야기를 뒷받침하는 상태.</p>
+            </div>
+            <span class="mini-label mono">TRIAGE ACTIVE</span>
+          </div>
+          <div class="screen-frame">
+            <div class="topbar">
+              <div class="app-meta">
+                <strong>checkout-api</strong>
+                <span class="mini-label">prod</span>
+                <span class="mini-label mono">baseline healthy</span>
+                <span class="mini-label">Discord alert armed</span>
+              </div>
+              <span class="mini-label mono">last ingest: 9s ago</span>
+            </div>
+            <div class="hero-strip">
+              <div class="state-panel">
+                <span class="state-badge">DEGRADED</span>
+                <div class="state-title">에러율과 응답 지연이 함께 올라갔습니다.</div>
+                <p>이상은 확인되지만 원인을 단정하지 않습니다. 지금은 `POST /checkout`과 DB pool hint를 먼저 확인하는 것이 좋습니다.</p>
+                <div class="next-action">Next step: POST /checkout endpoint와 DB connection wait 가능성을 먼저 보세요.</div>
+              </div>
+              <div class="action-panel">
+                <h3>Why this surfaced now</h3>
+                <p>freshness 충족, 표본 충분, baseline 대비 error/latency 상승이 함께 관측되었습니다.</p>
+                <p>카드는 2개만 노출하고 나머지는 숨깁니다.</p>
+              </div>
+            </div>
+            <div class="insight-grid">
+              <div class="insight-card primary">
+                <span class="mini-label">Insight 1</span>
+                <strong>POST /checkout에서 오류율과 p95가 함께 올랐습니다.</strong>
+                <p>가장 먼저 이 endpoint를 확인해 보세요.</p>
+                <span class="muted-note">error rate +3.8%p / p95 +41%</span>
+              </div>
+              <div class="insight-card">
+                <span class="mini-label">Insight 2</span>
+                <strong>DB pool 사용률이 높고 지연도 함께 증가했습니다.</strong>
+                <p>연결 대기 가능성을 먼저 확인해 보세요.</p>
+                <span class="muted-note">pool 91% / p95 trend aligned</span>
+              </div>
+              <div class="insight-card">
+                <span class="mini-label">Hidden pressure</span>
+                <strong>0-3 rule</strong>
+                <p>추가 후보는 내부 평가만 하고 화면에는 올리지 않습니다.</p>
+                <span class="muted-note">dedup + ranking enforced</span>
+              </div>
+            </div>
+            <div class="mock-box">
+              <strong>Mock triage internals</strong>
+              <div class="mock-line"><span>reason code</span><span class="mono">APP_ERROR_SPIKE_CONFIRMED</span></div>
+              <div class="mock-line"><span>confidence</span><span class="mono">0.93</span></div>
+              <div class="mock-line"><span>suppressed candidate</span><span class="mono">CPU_HIGH_HINT merged into same concern</span></div>
+              <div class="mock-line"><span>alert eligible</span><span class="mono">yes / app-level error spike</span></div>
+            </div>
+            <div class="summary-grid">
+              <div class="metric-card"><span class="muted-note">request count</span><strong>4.8k</strong><span class="muted-note">+18% vs baseline</span></div>
+              <div class="metric-card"><span class="muted-note">error rate</span><strong>4.1%</strong><span class="muted-note">+3.8%p</span></div>
+              <div class="metric-card"><span class="muted-note">p95 latency</span><strong>812ms</strong><span class="muted-note">+41%</span></div>
+              <div class="metric-card"><span class="muted-note">DB pool</span><strong>91%</strong><span class="muted-note">supporting hint</span></div>
+            </div>
+            <div class="desk-grid">
+              <div class="desk-card">
+                <h3>Slow endpoints</h3>
+                <div class="desk-list">
+                  <div class="desk-item"><span>POST /checkout</span><strong>p95 1.2s</strong></div>
+                  <div class="desk-item"><span>POST /payment</span><strong>p95 880ms</strong></div>
+                  <div class="desk-item"><span>GET /orders</span><strong>p95 610ms</strong></div>
+                </div>
+              </div>
+              <div class="desk-card">
+                <h3>Error endpoints</h3>
+                <div class="desk-list">
+                  <div class="desk-item"><span>POST /checkout</span><strong>5.2%</strong></div>
+                  <div class="desk-item"><span>POST /payment</span><strong>2.8%</strong></div>
+                  <div class="desk-item"><span>GET /orders</span><strong>1.1%</strong></div>
+                </div>
+              </div>
+            </div>
+            <div class="desk-grid">
+              <div class="desk-card">
+                <h3>Discord delivery</h3>
+                <div class="desk-list">
+                  <div class="desk-item"><span>Last concern</span><strong>Error spike</strong></div>
+                  <div class="desk-item"><span>Last delivery</span><strong>Sent 14s ago</strong></div>
+                  <div class="desk-item"><span>Deep link</span><strong>dashboard / checkout-api</strong></div>
+                </div>
+              </div>
+              <div class="desk-card">
+                <h3>Alert message preview</h3>
+                <div class="desk-list">
+                  <div class="desk-item"><span>Title</span><strong>오류율이 빠르게 증가했습니다</strong></div>
+                  <div class="desk-item"><span>Action</span><strong>POST /checkout를 먼저 확인</strong></div>
+                  <div class="desk-item"><span>Tone</span><strong>Check, not diagnose</strong></div>
+                </div>
+                <div class="mock-preview">[Discord mock]
+checkout-api / prod
+오류율이 빠르게 증가했습니다.
+최근 15분 기준 error rate 4.1% (+3.8%p), p95 812ms (+41%)
+먼저 POST /checkout endpoint와 DB connection wait 가능성을 확인해보세요.
+Open dashboard → /applications/checkout-api/dashboard</div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- 주의: stale는 down과 같은 문구를 쓰면 안 된다. "확인 필요"와 "원인 단정 금지"를 같이 유지해야 한다. -->
+        <article class="screen stale">
+          <div class="screen-header">
+            <div class="screen-meta">
+              <span class="eyebrow">Scenario 5</span>
+              <h2>Stale Recovery</h2>
+              <p>이상 판단보다 recovery 안내가 먼저 오는 상태. stale와 down을 같은 감정으로 보여주지 않는다.</p>
+            </div>
+            <span class="mini-label mono">RECOVERY FIRST</span>
+          </div>
+          <div class="screen-frame">
+            <div class="topbar">
+              <div class="app-meta">
+                <strong>checkout-api</strong>
+                <span class="mini-label">prod</span>
+                <span class="mini-label mono">ingest paused</span>
+              </div>
+              <span class="mini-label mono">last ingest: 2m 11s ago</span>
+            </div>
+            <div class="hero-strip">
+              <div class="state-panel">
+                <span class="state-badge">STALE</span>
+                <div class="state-title">최근 데이터가 늦게 들어오고 있습니다.</div>
+                <p>서비스 상태를 단정하기엔 이릅니다. 먼저 ingest 경로와 앱 실행 상태를 확인해야 합니다.</p>
+                <div class="next-action">Next step: 앱 프로세스, network egress, project key 설정 순서로 확인하세요.</div>
+              </div>
+              <div class="action-panel">
+                <h3>Recovery checklist</h3>
+                <p>1. 앱 프로세스가 살아 있는지 확인합니다.</p>
+                <p>2. outbound HTTPS 경로가 막히지 않았는지 확인합니다.</p>
+                <p>3. 최근 배포로 설정이 바뀌지 않았는지 확인합니다.</p>
+              </div>
+            </div>
+            <div class="copy-grid">
+              <div class="copy-card">
+                <span class="mini-label">waiting</span>
+                <strong>진행 중의 침묵</strong>
+                <p>아직 시작 전 또는 막 시작한 상태</p>
+              </div>
+              <div class="copy-card">
+                <span class="mini-label">sample</span>
+                <strong>판단 전의 침묵</strong>
+                <p>보이지만 아직 비교할 수 없는 상태</p>
+              </div>
+              <div class="copy-card">
+                <span class="mini-label">stale</span>
+                <strong>확인 필요한 침묵</strong>
+                <p>최근 데이터가 끊기거나 늦어지는 상태</p>
+              </div>
+            </div>
+            <div class="mock-box">
+              <strong>Mock recovery context</strong>
+              <div class="mock-line"><span>last accepted bucket</span><span class="mono">12:41:30 UTC</span></div>
+              <div class="mock-line"><span>last delivery error</span><span class="mono">HTTPS timeout after deploy</span></div>
+              <div class="mock-line"><span>state owner</span><span class="mono">freshness semantics, not diagnosis</span></div>
+              <div class="mock-line"><span>expected user copy</span><span>“서비스 상태를 단정하기엔 이릅니다. 먼저 ingest 경로를 확인하세요.”</span></div>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
