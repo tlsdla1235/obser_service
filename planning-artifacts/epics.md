@@ -24,6 +24,12 @@ date: 2026-05-08
    - domain/application에서 adapter package 참조를 금지한다.
    - UI/read API에서 state/rule 재계산을 금지한다.
    - starter core에서 Spring/Micrometer 타입 직접 참조를 금지한다.
+4. Portal physical schema foundation
+   - PostgreSQL migration 도구와 local/test DB runtime 기준을 세팅한다.
+   - `projects`, `applications`, `application_instances` physical schema를 만든다.
+   - table/column 한국어 comment를 migration에 포함한다.
+   - UUID는 application-generated UUID로 두고, project key는 `key_prefix` + BCrypt hash 검증 경계로 둔다.
+   - `accepted_metric_buckets`와 `dashboard_snapshots`는 Epic 3/5에서 구현하되, migration naming과 comment convention은 Epic 1에서 고정한다.
 
 ## Epic 2. Starter Direct Ingest Producer
 

@@ -26,3 +26,4 @@ date: 2026-05-08
 | stale/down/recovery는 사용자 행동으로 이어진다 | Epic 4, 5 | `state-semantics.md`, `read-model-contract.md` | `EvaluateLifecycleStateUseCase` | `RecoveryReadModelTest` |
 | endpoint priority는 rank, reason, evidence, confidence, freshness를 가진다 | Epic 5 | `read-model-contract.md`, `insight-rules.md` | `ListEndpointPriorityUseCase` | `EndpointPriorityReadModelTest` |
 | 첫 화면은 alive / slow / error / where to look first를 답한다 | Epic 5, 6 | `read-model-contract.md` | dashboard read model | `FirstScreenContractE2ETest` |
+| portal physical schema는 catalog부터 구현 가능하고 DB comment를 포함한다 | Epic 1 | `database-schema.md` | `adapter.out.persistence.catalog`, migration | `MigrationSchemaCommentTest` |
