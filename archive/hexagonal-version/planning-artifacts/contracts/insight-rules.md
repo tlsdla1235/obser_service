@@ -1,12 +1,12 @@
 ---
 artifactType: contract
 name: insight-rules
-architectureStyle: Traditional MVC
-status: mvc-version-generated
-date: 2026-05-09
+architectureStyle: Lightweight Hexagonal
+status: party-mode-fixes-applied
+date: 2026-05-08
 ---
 
-# Contract - Insight Rules MVC Version
+# Contract - Insight Rules
 
 ## 1. 역할
 
@@ -81,9 +81,8 @@ guard를 통과하지 못한 rule은 candidate를 만들지 않거나 confidence
 - 금지: "DB pool 고갈로 장애가 발생했습니다."
 - 허용: "DB pool 사용률이 높고 응답 지연도 함께 증가했습니다. DB 연결 대기 가능성을 먼저 확인해보세요."
 
-## 7. MVC Boundary
+## 7. Hexagonal Boundary
 
-- rule evaluation은 `TriageSummaryService`와 `EndpointPriorityService` 안에 둔다.
-- UI, controller, repository는 rule을 평가하지 않는다.
-- 새로운 rule 추가는 service test와 read model contract update를 동반한다.
-
+- rule evaluation은 domain/application 안에 둔다.
+- UI와 persistence adapter는 rule을 평가하지 않는다.
+- 새로운 rule 추가는 domain test와 read model contract update를 동반한다.

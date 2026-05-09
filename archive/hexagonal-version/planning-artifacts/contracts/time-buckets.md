@@ -1,12 +1,12 @@
 ---
 artifactType: contract
 name: time-buckets
-architectureStyle: Traditional MVC
-status: mvc-version-generated
-date: 2026-05-09
+architectureStyle: Lightweight Hexagonal
+status: party-mode-fixes-applied
+date: 2026-05-08
 ---
 
-# Contract - Time Buckets MVC Version
+# Contract - Time Buckets
 
 ## 1. 고정값
 
@@ -43,10 +43,8 @@ baseline이 충분하지 않으면 변화율 기반 rule은 꺼지고, absolute 
 
 freshness는 starter가 주장하는 현재 시간이 아니라, portal이 수용한 마지막 bucket의 `endUtc` 기준으로 판단한다.
 
-## 5. MVC Boundary
+## 5. Hexagonal Boundary
 
-- time boundary 계산은 `DashboardReadModelService`, `LifecycleStateService`, `HistogramMergeService`가 공유하는 time model/utility에서 수행한다.
-- system clock은 injectable `Clock` 또는 `UtcClock` bean으로 둔다.
-- repository는 timestamp를 저장하되 freshness 의미를 판단하지 않는다.
-- controller와 UI는 stale/down 기준을 재판정하지 않는다.
-
+- time boundary 계산은 domain/application에서 수행한다.
+- system clock은 `ClockPort` 뒤에 둔다.
+- persistence adapter는 timestamp를 저장하되 freshness 의미를 판단하지 않는다.

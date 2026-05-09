@@ -1,18 +1,18 @@
 ---
 artifactType: contract
 name: ingest-envelope
-architectureStyle: Traditional MVC
-status: mvc-version-generated
-date: 2026-05-09
+architectureStyle: Lightweight Hexagonal
+status: party-mode-fixes-applied
+date: 2026-05-08
 ---
 
-# Contract - Ingest Envelope MVC Version
+# Contract - Ingest Envelope
 
 ## 1. 역할
 
 `ingest-envelope`는 starter와 portal 사이의 source of truth다.
 
-이 계약은 pull-based scrape/query 방식을 MVP 필수 경로에서 제외하고, portal service layer가 lifecycle state, p95, triage summary, endpoint priority를 계산할 수 있는 최소 bounded payload만 허용한다.
+이 계약은 pull-based scrape/query 방식을 MVP 필수 경로에서 제외하고, portal application core가 lifecycle state, p95, triage summary, endpoint priority를 계산할 수 있는 최소 bounded payload만 허용한다.
 
 ## 2. API
 
@@ -91,13 +91,12 @@ Content-Type: application/json
 
 동일 idempotency key에 다른 payload hash가 들어오면 `409 Conflict`로 처리한다.
 
-## 6. MVC Boundary
+## 6. Hexagonal Boundary
 
-- `IngestController`는 header/body를 request DTO로 변환하고 `IngestAcceptanceService`에 위임한다.
-- `IngestAcceptanceService`가 검증과 저장 orchestration을 수행한다.
-- `MetricBucketRepository`가 idempotency와 persistence를 담당한다.
-- PostgreSQL repository 구현은 저장/조회만 담당한다.
-- Controller와 repository는 lifecycle state, p95, insight rule을 계산하지 않는다.
+- Ingest REST controller는 payload를 command로 변환한다.
+- `AcceptIngestEnvelopeUseCase`가 검증과 저장 orchestration을 수행한다.
+- `MetricBucketStorePort`가 idempotency와 persistence를 담당한다.
+- PostgreSQL 구현은 outbound adapter다.
 
 ## 7. Non-Goals
 
@@ -105,4 +104,3 @@ Content-Type: application/json
 - arbitrary query를 위한 raw metric 저장
 - high-cardinality label 검색
 - user-defined custom metric ingestion
-

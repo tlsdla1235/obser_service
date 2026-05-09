@@ -1,12 +1,12 @@
 ---
 artifactType: contract
 name: read-model-contract
-architectureStyle: Traditional MVC
-status: mvc-version-generated
-date: 2026-05-09
+architectureStyle: Lightweight Hexagonal
+status: party-mode-fixes-applied
+date: 2026-05-08
 ---
 
-# Contract - Read Model MVC Version
+# Contract - Read Model
 
 ## 1. 역할
 
@@ -133,11 +133,10 @@ UI는 이 응답을 표시할 뿐 lifecycle state, zero-insight reason, insight 
 - endpoint priority item은 endpoint-level `freshness`, `evidence`, `confidence`, `recommendedAction`을 포함한다.
 - `lastHealthyAt`은 stale/down/recovery 안내에 사용한다. 값이 없으면 UI는 "이전 정상 시점 없음"으로 표시한다.
 
-## 5. MVC Boundary Rules
+## 5. Boundary Rules
 
-- `DashboardReadModelService`가 이 응답을 구성한다.
-- `DashboardController`는 serialization과 HTTP status mapping만 담당한다.
+- `QueryDashboardSnapshotUseCase`가 이 응답을 구성한다.
 - PostgreSQL view는 이 응답을 계산하지 않는다.
+- dashboard REST controller는 serialization만 담당한다.
 - frontend는 이 응답을 기준으로 화면을 구성하고, 별도 rule engine을 갖지 않는다.
-- p95는 `histogram-merge` contract의 server-side service 결과만 사용한다.
-
+- p95는 `histogram-merge` contract의 server-side 결과만 사용한다.

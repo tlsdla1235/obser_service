@@ -1,18 +1,18 @@
 ---
 artifactType: contract
 name: histogram-merge
-architectureStyle: Traditional MVC
-status: mvc-version-generated
-date: 2026-05-09
+architectureStyle: Lightweight Hexagonal
+status: party-mode-fixes-applied
+date: 2026-05-08
 ---
 
-# Contract - Histogram Merge MVC Version
+# Contract - Histogram Merge
 
 ## 1. 역할
 
 `histogram-merge`는 app-level p95와 endpoint-level p95의 source of truth다.
 
-Starter는 instance-local percentile 값을 최종 판단값으로 보내지 않는다. Starter는 cumulative histogram bucket을 보내고, portal service layer가 instance bucket을 병합해 p95를 계산한다.
+Starter는 instance-local percentile 값을 최종 판단값으로 보내지 않는다. Starter는 cumulative histogram bucket을 보내고, portal application/domain이 instance bucket을 병합해 p95를 계산한다.
 
 ## 2. Bucket Schema
 
@@ -57,10 +57,9 @@ MVP에서는 bucket 내부 선형 보간을 하지 않는다. 반환값은 bucke
 - mismatched boundary rejection
 - endpoint-level merge and app-level merge 분리
 
-## 5. MVC Boundary Rules
+## 5. Boundary Rules
 
-- `HistogramMergeService`가 계산한다.
-- repository는 bucket을 저장하고 읽을 뿐 p95를 계산하지 않는다.
+- `MergeHistogramBucketsUseCase`가 계산한다.
+- persistence adapter는 bucket을 저장하고 읽을 뿐 p95를 계산하지 않는다.
 - UI와 dashboard controller는 p95를 계산하지 않는다.
 - read model은 `p95Source = server_histogram_merge`를 포함한다.
-

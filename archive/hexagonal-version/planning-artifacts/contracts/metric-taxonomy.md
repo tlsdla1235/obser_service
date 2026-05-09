@@ -1,12 +1,12 @@
 ---
 artifactType: contract
 name: metric-taxonomy
-architectureStyle: Traditional MVC
-status: mvc-version-generated
-date: 2026-05-09
+architectureStyle: Lightweight Hexagonal
+status: party-mode-fixes-applied
+date: 2026-05-08
 ---
 
-# Contract - Metric Taxonomy MVC Version
+# Contract - Metric Taxonomy
 
 ## 1. 허용 Metric
 
@@ -50,9 +50,8 @@ raw path, user id, tenant id, session id, trace id, arbitrary label은 MVP inges
 - dashboard read model 또는 insight rule contract에 소비 지점이 있다.
 - starter와 portal 양쪽에 bounded validation을 추가할 수 있다.
 
-## 4. MVC Boundary
+## 4. Hexagonal Boundary
 
-metric 허용 여부는 starter service와 portal `IngestAcceptanceService` validation에 같이 반영한다.
+metric 허용 여부는 starter domain과 portal application validation에 같이 반영한다.
 
-persistence schema가 허용한다고 해서 service contract 밖의 metric을 저장하지 않는다.
-
+persistence schema가 허용한다고 해서 application contract 밖의 metric을 저장하지 않는다.

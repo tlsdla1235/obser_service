@@ -1,16 +1,15 @@
 ---
 artifactType: architecture-input
 projectName: Spring Boot 운영 첫 화면 포털
-architectureStyle: Traditional MVC
-status: mvc-version-input
-date: 2026-05-09
+status: draft-input
+date: 2026-05-08
 ---
 
-# Infrastructure Input Notes - MVC Version
+# Infrastructure Input Notes
 
-이 문서는 아직 최종 인프라 구현 결정이 아니다.
+이 문서는 아직 최종 아키텍처 결정이 아니다.
 
-세부 아키텍처, 배포 구조, 스키마, 비동기 처리 방식을 정의할 때 반드시 다시 확인해야 하는 사용자 요구사항을 보존하기 위한 입력 노트다. MVC 버전에서도 인프라 전제는 기존과 동일하게 유지한다.
+세부 아키텍처, 배포 구조, 스키마, 비동기 처리 방식을 정의할 때 반드시 다시 확인해야 하는 사용자 요구사항을 보존하기 위한 입력 노트다.
 
 ## 1. Persistence
 
@@ -19,7 +18,6 @@ Portal의 기본 영속 저장소는 PostgreSQL을 전제로 둔다.
 - 로컬 개발 환경에서는 PostgreSQL을 Docker로 실행해서 portal이 붙는다.
 - 배포 환경에서는 PostgreSQL을 AWS에서 별도 호스팅되는 관리형 또는 외부 DB로 연결한다.
 - PostgreSQL은 project/application metadata, accepted bucket data, idempotency record, derived dashboard snapshot 저장을 담당하는 후보 저장소다.
-- MVC 버전에서는 repository layer가 PostgreSQL 접근을 담당한다.
 
 ## 2. Redis
 
@@ -79,10 +77,9 @@ MVP에서는 WebSocket을 필수 구성으로 보지 않는다. dashboard first-
 
 세부 설계 단계에서 아래 질문을 닫아야 한다.
 
-- Redis 없이 PostgreSQL + in-process service 작업만으로 MVP 비동기 처리가 충분한가?
+- Redis 없이 PostgreSQL + in-process worker만으로 MVP 비동기 처리가 충분한가?
 - Redis를 쓴다면 queue source of truth를 Redis로 둘지, PostgreSQL outbox와 조합할지?
 - ingest accept와 snapshot refresh를 동기 transaction 안에서 처리할지, 비동기 job으로 분리할지?
 - dashboard 업데이트는 polling 또는 Server-Sent Events 중 무엇으로 갈지? MVP에서는 polling을 우선 검토한다.
 - Nginx 뒤에서 portal HTTP API와 static asset path를 어떻게 나눌지?
 - 로컬 Docker compose와 배포 환경 설정을 얼마나 동일하게 유지할지?
-

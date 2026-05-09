@@ -1,0 +1,83 @@
+# generated: 2026-05-08T17:24:49+0900
+# last_updated: 2026-05-08T17:24:49+0900
+# project: Spring Boot 운영 첫 화면 포털
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: planning-artifacts/stories
+#
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created and ready for implementation
+#   - in-progress: Developer actively working
+#   - review: Ready for review
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - This Sprint intentionally starts with Epic 1 portal foundation.
+# - Implement in order: 1.2 -> 1.3 -> 1.4.
+# - Do not pull accepted_metric_buckets, dashboard_snapshots, idempotency conflict, or read model snapshot storage into this Sprint.
+
+generated: 2026-05-08T17:24:49+0900
+last_updated: 2026-05-08T17:24:49+0900
+project: Spring Boot 운영 첫 화면 포털
+project_key: NOKEY
+tracking_system: file-system
+story_location: planning-artifacts/stories
+
+development_status:
+  epic-1: in-progress
+  1-1-starter-package-skeleton: backlog
+  1-2-portal-package-skeleton: ready-for-dev
+  1-3-architecture-guard-test: ready-for-dev
+  1-4-portal-physical-schema-foundation: ready-for-dev
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-micrometer-observation-binding: backlog
+  2-2-route-normalization-and-low-cardinality-guard: backlog
+  2-3-bucket-rollup: backlog
+  2-4-async-flush-worker: backlog
+  2-5-ingest-envelope-builder: backlog
+  2-6-negative-path-guard: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-project-key-verification-adapter: backlog
+  3-2-accept-ingest-use-case: backlog
+  3-3-postgresql-bucket-persistence-adapter: backlog
+  3-4-duplicate-handling: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-time-bucket-contract-implementation: backlog
+  4-2-lifecycle-state-evaluator: backlog
+  4-3-recovery-guidance: backlog
+  4-4-state-semantics-tests: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-histogram-merge: backlog
+  5-2-insight-rule-engine: backlog
+  5-3-app-triage-summary-read-model: backlog
+  5-4-endpoint-priority-read-model: backlog
+  5-5-dashboard-query-api: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-minimal-onboarding-guide: backlog
+  6-2-demo-app-green-path: backlog
+  6-3-failure-path-demo: backlog
+  6-4-dashboard-ui-integration: backlog
+  epic-6-retrospective: optional

@@ -1,24 +1,23 @@
 # BMAD Restart Context
 
-This project is being restarted with a clean architecture baseline.
+This project has selected the MVC version as the active implementation baseline.
 
 ## Source Material Policy
 
-- Existing artifacts may be used only for the product problem and UX intent.
-- Existing architecture decisions are not inherited.
-- Treat prior technical structure, framework choices, layering decisions, module boundaries, and integration decisions as non-binding historical context.
+- Active implementation artifacts live in `planning-artifacts/` and `implementation-artifacts/`.
+- Legacy Lightweight Hexagonal artifacts are preserved under `archive/hexagonal-version/`.
+- Existing restart context in `bmad-restart-context-pack/` may be used only for the product problem, observable workflows, and UX intent.
+- Legacy technical structure, framework choices, layering decisions, module boundaries, and integration decisions are historical context only.
 
 ## Architecture Policy
 
-- The new architecture must choose exactly one style:
-  - Simple MVC
-  - Lightweight Hexagonal
-- Do not blend advantages from multiple architecture styles.
+- The selected architecture is **Traditional MVC + Service/Repository Layering**.
+- Do not reopen the Simple MVC vs Lightweight Hexagonal choice during story implementation.
+- Do not blend MVC and Hexagonal package boundaries.
 - Do not present a hybrid architecture as the final recommendation.
-- If trade-offs are discussed, they must end in a single selected architecture style.
-- Implementation stories must follow the selected style consistently.
+- Implementation stories must follow the selected MVC style consistently.
 
 ## Current Context Pack
 
-Existing restart context is in `bmad-restart-context-pack/`.
-Use it to understand the product problem, observable workflows, and UX intent only.
+Use `bmad-restart-context-pack/` to understand the product problem and UX intent only.
+Use `archive/hexagonal-version/` only when historical comparison is explicitly needed.

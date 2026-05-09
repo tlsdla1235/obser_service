@@ -1,18 +1,18 @@
 ---
 artifactType: contract
 name: state-semantics
-architectureStyle: Traditional MVC
-status: mvc-version-generated
-date: 2026-05-09
+architectureStyle: Lightweight Hexagonal
+status: party-mode-fixes-applied
+date: 2026-05-08
 ---
 
-# Contract - State Semantics MVC Version
+# Contract - State Semantics
 
 ## 1. 목적
 
 이 계약은 첫 화면의 상태 언어를 고정한다.
 
-UI, controller, repository는 서로 다른 state 의미를 만들지 않는다. 단일 판단은 portal service layer에서 수행하고 dashboard read model로 전달한다.
+UI, rule engine, endpoint priority는 서로 다른 state 의미를 만들지 않는다. 단일 판단은 portal application/domain에서 수행하고 dashboard read model로 전달한다.
 
 ## 2. States
 
@@ -65,10 +65,8 @@ Recovery field는 아래 입력을 제공해야 한다.
 - `retryAfterSeconds`
 - `recommendedAction`
 
-## 6. MVC Boundary
+## 6. Hexagonal Boundary
 
-- `LifecycleStateService`가 state를 결정한다.
-- `DashboardReadModelService`가 state 결과를 read model에 담는다.
+- `EvaluateLifecycleStateUseCase`가 state를 결정한다.
 - UI는 state를 재판정하지 않는다.
-- repository는 state를 저장할 수 있지만 계산하지 않는다.
-
+- persistence adapter는 state를 저장할 수 있지만 계산하지 않는다.

@@ -1,12 +1,12 @@
 ---
 artifactType: contract
 name: dashboard-read-model
-architectureStyle: Traditional MVC
+architectureStyle: Lightweight Hexagonal
 status: superseded-by-read-model-contract
-date: 2026-05-09
+date: 2026-05-08
 ---
 
-# Contract - Dashboard Read Model MVC Version
+# Contract - Dashboard Read Model
 
 ## 1. 역할
 
@@ -19,4 +19,3 @@ first-screen UI의 단일 구현 계약은 `planning-artifacts/contracts/read-mo
 - 새 구현과 테스트는 `read-model-contract.md`를 참조한다.
 - 이 파일에 별도 response shape를 두지 않는다.
 - 중복 계약을 만들지 않는다.
-
