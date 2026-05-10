@@ -1,0 +1,93 @@
+Project observation_portal_sprint_1 {
+  database_type: 'PostgreSQL'
+  Note: '''
+  현재 Sprint(Epic 1 Portal MVC Foundation)의 물리 스키마 DBML이다.
+  Story 1.4 범위인 projects, applications, application_instances만 포함한다.
+  accepted_metric_buckets와 dashboard_snapshots는 이번 Sprint 구현 범위가 아니므로 제외한다.
+  CHECK 제약은 DBML의 테이블 Note에 원문 제약 이름과 조건을 한국어로 보존한다.
+  '''
+}
+
+TableGroup sprint_1_4_catalog_schema {
+  projects
+  applications
+  application_instances
+}
+
+Table projects {
+  id uuid [pk, not null, note: '프로젝트의 application-generated UUID 기본키.']
+  name varchar(120) [not null, note: '사람이 읽을 수 있는 프로젝트 이름.']
+  key_prefix varchar(32) [not null, note: '프로젝트 키 후보 조회에 사용하는 짧은 접두사.']
+  project_key_hash varchar(255) [not null, note: '원문 프로젝트 키를 저장하지 않기 위한 BCrypt 해시.']
+  status varchar(32) [not null, note: '프로젝트 사용 상태. active 또는 disabled.']
+  created_at timestamptz [not null, note: '프로젝트 row 생성 시각.']
+  updated_at timestamptz [not null, note: '프로젝트 row 마지막 수정 시각.']
+
+  Indexes {
+    name [unique, name: 'uk_projects_name', note: '프로젝트 이름 중복을 막는다.']
+    key_prefix [unique, name: 'uk_projects_key_prefix', note: '프로젝트 키 접두사 중복을 막는다.']
+    project_key_hash [unique, name: 'uk_projects_project_key_hash', note: '프로젝트 키 해시 중복을 막는다.']
+  }
+
+  Note: '''
+  프로젝트 키와 애플리케이션 묶음의 최상위 식별자를 저장한다.
+  제약:
+  - pk_projects primary key(id)
+  - uk_projects_name unique(name)
+  - uk_projects_key_prefix unique(key_prefix)
+  - uk_projects_project_key_hash unique(project_key_hash)
+  - ck_projects_status check(status in ('active', 'disabled'))
+  '''
+}
+
+Table applications {
+  id uuid [pk, not null, note: '애플리케이션의 application-generated UUID 기본키.']
+  project_id uuid [not null, note: '소속 프로젝트의 UUID 외래키.']
+  name varchar(160) [not null, note: 'ingest envelope의 application.name 값.']
+  environment varchar(80) [not null, note: 'ingest envelope의 application.environment 값.']
+  status varchar(32) [not null, note: '애플리케이션 사용 상태. active 또는 disabled.']
+  first_seen_at timestamptz [note: '첫 accepted metric bucket이 수용된 시각.']
+  last_seen_at timestamptz [note: '마지막 accepted metric bucket이 수용된 시각.']
+  created_at timestamptz [not null, note: '애플리케이션 row 생성 시각.']
+  updated_at timestamptz [not null, note: '애플리케이션 row 마지막 수정 시각.']
+
+  Indexes {
+    (project_id, name, environment) [unique, name: 'uk_applications_project_name_env', note: '한 프로젝트 안에서 애플리케이션 이름과 환경 조합을 유일하게 유지한다.']
+    (project_id, status) [name: 'idx_applications_project_status', note: '프로젝트별 애플리케이션 상태 조회를 돕는다.']
+  }
+
+  Note: '''
+  프로젝트 안에서 애플리케이션과 환경 조합을 식별한다.
+  제약:
+  - pk_applications primary key(id)
+  - fk_applications_project_id foreign key(project_id) references projects(id)
+  - uk_applications_project_name_env unique(project_id, name, environment)
+  - ck_applications_status check(status in ('active', 'disabled'))
+  '''
+}
+
+Table application_instances {
+  id uuid [pk, not null, note: '애플리케이션 인스턴스의 application-generated UUID 기본키.']
+  application_id uuid [not null, note: '소속 애플리케이션의 UUID 외래키.']
+  instance_name varchar(200) [not null, note: 'ingest envelope의 application.instance 값.']
+  first_seen_at timestamptz [not null, note: '해당 인스턴스의 첫 accepted metric bucket 수용 시각.']
+  last_seen_at timestamptz [not null, note: '해당 인스턴스의 마지막 accepted metric bucket 수용 시각.']
+  created_at timestamptz [not null, note: '애플리케이션 인스턴스 row 생성 시각.']
+  updated_at timestamptz [not null, note: '애플리케이션 인스턴스 row 마지막 수정 시각.']
+
+  Indexes {
+    (application_id, instance_name) [unique, name: 'uk_application_instances_app_instance', note: '한 애플리케이션 안에서 인스턴스 이름을 유일하게 유지한다.']
+    (application_id, last_seen_at) [name: 'idx_application_instances_app_last_seen', note: '애플리케이션별 최근 관측 인스턴스 조회를 돕는다. 실제 PostgreSQL migration은 last_seen_at desc 정렬을 사용한다.']
+  }
+
+  Note: '''
+  애플리케이션의 실행 인스턴스 식별자와 마지막 수신 시각을 저장한다.
+  제약:
+  - pk_application_instances primary key(id)
+  - fk_application_instances_application_id foreign key(application_id) references applications(id)
+  - uk_application_instances_app_instance unique(application_id, instance_name)
+  '''
+}
+
+Ref fk_applications_project_id: applications.project_id > projects.id
+Ref fk_application_instances_application_id: application_instances.application_id > applications.id

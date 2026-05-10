@@ -17,8 +17,8 @@ date: 2026-05-09
 IR 반영 후 최종 판단:
 
 - Story 1.2는 문서 보강 후 바로 구현 가능하다.
-- build system 기본값은 Gradle Kotlin DSL로 고정한다.
-- base package는 `com.observation`으로 고정한다.
+- build system 기본값은 Gradle Groovy DSL로 고정한다.
+- Gradle group은 `com.sst`, portal Java package는 `com.observation.portal`로 고정한다.
 - Story 1.2에서는 `observability-portal` module만 생성한다.
 - `observability-spring-boot-starter` module은 목표 구조로 문서화하지만 Story 1.2에서는 만들지 않는다.
 - 빈 Java package는 `package-info.java` marker로 추적 가능하게 만든다.
@@ -46,11 +46,12 @@ IR 반영 후 최종 판단:
 
 | 항목 | 결정 |
 |---|---|
-| Build system | Gradle Kotlin DSL 권장 기본값 |
+| Build system | Gradle Groovy DSL 권장 기본값 |
 | Root project | `observation` |
 | Story 1.2 module | `observability-portal`만 생성 |
 | Future starter module | `observability-spring-boot-starter`는 목표 구조로만 유지, Story 1.2 제외 |
-| Base package | `com.observation` |
+| Gradle group / version | `com.sst` / `0.1.0-SNAPSHOT` |
+| Portal Java package | `com.observation.portal` |
 | Package marker | 각 skeleton package에 `package-info.java` 사용 |
 | Story 1.2 test | `:observability-portal:test` smoke test |
 | Story 1.4 test runtime | PostgreSQL Testcontainers 우선 |
@@ -67,7 +68,7 @@ IR 반영 후 최종 판단:
 
 목적:
 
-- Gradle Kotlin DSL root build와 `observability-portal` module을 시작할 수 있는 최소 구조를 만든다.
+- Gradle Groovy DSL root build와 `observability-portal` module을 시작할 수 있는 최소 구조를 만든다.
 - portal package suffix를 `controller`, `service`, `repository`, `model`, `dto`, `security`, `scheduler`, `config`로 고정한다.
 - skeleton package는 `package-info.java` marker로 남긴다.
 - 아직 ingest/dashboard/service/repository 구현은 하지 않는다.
@@ -174,9 +175,10 @@ Story 1.4에 포함할 DB 작업:
 
 Story 1.2 시작 시 이미 닫힌 선택지:
 
-- build system: Gradle Kotlin DSL
+- build system: Gradle Groovy DSL
 - root project name: `observation`
-- base package/group id: `com.observation`
+- Gradle group/version: `com.sst` / `0.1.0-SNAPSHOT`
+- portal Java package: `com.observation.portal`
 - module 이름: `observability-portal`
 - package marker: `package-info.java`
 

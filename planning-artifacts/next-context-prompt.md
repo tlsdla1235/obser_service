@@ -43,16 +43,18 @@ BMAD Dev Story를 MVC 버전 산출물 기준으로 진행해줘.
 - 2인 1개월 MVP 기준으로 과한 구조를 경계한다.
 
 Story 1.2에서 확정된 선택:
-- Build system: Gradle Kotlin DSL
+- Build system: Gradle Groovy DSL
 - Root project name: observation
 - Module: observability-portal
-- Base package: com.observation.portal
+- Gradle group/version: com.sst / 0.1.0-SNAPSHOT
+- Portal Java package: com.observation.portal
 - Package marker: package-info.java
 - 권장 test command: ./gradlew :observability-portal:test
 
 이번 Story에서 할 일:
 - Story 1.2만 구현한다.
-- Gradle Kotlin DSL root build skeleton을 만든다.
+- Gradle Groovy DSL root build skeleton을 만든다.
+- settings.gradle과 build.gradle을 사용한다.
 - observability-portal module/package skeleton을 만든다.
 - Traditional MVC package suffix를 문서 기준으로 만든다.
 - package-info.java marker로 required package가 추적 가능하게 만든다.

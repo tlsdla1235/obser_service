@@ -13,7 +13,7 @@ scope: active-mvc-artifacts
 
 구현 구조는 **Traditional MVC + Service/Repository Layering**으로 고정한다.
 
-build system은 **Gradle Kotlin DSL**을 권장 기본값으로 둔다. 현재 repo root에는 `pom.xml`, `build.gradle`, `settings.gradle` 계열 build file이 없으므로 Story 1.2 구현자는 Gradle 기반 multi-module root를 새로 시작한다.
+build system은 **Gradle Groovy DSL**을 권장 기본값으로 둔다. 현재 repo root에는 `settings.gradle`과 `build.gradle` 기반 multi-module build를 둔다.
 
 선택 이유:
 
@@ -27,20 +27,20 @@ build system은 **Gradle Kotlin DSL**을 권장 기본값으로 둔다. 현재 r
 
 ```text
 observation/
-  settings.gradle.kts
-  build.gradle.kts
+  settings.gradle
+  build.gradle
   gradle/
-    libs.versions.toml
+    wrapper/
   gradlew
   gradlew.bat
   observability-portal/
-    build.gradle.kts
+    build.gradle
     src/main/java/
     src/main/resources/
     src/test/java/
     src/test/resources/
   observability-spring-boot-starter/
-    build.gradle.kts
+    build.gradle
     src/main/java/
     src/main/resources/
     src/test/java/
@@ -56,14 +56,16 @@ Story 1.2에서는 `observability-portal`만 생성한다. `observability-spring
 
 - root project name: `observation`
 - included module for Story 1.2: `observability-portal`
-- base package: `com.observation`
+- Gradle group: `com.sst`
+- Gradle version: `0.1.0-SNAPSHOT`
+- portal Java package: `com.observation.portal`
 - default test command: `./gradlew :observability-portal:test`
 
 ## 3. observability-portal 구조
 
 ```text
 observability-portal/
-  build.gradle.kts
+  build.gradle
   src/main/java/com/observation/portal/
     PortalApplication.java
     controller/
@@ -124,7 +126,7 @@ observability-portal/
 
 ```text
 observability-spring-boot-starter/
-  build.gradle.kts
+  build.gradle
   src/main/java/com/observation/starter/
     model/
       identity/
@@ -294,11 +296,11 @@ Story 1.2에서는 dashboard UI asset을 만들지 않는다.
 
 Story 1.2 구현 범위:
 
-- Gradle Kotlin DSL root build skeleton
-- `settings.gradle.kts`
-- root `build.gradle.kts`
+- Gradle Groovy DSL root build skeleton
+- `settings.gradle`
+- root `build.gradle`
 - Gradle wrapper, 가능한 경우
-- `observability-portal/build.gradle.kts`
+- `observability-portal/build.gradle`
 - `observability-portal` main/test source tree
 - `com.observation.portal` base package
 - required package `package-info.java` markers

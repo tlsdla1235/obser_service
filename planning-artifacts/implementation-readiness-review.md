@@ -2,7 +2,7 @@
 artifactType: implementation-readiness-review
 projectName: Spring Boot 운영 첫 화면 포털
 architectureStyle: Traditional MVC
-status: ready-for-story-1-2-after-doc-updates
+status: pass-ready-for-story-1-2
 date: 2026-05-09
 scope: active-mvc-artifacts
 ---
@@ -19,14 +19,14 @@ scope: active-mvc-artifacts
 
 ## 2. IR 결론
 
-Story 1.2는 문서 보강 후 바로 구현 가능한 상태다.
+판정: **Pass**. Story 1.2는 문서 보강 후 바로 구현 가능한 상태다.
 
 다만 기존 산출물에는 구현 시작 직전에 흔들릴 수 있는 결정이 남아 있었다. 이번 보강으로 아래 사항을 확정한다.
 
-- build system은 Gradle Kotlin DSL을 권장 기본값으로 둔다.
+- build system은 Gradle Groovy DSL을 권장 기본값으로 둔다.
 - root build는 Story 1.2에서 만들되, 구현 module은 `observability-portal` 하나만 생성한다.
 - `observability-spring-boot-starter`는 목표 module 구조에 포함하지만 Story 1.2에서는 생성하지 않는다.
-- base package는 `com.observation`으로 고정한다.
+- Gradle group은 `com.sst`로 두고, portal Java package는 `com.observation.portal`로 고정한다.
 - 빈 Java package는 `package-info.java` marker로 추적 가능하게 만든다.
 - Story 1.2의 테스트는 기능 테스트가 아니라 portal module build/test wiring smoke test로 제한한다.
 - Story 1.3의 architecture guard는 `controller`, `service`, `repository`, `dto` 의존 방향을 먼저 고정한다.
@@ -36,12 +36,14 @@ Story 1.2는 문서 보강 후 바로 구현 가능한 상태다.
 
 | ID | 구분 | 발견 사항 | 조치 |
 |---|---|---|---|
-| IR-1 | 누락 결정 | `Gradle 또는 Maven` 선택지가 열려 있어 Story 1.2 구현자가 build system부터 재논의해야 했다. | `project-structure.md`, `sprint-plan.md`, Story 1.2, `next-context-prompt.md`에 Gradle Kotlin DSL 권장 기본값을 고정했다. |
+| IR-1 | 누락 결정 | `Gradle 또는 Maven` 선택지가 열려 있어 Story 1.2 구현자가 build system부터 재논의해야 했다. | `project-structure.md`, `sprint-plan.md`, Story 1.2, `next-context-prompt.md`에 Gradle Groovy DSL 권장 기본값을 고정했다. |
 | IR-2 | 구현 모호성 | target module은 starter와 portal 두 개인데 Story 1.2가 starter module까지 만들지 여부가 모호했다. | Story 1.2는 `observability-portal`만 생성하고 starter module은 이후 story 목표 구조로만 문서화한다. |
 | IR-3 | Story readiness | Java 빈 package는 Git/build에서 사라질 수 있어 package skeleton AC가 구현 결과로 남지 않을 수 있었다. | `package-info.java` marker 전략을 Story 1.2와 project structure에 추가했다. |
 | IR-4 | 테스트 기준 부족 | Story 1.2의 smoke test와 Story 1.3의 architecture test 실행 기준이 추상적이었다. | test package 구조와 `:observability-portal:test` 기준을 문서화했다. |
 | IR-5 | 패키지 경계 충돌 | DTO가 controller boundary shape라는 설명은 있으나 service/repository가 DTO에 의존하지 말아야 한다는 guard가 약했다. | `project-structure.md`와 Story 1.3에 `repository -> dto`, `service -> dto/controller` 금지 방향을 보강했다. |
 | IR-6 | Scope creep 위험 | Story 1.2가 root/module skeleton 작업 중 Flyway, PostgreSQL, starter, API stub까지 당겨올 여지가 있었다. | Story 1.2의 "할 것/하지 않을 것"을 구체화하고, Story 1.4에서 migration/test runtime을 시작하도록 분리했다. |
+| IR-7 | 문서 정렬 | `architecture-implementation-supplement.md`에 Maven 또는 혼합 build 후보와 group id 구현 시점 결정 표현이 남아 있어 Story 1.2의 Gradle Groovy DSL/GAV 결정과 충돌할 수 있었다. | `architecture-implementation-supplement.md`를 Gradle Groovy DSL, `settings.gradle`, `build.gradle`, `com.sst` Gradle group, `com.observation.portal` Java package 기준으로 보정했다. |
+| IR-8 | 상태 해석 주의 | `sprint-status.yaml`에서 Story 1.3/1.4도 `ready-for-dev`라 자동 선택자가 다음 story를 잘못 고를 수 있다. | status 값은 story file 준비 상태로 유지하되, workflow note에 1.3/1.4는 선행조건 완료 전 next implementation target이 아니라고 명시했다. |
 
 ## 4. Story Readiness
 
@@ -78,3 +80,27 @@ Story 1.4:
 - 실제 implementation 컨텍스트에서 Gradle wrapper 생성 가능 여부는 로컬 Gradle 설치 상태에 영향을 받을 수 있다. wrapper 생성이 불가능하면 구현자는 대체 실행 명령과 사유를 보고해야 한다.
 - Spring Boot/Gradle plugin의 정확한 버전은 구현 시점의 안정 버전으로 확정해야 한다. 이 IR은 module/package/test 경계를 고정하고, 외부 버전 최신성 판단은 구현 작업에서 확인한다.
 - Story 1.2는 구조 skeleton만 만들기 때문에 product behavior는 아직 검증하지 않는다. 첫 product behavior 검증은 Epic 3~6에서 닫는다.
+
+## 7. 추가 IR 재점검 결과
+
+재점검 일시: 2026-05-09
+
+### 판정
+
+**Pass**
+
+### P0/P1/P2 Findings
+
+| Priority | Finding | Status |
+|---|---|---|
+| P0 | Story 1.2 구현을 막는 active MVC/Hexagonal 기준 충돌은 발견하지 못했다. | 없음 |
+| P1 | `architecture-implementation-supplement.md`의 build system/group id 표현이 다른 active 문서보다 열려 있었다. | 수정 완료 |
+| P2 | `sprint-status.yaml`의 1.3/1.4 `ready-for-dev`는 파일 준비 상태로는 맞지만, 다음 구현 대상을 고르는 사람이나 자동화가 순서를 오해할 수 있다. | workflow note 보강 완료 |
+
+### 구현 직전 결론
+
+- active 구현 기준은 Traditional MVC + Service/Repository Layering으로 일관된다.
+- Story 1.2 -> Story 1.3 -> Story 1.4 순서는 구현 가능하고 안전하다.
+- Story 1.2 acceptance criteria는 Gradle Groovy DSL, `observability-portal`, `com.observation.portal`, `package-info.java`, smoke test 범위를 바로 개발 가능한 수준으로 닫고 있다.
+- `archive/hexagonal-version/`은 legacy/historical reference로만 언급되며 active 구현 기준으로 참조되는 곳은 없다.
+- 다음 단계는 Story 1.2 `bmad-dev-story`다.

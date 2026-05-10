@@ -4,7 +4,7 @@ storyId: "1.4"
 epic: "Epic 1. Architecture Foundation"
 title: "Portal Physical Schema Foundation"
 architectureStyle: Traditional MVC
-status: ready-for-dev
+status: review
 date: 2026-05-09
 ---
 
@@ -50,7 +50,7 @@ date: 2026-05-09
 ## Implementation Notes
 
 - 이 story는 Story 1.2와 Story 1.3 이후에 수행한다.
-- Gradle Kotlin DSL과 `observability-portal` module은 Story 1.2 결과를 사용한다.
+- Gradle Groovy DSL과 `observability-portal` module은 Story 1.2 결과를 사용한다.
 - Flyway dependency와 PostgreSQL/Testcontainers dependency는 이 story에서 추가한다.
 - migration 파일 위치는 `observability-portal/src/main/resources/db/migration/`이다.
 - UUID는 application-generated UUID로 만든다. PostgreSQL `pgcrypto` extension을 요구하지 않는다.
@@ -105,3 +105,61 @@ date: 2026-05-09
 - public project onboarding API를 이 story에 포함하지 않는다.
 - project seed는 local/demo story에서 다룬다.
 - controller에서 repository를 직접 호출하는 shortcut을 만들지 않는다.
+
+## Tasks/Subtasks
+
+- [x] portal module에 Flyway dependency를 추가한다.
+- [x] Testcontainers 기반 PostgreSQL test runtime을 추가한다.
+- [x] `V001__create_projects.sql`을 작성한다.
+- [x] `V002__create_applications_and_instances.sql`을 작성한다.
+- [x] migration 실행 테스트를 추가한다.
+- [x] unique constraint 검증 테스트를 추가한다.
+- [x] foreign key 검증 테스트를 추가한다.
+- [x] table/column comment 존재 테스트를 추가한다.
+- [x] catalog repository package skeleton을 유지한다.
+- [x] MVC layer boundary test가 계속 통과하는지 확인한다.
+
+## Dev Agent Record
+
+### Implementation Plan
+
+- Story 1.2의 `observability-portal` Gradle Groovy DSL module과 `com.observation.portal` package skeleton을 유지한다.
+- Story 1.3의 ArchUnit MVC boundary test를 계속 통과시키며, controller/service/repository 동작 class는 추가하지 않는다.
+- `database-schema.md`의 Story 1.4 physical DDL만 Flyway `V001`/`V002` migration으로 옮긴다.
+- PostgreSQL Testcontainers integration test에서 clean migration 적용, unique/FK constraint, table/column comment 존재를 검증한다.
+
+### Debug Log
+
+- 2026-05-10: Story 1.4 구현을 시작하며 sprint status와 story status를 `in-progress`로 갱신했다.
+- 2026-05-10: `org.testcontainers:*` dependency를 version 없이 추가했을 때 `testCompileClasspath` resolution이 실패함을 확인하고, Testcontainers 2.0.5 artifact 좌표로 명시했다.
+- 2026-05-10: `./gradlew :observability-portal:test --rerun-tasks` 실행 중 Docker daemon 미실행으로 Testcontainers initialization이 실패함을 확인했다.
+- 2026-05-10: Docker Desktop을 시작한 뒤 `./gradlew :observability-portal:test --rerun-tasks` 최종 실행 결과 `BUILD SUCCESSFUL`, 4 actionable tasks executed.
+- 2026-05-10: Story status를 `review`로 갱신한 뒤 같은 test command를 재실행했고 `BUILD SUCCESSFUL`, 4 actionable tasks executed.
+- 2026-05-10: Testcontainers 2.x PostgreSQLContainer import로 경고를 제거한 뒤 같은 test command를 재실행했고 `BUILD SUCCESSFUL`, 4 actionable tasks executed.
+- 2026-05-10: Kotlin source/DSL, starter module, forbidden hexagonal-style source package, `accepted_metric_buckets`, `dashboard_snapshots`, DB trigger/view/materialized view가 생기지 않았음을 확인했다.
+
+### Completion Notes
+
+- Flyway 기반 migration runtime과 PostgreSQL/Testcontainers integration test dependency를 portal module에 추가했다.
+- `projects`, `applications`, `application_instances` physical schema를 `database-schema.md`의 Story 1.4 DDL에 맞춰 V001/V002 migration으로 작성했다.
+- 세 table과 모든 column의 한국어 comment를 migration에 포함했다.
+- PostgreSQL Testcontainers integration test에서 clean migration 적용, 지정 unique constraint, 지정 foreign key constraint, table/column comment 존재를 검증했다.
+- Story 1.3의 MVC architecture guard test를 포함한 `:observability-portal:test`가 통과했다.
+
+## File List
+
+- `implementation-artifacts/sprint-status.yaml`
+- `planning-artifacts/stories/1-4-portal-physical-schema-foundation.md`
+- `observability-portal/build.gradle`
+- `observability-portal/src/main/resources/db/migration/V001__create_projects.sql`
+- `observability-portal/src/main/resources/db/migration/V002__create_applications_and_instances.sql`
+- `observability-portal/src/test/java/com/observation/portal/repository/catalog/CatalogSchemaMigrationIntegrationTest.java`
+
+## Change Log
+
+- 2026-05-10: Story 1.4 implementation started.
+- 2026-05-10: Added Flyway catalog migrations and PostgreSQL Testcontainers schema integration tests.
+
+## Status
+
+review

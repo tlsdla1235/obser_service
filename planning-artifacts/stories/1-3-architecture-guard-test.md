@@ -4,7 +4,7 @@ storyId: "1.3"
 epic: "Epic 1. Architecture Foundation"
 title: "MVC Layer Guard Test"
 architectureStyle: Traditional MVC
-status: ready-for-dev
+status: done
 date: 2026-05-09
 ---
 
@@ -96,3 +96,56 @@ date: 2026-05-09
 - UI가 read model을 재계산하지 않는 guard는 dashboard UI/API story에서 추가한다.
 - repository는 저장/조회 layer이지 lifecycle state, rule ranking, p95 계산 위치가 아니다.
 - MVC라는 이유로 controller에 orchestration과 계산을 몰아넣지 않는다.
+
+## Tasks/Subtasks
+
+- [x] Story 1.2의 portal module/package skeleton을 확인한다.
+- [x] architecture test dependency를 추가한다.
+- [x] `com.observation.portal.architecture.MvcLayerBoundaryTest`를 만든다.
+- [x] controller -> service -> repository direction 규칙을 추가한다.
+- [x] repository isolation 규칙을 추가한다.
+- [x] service가 controller/dto에 의존하지 않는 규칙을 추가한다.
+- [x] state/rule/p95/endpoint priority 계산 위치 guard를 최소 이름 패턴 또는 package rule로 고정한다.
+- [x] test command를 실행해 skeleton 상태에서 통과하는지 확인한다.
+- [x] Story 1.4 구현자가 같은 test suite를 계속 실행할 수 있게 둔다.
+
+## Dev Agent Record
+
+### Implementation Plan
+
+- Story 1.2에서 생성된 `observability-portal` module과 `com.observation.portal` package skeleton을 유지한다.
+- ArchUnit JUnit 5 dependency를 test scope에만 추가한다.
+- `MvcLayerBoundaryTest`에서 controller/repository/service dependency direction과 계산 class 위치 guard를 Story 1.3 범위로 고정한다.
+- API behavior, DB migration, repository/service behavior, starter module은 만들지 않는다.
+
+### Debug Log
+
+- Red phase: `MvcLayerBoundaryTest`를 먼저 추가한 뒤 `./gradlew :observability-portal:test`를 실행했고, ArchUnit dependency가 없어 compile failure가 발생함을 확인했다.
+- Green phase: `com.tngtech.archunit:archunit-junit5:1.4.1`을 test dependency로 추가했다.
+- ArchUnit 1.4.1에서는 skeleton package에 실제 class가 없을 때 empty should rule이 실패하므로 layer boundary 규칙에 `allowEmptyShould(true)`를 적용했다.
+- 계산 class 위치 guard는 skeleton 단계에 맞춰 class name pattern 기반으로 `service` 또는 `model` package만 허용하도록 테스트로 고정했다.
+- `./gradlew :observability-portal:test --rerun-tasks` 최종 실행 결과: `BUILD SUCCESSFUL`, 3 actionable tasks executed.
+- Kotlin source, Gradle Kotlin DSL, starter module, Flyway/PostgreSQL/Testcontainers dependency, forbidden hexagonal-style source package가 생기지 않았음을 확인했다.
+
+### Completion Notes
+
+- portal module에 MVC architecture boundary test 기반을 추가했다.
+- controller가 repository를 직접 참조하지 않는 규칙을 추가했다.
+- repository가 controller/dto package를 참조하지 않는 규칙을 추가했다.
+- service가 controller/dto package를 참조하지 않는 규칙을 추가했다.
+- lifecycle state, insight rule, endpoint priority, p95 계산 class가 service/model package 밖에 생기지 않도록 skeleton 수준의 guard를 추가했다.
+
+## File List
+
+- `implementation-artifacts/sprint-status.yaml`
+- `planning-artifacts/stories/1-3-architecture-guard-test.md`
+- `observability-portal/build.gradle`
+- `observability-portal/src/test/java/com/observation/portal/architecture/MvcLayerBoundaryTest.java`
+
+## Change Log
+
+- 2026-05-10: Story 1.3 portal MVC layer boundary test dependency and ArchUnit guard test added.
+
+## Status
+
+done

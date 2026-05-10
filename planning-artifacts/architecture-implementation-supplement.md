@@ -3,7 +3,7 @@ artifactType: architecture-implementation-supplement
 projectName: Spring Boot 운영 첫 화면 포털
 architectureStyle: Traditional MVC
 sourcePolicy: 기존 Lightweight Hexagonal 산출물의 제품/계약 의미를 Traditional MVC로 재해석
-status: mvc-version-generated
+status: story-1-2-ready-aligned
 date: 2026-05-09
 ---
 
@@ -15,22 +15,28 @@ date: 2026-05-09
 
 제품 약속, UX 본문, PRD 본문을 다시 정의하지 않는다. 단일 아키텍처 선택은 **Traditional MVC + Service/Repository Layering**이다.
 
-## 2. Repo / Module 구조 러프안
+## 2. Repo / Module 구조
 
-초기 구현 repo는 2개 runtime 단위를 반영하는 2개 모듈로 시작한다.
+목표 repo는 2개 runtime 단위를 반영하는 2개 module 구조를 사용한다. 단, Story 1.2에서는 `observability-portal` module만 생성하고 `observability-spring-boot-starter` module은 이후 starter story에서 추가한다.
 
 ```text
 observation/
-  settings.gradle(.kts) 또는 pom.xml
-  build.gradle(.kts)
-  observability-spring-boot-starter/
-    src/main/java/...
-    src/test/java/...
+  settings.gradle
+  build.gradle
+  gradle/
+    wrapper/
+  gradlew
+  gradlew.bat
   observability-portal/
+    build.gradle
     src/main/java/...
     src/main/resources/
       db/migration/
       static/dashboard/
+    src/test/java/...
+  observability-spring-boot-starter/
+    build.gradle
+    src/main/java/...
     src/test/java/...
   planning-artifacts/
   implementation-artifacts/
@@ -41,13 +47,15 @@ observation/
 
 - `observability-spring-boot-starter`는 host Spring Boot app 안에 붙는 starter/library다.
 - `observability-portal`은 ingest controller, dashboard controller, service, repository, persistence, dashboard static UI를 포함하는 하나의 portal runtime이다.
+- Story 1.2의 root build는 Gradle Groovy DSL로 고정하고, `settings.gradle`에는 `observability-portal`만 include한다.
+- Maven 또는 mixed build는 Story 1.2 구현 기준이 아니다.
 - dashboard UI는 별도 backend deployable을 만들지 않는다. MVP에서는 portal의 static view로 보고 `observability-portal/src/main/resources/static/dashboard`에 build output을 둔다.
 - React/Vite 같은 frontend build가 필요해지면 source는 `observability-portal/src/main/frontend`에 둘 수 있지만, runtime 배포 단위는 계속 portal 하나다.
 - Redis, Nginx, 별도 worker runtime은 MVP 필수 모듈로 만들지 않는다. 필요성이 확인되기 전까지 PostgreSQL + portal in-process refresh로 닫는다.
 
 ## 3. Package Tree
 
-base package 예시는 `com.observation`으로 둔다. 실제 group id는 구현 시작 시 한 번만 정하고, 아래 package suffix 경계를 유지한다.
+Gradle group id는 `com.sst`로 고정한다. Java package는 MVC 산출물 기준을 유지하며, portal base package는 `com.observation.portal`이다. group id와 Java package는 다를 수 있고, 아래 package suffix 경계를 유지한다.
 
 ### 3.1 Starter Module
 
