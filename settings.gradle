@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 rootProject.name = 'observation'
 
 include 'observability-portal'
-
+include 'observability-spring-boot-starter'

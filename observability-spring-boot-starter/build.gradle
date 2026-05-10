@@ -1,0 +1,11 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'Observability Spring Boot starter library'
+
+dependencies {
+    testImplementation platform(org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES)
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
