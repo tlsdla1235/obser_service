@@ -2,8 +2,8 @@
 artifactType: sprint-plan
 projectName: Spring Boot 운영 첫 화면 포털
 architectureStyle: Traditional MVC
-status: ir-updated-ready-for-dev-sequencing
-date: 2026-05-09
+status: feature-first-mvc-aligned
+date: 2026-05-10
 ---
 
 # Sprint Plan - Portal MVC Foundation
@@ -12,13 +12,15 @@ date: 2026-05-09
 
 이번 Sprint는 **Epic 1. Architecture Foundation** 중에서도 portal MVC 구현 기반을 닫는 Sprint로 고정한다.
 
-이번 Sprint의 목적은 전체 MVP를 구현하는 것이 아니라, 이후 `repository` 구현이 Traditional MVC 경계를 지키며 시작할 수 있도록 최소 기반을 만드는 것이다.
+이번 Sprint의 목적은 전체 MVP를 구현하는 것이 아니라, 이후 feature별 `repository` 구현이 Traditional MVC 경계를 지키며 시작할 수 있도록 최소 기반을 만드는 것이다.
 
 IR 반영 후 최종 판단:
 
 - Story 1.2는 문서 보강 후 바로 구현 가능하다.
 - build system 기본값은 Gradle Groovy DSL로 고정한다.
 - Gradle group은 `com.sst`, portal Java package는 `com.observation.portal`로 고정한다.
+- portal package 배치는 layer-first가 아니라 feature-first MVC로 둔다.
+- `domain` package는 순수 DDD domain layer가 아니라 업무 기능 묶음 namespace다.
 - Story 1.2에서는 `observability-portal` module만 생성한다.
 - `observability-spring-boot-starter` module은 목표 구조로 문서화하지만 Story 1.2에서는 만들지 않는다.
 - 빈 Java package는 `package-info.java` marker로 추적 가능하게 만든다.
@@ -34,7 +36,7 @@ IR 반영 후 최종 판단:
 구현자가 다음 Sprint 단계에서 바로 portal MVC foundation을 구현할 수 있도록 아래를 닫는다.
 
 - portal module/package skeleton 확정
-- Traditional MVC layer boundary를 테스트로 고정
+- feature-first MVC boundary를 테스트로 고정
 - Flyway migration 기반 확정
 - local/test PostgreSQL runtime 기준 확정
 - catalog physical schema foundation 구현 준비
@@ -52,7 +54,7 @@ IR 반영 후 최종 판단:
 | Future starter module | `observability-spring-boot-starter`는 목표 구조로만 유지, Story 1.2 제외 |
 | Gradle group / version | `com.sst` / `0.1.0-SNAPSHOT` |
 | Portal Java package | `com.observation.portal` |
-| Package marker | 각 skeleton package에 `package-info.java` 사용 |
+| Package marker | feature-first skeleton package에 `package-info.java` 사용 |
 | Story 1.2 test | `:observability-portal:test` smoke test |
 | Story 1.4 test runtime | PostgreSQL Testcontainers 우선 |
 
@@ -69,7 +71,9 @@ IR 반영 후 최종 판단:
 목적:
 
 - Gradle Groovy DSL root build와 `observability-portal` module을 시작할 수 있는 최소 구조를 만든다.
-- portal package suffix를 `controller`, `service`, `repository`, `model`, `dto`, `security`, `scheduler`, `config`로 고정한다.
+- portal base package는 `com.observation.portal`로 유지하고, 업무 기능은 `domain.<feature>` 아래에 모은다.
+- `domain`은 DDD layer가 아니라 feature grouping namespace다.
+- feature별로 필요한 `controller`, `dto`, `service`, `repository`, `model` package marker를 둔다.
 - skeleton package는 `package-info.java` marker로 남긴다.
 - 아직 ingest/dashboard/service/repository 구현은 하지 않는다.
 - starter module/source tree는 만들지 않는다.
@@ -81,10 +85,11 @@ IR 반영 후 최종 판단:
 목적:
 
 - 이번 Sprint에서는 portal MVC persistence boundary에 필요한 최소 ArchUnit guard만 둔다.
-- `portal.controller`가 repository를 직접 참조하지 않도록 검증한다.
-- `portal.repository`가 controller package와 DTO package를 참조하지 않도록 검증한다.
-- `portal.service`가 controller package나 DTO package에 의존하지 않도록 검증한다.
+- `portal.domain..controller`가 `repository` package를 직접 참조하지 않도록 검증한다.
+- `portal.domain..repository`가 `controller` package와 DTO package를 참조하지 않도록 검증한다.
+- `portal.domain..service`가 `controller` package나 controller response DTO에 의존하지 않도록 검증한다.
 - service/model 외부에서 state/rule/p95 계산이 생기지 않도록 guard 방향을 잡는다.
+- `port`, `adapter`, `application` package가 생기지 않도록 검증한다.
 
 #### Story 1.4 - Portal Physical Schema Foundation
 
@@ -180,7 +185,7 @@ Story 1.2 시작 시 이미 닫힌 선택지:
 - Gradle group/version: `com.sst` / `0.1.0-SNAPSHOT`
 - portal Java package: `com.observation.portal`
 - module 이름: `observability-portal`
-- package marker: `package-info.java`
+- package marker: feature-first MVC `package-info.java`
 
 Story 1.4 시작 시 이미 닫힌 선택지:
 

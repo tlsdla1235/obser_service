@@ -3,6 +3,9 @@ package com.observation.portal;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+/**
+ * Spring Boot entrypoint for the observability portal runtime.
+ */
 @SpringBootApplication
 public class PortalApplication {
 
@@ -10,4 +13,3 @@ public class PortalApplication {
         SpringApplication.run(PortalApplication.class, args);
     }
 }
-

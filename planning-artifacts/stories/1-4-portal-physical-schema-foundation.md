@@ -4,15 +4,15 @@ storyId: "1.4"
 epic: "Epic 1. Architecture Foundation"
 title: "Portal Physical Schema Foundation"
 architectureStyle: Traditional MVC
-status: review
-date: 2026-05-09
+status: done
+date: 2026-05-10
 ---
 
 # Story 1.4 - Portal Physical Schema Foundation
 
 ## User Story
 
-구현자로서, portal repository layer가 Traditional MVC 경계를 지키며 시작할 수 있도록 PostgreSQL migration 기반과 catalog physical schema를 먼저 마련하고 싶다.
+구현자로서, portal의 feature-first MVC repository package가 Traditional MVC 경계를 지키며 시작할 수 있도록 PostgreSQL migration 기반과 catalog physical schema를 먼저 마련하고 싶다.
 
 ## Scope
 
@@ -24,7 +24,7 @@ date: 2026-05-09
 - Testcontainers 기반 PostgreSQL integration test 기준 확정
 - `projects`, `applications`, `application_instances` physical schema 구현
 - table/column 한국어 `COMMENT ON` 추가
-- catalog repository가 붙을 수 있는 package와 test 위치 확정
+- `domain.catalog.repository`가 붙을 수 있는 package와 test 위치 확정
 
 제외:
 
@@ -58,8 +58,9 @@ date: 2026-05-09
 - raw project key는 DB에 저장하지 않는다.
 - migration naming은 `V001__create_projects.sql`, `V002__create_applications_and_instances.sql`를 따른다.
 - table과 column에는 모두 한국어 `COMMENT ON`을 추가한다.
-- catalog repository package는 `com.observation.portal.repository.catalog` 아래에 둔다.
-- controller package는 repository를 직접 참조하지 않는다.
+- catalog repository package는 `com.observation.portal.domain.catalog.repository` 아래에 둔다.
+- `domain` package는 순수 DDD domain layer가 아니라 feature grouping namespace다.
+- `domain..controller` package는 `domain..repository` package를 직접 참조하지 않는다.
 
 ## Acceptance Criteria
 
@@ -73,7 +74,7 @@ date: 2026-05-09
 8. `applications(project_id, name, environment)` unique constraint가 존재한다.
 9. `application_instances(application_id, instance_name)` unique constraint가 존재한다.
 10. `projects.key_prefix`와 `projects.project_key_hash` unique constraint가 존재한다.
-11. MVC layer boundary test는 portal controller가 repository를 직접 참조하지 않음을 계속 검증한다.
+11. MVC layer boundary test는 `domain..controller`가 `domain..repository`를 직접 참조하지 않음을 계속 검증한다.
 12. 이 story에서는 `accepted_metric_buckets`, `dashboard_snapshots`, p95/state/rule 계산을 구현하지 않는다.
 
 ## Suggested Tasks
@@ -86,7 +87,7 @@ date: 2026-05-09
 6. unique constraint 검증 테스트를 추가한다.
 7. foreign key 검증 테스트를 추가한다.
 8. table/column comment 존재 테스트를 추가한다.
-9. catalog repository package skeleton을 유지한다.
+9. `domain.catalog.repository` package skeleton을 유지한다.
 10. MVC layer boundary test가 계속 통과하는지 확인한다.
 
 ## Test Requirements
@@ -116,14 +117,14 @@ date: 2026-05-09
 - [x] unique constraint 검증 테스트를 추가한다.
 - [x] foreign key 검증 테스트를 추가한다.
 - [x] table/column comment 존재 테스트를 추가한다.
-- [x] catalog repository package skeleton을 유지한다.
+- [x] `domain.catalog.repository` package skeleton을 유지한다.
 - [x] MVC layer boundary test가 계속 통과하는지 확인한다.
 
 ## Dev Agent Record
 
 ### Implementation Plan
 
-- Story 1.2의 `observability-portal` Gradle Groovy DSL module과 `com.observation.portal` package skeleton을 유지한다.
+- Story 1.2의 `observability-portal` Gradle Groovy DSL module과 `com.observation.portal` feature-first package skeleton을 유지한다.
 - Story 1.3의 ArchUnit MVC boundary test를 계속 통과시키며, controller/service/repository 동작 class는 추가하지 않는다.
 - `database-schema.md`의 Story 1.4 physical DDL만 Flyway `V001`/`V002` migration으로 옮긴다.
 - PostgreSQL Testcontainers integration test에서 clean migration 적용, unique/FK constraint, table/column comment 존재를 검증한다.
@@ -137,6 +138,7 @@ date: 2026-05-09
 - 2026-05-10: Story status를 `review`로 갱신한 뒤 같은 test command를 재실행했고 `BUILD SUCCESSFUL`, 4 actionable tasks executed.
 - 2026-05-10: Testcontainers 2.x PostgreSQLContainer import로 경고를 제거한 뒤 같은 test command를 재실행했고 `BUILD SUCCESSFUL`, 4 actionable tasks executed.
 - 2026-05-10: Kotlin source/DSL, starter module, forbidden hexagonal-style source package, `accepted_metric_buckets`, `dashboard_snapshots`, DB trigger/view/materialized view가 생기지 않았음을 확인했다.
+- 2026-05-10: `CatalogSchemaMigrationIntegrationTest` package를 feature-first 위치인 `com.observation.portal.domain.catalog.repository`로 정렬했다.
 
 ### Completion Notes
 
@@ -145,6 +147,7 @@ date: 2026-05-09
 - 세 table과 모든 column의 한국어 comment를 migration에 포함했다.
 - PostgreSQL Testcontainers integration test에서 clean migration 적용, 지정 unique constraint, 지정 foreign key constraint, table/column comment 존재를 검증했다.
 - Story 1.3의 MVC architecture guard test를 포함한 `:observability-portal:test`가 통과했다.
+- `CatalogSchemaMigrationIntegrationTest`는 feature-first catalog repository test package 아래에 둔다.
 
 ## File List
 
@@ -153,13 +156,14 @@ date: 2026-05-09
 - `observability-portal/build.gradle`
 - `observability-portal/src/main/resources/db/migration/V001__create_projects.sql`
 - `observability-portal/src/main/resources/db/migration/V002__create_applications_and_instances.sql`
-- `observability-portal/src/test/java/com/observation/portal/repository/catalog/CatalogSchemaMigrationIntegrationTest.java`
+- `observability-portal/src/test/java/com/observation/portal/domain/catalog/repository/CatalogSchemaMigrationIntegrationTest.java`
 
 ## Change Log
 
 - 2026-05-10: Story 1.4 implementation started.
 - 2026-05-10: Added Flyway catalog migrations and PostgreSQL Testcontainers schema integration tests.
+- 2026-05-10: Story 1.4 test package aligned to feature-first MVC catalog repository location.
 
 ## Status
 
-review
+done

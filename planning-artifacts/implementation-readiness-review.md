@@ -2,8 +2,8 @@
 artifactType: implementation-readiness-review
 projectName: Spring Boot 운영 첫 화면 포털
 architectureStyle: Traditional MVC
-status: pass-ready-for-story-1-2
-date: 2026-05-09
+status: feature-first-mvc-aligned
+date: 2026-05-10
 scope: active-mvc-artifacts
 ---
 
@@ -16,6 +16,7 @@ scope: active-mvc-artifacts
 `archive/hexagonal-version/`과 `bmad-restart-context-pack/`는 제품 문제와 UX 의도 참고 경계로만 보며, 이번 IR 결과의 구현 기준이 아니다.
 
 최종 아키텍처 선택은 **Traditional MVC + Service/Repository Layering** 하나로 고정한다.
+Portal package 배치는 feature-first MVC이며, `domain`은 순수 DDD domain layer가 아니라 업무 기능 묶음 namespace다.
 
 ## 2. IR 결론
 
@@ -29,7 +30,7 @@ scope: active-mvc-artifacts
 - Gradle group은 `com.sst`로 두고, portal Java package는 `com.observation.portal`로 고정한다.
 - 빈 Java package는 `package-info.java` marker로 추적 가능하게 만든다.
 - Story 1.2의 테스트는 기능 테스트가 아니라 portal module build/test wiring smoke test로 제한한다.
-- Story 1.3의 architecture guard는 `controller`, `service`, `repository`, `dto` 의존 방향을 먼저 고정한다.
+- Story 1.3의 architecture guard는 `domain.<feature>` 아래의 `controller`, `service`, `repository`, `dto` 의존 방향을 먼저 고정한다.
 - Story 1.4의 PostgreSQL/Flyway/Testcontainers 결정은 Story 1.2가 아니라 Story 1.4에서 시작한다.
 
 ## 3. 발견 사항과 조치
@@ -64,10 +65,11 @@ Story 1.2:
 Story 1.3:
 
 - ArchUnit 또는 동등한 JVM architecture test를 사용한다.
-- `..portal.controller..`는 `..portal.repository..`에 의존하지 않는다.
-- `..portal.repository..`는 `..portal.controller..`와 `..portal.dto..`에 의존하지 않는다.
-- `..portal.service..`는 `..portal.controller..`와 `..portal.dto..`에 의존하지 않는다.
-- state/rule/p95/endpoint priority 계산 class는 `..portal.service..` 또는 `..portal.model..` 아래에만 허용한다.
+- `..portal.domain..controller..`는 `..portal.domain..repository..`에 의존하지 않는다.
+- `..portal.domain..repository..`는 `..portal.domain..controller..`와 `..portal.domain..dto..`에 의존하지 않는다.
+- `..portal.domain..service..`는 `..portal.domain..controller..`와 controller response DTO에 의존하지 않는다.
+- state/rule/p95/endpoint priority 계산 class는 `service` 또는 `model` package 아래에만 허용한다.
+- `port`, `adapter`, `application` package는 만들지 않는다.
 
 Story 1.4:
 
@@ -99,7 +101,7 @@ Story 1.4:
 
 ### 구현 직전 결론
 
-- active 구현 기준은 Traditional MVC + Service/Repository Layering으로 일관된다.
+- active 구현 기준은 feature-first package 배치를 사용하는 Traditional MVC + Service/Repository Layering으로 일관된다.
 - Story 1.2 -> Story 1.3 -> Story 1.4 순서는 구현 가능하고 안전하다.
 - Story 1.2 acceptance criteria는 Gradle Groovy DSL, `observability-portal`, `com.observation.portal`, `package-info.java`, smoke test 범위를 바로 개발 가능한 수준으로 닫고 있다.
 - `archive/hexagonal-version/`은 legacy/historical reference로만 언급되며 active 구현 기준으로 참조되는 곳은 없다.

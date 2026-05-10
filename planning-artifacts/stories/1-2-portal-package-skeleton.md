@@ -5,14 +5,14 @@ epic: "Epic 1. Architecture Foundation"
 title: "Portal MVC Package Skeleton"
 architectureStyle: Traditional MVC
 status: done
-date: 2026-05-09
+date: 2026-05-10
 ---
 
 # Story 1.2 - Portal MVC Package Skeleton
 
 ## User Story
 
-구현자로서, portal runtime을 Traditional MVC 구조로 일관되게 확장할 수 있도록 최소 module과 package skeleton을 먼저 만들고 싶다.
+구현자로서, portal runtime을 feature-first Traditional MVC 구조로 일관되게 확장할 수 있도록 최소 module과 package skeleton을 먼저 만들고 싶다.
 
 ## Scope
 
@@ -23,7 +23,7 @@ date: 2026-05-09
 - Gradle Groovy DSL root build 기준 생성
 - `observability-portal` module 생성
 - portal base package를 `com.observation.portal`로 고정
-- Traditional MVC package skeleton 생성
+- feature-first MVC package skeleton 생성
 - skeleton package를 `package-info.java` marker로 추적 가능하게 구성
 - test source set 생성
 - skeleton 상태에서 통과하는 최소 smoke test
@@ -58,6 +58,8 @@ date: 2026-05-09
 
 - 최종 아키텍처 선택은 Traditional MVC 하나다.
 - port/adapter package 구조를 만들지 않는다.
+- `domain` package는 순수 DDD domain layer가 아니라 업무 기능 묶음 namespace다.
+- controller/service/repository/dto/model은 최상위 layer package가 아니라 feature package 아래에 둔다.
 - repo에 기존 build system이 없으므로 Gradle Groovy DSL을 권장 기본값으로 사용한다.
 - root project name은 `observation`으로 둔다.
 - 이번 story에서 settings에 포함할 module은 `observability-portal` 하나다.
@@ -70,46 +72,55 @@ date: 2026-05-09
 
 ## Required Package Skeleton
 
-아래 suffix 경계를 유지한다.
+아래 feature-first MVC 경계를 유지한다.
 
 ```text
 com.observation.portal
-  controller
-    ingest
-    dashboard
-    admin
-  service
-    ingest
-    catalog
-    metric
-    state
-    triage
-    dashboard
-    cleanup
-  repository
-    catalog
-    bucket
-    snapshot
-  model
-    catalog
-    metric
-    state
-    triage
+  common
     time
-  dto
+  domain
+    catalog
+      model
+      repository
+      service
     ingest
+      controller
+      dto
+      service
     dashboard
+      controller
+      dto
+      service
     admin
+      controller
+      dto
+    metric
+      model
+      repository
+      service
+    state
+      model
+      service
+    triage
+      model
+      service
+    cleanup
+      service
+    snapshot
+      repository
+    bucket
+      repository
   security
   scheduler
   config
 ```
 
+`domain`은 feature grouping namespace다. Hexagonal의 port/adapter/application 구조를 복원하는 뜻이 아니다.
+
 초기 skeleton은 `package-info.java` 같은 marker와 최소 boot/test wiring만 허용한다. 실제 controller, service, repository, entity, DTO 구현 class를 이 story에서 만들지 않는다.
 
 금지 package:
 
-- `domain`
 - `application`
 - `port`
 - `adapter`
@@ -121,10 +132,10 @@ com.observation.portal
 1. repo는 Gradle Groovy DSL root build를 가진다.
 2. `settings.gradle`는 `observability-portal` module을 build/test 대상으로 인식한다.
 3. portal main source tree와 test source tree가 존재한다.
-4. portal base package는 `com.observation.portal`로 확정되어 문서의 package suffix와 일치한다.
-5. `controller`, `service`, `repository`, `model`, `dto`, `security`, `scheduler`, `config` package가 존재하고 marker source로 추적 가능하다.
-6. `controller.ingest`, `controller.dashboard`, `controller.admin` package가 구분되어 있다.
-7. `repository.catalog`, `repository.bucket`, `repository.snapshot` package가 구분되어 있다.
+4. portal base package는 `com.observation.portal`로 확정되어 feature-first package tree와 일치한다.
+5. `common`, `domain`, `security`, `scheduler`, `config` package가 존재하고 marker source로 추적 가능하다.
+6. `domain.ingest.controller`, `domain.dashboard.controller`, `domain.admin.controller` package가 구분되어 있다.
+7. `domain.catalog.repository`, `domain.bucket.repository`, `domain.snapshot.repository`, `domain.metric.repository` package가 구분되어 있다.
 8. skeleton 상태에서 `:observability-portal:test`가 성공한다.
 9. `observability-spring-boot-starter` module/source tree는 생성하지 않는다.
 10. 이 story에서는 API, DB migration, repository 구현, service behavior를 만들지 않는다.
@@ -137,7 +148,7 @@ com.observation.portal
 4. portal main/test source directory를 만든다.
 5. required package skeleton을 `package-info.java` marker로 만든다.
 6. skeleton 상태에서 test command가 성공하도록 최소 smoke test를 추가한다.
-7. `domain/application/port/adapter` package가 생성되지 않았는지 확인한다.
+7. `application/port/adapter` package가 생성되지 않았는지 확인한다.
 8. 다음 story가 사용할 package 위치를 build file과 source tree만으로 추론 가능하게 둔다.
 
 ## Test Requirements
@@ -151,7 +162,7 @@ com.observation.portal
 
 ## Developer Guardrails
 
-- controller/service/repository 구조는 만들되 controller가 repository를 직접 호출하는 shortcut은 만들지 않는다.
+- feature별 controller/service/repository 구조는 만들되 controller가 repository를 직접 호출하는 shortcut은 만들지 않는다.
 - repository에 state/rule/p95/endpoint priority 계산을 넣지 않는다.
 - DTO를 service/model 전체로 넓게 전파하지 않는다.
 - `accepted_metric_buckets`, `dashboard_snapshots` 관련 구현을 시작하지 않는다.
@@ -166,7 +177,7 @@ com.observation.portal
 - [x] portal main/test source directory를 만든다.
 - [x] required package skeleton을 `package-info.java` marker로 만든다.
 - [x] skeleton 상태에서 test command가 성공하도록 최소 smoke test를 추가한다.
-- [x] `domain/application/port/adapter` package가 생성되지 않았는지 확인한다.
+- [x] `application/port/adapter` package가 생성되지 않았는지 확인한다.
 - [x] 다음 story가 사용할 package 위치를 build file과 source tree만으로 추론 가능하게 둔다.
 
 ## Dev Agent Record
@@ -175,7 +186,7 @@ com.observation.portal
 
 - 사용자 Build/GAV 지시에 따라 `settings.gradle`/`build.gradle` Groovy DSL 기준을 적용한다.
 - root project는 `observation`, module은 `observability-portal`, Gradle group/version은 `com.sst`/`0.1.0-SNAPSHOT`로 둔다.
-- Java package는 MVC 산출물 기준인 `com.observation.portal`을 유지하고, required skeleton package마다 `package-info.java` marker를 둔다.
+- Java package는 MVC 산출물 기준인 `com.observation.portal`을 유지하고, feature-first skeleton package마다 `package-info.java` marker를 둔다.
 - Spring Boot module wiring을 위해 최소 `PortalApplication`과 module/test wiring smoke test만 추가한다.
 
 ### Debug Log
@@ -184,12 +195,13 @@ com.observation.portal
 - Spring Boot 공식 프로젝트 페이지에서 현재 안정 버전으로 표시된 `4.0.6`을 사용했다.
 - `./gradlew :observability-portal:test` 실행 결과: `BUILD SUCCESSFUL`, 3 actionable tasks executed.
 - Groovy DSL 기준을 확인했고 starter module, forbidden hexagonal-style package, Flyway/PostgreSQL/Testcontainers dependency, metric bucket/snapshot 구현이 생기지 않았음을 확인했다.
+- 2026-05-10: layer-first marker를 feature-first MVC package marker로 정렬했고, `domain`을 feature grouping namespace로 명시했다.
 
 ### Completion Notes
 
 - Gradle Groovy DSL root skeleton과 `observability-portal` module build wiring을 추가했다.
 - Java 21 toolchain/release, `com.sst` group, `0.1.0-SNAPSHOT` version, `com.observation.portal` base package를 구성했다.
-- Traditional MVC package skeleton을 `package-info.java` marker로 추적 가능하게 만들었다.
+- feature-first MVC package skeleton을 `package-info.java` marker로 추적 가능하게 만들었다.
 - `PortalModuleSmokeTest`를 추가해 skeleton module/test wiring만 검증했다.
 
 ## File List
@@ -206,40 +218,49 @@ com.observation.portal
 - `observability-portal/build.gradle`
 - `observability-portal/src/main/java/com/observation/portal/PortalApplication.java`
 - `observability-portal/src/main/java/com/observation/portal/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/common/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/common/time/package-info.java`
 - `observability-portal/src/main/java/com/observation/portal/config/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/controller/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/controller/admin/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/controller/dashboard/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/controller/ingest/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/dto/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/dto/admin/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/dto/dashboard/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/dto/ingest/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/model/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/model/catalog/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/model/metric/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/model/state/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/model/time/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/model/triage/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/repository/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/repository/bucket/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/repository/catalog/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/repository/snapshot/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/admin/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/admin/controller/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/admin/dto/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/bucket/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/bucket/repository/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/catalog/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/catalog/model/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/catalog/repository/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/catalog/service/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/cleanup/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/cleanup/service/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/dashboard/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/dashboard/controller/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/dashboard/dto/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/dashboard/service/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/ingest/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/ingest/controller/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/ingest/dto/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/ingest/service/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/metric/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/metric/model/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/metric/repository/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/metric/service/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/snapshot/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/snapshot/repository/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/state/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/state/model/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/state/service/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/triage/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/triage/model/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/triage/service/package-info.java`
 - `observability-portal/src/main/java/com/observation/portal/scheduler/package-info.java`
 - `observability-portal/src/main/java/com/observation/portal/security/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/service/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/service/catalog/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/service/cleanup/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/service/dashboard/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/service/ingest/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/service/metric/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/service/state/package-info.java`
-- `observability-portal/src/main/java/com/observation/portal/service/triage/package-info.java`
 - `observability-portal/src/test/java/com/observation/portal/PortalModuleSmokeTest.java`
 
 ## Change Log
 
 - 2026-05-10: Story 1.2 portal Gradle Groovy DSL skeleton, MVC package markers, wrapper, and smoke test added.
+- 2026-05-10: Story 1.2 package skeleton aligned from layer-first MVC to feature-first MVC.
 
 ## Status
 
