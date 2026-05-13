@@ -63,6 +63,7 @@ date: 2026-05-10
 - raw path values like `/orders/12345`, `/users/alice`, `/sessions/abc` must not become endpoint keys.
 - arbitrary label map을 도입하지 않는다.
 - endpoint list는 bounded top-N 또는 configured allowlist로 제한할 수 있게 둔다.
+- annotation 기반 query dimension, route masking, metric rename은 post-MVP 후보로만 남기고 이 story에서는 구현하지 않는다.
 
 ## Acceptance Criteria
 
@@ -105,6 +106,7 @@ date: 2026-05-10
 - raw path를 "임시로" endpoint key에 넣지 않는다.
 - arbitrary tag map을 starter model 또는 envelope 후보에 추가하지 않는다.
 - tenant/user/session/trace 식별자를 MVP metric tag로 허용하지 않는다.
+- query parameter opt-in이나 route/display masking annotation을 MVP guard 우회 경로로 추가하지 않는다.
 - route normalization 실패를 host request failure로 전파하지 않는다.
 - Story 2.3보다 앞서 low-cardinality guard를 닫는다.
 - portal ingest validation은 Epic 3에서 구현한다.

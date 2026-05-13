@@ -50,9 +50,19 @@ raw path, user id, tenant id, session id, trace id, arbitrary label은 MVP inges
 - dashboard read model 또는 insight rule contract에 소비 지점이 있다.
 - starter와 portal 양쪽에 bounded validation을 추가할 수 있다.
 
+### Post-MVP Annotation Candidates
+
+MVP에서는 annotation 기반 query dimension, route masking, metric rename, custom tag를 열지 않는다.
+다만 아래 후보는 core ingest path가 안정화된 뒤 별도 story로 검토할 수 있다.
+
+- query parameter opt-in: 사용자가 명시한 query parameter만 bounded dimension으로 허용한다. query string 전체나 검색어, user id, token류 값은 route/tag가 될 수 없다.
+- route/display masking: 특정 API를 원본 route 대신 고정된 normalized route 또는 display name으로 집계한다. masking은 민감 데이터를 수집하지 않기 위한 집계 이름 정책이지 payload 확장 경로가 아니다.
+- annotation metadata validation: starter에서 annotation metadata를 읽더라도 portal ingest validation이 같은 allowlist와 cardinality 정책을 다시 검증한다.
+
+이 후보들은 `method + normalized route`라는 MVP endpoint key 계약을 깨지 않는 방식으로만 추가할 수 있다.
+
 ## 4. MVC Boundary
 
 metric 허용 여부는 starter service와 portal `IngestAcceptanceService` validation에 같이 반영한다.
 
 persistence schema가 허용한다고 해서 service contract 밖의 metric을 저장하지 않는다.
-

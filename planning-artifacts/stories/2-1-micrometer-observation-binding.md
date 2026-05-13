@@ -4,7 +4,7 @@ storyId: "2.1"
 epic: "Epic 2. Starter Direct Ingest Producer"
 title: "Micrometer Observation Binding"
 architectureStyle: Traditional MVC
-status: ready-for-dev
+status: done
 date: 2026-05-10
 ---
 
@@ -63,6 +63,7 @@ date: 2026-05-10
 ## Implementation Notes
 
 - starter는 host app 안에 붙는 library/starter module이다.
+- 사용자 host app과의 호환성을 위해 프로젝트 Java baseline은 17로 둔다.
 - starter에는 MVC web controller를 만들지 않는다.
 - starter에는 `domain`, `application`, `port`, `adapter` package를 만들지 않는다.
 - Spring/Micrometer 객체는 `com.observation.starter.spring.observation` 경계에서 starter 내부 model 또는 service input으로 변환한다.
@@ -118,35 +119,68 @@ date: 2026-05-10
 
 ## Tasks/Subtasks
 
-- [ ] Story 1.1 starter module 상태와 package skeleton을 확인한다.
-- [ ] starter module에 필요한 Micrometer/Spring observation dependency를 추가한다.
-- [ ] HTTP observation input model 또는 command shape를 정의한다.
-- [ ] JVM/datasource app-level sample input shape를 정의한다.
-- [ ] `spring.observation` binding component를 추가한다.
-- [ ] binding component와 starter service boundary를 연결한다.
-- [ ] request path network call 금지 guard를 추가하거나 기존 test로 증명한다.
-- [ ] synthetic observation binding test를 추가한다.
-- [ ] forbidden package가 없는지 확인한다.
-- [ ] `./gradlew test` 또는 관련 module test를 실행한다.
+- [x] Story 1.1 starter module 상태와 package skeleton을 확인한다.
+- [x] starter module에 필요한 Micrometer/Spring observation dependency를 추가한다.
+- [x] HTTP observation input model 또는 command shape를 정의한다.
+- [x] JVM/datasource app-level sample input shape를 정의한다.
+- [x] `spring.observation` binding component를 추가한다.
+- [x] binding component와 starter service boundary를 연결한다.
+- [x] request path network call 금지 guard를 추가하거나 기존 test로 증명한다.
+- [x] synthetic observation binding test를 추가한다.
+- [x] forbidden package가 없는지 확인한다.
+- [x] `./gradlew test` 또는 관련 module test를 실행한다.
 
 ## Dev Agent Record
 
 ### Implementation Plan
 
-TBD by dev-story.
+- Story 1.1 review 산출물인 기존 `observability-spring-boot-starter` module과 package skeleton을 그대로 사용한다.
+- starter main dependency는 Micrometer observation API만 최소 추가하고, Spring Boot app/bootstrap이나 MVC controller를 만들지 않는다.
+- `spring.observation` package에는 Micrometer `ObservationHandler` binding을 두고, HTTP server observation을 internal model로 변환한다.
+- `model.metric`에는 HTTP, JVM, datasource app-level sample input을 정의하고, `service`에는 local collector boundary를 둔다.
+- request path network call 금지는 `spring.observation` binding이 `client.http`에 의존하지 않는 architecture test로 고정한다.
 
 ### Debug Log
 
-TBD by dev-story.
+- 2026-05-10: `git status --short --branch`로 기존 변경이 없고 `main...origin/main` 상태임을 확인한 뒤 `codex/story-2-1-micrometer-observation-binding` 브랜치를 생성했다.
+- 2026-05-10: 필수 MVC 산출물과 Story 1.1/2.1 문서를 읽고, Story 2.1 sprint status를 `in-progress`로 갱신했다.
+- 2026-05-10: Red phase로 synthetic Micrometer HTTP observation test와 starter architecture guard test를 추가한 뒤 `./gradlew :observability-spring-boot-starter:test`를 실행했고, 아직 구현되지 않은 model/binder/service boundary 때문에 compile failure가 발생함을 확인했다.
+- 2026-05-10: `micrometer-observation` dependency, HTTP/JVM/datasource input model, `ObservationSampleCollector`, `MicrometerHttpServerObservationBinder`를 추가했다.
+- 2026-05-10: `./gradlew :observability-spring-boot-starter:test` 실행 결과 `BUILD SUCCESSFUL`, 3 actionable tasks executed.
+- 2026-05-10: starter source directory와 source search로 `application`, `port`, `adapter` package가 없고 binding code가 portal HTTP client, queue flush, envelope builder를 구현하지 않았음을 확인했다.
+- 2026-05-10: `./gradlew test` 실행 결과 `BUILD SUCCESSFUL`, 7 actionable tasks up-to-date.
+- 2026-05-10: `./gradlew test --rerun-tasks` 실행 결과 `BUILD SUCCESSFUL`, 7 actionable tasks executed.
 
 ### Completion Notes
 
-TBD by dev-story.
+- 기존 starter module에서 시작했고 module/package bootstrap은 다시 구현하지 않았다.
+- Micrometer `ObservationHandler` 기반 HTTP server observation binding을 추가해 method, status/error signal, duration, framework route pattern candidate를 internal `HttpServerObservationInput`으로 변환한다.
+- raw `path`와 arbitrary/high-cardinality tag는 route candidate로 사용하지 않고, 최종 route/tag guard는 Story 2.2로 남겼다.
+- JVM CPU/heap과 datasource pool usage를 받을 수 있는 app-level sample model과 collector boundary를 추가했다.
+- request path에서 portal network call, bounded queue/flush worker, HTTP ingest client, retry/backoff, envelope builder를 구현하지 않았고 architecture guard로 binding의 `client.http` 의존을 금지했다.
+- forbidden package(`application`, `port`, `adapter`)가 생성되지 않았고 starter/portal 전체 테스트가 통과했다.
 
 ### File List
 
-TBD by dev-story.
+- `implementation-artifacts/sprint-status.yaml`
+- `planning-artifacts/stories/2-1-micrometer-observation-binding.md`
+- `observability-spring-boot-starter/build.gradle`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/model/metric/package-info.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/model/metric/HttpServerObservationInput.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/model/metric/JvmMetricSample.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/model/metric/DatasourcePoolMetricSample.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/service/ObservationSampleCollector.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/spring/observation/package-info.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/spring/observation/MicrometerHttpServerObservationBinder.java`
+- `observability-spring-boot-starter/src/test/java/com/observation/starter/architecture/StarterObservationArchitectureTest.java`
+- `observability-spring-boot-starter/src/test/java/com/observation/starter/spring/observation/MicrometerHttpServerObservationBinderTest.java`
+
+## Change Log
+
+- 2026-05-10: Story 2.1 implementation started from existing starter module.
+- 2026-05-10: Micrometer observation dependency, HTTP/JVM/datasource input models, collector boundary, binding component, and tests added.
+- 2026-05-13: Java 17 baseline 문서 정합성만 반영했으며 구현 내용과 status는 변경하지 않았다.
 
 ## Status
 
-ready-for-dev
+done

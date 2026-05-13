@@ -24,6 +24,7 @@ PRD와 UX specification은 검증 완료 산출물로 보고 본문을 수정하
 | `planning-artifacts/contracts/read-model-contract.md` | 기존 read model contract | controller가 반환하고 UI가 그대로 표시할 read model |
 | `planning-artifacts/contracts/dashboard-read-model.md` | 이전 파일명 호환 note | `read-model-contract.md`로 연결 |
 | `planning-artifacts/contracts/metric-taxonomy.md` | 기존 metric taxonomy | starter/portal service validation 기준 |
+| `planning-artifacts/contracts/starter-failure-semantics.md` | starter 장애 전파 정책 | portal 연결 실패가 host app build/startup/request path로 전파되지 않는 기준 |
 | `planning-artifacts/contracts/insight-rules.md` | 기존 insight rules | triage service rule 기준 |
 | `planning-artifacts/contracts/histogram-merge.md` | 기존 histogram merge | server-side service p95 계산 기준 |
 | `planning-artifacts/epics.md` | 기존 epics | MVC 구현 순서 |
@@ -53,4 +54,3 @@ PRD와 UX specification은 검증 완료 산출물로 보고 본문을 수정하
 ## 단일 선택
 
 이번 MVC 재산출물의 단일 아키텍처 선택은 **Traditional MVC + Service/Repository Layering**이다.
-

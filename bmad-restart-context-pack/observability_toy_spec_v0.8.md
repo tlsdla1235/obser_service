@@ -305,6 +305,26 @@ starter 집계 대상에서 제외하는 용도로 사용한다.
 MVP에서는 include annotation, metric rename annotation, custom tag annotation 같은
 추가 사용자 확장 포인트는 열지 않는다.
 
+#### Post-MVP annotation 확장 후보
+
+아래 항목은 core MVP에 포함하지 않는다. MVP의 기본 정책은 query string, raw path,
+사용자 식별자, 임의 tag를 endpoint key나 ingest payload 후보로 남기지 않는 것이다.
+
+- query string 기반 endpoint 분류 opt-in
+ - 사용자가 명시한 annotation이나 설정으로 허용한 query parameter만 dimension 후보가 될 수 있다.
+ - query string 전체를 route로 쓰지 않는다.
+ - 허용된 parameter도 low-cardinality allowlist, value bucket, `other` fallback 같은 bounded 정책을 통과해야 한다.
+- endpoint route/display masking annotation
+ - 특정 API를 원본 route 대신 고정된 normalized route나 display name으로 집계할 수 있다.
+ - 예: 민감한 결제/인증/내부 운영 endpoint를 세부 path가 아닌 `/sensitive/**` 같은 bounded 이름으로 묶는다.
+ - masking은 request body, header, token, user id 같은 민감 데이터를 수집하기 위한 기능이 아니다.
+- annotation 기반 metric rename/custom tag 확장
+ - starter와 portal 양쪽 validation contract가 닫힌 뒤에만 연다.
+ - arbitrary label map이나 high-cardinality custom tag로 확장하지 않는다.
+
+이 확장들은 backlog 후보로만 남긴다. 구현하려면 별도 story에서 starter annotation metadata,
+route normalization, ingest validation, dashboard 표시 정책을 함께 설계해야 한다.
+
 ### 9.2 전송 방식
 
 - metric은 `HTTPS POST`로 포털 ingest API에 직접 전송한다

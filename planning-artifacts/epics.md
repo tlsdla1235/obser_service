@@ -120,7 +120,7 @@ date: 2026-05-09
 ## Cross-Epic Acceptance Criteria
 
 - MVP 필수 경로에 Prometheus 설치, scrape config, selector 등록, PromQL query가 없다.
-- host app request path는 portal 장애에 의해 막히지 않는다.
+- host app build/startup/request path는 portal 장애에 의해 막히지 않는다.
 - p95 source of truth는 server-side histogram merge다.
 - first-screen state와 triage 문구는 dashboard read model에서 온다.
 - 아키텍처 스타일은 Traditional MVC 하나다.
@@ -133,11 +133,10 @@ date: 2026-05-09
 |---|---|---|---|---|
 | Traditional MVC only | Epic 1 | `architecture.md` | controller -> service -> repository direction | `MvcLayerBoundaryTest` |
 | No pull metric MVP path | Epic 1, 2, 6 | `metric-taxonomy.md`, `ingest-envelope.md` | starter direct ingest service only | `NoPrometheusMvpPathTest` |
-| Host request path not blocked | Epic 2 | `architecture.md`, `ingest-envelope.md` | spring integration -> service -> bounded queue | `StarterNonBlockingIngestTest` |
+| Host build/startup/request path not blocked | Epic 2 | `architecture.md`, `ingest-envelope.md`, `starter-failure-semantics.md` | spring integration -> service -> bounded queue | `StarterNonBlockingIngestTest` |
 | Ingest idempotency | Epic 3 | `ingest-envelope.md` | `IngestAcceptanceService` + `MetricBucketRepository` | `IngestAcceptanceServiceTest` |
 | Server-side p95 source | Epic 5 | `histogram-merge.md` | `HistogramMergeService` | `HistogramMergeGoldenFixtureTest` |
 | First-screen state source | Epic 4, 5 | `state-semantics.md`, `read-model-contract.md` | `DashboardReadModelService` | `DashboardReadModelSnapshotTest` |
 | 0-insight is explicit | Epic 5 | `read-model-contract.md` | `TriageSummaryService` | `ZeroInsightReadModelTest` |
 | Endpoint priority is explainable | Epic 5 | `insight-rules.md`, `read-model-contract.md` | `EndpointPriorityService` | `EndpointPriorityReadModelTest` |
 | Demo promise | Epic 6 | `read-model-contract.md` | starter + portal e2e | `FirstBucketToAliveE2ETest` |
-

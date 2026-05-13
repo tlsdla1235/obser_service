@@ -200,7 +200,7 @@ com.observation.portal
 ### Completion Notes
 
 - Gradle Groovy DSL root skeleton과 `observability-portal` module build wiring을 추가했다.
-- Java 21 toolchain/release, `com.sst` group, `0.1.0-SNAPSHOT` version, `com.observation.portal` base package를 구성했다.
+- Java 17 toolchain/release, `com.sst` group, `0.1.0-SNAPSHOT` version, `com.observation.portal` base package를 구성했다.
 - feature-first MVC package skeleton을 `package-info.java` marker로 추적 가능하게 만들었다.
 - `PortalModuleSmokeTest`를 추가해 skeleton module/test wiring만 검증했다.
 
@@ -261,6 +261,7 @@ com.observation.portal
 
 - 2026-05-10: Story 1.2 portal Gradle Groovy DSL skeleton, MVC package markers, wrapper, and smoke test added.
 - 2026-05-10: Story 1.2 package skeleton aligned from layer-first MVC to feature-first MVC.
+- 2026-05-13: 사용자 host app 호환성을 위한 Java 17 baseline 문서 정합성만 보정했다.
 
 ## Status
 
