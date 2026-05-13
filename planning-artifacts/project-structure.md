@@ -17,6 +17,8 @@ scope: active-mvc-artifacts
 
 build system은 **Gradle Groovy DSL**을 권장 기본값으로 둔다. 현재 repo root에는 `settings.gradle`과 `build.gradle` 기반 multi-module build를 둔다.
 
+Java baseline은 사용자 host app과의 호환성을 위해 **17**로 고정한다. Gradle toolchain과 `options.release`는 이 baseline을 따른다.
+
 선택 이유:
 
 - starter library와 portal runtime을 한 repo에서 module 단위로 나누기 쉽다.
@@ -60,6 +62,7 @@ Story 1.2에서는 `observability-portal`만 생성한다. `observability-spring
 - included module for Story 1.2: `observability-portal`
 - Gradle group: `com.sst`
 - Gradle version: `0.1.0-SNAPSHOT`
+- Java baseline: `17`
 - portal Java package: `com.observation.portal`
 - default test command: `./gradlew :observability-portal:test`
 

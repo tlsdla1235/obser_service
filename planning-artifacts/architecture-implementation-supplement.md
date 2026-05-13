@@ -47,6 +47,7 @@ observation/
 
 - `observability-spring-boot-starter`는 host Spring Boot app 안에 붙는 starter/library다.
 - `observability-portal`은 ingest controller, dashboard controller, service, repository, persistence, dashboard static UI를 포함하는 하나의 portal runtime이다.
+- Java baseline은 사용자 host app과의 호환성을 위해 17로 둔다. Gradle toolchain/release 설정도 Java 17 기준을 따른다.
 - Story 1.2의 root build는 Gradle Groovy DSL로 고정하고, `settings.gradle`에는 `observability-portal`만 include한다.
 - Maven 또는 mixed build는 Story 1.2 구현 기준이 아니다.
 - dashboard UI는 별도 backend deployable을 만들지 않는다. MVP에서는 portal의 static view로 보고 `observability-portal/src/main/resources/static/dashboard`에 build output을 둔다.

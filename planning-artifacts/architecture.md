@@ -17,6 +17,8 @@ date: 2026-05-09
 
 이 버전에서는 port/adapter 구조를 만들지 않는다. 구현 경계는 controller, service, repository, model, dto, config로 나누며, 핵심 판단은 service layer가 가진다.
 
+사용자 host app과의 호환성을 위해 starter와 portal의 Java baseline은 **17**로 둔다.
+
 ### 선택한 이유
 
 - 팀이 전통적인 Spring MVC 구현 흐름으로 빠르게 MVP를 만들 수 있다.
@@ -331,4 +333,3 @@ com.observation.portal
 - 범용 metric platform이나 arbitrary query UI로 확장하는 결정
 
 이번 MVC 버전의 단일 선택은 **Traditional MVC + Service/Repository Layering**이다.
-

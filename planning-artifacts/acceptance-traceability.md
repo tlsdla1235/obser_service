@@ -18,7 +18,7 @@ date: 2026-05-09
 | 아키텍처 스타일은 Traditional MVC 하나다 | Epic 1 | `architecture.md` | `controller`, `service`, `repository`, `model`, `dto` | `MvcLayerBoundaryTest` |
 | 기존 PRD/UX/spec은 재작성하지 않고 아키텍처 결정만 MVC로 재산출한다 | Epic 1 | `architecture-rewrite-index.md` | planning artifact boundary | document review |
 | MVP 필수 경로에는 pull metric backend, scrape config, arbitrary query UI가 없다 | Epic 1, 2, 6 | `metric-taxonomy.md`, `ingest-envelope.md` | starter direct ingest service path | `NoPrometheusMvpPathTest` |
-| host app request path는 portal 장애로 막히지 않는다 | Epic 2 | `architecture.md` | `HttpObservationCollectionService`, `BoundedMetricQueue`, `PortalIngestHttpClient` | `StarterNonBlockingIngestTest` |
+| host app build/startup/request path는 portal 장애로 막히지 않는다 | Epic 2 | `architecture.md`, `starter-failure-semantics.md` | `HttpObservationCollectionService`, `BoundedMetricQueue`, `PortalIngestHttpClient` | `StarterNonBlockingIngestTest` |
 | ingest envelope는 idempotent하게 수용된다 | Epic 3 | `ingest-envelope.md` | `IngestAcceptanceService`, `MetricBucketRepository` | `IngestAcceptanceServiceTest` |
 | p95는 server-side histogram merge 결과다 | Epic 5 | `histogram-merge.md` | `HistogramMergeService` | `HistogramMergeGoldenFixtureTest` |
 | UI는 state/rule/endpoint priority를 재계산하지 않는다 | Epic 1, 5, 6 | `read-model-contract.md` | `DashboardReadModelService` | `DashboardReadModelSnapshotTest` |
@@ -29,4 +29,3 @@ date: 2026-05-09
 | portal physical schema는 catalog부터 구현 가능하고 DB comment를 포함한다 | Epic 1 | `database-schema.md` | `repository.catalog`, migration | `MigrationSchemaCommentTest` |
 | controller는 repository를 직접 호출하지 않는다 | Epic 1 | `architecture.md` | controller -> service -> repository | `MvcLayerBoundaryTest` |
 | repository는 controller DTO를 참조하지 않는다 | Epic 1 | `architecture.md` | repository isolation | `MvcLayerBoundaryTest` |
-
