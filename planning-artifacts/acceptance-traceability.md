@@ -18,13 +18,16 @@ date: 2026-05-09
 | 아키텍처 스타일은 Traditional MVC 하나다 | Epic 1 | `architecture.md` | `controller`, `service`, `repository`, `model`, `dto` | `MvcLayerBoundaryTest` |
 | 기존 PRD/UX/spec은 재작성하지 않고 아키텍처 결정만 MVC로 재산출한다 | Epic 1 | `architecture-rewrite-index.md` | planning artifact boundary | document review |
 | MVP 필수 경로에는 pull metric backend, scrape config, arbitrary query UI가 없다 | Epic 1, 2, 6 | `metric-taxonomy.md`, `ingest-envelope.md` | starter direct ingest service path | `NoPrometheusMvpPathTest` |
+| route attribution은 `http.route`/framework route template 최우선, raw path candidate의 query 폐기 후 allowlist 일시 입력, exact-one allowlist template, 그 외 `UNKNOWN`을 따른다. query key/value와 raw detail은 route/tag/metric key/payload/log/rollup/read model에 남기지 않는다 | Epic 2, 3, 5 | `metric-taxonomy.md`, `ingest-envelope.md`, `read-model-contract.md` | `MicrometerHttpServerObservationBinder`, `LowCardinalityHttpObservationGuard`, `RouteNormalizationService` | `MicrometerHttpServerObservationBinderTest`, `LowCardinalityHttpObservationGuardTest`, `RouteNormalizationServiceTest` |
 | host app build/startup/request path는 portal 장애로 막히지 않는다 | Epic 2 | `architecture.md`, `starter-failure-semantics.md` | `HttpObservationCollectionService`, `BoundedMetricQueue`, `PortalIngestHttpClient` | `StarterNonBlockingIngestTest` |
 | ingest envelope는 idempotent하게 수용된다 | Epic 3 | `ingest-envelope.md` | `IngestAcceptanceService`, `MetricBucketRepository` | `IngestAcceptanceServiceTest` |
 | p95는 server-side histogram merge 결과다 | Epic 5 | `histogram-merge.md` | `HistogramMergeService` | `HistogramMergeGoldenFixtureTest` |
-| UI는 state/rule/endpoint priority를 재계산하지 않는다 | Epic 1, 5, 6 | `read-model-contract.md` | `DashboardReadModelService` | `DashboardReadModelSnapshotTest` |
+| UI는 state/rule/p95/p99/endpoint priority를 재계산하지 않는다 | Epic 1, 5, 6 | `read-model-contract.md`, `histogram-merge.md` | `DashboardReadModelService`, `HistogramMergeService` | `DashboardReadModelSnapshotTest` |
 | `triageCards=[]`는 빈 화면이 아니라 zero-insight reason을 가진다 | Epic 5 | `read-model-contract.md` | `TriageSummaryService` | `ZeroInsightReadModelTest` |
 | stale/down/recovery는 사용자 행동으로 이어진다 | Epic 4, 5 | `state-semantics.md`, `read-model-contract.md` | `LifecycleStateService` | `RecoveryReadModelTest` |
 | endpoint priority는 rank, reason, evidence, confidence, freshness를 가진다 | Epic 5 | `read-model-contract.md`, `insight-rules.md` | `EndpointPriorityService` | `EndpointPriorityReadModelTest` |
+| Operational event history는 raw snapshot explorer가 아니라 bounded recent event surface다 | Epic 5, 6 | `operational-event-history.md`, `time-buckets.md`, `database-schema.md` | `OperationalEventHistoryService` candidate + `DashboardSnapshotRepository` | `OperationalEventHistoryReadModelTest` |
+| Recent history UI는 event를 표시하고 snapshot deep link를 열 뿐 판단을 재계산하지 않는다 | Epic 6 | `operational-event-history.md`, `read-model-contract.md`, `api-surface.md` | dashboard UI + history API read model | `RecentHistoryUiContractTest` |
 | 첫 화면은 alive / slow / error / where to look first를 답한다 | Epic 5, 6 | `read-model-contract.md` | dashboard read model | `FirstScreenContractE2ETest` |
 | portal physical schema는 catalog부터 구현 가능하고 DB comment를 포함한다 | Epic 1 | `database-schema.md` | `repository.catalog`, migration | `MigrationSchemaCommentTest` |
 | controller는 repository를 직접 호출하지 않는다 | Epic 1 | `architecture.md` | controller -> service -> repository | `MvcLayerBoundaryTest` |

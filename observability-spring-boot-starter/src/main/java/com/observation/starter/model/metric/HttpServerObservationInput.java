@@ -10,7 +10,8 @@ import java.util.Optional;
  *
  * <p>Spring/Micrometer 객체, 서블릿 요청/응답 객체, 원본 경로는 보관하지 않는다.
  * {@code routePattern}은 프레임워크가 제공한 저카디널리티 라우트 후보일 뿐이며,
- * 최종 라우트 정규화와 카디널리티 제한은 스토리 2.2가 담당한다.</p>
+ * {@code rawPathCandidate}는 {@code http.route} 부재 시 allowlist matcher에만 넘기는
+ * starter 내부 임시 경계다. query string은 이 모델에 들어오기 전에 폐기한다.</p>
  */
 public record HttpServerObservationInput(
         Instant observedAt,
@@ -19,7 +20,8 @@ public record HttpServerObservationInput(
         boolean error,
         String errorType,
         Duration duration,
-        Optional<String> routePattern
+        Optional<String> routePattern,
+        Optional<String> rawPathCandidate
 ) {
 
     /**
@@ -37,6 +39,11 @@ public record HttpServerObservationInput(
             throw new IllegalArgumentException("duration must not be negative");
         }
         routePattern = Objects.requireNonNull(routePattern, "routePattern must not be null")
+                .map(HttpServerObservationInput::stripQueryString)
+                .map(String::trim)
+                .filter(value -> !value.isEmpty());
+        rawPathCandidate = Objects.requireNonNull(rawPathCandidate, "rawPathCandidate must not be null")
+                .map(HttpServerObservationInput::stripQueryString)
                 .map(String::trim)
                 .filter(value -> !value.isEmpty());
     }
@@ -53,5 +60,13 @@ public record HttpServerObservationInput(
             return null;
         }
         return value.trim();
+    }
+
+    private static String stripQueryString(String value) {
+        int queryStart = value.indexOf('?');
+        if (queryStart < 0) {
+            return value;
+        }
+        return value.substring(0, queryStart);
     }
 }

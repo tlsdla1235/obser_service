@@ -24,6 +24,8 @@ Insight rule은 원인 확정 엔진이 아니라 첫 확인 지점을 제안하
 
 guard를 통과하지 못한 rule은 candidate를 만들지 않거나 confidence를 낮춘다.
 
+Route attribution이 `UNKNOWN`인 endpoint-level rule은 actionability를 낮게 보거나 candidate 생성을 제한할 수 있다. `allowlist_path_match`는 configured policy를 통과한 normalized route이므로 endpoint evidence로 사용할 수 있으나, raw path/query detail은 evidence에 포함하지 않는다.
+
 ## 3. Candidate Shape
 
 ```json
@@ -55,7 +57,15 @@ guard를 통과하지 못한 rule은 candidate를 만들지 않거나 confidence
 
 노출은 최대 3개다.
 
-## 5. MVP Rule Set
+## 5. Operational Event Promotion
+
+Operational event로 승격되는 concern은 high-confidence candidate로 제한한다.
+
+low-confidence candidate, minimum sample guard를 통과하지 못한 candidate, 중복된 endpoint concern은 history event로 만들지 않는다. Event 승격은 `operational-event-history.md` contract에 따라 service layer에서 수행한다.
+
+p99/tail latency는 primary rule judgment가 아니라 auxiliary evidence다. p99 단독으로 장애나 degraded를 단정하지 않으며, 충분한 request count와 p95/error/saturation evidence가 함께 있을 때 confidence를 높이는 근거로만 사용한다.
+
+## 6. MVP Rule Set
 
 - availability
   - `service_down`
@@ -74,16 +84,16 @@ guard를 통과하지 못한 rule은 candidate를 만들지 않거나 confidence
 - endpoint priority
   - slow/error/comparative evidence ranking
 
-## 6. Copy Rules
+## 7. Copy Rules
 
 문구는 진단 확정이 아니라 확인 제안이어야 한다.
 
 - 금지: "DB pool 고갈로 장애가 발생했습니다."
 - 허용: "DB pool 사용률이 높고 응답 지연도 함께 증가했습니다. DB 연결 대기 가능성을 먼저 확인해보세요."
 
-## 7. MVC Boundary
+## 8. MVC Boundary
 
 - rule evaluation은 `TriageSummaryService`와 `EndpointPriorityService` 안에 둔다.
 - UI, controller, repository는 rule을 평가하지 않는다.
 - 새로운 rule 추가는 service test와 read model contract update를 동반한다.
-
+- Operational event history는 rule을 다시 평가하지 않고 저장된 read model/rule result를 bounded event 후보로 요약한다.

@@ -78,7 +78,7 @@ date: 2026-05-10
 2. starter binding은 HTTP server request method, status/error signal, duration sample을 internal observation input으로 변환한다.
 3. JVM CPU/heap, datasource pool usage sample을 app-level metric input으로 받을 수 있는 collection 경계가 있다.
 4. binding layer는 servlet request/response 객체를 starter model에 장기 보관하지 않는다.
-5. raw path parameter와 arbitrary tag를 payload 후보로 확정하지 않는다. 최종 route/tag guard는 Story 2.2로 위임한다.
+5. raw path parameter와 arbitrary tag를 payload 후보로 확정하지 않는다. 단 `http.route`가 없을 때 configured allowlist matching에만 사용할 임시 `rawPathCandidate`는 starter 내부 input boundary로 전달할 수 있다. query string은 즉시 폐기되어야 하며, query key/value와 high-cardinality tag는 어떤 후보에도 포함하지 않는다.
 6. request path에서 portal network call을 수행하지 않는다.
 7. 이 story에서는 bounded queue, async flush worker, HTTP ingest client, ingest envelope builder를 구현하지 않는다.
 8. Micrometer/Spring binding test는 synthetic observation 또는 framework test fixture로 signal 변환을 검증한다.
@@ -113,6 +113,9 @@ date: 2026-05-10
 - `spring.observation` binding이 portal HTTP client를 직접 참조하지 않게 한다.
 - service/model에 servlet request/response 객체를 보관하지 않는다.
 - route normalization 최종 결정을 임의로 우회하지 않는다.
+- `http.route`는 framework route template 후보로 유지하고, `uri`/`path` 같은 raw path 후보는 `http.route` 부재 시 allowlist matching 전용 임시 입력으로만 넘긴다.
+- `http.url`, query key/value, high-cardinality tag, arbitrary tag는 raw path 후보로 승격하지 않는다.
+- binder/input/test 로그에 query string 또는 raw path candidate 값을 남기지 않는다.
 - queue, flush worker, retry/backoff, envelope builder를 당겨오지 않는다.
 - Prometheus dependency, scrape endpoint, query UI dependency를 추가하지 않는다.
 - 구현 시점의 Spring Boot/Micrometer API는 현재 project build와 호환되는 공식 dependency 기준으로 확인한다.
@@ -155,7 +158,7 @@ date: 2026-05-10
 
 - 기존 starter module에서 시작했고 module/package bootstrap은 다시 구현하지 않았다.
 - Micrometer `ObservationHandler` 기반 HTTP server observation binding을 추가해 method, status/error signal, duration, framework route pattern candidate를 internal `HttpServerObservationInput`으로 변환한다.
-- raw `path`와 arbitrary/high-cardinality tag는 route candidate로 사용하지 않고, 최종 route/tag guard는 Story 2.2로 남겼다.
+- raw `uri`/`path`는 `http.route` 부재 시 allowlist matching 전용 `rawPathCandidate`로만 전달하고, query string과 arbitrary/high-cardinality tag는 후보에 남기지 않는다.
 - JVM CPU/heap과 datasource pool usage를 받을 수 있는 app-level sample model과 collector boundary를 추가했다.
 - request path에서 portal network call, bounded queue/flush worker, HTTP ingest client, retry/backoff, envelope builder를 구현하지 않았고 architecture guard로 binding의 `client.http` 의존을 금지했다.
 - forbidden package(`application`, `port`, `adapter`)가 생성되지 않았고 starter/portal 전체 테스트가 통과했다.
@@ -180,6 +183,7 @@ date: 2026-05-10
 - 2026-05-10: Story 2.1 implementation started from existing starter module.
 - 2026-05-10: Micrometer observation dependency, HTTP/JVM/datasource input models, collector boundary, binding component, and tests added.
 - 2026-05-13: Java 17 baseline 문서 정합성만 반영했으며 구현 내용과 status는 변경하지 않았다.
+- 2026-05-14: Route Attribution B안에 맞춰 `http.route`와 raw path candidate 내부 경계를 분리하고 query 폐기 정책을 문서화했다.
 
 ## Status
 

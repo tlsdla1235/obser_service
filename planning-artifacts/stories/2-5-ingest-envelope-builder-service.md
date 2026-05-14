@@ -117,7 +117,7 @@ date: 2026-05-10
 - builder가 p95를 계산하지 않는다.
 - builder가 lifecycle state, insight rule, endpoint priority를 계산하지 않는다.
 - free-form tags/custom metrics를 "future extension"이라는 이름으로 추가하지 않는다.
-- route normalization 실패를 builder에서 raw path fallback으로 해결하지 않는다.
+- route normalization 실패를 builder에서 raw path로 보정하지 않는다.
 - idempotency key generation을 위해 host request path 또는 builder에서 portal network call을 하지 않는다.
 
 ## Tasks/Subtasks

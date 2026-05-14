@@ -36,6 +36,8 @@ date: 2026-05-09
 
 목표: 사용자가 starter를 추가하면 host app request path를 막지 않고 30초 bucket을 전송한다.
 
+Operational Event History, p99/tail latency judgment, dashboard snapshot history, operational events API, recent history UI, alert/snapshot deep link는 Epic 2에 포함하지 않는다.
+
 ### Stories
 
 1. Micrometer observation binding
@@ -56,6 +58,8 @@ date: 2026-05-09
 ## Epic 3. Portal Ingest Acceptance
 
 목표: portal이 ingest envelope를 검증하고 idempotent하게 저장한다.
+
+Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫는다. Operational event 저장, 계산, API는 구현하지 않는다.
 
 ### Stories
 
@@ -101,6 +105,11 @@ date: 2026-05-09
    - slow/error/comparative evidence, confidence, freshness 기반 목록을 만든다.
 5. Dashboard query API
    - `read-model-contract` contract를 반환한다.
+6. Operational event history read model/API 후보
+   - Epic 5/6 착수 전 구현 기준으로 `operational-event-history` contract를 따른다.
+   - `dashboard_snapshots` 기반으로 bounded event 목록을 파생한다.
+   - 별도 `operational_events` table이나 event repository는 만들지 않는다.
+   - p99/tail latency는 auxiliary evidence로만 사용하고 단독 판단으로 쓰지 않는다.
 
 ## Epic 6. First-Screen Delivery and Demo Hardening
 
@@ -116,6 +125,10 @@ date: 2026-05-09
    - portal down, duplicate ingest, stale/down 상태를 시연한다.
 4. Dashboard UI integration
    - UI는 read model을 표시하고 별도 state/rule 판단을 하지 않는다.
+5. Recent operational history UI와 snapshot deep link 후보
+   - UI는 bounded event 목록과 snapshot detail link를 표시한다.
+   - UI는 state/rule/p95/p99/endpoint priority를 재계산하지 않는다.
+   - raw snapshot explorer, arbitrary time-series query UI, alert delivery log 병합은 non-goal이다.
 
 ## Cross-Epic Acceptance Criteria
 
@@ -126,6 +139,8 @@ date: 2026-05-09
 - 아키텍처 스타일은 Traditional MVC 하나다.
 - `triageCards=[]`이면 zero-insight reason과 recommended action이 반드시 있다.
 - endpoint priority는 rank, reason, evidence, confidence, freshness를 포함한다.
+- Operational Event History는 Epic 5/6에서 dashboard snapshot/read model 기반 bounded surface로 다루며 Epic 2/3에는 포함하지 않는다.
+- MVP에서는 별도 `operational_events` table을 만들지 않는다.
 
 ## AC Traceability Matrix
 
@@ -139,4 +154,5 @@ date: 2026-05-09
 | First-screen state source | Epic 4, 5 | `state-semantics.md`, `read-model-contract.md` | `DashboardReadModelService` | `DashboardReadModelSnapshotTest` |
 | 0-insight is explicit | Epic 5 | `read-model-contract.md` | `TriageSummaryService` | `ZeroInsightReadModelTest` |
 | Endpoint priority is explainable | Epic 5 | `insight-rules.md`, `read-model-contract.md` | `EndpointPriorityService` | `EndpointPriorityReadModelTest` |
+| Bounded operational event history | Epic 5, 6 | `operational-event-history.md`, `read-model-contract.md` | `OperationalEventHistoryService` candidate + `DashboardSnapshotRepository` | `OperationalEventHistoryReadModelTest` |
 | Demo promise | Epic 6 | `read-model-contract.md` | starter + portal e2e | `FirstBucketToAliveE2ETest` |

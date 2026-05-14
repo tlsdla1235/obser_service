@@ -80,8 +80,9 @@ Content-Type: application/json
 - `bucket.durationSeconds`는 `30`만 허용한다.
 - `bucket.startUtc`와 `bucket.endUtc`는 UTC이고 30초 boundary에 맞아야 한다.
 - `application.name`, `environment`, `instance`는 비어 있으면 안 된다.
-- `route`는 normalized route여야 한다. raw path parameter 값은 허용하지 않는다.
-- endpoint 항목은 bounded top-N 또는 허용 route set 안에 있어야 한다.
+- endpoint `route`는 framework route template, configured allowlist template, 또는 `UNKNOWN`이어야 한다.
+- raw path candidate, query string, query key/value, high-cardinality tag, attribution source raw detail은 payload shape에 존재할 수 없다.
+- endpoint 항목은 이미 정규화된 route 기준의 bounded top-N 또는 허용 route set 안에 있어야 한다. 이 제한은 출력 cardinality cap이며 route attribution fallback으로 사용하지 않는다.
 - histogram bucket은 cumulative count를 사용한다.
 - 자유 tag map, arbitrary custom metric map, raw timeseries 배열은 허용하지 않는다.
 
@@ -103,6 +104,6 @@ Content-Type: application/json
 
 - pull exposition format 지원
 - arbitrary query를 위한 raw metric 저장
+- allowlist matching의 임시 입력으로 사용된 raw path/query 저장
 - high-cardinality label 검색
 - user-defined custom metric ingestion
-
