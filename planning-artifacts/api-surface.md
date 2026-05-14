@@ -230,15 +230,68 @@ MVP에서는 둘 중 하나로 시작한다.
 
 둘 중 어느 쪽이든 `DashboardReadModelService`가 read model source of truth다. DB view나 frontend는 대체 source가 아니다.
 
+Dashboard current response에는 큰 history 배열을 넣지 않는다. Snapshot identifier와 detail link가 필요하면 `read-model-contract.md`의 `snapshot` 경계만 사용한다.
+
 ### 3.4 MVC Boundary
 
 - `DashboardController`는 path variable을 query DTO로 변환한다.
 - `DashboardReadModelService`가 current/baseline window, freshness, state, p95, triage cards, endpoint priority를 구성한다.
-- UI는 이 응답을 소비할 뿐 state/rule/p95/endpoint priority를 재계산하지 않는다.
+- UI는 이 응답을 소비할 뿐 state/rule/p95/p99/endpoint priority를 재계산하지 않는다.
 
-## 4. Project/Application Bootstrap Surface
+## 4. Epic 5/6 Candidate - Operational Event History API
 
-### 4.1 필요 여부 판단
+이 section은 Epic 5/6 착수 전 구현 기준 후보를 문서화한다. Epic 2와 Epic 3의 현재 구현 대상이 아니다.
+
+### 4.1 Operational Events Endpoint
+
+```http
+GET /api/projects/{projectId}/applications/{applicationId}/operational-events?since=24h&limit=50
+Accept: application/json
+```
+
+이 API는 raw bucket explorer, raw snapshot explorer, arbitrary time-series query가 아니다. `operational-event-history.md` contract에 따라 state transition, stale/down/recovery, high-confidence concern만 bounded event로 반환한다.
+
+Rough response:
+
+```json
+{
+  "generatedAt": "2026-05-14T08:30:00Z",
+  "applicationId": "5c942671-e251-4f7f-b610-18ae6ca4ef65",
+  "horizon": {
+    "since": "2026-05-13T08:30:00Z",
+    "limit": 50
+  },
+  "events": []
+}
+```
+
+### 4.2 Snapshot Detail Endpoint
+
+```http
+GET /api/projects/{projectId}/applications/{applicationId}/dashboard/snapshots/{snapshotId}
+Accept: application/json
+```
+
+Snapshot detail은 해당 snapshot에 저장된 read model을 반환하는 후보 API다. Current state를 재판정하지 않고, history event를 UI나 controller에서 새로 계산하지 않는다.
+
+대표 status mapping:
+
+| Status | 조건 |
+|---|---|
+| `200` | 저장된 snapshot read model 반환 |
+| `404` | snapshot이 없거나 retention으로 삭제됨 |
+| `500` | snapshot 조회 실패 |
+
+### 4.3 Candidate MVC Boundary
+
+- `OperationalEventHistoryService` 후보가 `DashboardSnapshotRepository`를 재사용해 bounded event read model을 만든다.
+- 별도 `OperationalEventRepository`와 `operational_events` table은 MVP에서 만들지 않는다.
+- UI는 event 목록과 snapshot deep link를 표시할 뿐 state/rule/p95/p99/endpoint priority를 재계산하지 않는다.
+- Alert delivery log와 operational event history를 같은 API로 섞지 않는다.
+
+## 5. Project/Application Bootstrap Surface
+
+### 5.1 필요 여부 판단
 
 MVP ingest에는 project key가 필요하므로 bootstrap 경로는 필요하다. 하지만 사용자-facing 제품 API로 먼저 만들 필요는 없다.
 
@@ -249,7 +302,7 @@ MVP ingest에는 project key가 필요하므로 bootstrap 경로는 필요하다
 3. dashboard가 application 선택 목록이 필요해지면 read-only application list API를 추가한다.
 4. public project creation/onboarding API는 MVP 이후로 미룬다.
 
-### 4.2 Internal Admin API 후보
+### 5.2 Internal Admin API 후보
 
 seed만으로 demo가 불편하면 internal/admin profile에서만 아래 API를 둘 수 있다.
 
@@ -278,7 +331,7 @@ Content-Type: application/json
 - 이 API는 MVP public product scope가 아니다.
 - 인증/권한 체계를 크게 만들지 않는다. local/internal profile 또는 운영자-only 경로로 제한한다.
 
-### 4.3 Application List API 후보
+### 5.3 Application List API 후보
 
 dashboard 첫 화면 진입을 위해 application 선택이 필요하면 read-only API 하나만 추가한다.
 
@@ -307,7 +360,7 @@ Boundary:
 - state, rule, p95, endpoint priority를 포함하지 않는다.
 - first-screen 판단은 dashboard query API에서만 가져온다.
 
-## 5. Static Dashboard Surface
+## 6. Static Dashboard Surface
 
 MVP portal은 dashboard static asset을 같은 runtime에서 제공한다.
 
@@ -319,4 +372,3 @@ GET /dashboard/*
 ```
 
 Static asset serving은 state/rule 판단을 하지 않는다. dashboard 화면은 API read model을 그대로 표시한다.
-

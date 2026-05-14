@@ -4,7 +4,7 @@ storyId: "2.2"
 epic: "Epic 2. Starter Direct Ingest Producer"
 title: "Route Normalization and Low-Cardinality Guard"
 architectureStyle: Traditional MVC
-status: ready-for-dev
+status: review
 date: 2026-05-10
 ---
 
@@ -57,25 +57,25 @@ date: 2026-05-10
 ## Implementation Notes
 
 - 허용 식별자는 `application`, `environment`, `instance`, `method`, `normalized route`다.
-- route source precedence는 framework route pattern/template, configured allowlist, safe bounded fallback 순서로 둔다.
-- 안전한 normalized route를 얻지 못하면 raw path를 사용하지 않고 `UNKNOWN` 또는 configured bounded fallback으로 처리한다.
-- query string은 route에 포함하지 않는다.
+- route source precedence는 framework route pattern/template, `http.route` 부재 시 configured allowlist exact-one match, `UNKNOWN` 순서로 둔다.
+- 안전한 normalized route를 얻지 못하면 raw path를 사용하지 않고 `UNKNOWN`으로 처리한다.
+- query string은 matcher 입력 전에 폐기하며 route/tag/key/payload/log/read model에 남기지 않는다.
 - raw path values like `/orders/12345`, `/users/alice`, `/sessions/abc` must not become endpoint keys.
 - arbitrary label map을 도입하지 않는다.
-- endpoint list는 bounded top-N 또는 configured allowlist로 제한할 수 있게 둔다.
+- endpoint list의 bounded top-N은 이미 정규화된 endpoint 출력 수 제한이며 route attribution fallback으로 사용하지 않는다.
 - annotation 기반 query dimension, route masking, metric rename은 post-MVP 후보로만 남기고 이 story에서는 구현하지 않는다.
 
 ## Acceptance Criteria
 
 1. route normalization service는 raw request path 대신 normalized route를 반환한다.
-2. framework route template이 있으면 이를 우선 사용한다.
-3. route template이 없고 allowlist match도 없으면 raw path를 payload 후보로 사용하지 않는다.
-4. query string은 route와 tag에서 제거된다.
-5. endpoint key는 `method + normalized route`만 사용한다.
-6. `userId`, `tenantId`, `sessionId`, `traceId`, arbitrary label은 starter payload 후보에 남지 않는다.
-7. low-cardinality guard를 통과하지 못한 tag/route는 drop, sanitize, or bounded fallback 중 하나로 처리되고 host request path에는 예외를 전파하지 않는다.
+2. framework route template 또는 `http.route`가 있으면 이를 항상 최우선으로 사용하고 raw path candidate는 무시한다.
+3. framework route template이 없을 때만 raw path candidate를 configured allowlist matcher의 일시 입력으로 사용할 수 있다.
+4. raw path candidate의 query string은 matcher 입력 전에 폐기한다. query key/value는 route, tag, metric key, payload, 로그, rollup key, read model에 남기지 않는다.
+5. allowlist에 정확히 하나의 template이 매칭되는 경우에만 해당 allowlist template을 normalized route로 사용한다.
+6. allowlist miss, ambiguous match, invalid path, absolute URL, decoding failure는 모두 `UNKNOWN`으로 수렴한다.
+7. `userId`, `tenantId`, `sessionId`, `traceId`, arbitrary label은 starter payload 후보에 남지 않는다.
 8. Story 2.3 rollup input은 normalized route만 받는다.
-9. Story 2.5 envelope builder가 raw path/high-cardinality tag를 직렬화할 수 없도록 model 경계가 고정된다.
+9. Story 2.5 envelope builder가 raw path/query/high-cardinality tag를 직렬화할 수 없도록 model 경계가 고정된다.
 10. Prometheus/scrape/query UI 경로를 추가하지 않는다.
 
 ## Suggested Tasks
@@ -85,16 +85,17 @@ date: 2026-05-10
 3. route normalization service를 추가한다.
 4. allowed tag key policy를 코드 또는 enum/value object로 고정한다.
 5. framework route pattern/template 우선순위를 구현한다.
-6. allowlist 또는 safe bounded fallback 경계를 구현한다.
+6. allowlist exact-one match와 `UNKNOWN` fallback 경계를 구현한다.
 7. high-cardinality tag 차단 테스트를 추가한다.
-8. raw path/query string normalization 테스트를 추가한다.
+8. raw path candidate query 폐기와 allowlist exact-one matching 테스트를 추가한다.
 9. rollup input이 normalized route만 받도록 boundary를 정리한다.
 10. 기존 starter/portal tests를 실행한다.
 
 ## Test Requirements
 
-- raw path parameter 제거 테스트
-- query string 제거 테스트
+- raw path candidate query 폐기 테스트
+- allowlist exact-one match와 ambiguous match `UNKNOWN` 테스트
+- allowlist miss, invalid path, absolute URL, decoding failure `UNKNOWN` 테스트
 - framework route template 우선순위 테스트
 - high-cardinality tag rejection/sanitization 테스트
 - endpoint key boundedness 테스트
@@ -103,7 +104,10 @@ date: 2026-05-10
 
 ## Developer Guardrails
 
-- raw path를 "임시로" endpoint key에 넣지 않는다.
+- raw path를 endpoint key, payload, rollup key, metric tag, read model, 로그에 넣지 않는다.
+- raw path candidate는 `http.route` 부재 시 configured allowlist matching의 일시 입력으로만 사용한다.
+- query string은 정규화하지 않고 폐기한다. `?` 이후 key/value는 어떤 산출물에도 남기지 않는다.
+- allowlist 없는 자동 raw path 추론은 MVP에서 구현하지 않는다.
 - arbitrary tag map을 starter model 또는 envelope 후보에 추가하지 않는다.
 - tenant/user/session/trace 식별자를 MVP metric tag로 허용하지 않는다.
 - query parameter opt-in이나 route/display masking annotation을 MVP guard 우회 경로로 추가하지 않는다.
@@ -113,35 +117,74 @@ date: 2026-05-10
 
 ## Tasks/Subtasks
 
-- [ ] Story 2.1 observation input shape를 확인한다.
-- [ ] `NormalizedRoute` model을 추가한다.
-- [ ] route normalization service를 추가한다.
-- [ ] allowed tag key policy를 고정한다.
-- [ ] framework route pattern/template 우선순위를 구현한다.
-- [ ] allowlist 또는 safe bounded fallback 경계를 구현한다.
-- [ ] high-cardinality tag 차단 테스트를 추가한다.
-- [ ] raw path/query string normalization 테스트를 추가한다.
-- [ ] rollup input이 normalized route만 받도록 boundary를 정리한다.
-- [ ] 기존 starter/portal tests를 실행한다.
+- [x] Story 2.1 observation input shape를 확인한다.
+- [x] `NormalizedRoute` model을 추가한다.
+- [x] route normalization service를 추가한다.
+- [x] allowed tag key policy를 고정한다.
+- [x] framework route pattern/template 우선순위를 구현한다.
+- [x] allowlist exact-one match와 `UNKNOWN` fallback 경계를 구현한다.
+- [x] high-cardinality tag 차단 테스트를 추가한다.
+- [x] raw path candidate query 폐기와 allowlist exact-one matching 테스트를 추가한다.
+- [x] rollup input이 normalized route만 받도록 boundary를 정리한다.
+- [x] 기존 starter/portal tests를 실행한다.
 
 ## Dev Agent Record
 
 ### Implementation Plan
 
-TBD by dev-story.
+- Story 2.1의 `HttpServerObservationInput` shape를 유지하고, 그 다음 단계 모델을 새로 만들어 raw path/high-cardinality tag가 이어지지 않게 한다.
+- `model.route`에 `NormalizedRoute`를 추가하고, `service.RouteNormalizationService`에서 framework route template, `http.route` 부재 시 allowlist exact-one match, `UNKNOWN` 순서로 정규화한다.
+- `LowCardinalityHttpObservationGuard`가 `HttpServerObservationInput`을 받아 `LowCardinalityHttpServerObservation`으로 변환하게 하여 Story 2.3 rollup input과 Story 2.5 envelope builder 후보를 normalized route 경계로 고정한다.
+- `LowCardinalityTagKey` enum과 `EndpointKey` value object로 허용 식별자와 endpoint key 구성을 코드에 고정한다.
 
 ### Debug Log
 
-TBD by dev-story.
+- 2026-05-13: 필수 문서와 Story 2.1 완료 산출물을 읽고, Story 2.2 및 sprint-status를 `in-progress`로 갱신했다.
+- 2026-05-13: Red phase로 route normalization/low-cardinality guard 테스트를 먼저 추가했고, 아직 구현되지 않은 `NormalizedRoute`, `RouteNormalizationService`, guard/model 타입 때문에 `./gradlew :observability-spring-boot-starter:test --rerun-tasks`가 compile failure로 실패함을 확인했다.
+- 2026-05-13: `NormalizedRoute`, `EndpointKey`, `LowCardinalityTagKey`, `LowCardinalityHttpServerObservation`, `RouteNormalizationService`, `LowCardinalityHttpObservationGuard`를 추가했다.
+- 2026-05-13: `./gradlew :observability-spring-boot-starter:test --rerun-tasks` 실행 결과 `BUILD SUCCESSFUL`, 3 actionable tasks executed.
+- 2026-05-13: `./gradlew test --rerun-tasks` 실행 결과 `BUILD SUCCESSFUL`, 7 actionable tasks executed.
+- 2026-05-13: `git diff --check` 실행 결과 문제 없음.
 
 ### Completion Notes
 
-TBD by dev-story.
+- raw request path를 endpoint key나 starter payload 후보로 넘기지 않도록 `LowCardinalityHttpServerObservation` 출력 모델에는 `NormalizedRoute`만 보관한다.
+- framework route template은 최우선으로 사용하고 raw path candidate는 무시한다.
+- allowlist match는 `http.route` 부재 시 raw path candidate를 query 폐기 후 일시적으로 template에 매칭할 때만 사용하며, 정확히 하나가 매칭된 경우에만 allowlist template을 반환한다.
+- allowlist miss, ambiguous match, invalid path, absolute URL, decoding failure는 모두 `UNKNOWN`으로 수렴한다.
+- endpoint key와 metric tag 식별자는 `method + normalized route`로만 생성되며 user/tenant/session/trace/arbitrary label은 key나 출력 모델에 포함하지 않는다.
+- `LowCardinalityHttpServerObservation` 출력 모델은 `statusCode`, `error`, `errorType`을 endpoint 식별자가 아닌 bounded metric signal로 보관한다.
+- route normalization 실패 또는 untrusted URL/raw path 후보는 host request failure로 전파하지 않고 `UNKNOWN` route로 sanitize한다.
+- Prometheus/scrape/query UI 경로, bucket rollup, queue/flush worker, HTTP ingest client, envelope builder, portal ingest validation/persistence는 추가하지 않았다.
+- 2026-05-14 B안 보정으로 raw path candidate는 `http.route` 부재 시 allowlist exact-one matching의 임시 입력으로만 사용하고, C안 자동 raw path 추론은 구현하지 않는다.
 
 ### File List
 
-TBD by dev-story.
+- `implementation-artifacts/sprint-status.yaml`
+- `planning-artifacts/stories/2-2-route-normalization-and-low-cardinality-guard.md`
+- `observability-spring-boot-starter/build.gradle`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/config/RouteAttributionAutoConfiguration.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/config/RouteAttributionProperties.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/model/metric/HttpServerObservationInput.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/model/metric/EndpointKey.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/model/metric/LowCardinalityHttpServerObservation.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/model/metric/LowCardinalityTagKey.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/model/route/package-info.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/model/route/NormalizedRoute.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/service/LowCardinalityHttpObservationGuard.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/service/RouteNormalizationService.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/spring/observation/MicrometerHttpServerObservationBinder.java`
+- `observability-spring-boot-starter/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
+- `observability-spring-boot-starter/src/test/java/com/observation/starter/config/RouteAttributionPropertiesTest.java`
+- `observability-spring-boot-starter/src/test/java/com/observation/starter/service/LowCardinalityHttpObservationGuardTest.java`
+- `observability-spring-boot-starter/src/test/java/com/observation/starter/service/RouteNormalizationServiceTest.java`
+- `observability-spring-boot-starter/src/test/java/com/observation/starter/spring/observation/MicrometerHttpServerObservationBinderTest.java`
+
+## Change Log
+
+- 2026-05-13: Story 2.2 implementation started and completed; route normalization, low-cardinality guard model/service, tag policy, endpoint key, and guard tests added.
+- 2026-05-14: Route Attribution B안 승인 기준에 맞춰 `http.route` 우선, allowlist exact-one fallback, query 폐기, `UNKNOWN` 수렴 정책과 starter allowlist 설정을 반영했다.
 
 ## Status
 
-ready-for-dev
+review

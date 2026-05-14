@@ -76,7 +76,7 @@ date: 2026-05-10
 4. app-level request count와 error count가 bucket 단위로 집계된다.
 5. endpoint-level request count와 error count가 `method + normalized route` 단위로 집계된다.
 6. duration histogram bucket은 cumulative count 형태를 유지한다.
-7. rollup service는 raw path 또는 high-cardinality tag를 입력으로 받지 않는다.
+7. rollup service는 `method + normalized route`만 endpoint key로 사용하며 raw path, raw path candidate, query string, high-cardinality tag, attribution raw detail을 입력이나 key로 받지 않는다.
 8. closed bucket을 flush candidate로 반환할 수 있다.
 9. 이 story에서는 network call, HTTP client, queue worker, envelope builder를 구현하지 않는다.
 10. p95, lifecycle state, insight rule, endpoint priority 계산을 구현하지 않는다.
@@ -109,7 +109,7 @@ date: 2026-05-10
 - local p95를 starter에서 계산하지 않는다.
 - bucket duration을 config로 열더라도 MVP default와 acceptance는 30초로 고정한다.
 - JVM/datasource sample 부재를 host request failure로 만들지 않는다.
-- raw path 또는 arbitrary label을 rollup key로 사용하지 않는다.
+- raw path, raw path candidate, query string, attribution raw detail, arbitrary label을 rollup input이나 key로 사용하지 않는다.
 - queue, HTTP client, envelope builder를 당겨오지 않는다.
 - portal accepted bucket storage는 Epic 3에서 구현한다.
 

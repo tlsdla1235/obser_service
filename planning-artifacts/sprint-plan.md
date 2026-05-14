@@ -78,17 +78,22 @@ Epic 2 Sprint Goal:
 - `dashboard_snapshots` migration
 - dashboard read model snapshot 저장/조회
 - p95 histogram merge service
+- p99/tail latency judgment 또는 auxiliary evidence 노출
 - lifecycle state service
 - insight rule service
 - endpoint priority read model
 - dashboard query API
+- operational event history service/API
+- dashboard snapshot history 또는 snapshot detail deep link
+- recent operational history UI
+- alert deep link 또는 snapshot deep link
 - dashboard UI integration
 - Prometheus pull metric path, scrape config, PromQL query, arbitrary query UI
 - high-cardinality custom metric/tag ingestion
 - logs, traces, span search, large tenancy control plane
 - durable outbox, Kafka, Redis, 별도 worker runtime
 
-Portal ingest acceptance와 persistence는 Epic 3에서 닫는다. Dashboard read model, p95, state, rule, endpoint priority 계산은 Epic 4/5에서 닫는다.
+Portal ingest acceptance와 persistence는 Epic 3에서 닫는다. Dashboard read model, p95, state, rule, endpoint priority 계산은 Epic 4/5에서 닫는다. Operational event history, p99/tail latency judgment, dashboard snapshot history, alert/snapshot deep link는 Epic 5/6 착수 전 구현 기준으로만 문서화하며 Epic 2 범위가 아니다.
 
 ## 6. Story 범위와 권장 구현 순서
 
@@ -127,7 +132,9 @@ Story 2.2는 ingest envelope보다 먼저 low-cardinality 정책을 고정한다
 
 - 허용 tag는 `application`, `environment`, `instance`, `method`, `normalized route`로 제한한다.
 - raw path parameter, query string, user id, tenant id, session id, trace id, arbitrary label은 payload 후보에 남기지 않는다.
-- framework route pattern 또는 configured allowlist를 우선하고, 안전한 route를 얻지 못하면 bounded fallback을 사용한다.
+- framework route pattern 또는 `http.route`를 항상 최우선으로 사용한다.
+- framework route가 없을 때만 raw path candidate를 query 폐기 후 configured allowlist matcher의 일시 입력으로 사용한다.
+- allowlist에 정확히 하나의 template이 매칭될 때만 해당 template을 normalized route로 사용하고, miss/ambiguous/invalid/absolute URL/decoding failure는 `UNKNOWN`으로 수렴한다.
 
 ### 7.3 Bucket Rollup Service
 
@@ -185,11 +192,13 @@ Epic 2의 핵심 acceptance는 Story 2.4에서 아래 테스트로 증명한다.
 Story 2.2와 Story 2.5는 아래 acceptance를 공유한다.
 
 - `route`는 normalized route만 가능하다.
-- raw path parameter 값은 payload 후보에 남지 않는다.
-- query string은 route/tag에 포함되지 않는다.
+- `http.route` 또는 framework route template이 있으면 raw path candidate보다 항상 우선한다.
+- raw path candidate는 `http.route` 부재 시 allowlist matching의 일시 입력으로만 사용한다.
+- raw path parameter 값과 query key/value는 payload 후보에 남지 않는다.
+- query string은 matcher 입력 전에 폐기되며 route/tag/key/payload/log/read model에 포함되지 않는다.
 - `userId`, `tenantId`, `sessionId`, `traceId`, arbitrary label은 starter payload 후보에서 제거되거나 거부된다.
 - endpoint key는 `method + normalized route`만 사용한다.
-- endpoint 목록은 bounded top-N 또는 configured allowlist 안에서만 생성된다.
+- allowlist match는 정확히 하나일 때만 성공하고, 그 외에는 `UNKNOWN`으로 수렴한다.
 - envelope builder는 low-cardinality guard를 통과하지 않은 endpoint를 직렬화하지 않는다.
 
 ## 10. Epic 3/4/5 Handoff Boundary
@@ -213,6 +222,9 @@ Epic 4/5로 넘기는 것:
 - dashboard snapshot 저장/조회
 - dashboard query API
 - UI read model 표시
+- operational event history read model/API 후보
+- snapshot detail deep link 후보
+- p99/tail latency auxiliary evidence 정책
 
 Epic 2는 starter producer까지만 닫는다.
 

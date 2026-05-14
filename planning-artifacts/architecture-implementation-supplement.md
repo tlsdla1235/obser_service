@@ -124,6 +124,10 @@ com.observation.portal
       repository
     bucket
       repository
+    history
+      controller
+      dto
+      service
   security
   scheduler
   config
@@ -135,6 +139,7 @@ Portal 원칙:
 - `domain.<feature>.service`는 lifecycle state, insight rule ranking, endpoint priority, p95 merge, read model 생성을 맡는다.
 - `domain.<feature>.repository`는 저장과 조회 최적화를 맡지만 의미 계산을 만들지 않는다.
 - `domain.<feature>.dto`는 controller boundary 밖으로 넓게 퍼지지 않게 한다. Service 내부에서는 command/query/model을 사용한다.
+- `domain.history`는 Epic 5/6 후보 package다. MVP에서는 필요할 때 service/controller/dto만 검토하고, 별도 repository/table은 만들지 않는다.
 
 ## 4. 주요 Service 목록
 
@@ -168,6 +173,7 @@ Infrastructure dependency:
 | `TriageSummaryService` | `domain.triage.service`에서 app-level state, rationale, zero insight, recovery, triage cards 생성 |
 | `EndpointPriorityService` | `domain.metric.service` 또는 `domain.dashboard.service`에서 slow/error/comparative evidence 기반 endpoint priority 생성 |
 | `DashboardReadModelService` | `domain.dashboard.service`에서 UI가 그대로 표시할 `read-model-contract` 응답 조회/생성 |
+| `OperationalEventHistoryService` | Epic 5/6 후보. `domain.dashboard.service` 또는 `domain.history.service`에서 dashboard snapshot/read model 결과를 bounded event로 요약 |
 | `RetentionCleanupService` | `domain.cleanup.service`에서 retention 기준으로 오래된 bucket/snapshot 삭제 orchestration |
 
 Repository dependency:
@@ -180,6 +186,8 @@ Repository dependency:
 | `MetricBucketRepository` | `domain.bucket.repository` 또는 `domain.metric.repository` | accepted bucket 저장, idempotency 확인, window bucket 조회 |
 | `DashboardSnapshotRepository` | `domain.snapshot.repository` | dashboard snapshot 저장/조회 |
 
+Operational event history MVP 후보는 `DashboardSnapshotRepository`를 재사용한다. 별도 `OperationalEventRepository`와 `operational_events` table은 보류한다.
+
 ## 5. Layer별 책임
 
 ### 5.1 Starter
@@ -191,6 +199,8 @@ Repository dependency:
 | `client.http` | ingest envelope serialization, HTTP timeout, retry/backoff 실행 | bucket rollup, state/rule 계산 |
 | `queue` | in-memory bounded queue, overflow/drop policy | durable outbox 구현, unbounded memory queue |
 | `config` | properties binding, bean wiring, default config | service에 불필요한 framework coupling 강제 |
+
+Starter route attribution allowlist는 `config` 영역의 starter configuration으로 선언하며, MVP namespace는 `observation.route-attribution.allowlist`다. 항목은 route template만 허용하고 query string, absolute URL, 실제 ID 값은 거부한다.
 
 ### 5.2 Portal
 
@@ -211,7 +221,7 @@ Repository dependency:
 - Redis queue 없이 portal ingest transaction 직후 in-process로 dashboard snapshot refresh를 수행한다.
 - Nginx/WebSocket 없이 portal static dashboard + HTTP polling으로 시작한다.
 - starter instance identity는 hostname, pod name env, generated UUID fallback 정도로 시작한다.
-- starter route allowlist가 없으면 framework normalized route + bounded top-N endpoint만 사용한다.
+- starter route allowlist가 없고 framework route도 없으면 route attribution은 `UNKNOWN`으로 수렴한다.
 - dashboard UI는 `read-model-contract` response를 그대로 렌더링하고, 복잡한 client-side 상태 관리는 두지 않는다.
 - local demo app은 최소 synthetic traffic으로 first bucket -> alive/degraded 경로만 검증한다.
 
@@ -224,7 +234,10 @@ Repository dependency:
 - multi-tenant billing/large tenancy control plane
 - durable starter outbox, Kafka, 별도 stream processing runtime
 - UI에서 p95, lifecycle state, insight rule, endpoint priority 재계산
+- UI에서 operational event history, p99/tail latency 판단, snapshot detail 판단을 재계산
 - PostgreSQL view/materialized view에 p95/state/rule 계산을 숨기는 구현
+- 별도 `operational_events` table 또는 event repository
+- raw snapshot explorer, arbitrary time-series query UI
 - MVC라고 해서 controller가 service를 건너뛰고 repository를 직접 호출하는 구현
 
 ## 8. MVC Layer Guard Test 기준
@@ -245,12 +258,14 @@ MVP 첫 스프린트에서 최소 아래 guard를 둔다.
 - lifecycle state, insight rule, endpoint priority, p95 계산 class는 `service` 또는 `model` 아래에만 존재한다.
 - `port`, `adapter`, `application` package는 만들지 않는다.
 - dashboard controller test는 `read-model-contract`를 serialization할 뿐 state/rule/p95 계산을 하지 않음을 검증한다.
+- operational history controller 후보는 저장된 snapshot 기반 event read model을 serialization할 뿐 state/rule/p95/p99를 재계산하지 않음을 검증한다.
 
 Frontend/UI는 architecture test 대상은 아니지만 아래 정적/리뷰 기준을 둔다.
 
 - UI 코드에 p95 histogram merge 구현을 두지 않는다.
 - UI 코드에 lifecycle transition table이나 insight ranking rule을 복제하지 않는다.
 - UI는 `state`, `zeroInsight`, `recovery`, `triageCards`, `endpointPriority`를 read model에서 받은 대로 표시한다.
+- UI는 recent operational history를 표시하더라도 event selection, deduplication, p99 판단을 직접 구현하지 않는다.
 
 ## 9. 2인 1개월 MVP 제한사항
 
@@ -259,7 +274,7 @@ Traditional MVC를 유지하되 layer가 비대해지지 않도록 아래 제한
 - runtime module은 starter와 portal 2개로 제한한다.
 - portal 내부에 별도 worker/service deployable을 만들지 않는다.
 - portal controller는 `domain.ingest.controller`, `domain.dashboard.controller`, `domain.admin.controller` 정도로 제한한다.
-- repository는 `domain.catalog.repository`, `domain.bucket.repository`, `domain.snapshot.repository`, 필요 시 `domain.metric.repository` 중심으로 제한한다.
+- repository는 `domain.catalog.repository`, `domain.bucket.repository`, `domain.snapshot.repository`, 필요 시 `domain.metric.repository` 중심으로 제한한다. Epic 5/6의 operational history 후보도 snapshot repository 재사용을 기본으로 한다.
 - 각 use case는 먼저 하나의 service method 또는 service class로 구현하고, 중복이 실제로 생긴 뒤에만 helper를 추출한다.
 - model은 contract 검증, state semantics, histogram merge, insight rule에 필요한 개념만 둔다.
 - endpoint table 분리는 성능 문제가 아니라 구현 복잡도를 줄일 때만 도입한다.
