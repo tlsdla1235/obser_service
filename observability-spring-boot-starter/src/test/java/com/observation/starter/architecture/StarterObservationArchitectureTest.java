@@ -51,6 +51,23 @@ class StarterObservationArchitectureTest {
     }
 
     @Test
+    void bucketRollupServiceDoesNotDependOnTransportQueueOrEnvelopeSerialization() {
+        noClasses()
+                .that().haveNameMatching(".*MetricBucketRollupService.*")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        "..starter.client..",
+                        "..starter.queue..",
+                        "java.net..",
+                        "java.net.http..",
+                        "org.springframework.web.client..",
+                        "org.springframework.web.reactive.function.client..",
+                        "com.fasterxml.jackson.databind..")
+                .because("Story 2.3 rollup service must not perform network, HTTP client, queue, or envelope work")
+                .allowEmptyShould(true)
+                .check(STARTER_CLASSES);
+    }
+
+    @Test
     void hexagonalStylePackagesAreNotPresentInStarter() {
         List<String> forbiddenPackages = STARTER_CLASSES.stream()
                 .map(JavaClass::getPackageName)

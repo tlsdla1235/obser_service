@@ -4,7 +4,7 @@ storyId: "2.3"
 epic: "Epic 2. Starter Direct Ingest Producer"
 title: "Bucket Rollup Service"
 architectureStyle: Traditional MVC
-status: ready-for-dev
+status: done
 date: 2026-05-10
 ---
 
@@ -115,35 +115,74 @@ date: 2026-05-10
 
 ## Tasks/Subtasks
 
-- [ ] Story 2.2 normalized route model과 metric taxonomy를 확인한다.
-- [ ] UTC bucket boundary utility/model을 추가한다.
-- [ ] app-level rollup model을 추가한다.
-- [ ] endpoint-level histogram rollup model을 추가한다.
-- [ ] `MetricBucketRollupService`를 추가한다.
-- [ ] sample record와 closed bucket retrieval 경계를 구현한다.
-- [ ] cumulative histogram bucket count 테스트를 추가한다.
-- [ ] UTC boundary edge case 테스트를 추가한다.
-- [ ] raw path/high-cardinality input guard를 확인한다.
-- [ ] 기존 starter/portal tests를 실행한다.
+- [x] Story 2.2 normalized route model과 metric taxonomy를 확인한다.
+- [x] UTC bucket boundary utility/model을 추가한다.
+- [x] app-level rollup model을 추가한다.
+- [x] endpoint-level histogram rollup model을 추가한다.
+- [x] `MetricBucketRollupService`를 추가한다.
+- [x] sample record와 closed bucket retrieval 경계를 구현한다.
+- [x] cumulative histogram bucket count 테스트를 추가한다.
+- [x] UTC boundary edge case 테스트를 추가한다.
+- [x] raw path/high-cardinality input guard를 확인한다.
+- [x] 기존 starter/portal tests를 실행한다.
+
+### Review Findings
+
+- [x] [Review][Decision] 닫힌 bucket drain 이후 같은 interval의 늦은 샘플 처리 정책 필요 — sealed interval + late sample drop으로 결정하고 구현했다. `drainClosedBuckets(nowUtc)`로 한 번 반환된 interval은 sealed로 간주하며, 이후 같은 interval의 HTTP/JVM/datasource sample은 새 bucket을 재생성하지 않고 drop한다. 동일 `bucket.startUtc`의 두 번째 flush candidate는 만들지 않으며, drop 수는 `lateSampleDroppedCount()`로 관측할 수 있다.
 
 ## Dev Agent Record
 
 ### Implementation Plan
 
-TBD by dev-story.
+- Story 2.2의 `LowCardinalityHttpServerObservation`, `EndpointKey`, `NormalizedRoute` public contract를 rollup 입력 경계로 사용한다.
+- `MetricBucketInterval`로 UTC 30초 bucket boundary와 `[startUtc, endUtc)` 포함 의미를 고정한다.
+- `AppMetricRollup`, `EndpointMetricRollup`, `HistogramBucket`, `ClosedMetricBucket` 모델을 추가해 app/endpoint 누적 histogram snapshot과 closed bucket flush candidate 경계를 표현한다.
+- `MetricBucketRollupService`는 low-cardinality HTTP observation과 JVM/datasource ratio sample만 기록하고, 닫힌 bucket은 `drainClosedBuckets`로 반환한다.
+- network call, HTTP client, queue worker, ingest envelope builder, p95/lifecycle/insight/endpoint priority 계산은 추가하지 않고 테스트/architecture guard로 경계를 고정한다.
 
 ### Debug Log
 
-TBD by dev-story.
+- 2026-05-14: `_bmad/custom/project-context.md`, sprint-status, Story 2.2, `time-buckets`, `metric-taxonomy`, `ingest-envelope` 계약을 확인했다.
+- 2026-05-14: Story 2.3 및 sprint-status를 `in-progress`로 갱신했다.
+- 2026-05-14: Red phase로 `MetricBucketRollupServiceTest`를 먼저 추가했고, 아직 구현되지 않은 rollup/time/model 타입 때문에 `./gradlew :observability-spring-boot-starter:test --tests com.observation.starter.service.MetricBucketRollupServiceTest --rerun-tasks`가 compile failure로 실패함을 확인했다.
+- 2026-05-14: `MetricBucketInterval`, `HistogramBucket`, app/endpoint/closed bucket rollup 모델, `MetricBucketRollupService`를 추가했다.
+- 2026-05-14: `./gradlew :observability-spring-boot-starter:test --tests com.observation.starter.service.MetricBucketRollupServiceTest --tests com.observation.starter.architecture.StarterObservationArchitectureTest --rerun-tasks` 실행 결과 `BUILD SUCCESSFUL`, 4 actionable tasks executed.
+- 2026-05-14: starter 전체 테스트 중 이전 build output의 `*Test 2.class` 산출물 때문에 테스트 런처가 실패함을 확인했고, 소스 중복이 아닌 build 산출물 문제라 `./gradlew :observability-spring-boot-starter:clean :observability-spring-boot-starter:test`로 정리 후 `BUILD SUCCESSFUL`, 5 actionable tasks executed를 확인했다.
+- 2026-05-14: `./gradlew test` 실행 결과 `BUILD SUCCESSFUL`, 8 actionable tasks up-to-date.
+- 2026-05-14: `./gradlew test --rerun-tasks` 실행 결과 `BUILD SUCCESSFUL`, 8 actionable tasks executed.
+- 2026-05-14: `git diff --check` 실행 결과 문제 없음.
+- 2026-05-17: review decision에 따라 sealed interval + late sample drop 정책을 구현했다. `./gradlew :observability-spring-boot-starter:test --tests com.observation.starter.service.MetricBucketRollupServiceTest --rerun-tasks` 실행 결과 `BUILD SUCCESSFUL`, 4 actionable tasks executed.
 
 ### Completion Notes
 
-TBD by dev-story.
+- UTC 30초 bucket boundary는 `MetricBucketInterval.containing`에서 epoch second 기준으로 계산하며, `01:00:00Z`와 `01:00:29.999Z`는 `01:00:00Z-01:00:30Z`, `01:00:30Z`는 다음 bucket으로 매핑된다.
+- app-level rollup은 request/error count와 cumulative HTTP duration histogram bucket을 집계한다.
+- endpoint-level rollup은 `EndpointKey(method + normalized route)`만 key로 사용하며, raw path, query string, high-cardinality tag, raw attribution detail을 입력이나 key로 받지 않는다.
+- JVM CPU/heap 및 datasource pool usage ratio는 bucket 안의 latest valid sample로 snapshot에 담고, sample 부재는 request rollup을 막지 않는다.
+- `drainClosedBuckets(nowUtc)`는 `endUtc <= nowUtc`인 닫힌 bucket을 flush candidate snapshot으로 반환하고 내부 버퍼에서 제거한다.
+- 한 번 drain된 interval은 sealed로 유지하며, 같은 interval의 late HTTP/JVM/datasource sample은 duplicate flush candidate를 만들지 않도록 drop한다.
+- late sample drop은 `lateSampleDroppedCount()`로 확인할 수 있다.
+- network call, HTTP client, queue worker, ingest envelope builder, p95/lifecycle/insight/endpoint priority 계산은 구현하지 않았다.
 
 ### File List
 
-TBD by dev-story.
+- `implementation-artifacts/sprint-status.yaml`
+- `planning-artifacts/stories/2-3-bucket-rollup-service.md`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/model/time/package-info.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/model/time/MetricBucketInterval.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/model/metric/HistogramBucket.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/model/metric/AppMetricRollup.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/model/metric/EndpointMetricRollup.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/model/metric/ClosedMetricBucket.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/service/MetricBucketRollupService.java`
+- `observability-spring-boot-starter/src/test/java/com/observation/starter/service/MetricBucketRollupServiceTest.java`
+- `observability-spring-boot-starter/src/test/java/com/observation/starter/architecture/StarterObservationArchitectureTest.java`
+
+## Change Log
+
+- 2026-05-14: Story 2.3 implementation completed; UTC 30초 bucket boundary, app/endpoint cumulative histogram rollup, latest runtime ratio sample boundary, closed bucket drain boundary, and guard tests added.
+- 2026-05-17: Review finding resolved with sealed interval watermark and late sample drop counter; duplicate flush candidate creation is prevented.
 
 ## Status
 
-ready-for-dev
+done
