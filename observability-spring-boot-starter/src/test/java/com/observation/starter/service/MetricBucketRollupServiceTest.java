@@ -53,7 +53,7 @@ class MetricBucketRollupServiceTest {
         service.recordHttpServerObservation(http("POST", "/orders",
                 "2026-05-08T01:00:05Z", 503, true, 250));
 
-        ClosedMetricBucket bucket = service.drainClosedBuckets(Instant.parse("2026-05-08T01:00:30Z")).get(0);
+        ClosedMetricBucket bucket = service.drainClosedBuckets(Instant.parse("2026-05-08T01:01:00Z")).get(0);
 
         AppMetricRollup summary = bucket.appSummary();
         assertEquals(3, summary.requestCount());
@@ -87,25 +87,31 @@ class MetricBucketRollupServiceTest {
         service.recordDatasourcePoolMetricSample(
                 new DatasourcePoolMetricSample(Instant.parse("2026-05-08T01:00:10Z"), 0.7d));
 
-        ClosedMetricBucket bucket = service.drainClosedBuckets(Instant.parse("2026-05-08T01:00:30Z")).get(0);
+        assertTrue(service.drainClosedBuckets(Instant.parse("2026-05-08T01:00:30Z")).isEmpty());
 
-        assertEquals(0.8d, bucket.appSummary().jvm().orElseThrow().cpuUsageRatio());
-        assertEquals(0.9d, bucket.appSummary().jvm().orElseThrow().heapUsedRatio());
-        assertEquals(0.7d, bucket.appSummary().datasource().orElseThrow().poolUsageRatio());
+        service.recordJvmMetricSample(new JvmMetricSample(Instant.parse("2026-05-08T01:00:25Z"), 0.9d, 1.0d));
+        service.recordDatasourcePoolMetricSample(
+                new DatasourcePoolMetricSample(Instant.parse("2026-05-08T01:00:28Z"), 0.8d));
+
+        ClosedMetricBucket bucket = service.drainClosedBuckets(Instant.parse("2026-05-08T01:01:00Z")).get(0);
+
+        assertEquals(0.9d, bucket.appSummary().jvm().orElseThrow().cpuUsageRatio());
+        assertEquals(1.0d, bucket.appSummary().jvm().orElseThrow().heapUsedRatio());
+        assertEquals(0.8d, bucket.appSummary().datasource().orElseThrow().poolUsageRatio());
 
         MetricBucketRollupService noRuntimeSamples = new MetricBucketRollupService();
         noRuntimeSamples.recordHttpServerObservation(http("GET", "/health",
                 "2026-05-08T01:01:01Z", 200, false, 5));
 
         ClosedMetricBucket emptyRuntime = noRuntimeSamples.drainClosedBuckets(
-                Instant.parse("2026-05-08T01:01:30Z")).get(0);
+                Instant.parse("2026-05-08T01:02:00Z")).get(0);
 
         assertTrue(emptyRuntime.appSummary().jvm().isEmpty());
         assertTrue(emptyRuntime.appSummary().datasource().isEmpty());
     }
 
     @Test
-    void drainsOnlyClosedBucketsAsFlushCandidates() {
+    void drainsOnlyAfterBucketDurationGraceWindowAsFlushCandidates() {
         MetricBucketRollupService service = new MetricBucketRollupService();
         service.recordHttpServerObservation(http("GET", "/health",
                 "2026-05-08T01:00:29.999Z", 200, false, 5));
@@ -113,14 +119,42 @@ class MetricBucketRollupServiceTest {
                 "2026-05-08T01:00:30Z", 200, false, 5));
 
         assertTrue(service.drainClosedBuckets(Instant.parse("2026-05-08T01:00:29.999Z")).isEmpty());
+        assertTrue(service.drainClosedBuckets(Instant.parse("2026-05-08T01:00:30Z")).isEmpty());
+        assertTrue(service.drainClosedBuckets(Instant.parse("2026-05-08T01:00:59.999Z")).isEmpty());
 
-        List<ClosedMetricBucket> firstDrain = service.drainClosedBuckets(Instant.parse("2026-05-08T01:00:30Z"));
+        List<ClosedMetricBucket> firstDrain = service.drainClosedBuckets(Instant.parse("2026-05-08T01:01:00Z"));
         assertEquals(1, firstDrain.size());
         assertEquals(Instant.parse("2026-05-08T01:00:00Z"), firstDrain.get(0).interval().startUtc());
 
-        List<ClosedMetricBucket> secondDrain = service.drainClosedBuckets(Instant.parse("2026-05-08T01:01:00Z"));
+        List<ClosedMetricBucket> secondDrain = service.drainClosedBuckets(Instant.parse("2026-05-08T01:01:30Z"));
         assertEquals(1, secondDrain.size());
         assertEquals(Instant.parse("2026-05-08T01:00:30Z"), secondDrain.get(0).interval().startUtc());
+    }
+
+    @Test
+    void includesLateHttpSamplesWithinGraceWindowInExistingBucket() {
+        MetricBucketRollupService service = new MetricBucketRollupService();
+        service.recordHttpServerObservation(http("GET", "/health",
+                "2026-05-08T01:00:01Z", 200, false, 40));
+
+        assertTrue(service.drainClosedBuckets(Instant.parse("2026-05-08T01:00:30Z")).isEmpty());
+
+        service.recordHttpServerObservation(http("GET", "/health",
+                "2026-05-08T01:00:20Z", 500, true, 60));
+
+        ClosedMetricBucket bucket = service.drainClosedBuckets(Instant.parse("2026-05-08T01:01:00Z")).get(0);
+
+        assertEquals(2, bucket.appSummary().requestCount());
+        assertEquals(1, bucket.appSummary().errorCount());
+        assertEquals(1, countFor(bucket.appSummary().httpServerDurationBuckets(), 50));
+        assertEquals(2, countFor(bucket.appSummary().httpServerDurationBuckets(), 100));
+
+        EndpointMetricRollup endpoint = endpoint(bucket, "GET /health");
+        assertEquals(2, endpoint.requestCount());
+        assertEquals(1, endpoint.errorCount());
+        assertEquals(1, countFor(endpoint.durationBuckets(), 50));
+        assertEquals(2, countFor(endpoint.durationBuckets(), 100));
+        assertEquals(0, service.lateSampleDroppedCount());
     }
 
     @Test
@@ -129,7 +163,7 @@ class MetricBucketRollupServiceTest {
         service.recordHttpServerObservation(http("GET", "/health",
                 "2026-05-08T01:00:01Z", 200, false, 5));
 
-        List<ClosedMetricBucket> firstDrain = service.drainClosedBuckets(Instant.parse("2026-05-08T01:00:30Z"));
+        List<ClosedMetricBucket> firstDrain = service.drainClosedBuckets(Instant.parse("2026-05-08T01:01:00Z"));
         assertEquals(1, firstDrain.size());
 
         service.recordHttpServerObservation(http("GET", "/health",
@@ -138,7 +172,7 @@ class MetricBucketRollupServiceTest {
         service.recordDatasourcePoolMetricSample(
                 new DatasourcePoolMetricSample(Instant.parse("2026-05-08T01:00:04Z"), 0.7d));
 
-        assertTrue(service.drainClosedBuckets(Instant.parse("2026-05-08T01:01:00Z")).isEmpty());
+        assertTrue(service.drainClosedBuckets(Instant.parse("2026-05-08T01:01:30Z")).isEmpty());
         assertEquals(3, service.lateSampleDroppedCount());
     }
 
@@ -148,19 +182,23 @@ class MetricBucketRollupServiceTest {
         service.recordHttpServerObservation(http("GET", "/health",
                 "2026-05-08T01:00:01Z", 200, false, 5));
 
-        service.drainClosedBuckets(Instant.parse("2026-05-08T01:00:30Z"));
+        service.drainClosedBuckets(Instant.parse("2026-05-08T01:01:00Z"));
         service.recordHttpServerObservation(http("GET", "/health",
                 "2026-05-08T01:00:30Z", 200, false, 5));
 
-        List<ClosedMetricBucket> secondInterval = service.drainClosedBuckets(Instant.parse("2026-05-08T01:01:00Z"));
+        List<ClosedMetricBucket> secondInterval = service.drainClosedBuckets(Instant.parse("2026-05-08T01:01:30Z"));
         assertEquals(1, secondInterval.size());
         assertEquals(Instant.parse("2026-05-08T01:00:30Z"), secondInterval.get(0).interval().startUtc());
 
         service.drainClosedBuckets(Instant.parse("2026-05-08T01:00:30Z"));
         service.recordHttpServerObservation(http("GET", "/health",
                 "2026-05-08T01:00:40Z", 200, false, 5));
+        service.recordHttpServerObservation(http("GET", "/health",
+                "2026-05-08T01:01:01Z", 200, false, 5));
 
-        assertTrue(service.drainClosedBuckets(Instant.parse("2026-05-08T01:01:00Z")).isEmpty());
+        List<ClosedMetricBucket> thirdInterval = service.drainClosedBuckets(Instant.parse("2026-05-08T01:02:00Z"));
+        assertEquals(1, thirdInterval.size());
+        assertEquals(Instant.parse("2026-05-08T01:01:00Z"), thirdInterval.get(0).interval().startUtc());
         assertEquals(1, service.lateSampleDroppedCount());
     }
 

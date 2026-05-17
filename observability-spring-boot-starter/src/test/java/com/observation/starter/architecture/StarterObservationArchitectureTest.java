@@ -68,6 +68,55 @@ class StarterObservationArchitectureTest {
     }
 
     @Test
+    void requestPathDoesNotCallPortalHttpClientImplementationDirectly() {
+        noClasses()
+                .that().resideInAPackage("..starter.spring.observation..")
+                .or().haveSimpleName("StarterMetricIngestService")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        "..starter.client..",
+                        "..starter.client.http..",
+                        "java.net..",
+                        "java.net.http..",
+                        "org.springframework.web.client..",
+                        "org.springframework.web.reactive.function.client..",
+                        "com.fasterxml.jackson.databind..")
+                .because("Story 2.4 request path and tick drain only record locally and enqueue due buckets")
+                .allowEmptyShould(true)
+                .check(STARTER_CLASSES);
+    }
+
+    @Test
+    void ingestDrainBoundaryDoesNotDependOnEnvelopeOrIdempotencyBuilders() {
+        noClasses()
+                .that().haveSimpleName("StarterMetricIngestService")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        "..starter.envelope..",
+                        "..starter.serialization..",
+                        "..starter.idempotency..")
+                .because("Story 2.4 drain/tick boundary stops at queue offer; final envelope and idempotency are Story 2.5")
+                .allowEmptyShould(true)
+                .check(STARTER_CLASSES);
+
+        noClasses()
+                .that().haveSimpleName("StarterMetricIngestService")
+                .should().dependOnClassesThat().haveNameMatching(".*(IngestEnvelope|Idempotency).*")
+                .because("Story 2.4 must not call final envelope serialization or idempotency key generation")
+                .allowEmptyShould(true)
+                .check(STARTER_CLASSES);
+    }
+
+    @Test
+    void portalClientBoundaryIsOnlyUsedByBackgroundFlushWorker() {
+        noClasses()
+                .that().doNotHaveSimpleName("MetricBucketFlushWorker")
+                .should().dependOnClassesThat()
+                .haveFullyQualifiedName("com.observation.starter.client.PortalMetricBucketClient")
+                .because("portal client invocation must stay behind the background flush worker")
+                .allowEmptyShould(true)
+                .check(STARTER_CLASSES);
+    }
+
+    @Test
     void hexagonalStylePackagesAreNotPresentInStarter() {
         List<String> forbiddenPackages = STARTER_CLASSES.stream()
                 .map(JavaClass::getPackageName)

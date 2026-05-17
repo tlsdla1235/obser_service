@@ -154,7 +154,34 @@ Epic 2의 B안 route attribution은 read model에 raw path, raw path candidate, 
 
 허용 source 후보는 `framework_route`, `allowlist_path_match`, `unavailable`로 제한한다. MVP에서 이 enum propagation이 과하다고 판단되면 Epic 5까지 보류하고, read model은 `route: "UNKNOWN"`만으로 unavailable 상태를 표현한다.
 
-## 6. Operational Event History Boundary
+## 6. Post-MVP Runtime Aggregate Evidence Shape
+
+MVP read model은 JVM/datasource runtime ratio를 latest sample 기반 saturation hint로만 사용할 수 있다. Post-MVP runtime aggregate가 ingest/persistence에 추가되면 read model evidence는 `latest`, `max`, `avg`, `sampleCount`를 구분해서 노출할 수 있다.
+
+후보 shape:
+
+```json
+"runtimeSaturation": {
+  "datasourcePoolUsage": {
+    "latest": 0.82,
+    "max": 0.97,
+    "avg": 0.88,
+    "sampleCount": 6,
+    "evidenceRole": "peak_and_sustained_pressure"
+  },
+  "cpuUsage": {
+    "latest": 0.64,
+    "max": 0.91,
+    "avg": 0.70,
+    "sampleCount": 6,
+    "evidenceRole": "supporting_saturation_hint"
+  }
+}
+```
+
+이 후보 field는 `TriageSummaryService` 또는 `EndpointPriorityService`가 만든 evidence를 UI가 그대로 표시하기 위한 것이다. UI는 `max`나 `avg`로 degraded/down을 재판정하지 않는다.
+
+## 7. Operational Event History Boundary
 
 Dashboard read model은 현재 상태 source of truth다.
 
@@ -164,7 +191,7 @@ Current response가 snapshot deep link를 지원해야 할 때는 `snapshot.snap
 
 UI는 operational event를 표시하더라도 state/rule/p95/p99/endpoint priority를 계산하지 않는다.
 
-## 7. MVC Boundary Rules
+## 8. MVC Boundary Rules
 
 - `DashboardReadModelService`가 이 응답을 구성한다.
 - `DashboardController`는 serialization과 HTTP status mapping만 담당한다.

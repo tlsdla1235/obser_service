@@ -14,15 +14,18 @@ date: 2026-05-09
 |---|---|
 | starter flush cadence | 30초 |
 | bucket duration | 30초 |
+| starter drain grace window | 30초 / 1 bucket duration |
 | current window | 최근 15분 |
 | baseline window | current 직전 15분 |
 | time zone | UTC |
 | stale 후보 | 최근 accepted bucket이 90초 이상 없음 |
 | down 후보 | 최근 accepted bucket이 180초 이상 없음 |
 
+`starter flush cadence`는 drain check/tick 주기이며, drain eligibility의 grace 조건을 대체하지 않는다.
+
 ## 2. Bucket Boundary
 
-모든 bucket은 UTC 30초 boundary에 정렬한다.
+모든 bucket은 UTC 30초 boundary에 정렬한다. bucket interval은 `[startUtc, endUtc)` semantics를 유지한다.
 
 예시:
 
@@ -30,6 +33,10 @@ date: 2026-05-09
 - `01:00:30Z` to `01:01:00Z`
 
 boundary에 맞지 않는 bucket은 ingest validation에서 거부한다.
+
+drain eligibility는 bucket boundary와 별도로 판단한다. starter는 `bucket.endUtc + grace <= nowUtc`일 때만 해당 bucket을 drain/flush candidate로 만들 수 있다. MVP에서 grace는 `bucketDuration`과 같은 30초이므로, `drainClosedBuckets(nowUtc)`는 `bucket.endUtc + bucketDuration <= nowUtc`인 interval만 반환한다.
+
+grace window 안에 도착한 HTTP/JVM/datasource late sample은 기존 bucket에 포함된다. drain 이후 interval은 sealed로 간주하며, 이후 같은 interval sample은 drop하고 duplicate flush candidate를 만들지 않는다. sealed watermark는 단조 증가해야 한다.
 
 ## 3. Window Semantics
 
@@ -49,7 +56,7 @@ history horizon은 현재 상태 판단을 대체하지 않으며, stale/down/de
 
 ## 5. Freshness Source
 
-freshness는 starter가 주장하는 현재 시간이 아니라, portal이 수용한 마지막 bucket의 `endUtc` 기준으로 판단한다.
+freshness는 starter가 주장하는 현재 시간이 아니라, portal이 수용한 마지막 bucket의 `endUtc` 기준으로 판단한다. 30초 drain grace 때문에 UI freshness가 최대 30초 늦어지는 것은 MVP에서 허용한다.
 
 ## 6. MVC Boundary
 

@@ -71,6 +71,19 @@ Allowlist 작성 규칙, concrete identifier heuristic, ambiguous match 처리, 
 - dashboard read model 또는 insight rule contract에 소비 지점이 있다.
 - starter와 portal 양쪽에 bounded validation을 추가할 수 있다.
 
+### Post-MVP Runtime Aggregate Candidates
+
+MVP의 JVM/datasource runtime ratio는 30초 bucket 안에서 관측된 latest valid sample만 payload와 저장소에 남긴다. Post-MVP에서는 순간 포화와 지속 압력을 구분하기 위해 아래 app-level aggregate를 별도 story로 추가할 수 있다.
+
+- `latest`: bucket 안에서 가장 늦게 관측된 valid sample. 현재 상태에 가까운 UI 표시와 freshness 해석에 사용한다.
+- `max`: bucket 안의 valid sample 중 최댓값. 짧은 DB pool, CPU, heap spike를 놓치지 않기 위한 saturation evidence로 사용한다.
+- `avg`: bucket 안의 valid sample 산술 평균. 일시 spike가 아니라 지속적인 압력인지 판단하는 보조 evidence로 사용한다.
+- `sampleCount`: `avg`와 multi-instance merge를 검증하기 위한 valid sample 수. 평균 병합은 단순 average-of-averages가 아니라 sampleCount 기반 weighted average를 사용한다.
+
+대상 metric은 app-level `CPU usage ratio`, `heap used ratio`, `datasource pool usage ratio`로 제한한다. 이 확장은 raw timeseries, per-request sample, arbitrary metric map, high-cardinality tag ingestion을 허용하지 않는다. Starter는 bucket 안에서 bounded aggregate만 계산해 보내고, portal은 같은 ratio range와 aggregate 일관성(`0 <= avg <= max <= 1`, `latest <= max`, `sampleCount > 0`)을 다시 검증해야 한다.
+
+이 후보를 구현하려면 `ingest-envelope` schema version을 `1.0`과 분리하고, accepted bucket persistence, dashboard read model, saturation hint rule의 evidence shape를 함께 갱신한다.
+
 ### Post-MVP Annotation Candidates
 
 MVP에서는 annotation 기반 query dimension, route masking, metric rename, custom tag를 열지 않는다.

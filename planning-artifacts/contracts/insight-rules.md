@@ -84,14 +84,24 @@ p99/tail latency는 primary rule judgment가 아니라 auxiliary evidence다. p9
 - endpoint priority
   - slow/error/comparative evidence ranking
 
-## 7. Copy Rules
+## 7. Post-MVP Runtime Aggregate Evidence
+
+MVP saturation hint는 JVM/datasource runtime ratio의 latest sample과 HTTP latency/error evidence를 함께 사용한다. Post-MVP runtime aggregate가 도입되면 rule evidence는 아래 의미를 구분해야 한다.
+
+- `latest`: 사용자가 지금 확인할 현재 상태에 가까운 값이다.
+- `max`: bucket 안 순간 피크다. 짧은 DB pool 포화, CPU spike, heap pressure를 놓치지 않는 보조 evidence로 사용한다.
+- `avg`: bucket 안 지속 압력이다. 단발성 spike인지 window 전체 압박인지 confidence 계산에 사용한다.
+
+`max` 하나만으로 degraded/down을 단정하지 않는다. Saturation hint는 p95/error/freshness/minimum sample guard와 함께 있을 때만 high-confidence concern으로 승격할 수 있다. `avg` 병합은 instance별 sample count 기반 weighted average를 사용하며, average-of-averages로 계산하지 않는다.
+
+## 8. Copy Rules
 
 문구는 진단 확정이 아니라 확인 제안이어야 한다.
 
 - 금지: "DB pool 고갈로 장애가 발생했습니다."
 - 허용: "DB pool 사용률이 높고 응답 지연도 함께 증가했습니다. DB 연결 대기 가능성을 먼저 확인해보세요."
 
-## 8. MVC Boundary
+## 9. MVC Boundary
 
 - rule evaluation은 `TriageSummaryService`와 `EndpointPriorityService` 안에 둔다.
 - UI, controller, repository는 rule을 평가하지 않는다.
