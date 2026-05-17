@@ -4,7 +4,7 @@ storyId: "2.4"
 epic: "Epic 2. Starter Direct Ingest Producer"
 title: "Async Flush Worker"
 architectureStyle: Traditional MVC
-status: review
+status: done
 date: 2026-05-10
 ---
 
@@ -136,6 +136,10 @@ date: 2026-05-10
 ### Review Findings
 
 - [x] [Review][Policy Follow-up] correct-course 정책 보정으로 scheduled/tick drain 경계가 새 AC로 추가되었다. `StarterMetricIngestService.drainDueBuckets()` 구현과 테스트로 새 샘플이 없는 idle 상태에서도 grace 이후 due bucket이 enqueue되는 것을 확인했다.
+- [x] [Review][Runtime Wiring Follow-up] 실제 starter runtime에서 30초 cadence로 `StarterMetricIngestService.drainDueBuckets()`를 호출하는 scheduled/tick wiring을 추가한다.
+- [x] [Review][Patch] Runtime idle drain auto-configuration can remain inert without a `StarterMetricIngestService` bean [`observability-spring-boot-starter/src/main/java/com/observation/starter/config/MetricDrainAutoConfiguration.java:17`] — `MetricDrainAutoConfiguration`은 ingest service bean이 이미 있을 때만 활성화되지만, 현재 starter main source에는 `StarterMetricIngestService`/`BoundedMetricQueue`/`MetricBucketRollupService`를 runtime bean으로 만드는 wiring이 없다. 테스트도 Spring context 조건을 실행하지 않고 configuration을 직접 생성하므로, clean starter runtime에서 30초 idle tick이 실제 등록되는지 증명하지 못한다.
+- [x] [Review][Patch] `DROP_OLDEST` overflow path is not atomic under concurrent request producers [`observability-spring-boot-starter/src/main/java/com/observation/starter/queue/BoundedMetricQueue.java:55`] — full queue에서 `poll()`과 `offer()`가 분리되어 있어 다른 producer가 중간에 빈 slot을 차지하면 configured `DROP_OLDEST` 호출이 oldest와 newest를 모두 drop하고 `DROPPED_NEWEST`로 끝날 수 있다. request path를 block하지 않는 성질은 유지되지만, overflow policy 결과가 producer concurrency에서 흔들린다.
+- [x] [Review][Patch] Flush worker accepts zero/sub-millisecond poll intervals that can busy-spin [`observability-spring-boot-starter/src/main/java/com/observation/starter/service/MetricBucketFlushWorker.java:51`] — constructor는 negative interval만 막고 `BoundedMetricQueue.poll()`은 `timeout.toMillis()`를 사용한다. `Duration.ZERO` 또는 1ms 미만 값이 들어오면 빈 queue에서 worker loop가 즉시 반복될 수 있으므로 최소 1ms 이상의 poll interval을 강제해야 한다.
 
 ## Dev Agent Record
 
@@ -162,14 +166,28 @@ date: 2026-05-10
 - 2026-05-17: correct-course 후속 구현으로 `StarterMetricIngestService.drainDueBuckets()` scheduler/tick 경계를 추가하고, 2.3 grace drain semantics에 맞춰 non-blocking/overflow/idle tick 테스트와 architecture guard를 갱신했다.
 - 2026-05-17: targeted test `./gradlew :observability-spring-boot-starter:test --tests com.observation.starter.service.StarterNonBlockingIngestTest --tests com.observation.starter.service.MetricBucketFlushWorkerTest --tests com.observation.starter.queue.BoundedMetricQueueOverflowTest --tests com.observation.starter.architecture.StarterObservationArchitectureTest --rerun-tasks` 실행 결과 `BUILD SUCCESSFUL`을 확인했다.
 - 2026-05-17: starter 전체 테스트 `./gradlew :observability-spring-boot-starter:test --rerun-tasks` 실행 결과 `BUILD SUCCESSFUL`, 전체 테스트 `./gradlew test --rerun-tasks` 실행 결과 `BUILD SUCCESSFUL`, `git diff --check` 통과를 확인했다.
+- 2026-05-17: Runtime wiring follow-up red phase로 scheduled drain scheduler/auto-configuration 테스트를 추가했고, 미구현 타입 때문에 targeted test compile failure가 발생함을 확인했다.
+- 2026-05-17: `StarterMetricDrainScheduler`와 `MetricDrainAutoConfiguration`을 추가하고 auto-configuration imports에 등록했다. scheduler는 30초 fixed delay/initial delay로 `StarterMetricIngestService.drainDueBuckets()`만 호출한다.
+- 2026-05-17: targeted scheduler/config/architecture test와 Story 2.4 핵심 테스트 묶음 실행 결과 `BUILD SUCCESSFUL`을 확인했다.
+- 2026-05-17: starter 전체 테스트 `./gradlew :observability-spring-boot-starter:test --rerun-tasks` 실행 결과 `BUILD SUCCESSFUL`을 확인했다.
+- 2026-05-17: 전체 테스트 `./gradlew test --rerun-tasks`와 `./gradlew test --rerun-tasks --continue`는 portal `CatalogSchemaMigrationIntegrationTest`의 Testcontainers Docker 환경 미발견(`/var/run/docker.sock` 없음)으로 실패했다. starter test task는 `--continue` 실행 중에도 통과했다.
+- 2026-05-17: `git diff --check` 통과를 확인했다.
+- 2026-05-17: Patch findings red phase로 Spring context auto-configuration, concurrent `DROP_OLDEST`, zero/sub-millisecond poll interval 테스트를 보강했고, `MetricDrainProperties` 미구현으로 targeted test compile failure가 발생함을 확인했다.
+- 2026-05-17: `MetricDrainAutoConfiguration`이 clean runtime에서 `BoundedMetricQueue`, `MetricBucketRollupService`, `StarterMetricIngestService`, `StarterMetricDrainScheduler`를 구성하도록 보강하고 `MetricDrainProperties` 설정 바인딩을 추가했다.
+- 2026-05-17: `BoundedMetricQueue.offer()`의 overflow 구간을 producer lock으로 직렬화하고, queue/worker poll interval은 최소 1ms 이상만 허용하도록 보강했다.
+- 2026-05-17: patch targeted test `./gradlew :observability-spring-boot-starter:test --tests com.observation.starter.config.MetricDrainAutoConfigurationTest --tests com.observation.starter.queue.BoundedMetricQueueOverflowTest --tests com.observation.starter.service.MetricBucketFlushWorkerTest --rerun-tasks` 실행 결과 `BUILD SUCCESSFUL`을 확인했다.
+- 2026-05-17: starter 전체 테스트 `./gradlew :observability-spring-boot-starter:test --rerun-tasks` 실행 결과 `BUILD SUCCESSFUL`, `git diff --check` 통과를 확인했다.
 
 ### Completion Notes
 
-- `BoundedMetricQueue`는 `ArrayBlockingQueue` 기반 finite capacity queue이며, full 상태에서 `DROP_NEWEST` 또는 `DROP_OLDEST`를 적용하고 즉시 반환한다.
+- `BoundedMetricQueue`는 `ArrayBlockingQueue` 기반 finite capacity queue이며, full 상태에서 `DROP_NEWEST` 또는 `DROP_OLDEST`를 적용하고 즉시 반환한다. `DROP_OLDEST` overflow 구간은 동시 request producer 사이에서 직렬화된다.
 - `StarterMetricIngestService`는 `ObservationSampleCollector` 구현으로 guard/rollup 후 drain-eligible sealed bucket만 queue에 넣으며, portal client 또는 `client.http` 구현을 호출하지 않는다.
 - `StarterMetricIngestService.drainDueBuckets()`는 scheduler/tick 경계에서 `nowUtcSupplier` 기준으로 `bucket.endUtc + bucketDuration <= nowUtc`인 due bucket만 queue에 넣으며, 새 샘플이 없는 idle 상태에서도 호출할 수 있다.
+- `StarterMetricDrainScheduler`가 runtime idle drain tick 책임을 가지며, Spring `@Scheduled`로 30초마다 `StarterMetricIngestService.drainDueBuckets()`를 호출한다.
+- `MetricDrainAutoConfiguration`은 clean starter runtime에서도 `BoundedMetricQueue`, `MetricBucketRollupService`, `StarterMetricIngestService`, scheduled drain trigger를 등록하고 Spring scheduling을 활성화한다.
+- `MetricDrainProperties`는 `observation.metric-flush.queue-capacity`와 `observation.metric-flush.drop-policy`를 바인딩하며, queue capacity는 finite positive value만 허용한다.
 - grace 이전 request path 또는 scheduled/tick drain 호출은 queue에 bucket을 넣지 않는다.
-- `MetricBucketFlushWorker`는 daemon background thread에서만 `PortalMetricBucketClient.flush`를 호출하고, retry/backoff와 최종 실패를 worker-local로 처리한다. 현재 wait loop는 `BlockingQueue.poll(timeout)` 기반 timeout 있는 blocking wait이며 CPU busy waiting은 아니다.
+- `MetricBucketFlushWorker`는 daemon background thread에서만 `PortalMetricBucketClient.flush`를 호출하고, retry/backoff와 최종 실패를 worker-local로 처리한다. 현재 wait loop는 최소 1ms 이상의 `BlockingQueue.poll(timeout)` 기반 blocking wait이며 zero/sub-millisecond busy spin 입력은 거부한다.
 - fake timeout/down client 기반 non-blocking test는 request thread 반환, worker thread client 호출, blocking client release 전 request completion을 함께 확인한다.
 - architecture guard는 request path의 `client.http`/HTTP transport 직접 의존과 worker 외부의 portal client boundary 의존을 막는다.
 - durable outbox, Kafka, Redis, 별도 worker deployable, portal ingest controller/repository/persistence, final envelope serialization, idempotency header generation은 추가하지 않았다.
@@ -186,14 +204,20 @@ date: 2026-05-10
 - `observability-spring-boot-starter/src/main/java/com/observation/starter/queue/MetricQueueDropPolicy.java`
 - `observability-spring-boot-starter/src/main/java/com/observation/starter/queue/MetricQueueOfferOutcome.java`
 - `observability-spring-boot-starter/src/main/java/com/observation/starter/queue/MetricQueueOfferResult.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/config/MetricDrainAutoConfiguration.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/config/MetricDrainProperties.java`
+- `observability-spring-boot-starter/src/main/java/com/observation/starter/spring/StarterMetricDrainScheduler.java`
 - `observability-spring-boot-starter/src/main/java/com/observation/starter/service/MetricBucketFlushWorker.java`
 - `observability-spring-boot-starter/src/main/java/com/observation/starter/service/MetricFlushBackoff.java`
 - `observability-spring-boot-starter/src/main/java/com/observation/starter/service/MetricFlushRetryPolicy.java`
 - `observability-spring-boot-starter/src/main/java/com/observation/starter/service/StarterMetricIngestService.java`
+- `observability-spring-boot-starter/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
 - `observability-spring-boot-starter/src/test/java/com/observation/starter/architecture/StarterObservationArchitectureTest.java`
+- `observability-spring-boot-starter/src/test/java/com/observation/starter/config/MetricDrainAutoConfigurationTest.java`
 - `observability-spring-boot-starter/src/test/java/com/observation/starter/queue/BoundedMetricQueueOverflowTest.java`
 - `observability-spring-boot-starter/src/test/java/com/observation/starter/service/MetricBucketFlushWorkerTest.java`
 - `observability-spring-boot-starter/src/test/java/com/observation/starter/service/StarterNonBlockingIngestTest.java`
+- `observability-spring-boot-starter/src/test/java/com/observation/starter/spring/StarterMetricDrainSchedulerTest.java`
 
 ## Change Log
 
@@ -201,7 +225,9 @@ date: 2026-05-10
 - 2026-05-17: Correct-course 정책 변경에 따라 이전 닫힘 표현을 drain-eligible sealed bucket으로 정렬하고, idle 상태에서도 scheduled/tick drain이 grace 이후 due bucket을 enqueue해야 한다는 AC/guardrail/test requirement를 추가했다. Final envelope serialization과 idempotency header generation은 계속 Story 2.5 scope로 둔다.
 - 2026-05-17: Correct-course 후속 구현 완료; `drainDueBuckets()` scheduler/tick 경계를 추가하고, `01:00:00Z-01:00:30Z` bucket이 `01:00:31Z`에는 enqueue되지 않고 `01:01:00Z`부터 enqueue되는 테스트로 정렬했다.
 - 2026-05-17: Worker idle 대기는 현재 `BlockingQueue.poll(timeout)` 기반 blocking wait로 기록하고, 더 정교한 wake-up/shutdown 전략은 Post-MVP backlog로 분리했다.
+- 2026-05-17: Runtime wiring follow-up 완료; 30초 scheduled drain trigger와 auto-configuration import를 추가하고, scheduled trigger가 새 샘플 없이 due bucket을 enqueue하는 테스트를 추가했다.
+- 2026-05-17: Review patch findings 3건 해결; clean runtime drain bean auto-configuration, atomic `DROP_OLDEST` producer overflow path, zero/sub-millisecond poll interval guard와 관련 tests를 보강했다.
 
 ## Status
 
-review
+done

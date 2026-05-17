@@ -18,8 +18,11 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class BoundedMetricQueue {
 
+    private static final Duration MIN_POLL_TIMEOUT = Duration.ofMillis(1);
+
     private final BlockingQueue<ClosedMetricBucket> queue;
     private final MetricQueueDropPolicy dropPolicy;
+    private final Object offerLock = new Object();
     private final AtomicLong enqueuedCount = new AtomicLong();
     private final AtomicLong droppedCount = new AtomicLong();
 
@@ -42,30 +45,32 @@ public final class BoundedMetricQueue {
      */
     public MetricQueueOfferResult offer(ClosedMetricBucket bucket) {
         ClosedMetricBucket requiredBucket = Objects.requireNonNull(bucket, "bucket must not be null");
-        if (queue.offer(requiredBucket)) {
-            enqueuedCount.incrementAndGet();
-            return new MetricQueueOfferResult(MetricQueueOfferOutcome.ENQUEUED, size(), droppedCount.get());
-        }
+        synchronized (offerLock) {
+            if (queue.offer(requiredBucket)) {
+                enqueuedCount.incrementAndGet();
+                return new MetricQueueOfferResult(MetricQueueOfferOutcome.ENQUEUED, size(), droppedCount.get());
+            }
 
-        if (dropPolicy == MetricQueueDropPolicy.DROP_NEWEST) {
+            if (dropPolicy == MetricQueueDropPolicy.DROP_NEWEST) {
+                droppedCount.incrementAndGet();
+                return new MetricQueueOfferResult(MetricQueueOfferOutcome.DROPPED_NEWEST, size(), droppedCount.get());
+            }
+
+            ClosedMetricBucket dropped = queue.poll();
+            if (dropped != null) {
+                droppedCount.incrementAndGet();
+            }
+            if (queue.offer(requiredBucket)) {
+                enqueuedCount.incrementAndGet();
+                MetricQueueOfferOutcome outcome = dropped == null
+                        ? MetricQueueOfferOutcome.ENQUEUED
+                        : MetricQueueOfferOutcome.DROPPED_OLDEST_AND_ENQUEUED;
+                return new MetricQueueOfferResult(outcome, size(), droppedCount.get());
+            }
+
             droppedCount.incrementAndGet();
             return new MetricQueueOfferResult(MetricQueueOfferOutcome.DROPPED_NEWEST, size(), droppedCount.get());
         }
-
-        ClosedMetricBucket dropped = queue.poll();
-        if (dropped != null) {
-            droppedCount.incrementAndGet();
-        }
-        if (queue.offer(requiredBucket)) {
-            enqueuedCount.incrementAndGet();
-            MetricQueueOfferOutcome outcome = dropped == null
-                    ? MetricQueueOfferOutcome.ENQUEUED
-                    : MetricQueueOfferOutcome.DROPPED_OLDEST_AND_ENQUEUED;
-            return new MetricQueueOfferResult(outcome, size(), droppedCount.get());
-        }
-
-        droppedCount.incrementAndGet();
-        return new MetricQueueOfferResult(MetricQueueOfferOutcome.DROPPED_NEWEST, size(), droppedCount.get());
     }
 
     /**
@@ -75,6 +80,9 @@ public final class BoundedMetricQueue {
         Duration requiredTimeout = Objects.requireNonNull(timeout, "timeout must not be null");
         if (requiredTimeout.isNegative()) {
             throw new IllegalArgumentException("timeout must not be negative");
+        }
+        if (requiredTimeout.compareTo(MIN_POLL_TIMEOUT) < 0) {
+            throw new IllegalArgumentException("timeout must be at least 1ms");
         }
         return Optional.ofNullable(queue.poll(requiredTimeout.toMillis(), TimeUnit.MILLISECONDS));
     }

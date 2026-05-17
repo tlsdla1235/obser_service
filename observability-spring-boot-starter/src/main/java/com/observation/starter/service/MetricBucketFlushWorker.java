@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class MetricBucketFlushWorker implements AutoCloseable {
 
     private static final String WORKER_THREAD_NAME = "observation-metric-flush-worker";
+    private static final Duration MIN_POLL_INTERVAL = Duration.ofMillis(1);
     private static final Duration DEFAULT_POLL_INTERVAL = Duration.ofMillis(100);
     private static final Duration SHUTDOWN_JOIN_TIMEOUT = Duration.ofSeconds(1);
 
@@ -49,8 +50,8 @@ public final class MetricBucketFlushWorker implements AutoCloseable {
         this.retryPolicy = Objects.requireNonNull(retryPolicy, "retryPolicy must not be null");
         this.backoff = Objects.requireNonNull(backoff, "backoff must not be null");
         this.pollInterval = Objects.requireNonNull(pollInterval, "pollInterval must not be null");
-        if (pollInterval.isNegative()) {
-            throw new IllegalArgumentException("pollInterval must not be negative");
+        if (pollInterval.compareTo(MIN_POLL_INTERVAL) < 0) {
+            throw new IllegalArgumentException("pollInterval must be at least 1ms");
         }
     }
 

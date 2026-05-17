@@ -106,6 +106,26 @@ class StarterObservationArchitectureTest {
     }
 
     @Test
+    void scheduledDrainTriggerDoesNotDependOnPortalTransportSerializationOrIdempotency() {
+        noClasses()
+                .that().haveSimpleName("StarterMetricDrainScheduler")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        "..starter.client..",
+                        "..starter.client.http..",
+                        "java.net..",
+                        "java.net.http..",
+                        "org.springframework.web.client..",
+                        "org.springframework.web.reactive.function.client..",
+                        "com.fasterxml.jackson.databind..",
+                        "..starter.envelope..",
+                        "..starter.serialization..",
+                        "..starter.idempotency..")
+                .because("scheduled idle drain must only tick the local rollup drain boundary")
+                .allowEmptyShould(true)
+                .check(STARTER_CLASSES);
+    }
+
+    @Test
     void portalClientBoundaryIsOnlyUsedByBackgroundFlushWorker() {
         noClasses()
                 .that().doNotHaveSimpleName("MetricBucketFlushWorker")

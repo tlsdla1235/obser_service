@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MetricBucketFlushWorkerTest {
@@ -96,6 +97,28 @@ class MetricBucketFlushWorkerTest {
         assertDoesNotThrow(() -> worker.flushBucket(bucket("2026-05-08T01:00:00Z")));
 
         assertEquals(2, attempts.get());
+    }
+
+    @Test
+    void requiresAtLeastOneMillisecondPollInterval() {
+        BoundedMetricQueue queue = new BoundedMetricQueue(8, MetricQueueDropPolicy.DROP_NEWEST);
+        PortalMetricBucketClient client = bucket -> {
+        };
+
+        assertThrows(IllegalArgumentException.class, () -> new MetricBucketFlushWorker(
+                queue,
+                client,
+                new MetricFlushRetryPolicy(1, Duration.ZERO),
+                duration -> {
+                },
+                Duration.ZERO));
+        assertThrows(IllegalArgumentException.class, () -> new MetricBucketFlushWorker(
+                queue,
+                client,
+                new MetricFlushRetryPolicy(1, Duration.ZERO),
+                duration -> {
+                },
+                Duration.ofNanos(999_999)));
     }
 
     private static ClosedMetricBucket bucket(String startUtc) {
