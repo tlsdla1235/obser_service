@@ -1,1 +1,2 @@
 com.observation.starter.config.RouteAttributionAutoConfiguration
+com.observation.starter.config.MetricDrainAutoConfiguration

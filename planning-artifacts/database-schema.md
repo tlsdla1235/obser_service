@@ -179,6 +179,23 @@ Notes:
 
 - `duration_buckets_json`과 `endpoints_json`의 histogram monotonicity, boundary set 일치 여부는 DB check가 아니라 `IngestAcceptanceService`에서 검증한다.
 - p95는 이 테이블에서 SQL view로 계산하지 않는다. `HistogramMergeService`가 window bucket을 읽어 `histogram-merge` contract에 따라 계산한다.
+- MVP의 `cpu_usage_ratio`, `heap_used_ratio`, `datasource_pool_usage_ratio`는 bucket 안의 latest valid sample을 저장한다.
+
+Post-MVP runtime aggregate migration 후보:
+
+| Candidate Column | Type | Null | 설명 |
+|---|---|---|---|
+| `cpu_usage_max_ratio` | `numeric(6,5)` | yes | bucket 안 JVM CPU usage ratio 최댓값 |
+| `cpu_usage_avg_ratio` | `numeric(6,5)` | yes | bucket 안 JVM CPU usage ratio 산술 평균 |
+| `cpu_usage_sample_count` | `integer` | yes | CPU 평균 계산에 사용한 valid sample 수 |
+| `heap_used_max_ratio` | `numeric(6,5)` | yes | bucket 안 JVM heap used ratio 최댓값 |
+| `heap_used_avg_ratio` | `numeric(6,5)` | yes | bucket 안 JVM heap used ratio 산술 평균 |
+| `heap_used_sample_count` | `integer` | yes | heap 평균 계산에 사용한 valid sample 수 |
+| `datasource_pool_usage_max_ratio` | `numeric(6,5)` | yes | bucket 안 datasource pool usage ratio 최댓값 |
+| `datasource_pool_usage_avg_ratio` | `numeric(6,5)` | yes | bucket 안 datasource pool usage ratio 산술 평균 |
+| `datasource_pool_usage_sample_count` | `integer` | yes | datasource 평균 계산에 사용한 valid sample 수 |
+
+이 후보 migration은 MVP `V003`에 포함하지 않는다. 별도 schema version에서 `latest` 의미의 기존 ratio column을 유지하면서 max/avg/sample count를 추가한다. Portal validation은 각 aggregate에 대해 ratio range, `avg <= max`, `latest <= max`, `sample_count > 0`을 검증해야 하며, multi-instance app-level 평균은 sample count 기반 weighted average로 계산한다.
 
 ### 3.5 `dashboard_snapshots`
 

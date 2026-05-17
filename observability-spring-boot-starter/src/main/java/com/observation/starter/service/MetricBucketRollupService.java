@@ -33,6 +33,9 @@ public final class MetricBucketRollupService {
 
     private static final List<Long> DEFAULT_DURATION_BUCKET_UPPER_BOUNDS_MS =
             List.of(50L, 100L, 250L, 500L, 1000L);
+    private static final Duration BUCKET_DURATION = MetricBucketInterval.DURATION;
+    // 한 duration 이후 seal함
+    private static final Duration DRAIN_GRACE_WINDOW = BUCKET_DURATION;
 
     private final Object lock = new Object();
     private final NavigableMap<MetricBucketInterval, MutableMetricBucket> buckets = new TreeMap<>();
@@ -86,16 +89,18 @@ public final class MetricBucketRollupService {
     }
 
     /**
-     * {@code nowUtc} 기준으로 닫힌 bucket을 flush candidate snapshot으로 반환하고 내부 버퍼에서 제거한다.
+     * {@code nowUtc} 기준으로 grace window가 지난 bucket을 flush candidate snapshot으로 반환하고 내부 버퍼에서 제거한다.
      *
-     * <p>한 번 drain된 interval은 sealed로 간주한다. 이후 같은 interval의 늦은 샘플은
-     * duplicate flush candidate를 만들지 않도록 drop한다.</p>
+     * <p>MVP에서는 30초 bucket duration과 같은 30초 grace window를 둔다. 따라서
+     * {@code bucket.endUtc + bucketDuration <= nowUtc}인 interval만 drain 대상이 되며,
+     * 한 번 drain된 interval은 sealed로 간주한다. 이후 같은 interval의 늦은 샘플은 duplicate
+     * flush candidate를 만들지 않도록 drop한다.</p>
      */
     public List<ClosedMetricBucket> drainClosedBuckets(Instant nowUtc) {
         Instant requiredNowUtc = Objects.requireNonNull(nowUtc, "nowUtc must not be null");
         synchronized (lock) {
             List<MetricBucketInterval> closedIntervals = buckets.keySet().stream()
-                    .filter(interval -> !interval.endUtc().isAfter(requiredNowUtc))
+                    .filter(interval -> isDrainEligible(interval, requiredNowUtc))
                     .toList();
             List<ClosedMetricBucket> closedBuckets = new ArrayList<>(closedIntervals.size());
             for (MetricBucketInterval interval : closedIntervals) {
@@ -137,6 +142,10 @@ public final class MetricBucketRollupService {
         return !interval.endUtc().isAfter(sealedThroughUtc);
     }
 
+    private static boolean isDrainEligible(MetricBucketInterval interval, Instant nowUtc) {
+        return !interval.endUtc().plus(DRAIN_GRACE_WINDOW).isAfter(nowUtc);
+    }
+
     private void advanceSealedThroughUtc(Instant drainedEndUtc) {
         if (drainedEndUtc.isAfter(sealedThroughUtc)) {
             sealedThroughUtc = drainedEndUtc;
@@ -163,6 +172,11 @@ public final class MetricBucketRollupService {
         }
         return bounds;
     }
+
+
+
+
+
 
     private static final class MutableMetricBucket {
 
@@ -218,6 +232,11 @@ public final class MetricBucketRollupService {
         }
     }
 
+
+
+
+
+
     private static final class MutableEndpointRollup {
 
         private final EndpointKey endpointKey;
@@ -242,6 +261,13 @@ public final class MetricBucketRollupService {
             return new EndpointMetricRollup(endpointKey, requestCount, errorCount, durationHistogram.snapshot());
         }
     }
+
+
+
+
+
+
+
 
     private static final class DurationHistogramAccumulator {
 

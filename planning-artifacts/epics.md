@@ -130,6 +130,49 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
    - UI는 state/rule/p95/p99/endpoint priority를 재계산하지 않는다.
    - raw snapshot explorer, arbitrary time-series query UI, alert delivery log 병합은 non-goal이다.
 
+## Post-MVP Candidate Backlog
+
+### Runtime Gauge Aggregate Extension
+
+목표: JVM CPU, JVM heap, datasource pool usage의 latest-only 한계를 보완해 짧은 saturation spike와 지속 압력을 함께 표현한다.
+
+후보 stories:
+
+1. Runtime aggregate contract/schema version
+   - `ingest-envelope` schema를 MVP `1.0`과 분리한다.
+   - `latest`, `max`, `avg`, `sampleCount` 의미와 validation rule을 고정한다.
+2. Starter runtime aggregate rollup
+   - 30초 bucket 안 JVM/datasource valid sample에서 latest/max/avg/sampleCount를 계산한다.
+   - raw sample 배열이나 arbitrary custom metric map은 만들지 않는다.
+3. Portal acceptance and persistence update
+   - aggregate ratio range, `avg <= max`, `latest <= max`, `sampleCount > 0`을 검증한다.
+   - accepted bucket persistence에 max/avg/sampleCount를 추가한다.
+4. Saturation hint read model update
+   - `max`는 peak evidence, `avg`는 sustained pressure evidence, `latest`는 current-state evidence로 분리해 read model과 insight rule evidence에 노출한다.
+   - multi-instance 평균은 sampleCount 기반 weighted average로 계산한다.
+
+이 후보는 MVP 필수 경로가 아니다. 구현 전 `metric-taxonomy`, `ingest-envelope`, `database-schema`, `insight-rules`, dashboard read model contract를 함께 갱신해야 한다.
+
+### Starter Flush Worker Wake-up Strategy
+
+목표: MVP의 bounded in-memory queue + background flush worker 구조를 유지하되, worker idle 대기와 shutdown wake-up 방식을 운영 관측 결과에 맞춰 더 정교하게 조정한다.
+
+현재 MVP는 `BlockingQueue.poll(timeout)` 기반 timeout 있는 blocking wait를 사용한다. 이는 CPU busy waiting은 아니며, 주기적으로 `running` 상태를 확인하고 `close()` interrupt에 반응하기 위한 단순한 구현이다.
+
+후보 stories:
+
+1. Worker wait strategy comparison
+   - `poll(timeout)`, `take() + interrupt`, poison pill, executor/lifecycle 기반 종료 방식을 비교한다.
+   - idle CPU wake-up, shutdown latency, 테스트 결정성, Spring bean lifecycle 연동 비용을 함께 본다.
+2. Configurable worker lifecycle
+   - poll interval, shutdown join timeout, retry/backoff를 starter configuration으로 열지 검토한다.
+   - 기본값은 host app safety와 단순성을 우선하고, 잘못된 설정이 request path blocking으로 이어지지 않게 guard를 둔다.
+3. Queue drain and worker observability
+   - queue depth, dropped count, flush success/failure, last successful flush time, worker running state를 starter internal metric/log로 노출할지 검토한다.
+   - durable outbox, Kafka/Redis, 별도 worker runtime 도입 여부와는 분리해서 판단한다.
+
+이 후보는 MVP 필수 경로가 아니다. 구현 전 `starter-failure-semantics`, Story 2.4 Async Flush Worker, starter auto-configuration/lifecycle 설계를 함께 갱신해야 한다.
+
 ## Cross-Epic Acceptance Criteria
 
 - MVP 필수 경로에 Prometheus 설치, scrape config, selector 등록, PromQL query가 없다.
