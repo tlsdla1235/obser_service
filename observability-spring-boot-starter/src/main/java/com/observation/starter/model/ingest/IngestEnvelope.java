@@ -20,12 +20,16 @@ public record IngestEnvelope(
         Summary summary,
         List<Endpoint> endpoints
 ) {
+    private static final String SUPPORTED_SCHEMA_VERSION = "1.0";
 
     /**
-     * envelope payload의 필수 하위 객체와 schema version을 검증한다.
+     * envelope payload의 필수 하위 객체와 MVP에서 허용하는 schema version을 검증한다.
      */
     public IngestEnvelope {
         schemaVersion = requireText(schemaVersion, "schemaVersion");
+        if (!SUPPORTED_SCHEMA_VERSION.equals(schemaVersion)) {
+            throw new IllegalArgumentException("schemaVersion must be 1.0");
+        }
         application = Objects.requireNonNull(application, "application must not be null");
         bucket = Objects.requireNonNull(bucket, "bucket must not be null");
         summary = Objects.requireNonNull(summary, "summary must not be null");
@@ -89,6 +93,7 @@ public record IngestEnvelope(
             httpServerDurationBuckets = List.copyOf(Objects.requireNonNull(
                     httpServerDurationBuckets,
                     "httpServerDurationBuckets must not be null"));
+            validateHistogram("summary.httpServerDurationBuckets", httpServerDurationBuckets);
         }
     }
 
@@ -138,6 +143,7 @@ public record IngestEnvelope(
             route = requireText(route, "endpoint.route");
             validateCounts(requestCount, errorCount);
             durationBuckets = List.copyOf(Objects.requireNonNull(durationBuckets, "durationBuckets must not be null"));
+            validateHistogram("endpoint.durationBuckets", durationBuckets);
         }
     }
 
@@ -189,6 +195,24 @@ public record IngestEnvelope(
     private static void validateRatio(String name, double value) {
         if (Double.isNaN(value) || value < 0.0d || value > 1.0d) {
             throw new IllegalArgumentException(name + " must be between 0.0 and 1.0");
+        }
+    }
+
+    private static void validateHistogram(String name, List<DurationBucket> buckets) {
+        if (buckets.isEmpty()) {
+            throw new IllegalArgumentException(name + " must not be empty");
+        }
+        long previousLeMs = Long.MIN_VALUE;
+        long previousCount = Long.MIN_VALUE;
+        for (DurationBucket bucket : buckets) {
+            if (bucket.leMs() <= previousLeMs) {
+                throw new IllegalArgumentException(name + " leMs must be strictly increasing");
+            }
+            if (bucket.count() < previousCount) {
+                throw new IllegalArgumentException(name + " count must be cumulative and non-decreasing");
+            }
+            previousLeMs = bucket.leMs();
+            previousCount = bucket.count();
         }
     }
 }

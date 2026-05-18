@@ -125,7 +125,7 @@ class IngestEnvelopeContractJsonTest {
                   } ]
                 }""", json);
         assertEquals(
-                "project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:2026-05-08T01:00:00Z",
+                "project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:20260508T010000Z",
                 candidate.idempotencyKey());
         assertFalse(json.contains("raw"));
         assertFalse(json.contains("query"));

@@ -12,6 +12,8 @@ import com.observation.starter.model.metric.JvmMetricSample;
 import com.observation.starter.model.time.MetricBucketInterval;
 
 import java.time.Duration;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -25,6 +27,8 @@ import java.util.Objects;
 public final class IngestEnvelopeBuilderService {
 
     static final String SCHEMA_VERSION = "1.0";
+    private static final DateTimeFormatter IDEMPOTENCY_BUCKET_START_FORMAT =
+            DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC);
 
     private final IngestEnvelopeIdentity identity;
 
@@ -100,7 +104,7 @@ public final class IngestEnvelopeBuilderService {
                 identity.applicationName(),
                 identity.environment(),
                 identity.instance(),
-                bucket.interval().startUtc().toString());
+                IDEMPOTENCY_BUCKET_START_FORMAT.format(bucket.interval().startUtc()));
     }
 
     private static void validateInterval(MetricBucketInterval interval) {

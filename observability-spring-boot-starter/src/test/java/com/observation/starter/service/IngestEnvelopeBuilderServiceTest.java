@@ -65,7 +65,7 @@ class IngestEnvelopeBuilderServiceTest {
         assertEquals("/orders", payload.endpoints().get(1).route());
 
         assertEquals(
-                "project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:2026-05-08T01:00:00Z",
+                "project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:20260508T010000Z",
                 candidate.idempotencyKey());
     }
 
@@ -79,6 +79,33 @@ class IngestEnvelopeBuilderServiceTest {
                 () -> new IngestEnvelopeIdentity("project-123", "orders-api", "", "instance-1"));
         assertThrows(IllegalArgumentException.class,
                 () -> new IngestEnvelopeIdentity("project-123", "orders-api", "prod", "\t"));
+    }
+
+    @Test
+    void rejectsHeaderUnsafeIdentityComponentsBeforeIdempotencyKeyBuild() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new IngestEnvelopeIdentity("project:123", "orders-api", "prod", "instance-1"));
+        assertThrows(IllegalArgumentException.class,
+                () -> new IngestEnvelopeIdentity("project-123", "orders api", "prod", "instance-1"));
+        assertThrows(IllegalArgumentException.class,
+                () -> new IngestEnvelopeIdentity("project-123", "orders-api", "pro\nd", "instance-1"));
+        assertThrows(IllegalArgumentException.class,
+                () -> new IngestEnvelopeIdentity("project-123", "orders-api", "prod", "instance/1"));
+    }
+
+    @Test
+    void rejectsUnsupportedSchemaVersionWhenEnvelopeIsCreatedDirectly() {
+        IngestEnvelope payload = new IngestEnvelopeBuilderService(identity())
+                .build(representativeBucket())
+                .payload();
+
+        assertThrows(IllegalArgumentException.class,
+                () -> new IngestEnvelope(
+                        "1.1",
+                        payload.application(),
+                        payload.bucket(),
+                        payload.summary(),
+                        payload.endpoints()));
     }
 
     @Test
@@ -97,11 +124,54 @@ class IngestEnvelopeBuilderServiceTest {
         IngestEnvelopeBuilderService builder = new IngestEnvelopeBuilderService(identity());
 
         assertEquals(
-                "project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:2026-05-08T01:00:00Z",
+                "project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:20260508T010000Z",
                 builder.build(bucketStartingAt("2026-05-08T01:00:00Z")).idempotencyKey());
         assertEquals(
-                "project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:2026-05-08T01:00:30Z",
+                "project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:20260508T010030Z",
                 builder.build(bucketStartingAt("2026-05-08T01:00:30Z")).idempotencyKey());
+    }
+
+    @Test
+    void idempotencyKeyComponentsDoNotContainDelimiterOrControlCharacters() {
+        IngestEnvelopeBuilderService builder = new IngestEnvelopeBuilderService(identity());
+
+        String idempotencyKey = builder.build(bucketStartingAt("2026-05-08T01:00:00Z")).idempotencyKey();
+
+        assertEquals(5, idempotencyKey.split(":", -1).length);
+        assertEquals("20260508T010000Z", idempotencyKey.split(":", -1)[4]);
+        assertFalse(idempotencyKey.chars().anyMatch(character -> character <= 0x1F || character == 0x7F));
+    }
+
+    @Test
+    void rejectsInvalidSummaryHistogramContracts() {
+        IngestEnvelopeBuilderService builder = new IngestEnvelopeBuilderService(identity());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> builder.build(bucketWithSummaryHistogram(List.of())));
+        assertThrows(IllegalArgumentException.class,
+                () -> builder.build(bucketWithSummaryHistogram(List.of(
+                        new HistogramBucket(50, 1),
+                        new HistogramBucket(50, 1)))));
+        assertThrows(IllegalArgumentException.class,
+                () -> builder.build(bucketWithSummaryHistogram(List.of(
+                        new HistogramBucket(50, 2),
+                        new HistogramBucket(100, 1)))));
+    }
+
+    @Test
+    void rejectsInvalidEndpointHistogramContracts() {
+        IngestEnvelopeBuilderService builder = new IngestEnvelopeBuilderService(identity());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> builder.build(bucketWithEndpointHistogram(List.of())));
+        assertThrows(IllegalArgumentException.class,
+                () -> builder.build(bucketWithEndpointHistogram(List.of(
+                        new HistogramBucket(50, 1),
+                        new HistogramBucket(50, 1)))));
+        assertThrows(IllegalArgumentException.class,
+                () -> builder.build(bucketWithEndpointHistogram(List.of(
+                        new HistogramBucket(50, 2),
+                        new HistogramBucket(100, 1)))));
     }
 
     @Test
@@ -196,6 +266,25 @@ class IngestEnvelopeBuilderServiceTest {
                 interval(startUtc),
                 new AppMetricRollup(0, 0, List.of(new HistogramBucket(50, 0)), Optional.empty(), Optional.empty()),
                 List.of());
+    }
+
+    private static ClosedMetricBucket bucketWithSummaryHistogram(List<HistogramBucket> buckets) {
+        return new ClosedMetricBucket(
+                interval("2026-05-08T01:00:00Z"),
+                new AppMetricRollup(2, 0, buckets, Optional.empty(), Optional.empty()),
+                List.of());
+    }
+
+    private static ClosedMetricBucket bucketWithEndpointHistogram(List<HistogramBucket> buckets) {
+        return new ClosedMetricBucket(
+                interval("2026-05-08T01:00:00Z"),
+                new AppMetricRollup(
+                        2,
+                        0,
+                        List.of(new HistogramBucket(50, 1), new HistogramBucket(100, 2)),
+                        Optional.empty(),
+                        Optional.empty()),
+                List.of(endpoint("GET", "/orders", 2, 0, buckets)));
     }
 
     private static MetricBucketInterval interval(String startUtc) {

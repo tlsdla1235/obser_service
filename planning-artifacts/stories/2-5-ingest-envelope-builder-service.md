@@ -4,7 +4,7 @@ storyId: "2.5"
 epic: "Epic 2. Starter Direct Ingest Producer"
 title: "Ingest Envelope Builder Service"
 architectureStyle: Traditional MVC
-status: review
+status: done
 date: 2026-05-10
 ---
 
@@ -67,7 +67,8 @@ date: 2026-05-10
 - payload contract source of truth is `planning-artifacts/contracts/ingest-envelope.md`.
 - request endpoint is `POST /api/ingest/v1/buckets`, but portal implementation is Epic 3 scope.
 - `X-OBS-Project-Key` comes from starter configuration and is sent as a header by the client boundary.
-- `Idempotency-Key` format follows `planning-artifacts/api-surface.md`: `<project-id>:<application>:<environment>:<instance>:<bucket-start-utc>` or the closest configured project identity available to the starter.
+- `Idempotency-Key` format follows `planning-artifacts/api-surface.md`: `<project-id>:<application>:<environment>:<instance>:<bucket-start-utc-basic>` or the closest configured project identity available to the starter.
+- idempotency key component에는 delimiter `:`와 제어문자를 허용하지 않는다. identity component는 header-safe 문자 집합으로 제한하고 bucket start는 compact UTC 형식으로 표현한다.
 - builder input은 이미 Story 2.3/2.4 경계에서 grace 이후 drain된 sealed bucket이어야 한다.
 - idempotency key는 drain/flush 시각이 아니라 `bucket.startUtc` 기준으로 deterministic하게 만든다.
 - envelope payload와 idempotency key는 drain/flush 시각과 무관하게 deterministic해야 한다.
@@ -175,7 +176,7 @@ date: 2026-05-10
 ### Completion Notes
 
 - schemaVersion `1.0` payload, application/environment/instance identity, UTC 30초 bucket metadata, app summary, endpoint cumulative histogram shape를 starter DTO와 builder로 구현했다.
-- idempotency key는 `<project-id>:<application>:<environment>:<instance>:<bucket-start-utc>` 형식이며 `bucket.startUtc`와 local identity만 사용한다.
+- idempotency key는 `<project-id>:<application>:<environment>:<instance>:<bucket-start-utc-basic>` 형식이며 `bucket.startUtc`와 local identity만 사용한다.
 - builder는 `ClosedMetricBucket` 입력만 받아 동작하며 portal lookup/network call, repository, stateful dedupe 저장소, drain/flush 시각 입력을 갖지 않는다.
 - JVM/datasource runtime metric은 schemaVersion `1.0` 계약대로 latest ratio shape만 담고, Post-MVP aggregate/latest/max/avg/sampleCount shape는 추가하지 않았다.
 - raw path, query string, arbitrary tag map, custom metric payload, p95/state/rule/endpoint priority 계산은 payload shape와 builder에서 제외했다.
@@ -207,4 +208,4 @@ date: 2026-05-10
 
 ## Status
 
-review
+done

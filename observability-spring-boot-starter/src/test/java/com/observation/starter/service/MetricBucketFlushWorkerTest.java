@@ -143,7 +143,7 @@ class MetricBucketFlushWorkerTest {
         assertTrue(worker.flushBucket(bucket("2026-05-08T01:00:00Z")));
 
         IngestEnvelopeCandidate candidate = sentCandidate.get();
-        assertEquals("project-123:orders-api:prod:instance-1:2026-05-08T01:00:00Z",
+        assertEquals("project-123:orders-api:prod:instance-1:20260508T010000Z",
                 candidate.idempotencyKey());
         assertEquals("1.0", candidate.payload().schemaVersion());
         assertEquals("orders-api", candidate.payload().application().name());

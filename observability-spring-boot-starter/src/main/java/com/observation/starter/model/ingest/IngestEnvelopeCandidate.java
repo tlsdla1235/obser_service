@@ -19,5 +19,18 @@ public record IngestEnvelopeCandidate(
             throw new IllegalArgumentException("idempotencyKey must not be blank");
         }
         idempotencyKey = idempotencyKey.trim();
+        if (containsControlCharacter(idempotencyKey)) {
+            throw new IllegalArgumentException("idempotencyKey must not contain control characters");
+        }
+    }
+
+    private static boolean containsControlCharacter(String value) {
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            if (character <= 0x1F || character == 0x7F) {
+                return true;
+            }
+        }
+        return false;
     }
 }
