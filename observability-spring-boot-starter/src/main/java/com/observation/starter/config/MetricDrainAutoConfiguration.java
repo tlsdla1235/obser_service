@@ -1,7 +1,10 @@
 package com.observation.starter.config;
 
+import com.observation.starter.client.PortalMetricBucketClient;
 import com.observation.starter.queue.BoundedMetricQueue;
+import com.observation.starter.service.IngestEnvelopeBuilderService;
 import com.observation.starter.service.LowCardinalityHttpObservationGuard;
+import com.observation.starter.service.MetricBucketFlushWorker;
 import com.observation.starter.service.MetricBucketRollupService;
 import com.observation.starter.service.StarterMetricIngestService;
 import com.observation.starter.spring.StarterMetricDrainScheduler;
@@ -10,6 +13,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.time.Instant;
@@ -18,9 +22,19 @@ import java.time.Instant;
  * Story 2.4의 idle drain tick을 Spring runtime에 연결하는 starter auto-configuration이다.
  *
  * <p>clean starter runtime에서도 local rollup, bounded queue, ingest service, scheduled tick을 함께
- * 구성한다. portal client/HTTP transport/envelope serialization은 Story 2.5 이후 경계로 남긴다.</p>
+ * 구성한다. 포털 client bean이 있을 때만 background flush worker를 추가로 기동한다.</p>
  */
+//RouteAttributionConfiguration를 먼저 적용 시킨 뒤 설정 적용
 @AutoConfiguration(after = RouteAttributionAutoConfiguration.class)
+/*
+    예시
+    observation:
+        metric-flush:
+            queue-capacity: 2048
+            drop-policy: DROP_NEWEST
+            project-id: my-project
+
+ */
 @EnableConfigurationProperties(MetricDrainProperties.class)
 @EnableScheduling
 public class MetricDrainAutoConfiguration {
@@ -41,6 +55,35 @@ public class MetricDrainAutoConfiguration {
     @ConditionalOnMissingBean
     public MetricBucketRollupService metricBucketRollupService() {
         return new MetricBucketRollupService();
+    }
+
+    /**
+     * sealed bucket snapshot을 ingest envelope payload와 idempotency key 후보로 바꾸는 builder를 등록한다.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public IngestEnvelopeBuilderService ingestEnvelopeBuilderService(
+            MetricDrainProperties properties,
+            Environment environment) {
+        return new IngestEnvelopeBuilderService(properties.ingestEnvelopeIdentity(environment));
+    }
+
+    /**
+     * 포털 client가 제공된 runtime에서 queue -> envelope builder -> client flush 경계를 자동으로 닫는다.
+     *
+     * <p>worker가 실제 전송 경로를 열기 직전에 generic local default identity가 남아 있지 않은지 검증한다.</p>
+     */
+    @Bean(initMethod = "start", destroyMethod = "close")
+    @ConditionalOnMissingBean
+    @ConditionalOnBean(PortalMetricBucketClient.class)
+    public MetricBucketFlushWorker metricBucketFlushWorker(
+            BoundedMetricQueue queue,
+            IngestEnvelopeBuilderService envelopeBuilder,
+            PortalMetricBucketClient client,
+            MetricDrainProperties properties,
+            Environment environment) {
+        properties.validatePortalFlushIdentity(environment);
+        return new MetricBucketFlushWorker(queue, envelopeBuilder, client);
     }
 
     /**

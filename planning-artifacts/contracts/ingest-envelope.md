@@ -19,9 +19,13 @@ date: 2026-05-09
 ```http
 POST /api/ingest/v1/buckets
 X-OBS-Project-Key: <project-key>
-Idempotency-Key: <project-id>:<application>:<environment>:<instance>:<bucket-start-utc>
+Idempotency-Key: <project-id>:<application>:<environment>:<instance>:<bucket-start-utc-basic>
 Content-Type: application/json
 ```
+
+`Idempotency-Key`의 identity component는 `A-Z`, `a-z`, `0-9`, `.`, `_`, `-`만 허용한다.
+delimiter `:`와 제어문자는 component 안에 들어갈 수 없다. `bucket-start-utc-basic`은 같은 이유로
+UTC bucket start를 `yyyyMMdd'T'HHmmss'Z'` 형식으로 표현한다.
 
 ## 3. Payload Shape
 
@@ -128,7 +132,7 @@ Post-MVP runtime aggregate schema를 열 경우에는 각 ratio aggregate에 대
 
 ## 5. Idempotency
 
-starter는 동일 application/environment/instance/`bucket.startUtc` 조합에 대해 두 번째 envelope 후보를 만들지 않는다. idempotency key는 drain/flush 시각이 아니라 `bucket.startUtc` 기준으로 deterministic하게 만든다.
+starter는 동일 application/environment/instance/`bucket.startUtc` 조합에 대해 두 번째 envelope 후보를 만들지 않는다. idempotency key는 drain/flush 시각이 아니라 `bucket.startUtc` 기준으로 deterministic하게 만든다. header delimiter ambiguity를 피하기 위해 key component 안에는 `:` 또는 제어문자를 허용하지 않는다.
 
 동일 project/application/environment/instance/bucket start에 대해 같은 payload가 재전송되면 portal은 중복 저장하지 않고 성공으로 응답한다.
 

@@ -129,9 +129,10 @@ class StarterObservationArchitectureTest {
     void portalClientBoundaryIsOnlyUsedByBackgroundFlushWorker() {
         noClasses()
                 .that().doNotHaveSimpleName("MetricBucketFlushWorker")
+                .and().doNotHaveSimpleName("MetricDrainAutoConfiguration")
                 .should().dependOnClassesThat()
                 .haveFullyQualifiedName("com.observation.starter.client.PortalMetricBucketClient")
-                .because("portal client invocation must stay behind the background flush worker")
+                .because("portal client invocation stays behind the worker; auto-configuration may wire the bean")
                 .allowEmptyShould(true)
                 .check(STARTER_CLASSES);
     }

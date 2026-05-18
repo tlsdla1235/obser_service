@@ -32,9 +32,13 @@ MVC 기준에서 controller는 모두 `controller` package에 속한다. Control
 ```http
 POST /api/ingest/v1/buckets
 X-OBS-Project-Key: <project-key>
-Idempotency-Key: <project-id>:<application>:<environment>:<instance>:<bucket-start-utc>
+Idempotency-Key: <project-id>:<application>:<environment>:<instance>:<bucket-start-utc-basic>
 Content-Type: application/json
 ```
+
+`Idempotency-Key` component는 delimiter `:`와 제어문자를 포함하지 않는다. identity component는
+`A-Z`, `a-z`, `0-9`, `.`, `_`, `-`만 허용하고, `bucket-start-utc-basic`은
+`yyyyMMdd'T'HHmmss'Z'` 형식의 UTC bucket start다.
 
 ### 2.2 Request Rough Shape
 

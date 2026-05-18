@@ -1,6 +1,7 @@
 package com.observation.starter.service;
 
 import com.observation.starter.client.PortalMetricBucketClient;
+import com.observation.starter.model.ingest.IngestEnvelopeIdentity;
 import com.observation.starter.model.metric.ClosedMetricBucket;
 import com.observation.starter.model.metric.HttpServerObservationInput;
 import com.observation.starter.queue.BoundedMetricQueue;
@@ -31,7 +32,7 @@ class StarterNonBlockingIngestTest {
         CountDownLatch releaseClient = new CountDownLatch(1);
         AtomicReference<String> requestThreadName = new AtomicReference<>();
         AtomicReference<String> clientThreadName = new AtomicReference<>();
-        PortalMetricBucketClient timeoutLikeClient = bucket -> {
+        PortalMetricBucketClient timeoutLikeClient = candidate -> {
             clientThreadName.set(Thread.currentThread().getName());
             clientEntered.countDown();
             try {
@@ -42,6 +43,7 @@ class StarterNonBlockingIngestTest {
         };
         MetricBucketFlushWorker worker = new MetricBucketFlushWorker(
                 queue,
+                builder(),
                 timeoutLikeClient,
                 new MetricFlushRetryPolicy(1, Duration.ZERO),
                 duration -> {
@@ -144,5 +146,13 @@ class StarterNonBlockingIngestTest {
                 Duration.ofMillis(25),
                 Optional.of("/orders/{orderId}"),
                 Optional.empty());
+    }
+
+    private static IngestEnvelopeBuilderService builder() {
+        return new IngestEnvelopeBuilderService(new IngestEnvelopeIdentity(
+                "project-123",
+                "orders-api",
+                "prod",
+                "instance-1"));
     }
 }
