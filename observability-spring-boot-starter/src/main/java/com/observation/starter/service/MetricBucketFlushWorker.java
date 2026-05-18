@@ -1,6 +1,7 @@
 package com.observation.starter.service;
 
 import com.observation.starter.client.PortalMetricBucketClient;
+import com.observation.starter.model.ingest.IngestEnvelopeCandidate;
 import com.observation.starter.model.metric.ClosedMetricBucket;
 import com.observation.starter.queue.BoundedMetricQueue;
 
@@ -22,6 +23,7 @@ public final class MetricBucketFlushWorker implements AutoCloseable {
     private static final Duration SHUTDOWN_JOIN_TIMEOUT = Duration.ofSeconds(1);
 
     private final BoundedMetricQueue queue;
+    private final IngestEnvelopeBuilderService envelopeBuilder;
     private final PortalMetricBucketClient client;
     private final MetricFlushRetryPolicy retryPolicy;
     private final MetricFlushBackoff backoff;
@@ -32,8 +34,16 @@ public final class MetricBucketFlushWorker implements AutoCloseable {
     /**
      * 기본 retry/backoff와 poll 간격을 사용하는 flush worker를 만든다.
      */
-    public MetricBucketFlushWorker(BoundedMetricQueue queue, PortalMetricBucketClient client) {
-        this(queue, client, MetricFlushRetryPolicy.defaults(), MetricFlushBackoff.threadSleep(), DEFAULT_POLL_INTERVAL);
+    public MetricBucketFlushWorker(
+            BoundedMetricQueue queue,
+            IngestEnvelopeBuilderService envelopeBuilder,
+            PortalMetricBucketClient client) {
+        this(queue,
+                envelopeBuilder,
+                client,
+                MetricFlushRetryPolicy.defaults(),
+                MetricFlushBackoff.threadSleep(),
+                DEFAULT_POLL_INTERVAL);
     }
 
     /**
@@ -41,11 +51,13 @@ public final class MetricBucketFlushWorker implements AutoCloseable {
      */
     public MetricBucketFlushWorker(
             BoundedMetricQueue queue,
+            IngestEnvelopeBuilderService envelopeBuilder,
             PortalMetricBucketClient client,
             MetricFlushRetryPolicy retryPolicy,
             MetricFlushBackoff backoff,
             Duration pollInterval) {
         this.queue = Objects.requireNonNull(queue, "queue must not be null");
+        this.envelopeBuilder = Objects.requireNonNull(envelopeBuilder, "envelopeBuilder must not be null");
         this.client = Objects.requireNonNull(client, "client must not be null");
         this.retryPolicy = Objects.requireNonNull(retryPolicy, "retryPolicy must not be null");
         this.backoff = Objects.requireNonNull(backoff, "backoff must not be null");
@@ -87,9 +99,15 @@ public final class MetricBucketFlushWorker implements AutoCloseable {
      */
     boolean flushBucket(ClosedMetricBucket bucket) {
         ClosedMetricBucket requiredBucket = Objects.requireNonNull(bucket, "bucket must not be null");
+        IngestEnvelopeCandidate candidate;
+        try {
+            candidate = envelopeBuilder.build(requiredBucket);
+        } catch (RuntimeException ignored) {
+            return false;
+        }
         for (int attempt = 1; attempt <= retryPolicy.maxAttempts(); attempt++) {
             try {
-                client.flush(requiredBucket);
+                client.flush(candidate);
                 return true;
             } catch (RuntimeException exception) {
                 if (attempt >= retryPolicy.maxAttempts() || !sleepBeforeRetry()) {

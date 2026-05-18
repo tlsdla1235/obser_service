@@ -2,6 +2,7 @@ package com.observation.starter.config;
 
 import com.observation.starter.queue.BoundedMetricQueue;
 import com.observation.starter.service.LowCardinalityHttpObservationGuard;
+import com.observation.starter.service.IngestEnvelopeBuilderService;
 import com.observation.starter.service.MetricBucketRollupService;
 import com.observation.starter.service.StarterMetricIngestService;
 import com.observation.starter.spring.StarterMetricDrainScheduler;
@@ -20,7 +21,17 @@ import java.time.Instant;
  * <p>clean starter runtime에서도 local rollup, bounded queue, ingest service, scheduled tick을 함께
  * 구성한다. portal client/HTTP transport/envelope serialization은 Story 2.5 이후 경계로 남긴다.</p>
  */
+//RouteAttributionConfiguration를 먼저 적용 시킨 뒤 설정 적용
 @AutoConfiguration(after = RouteAttributionAutoConfiguration.class)
+/*
+    예시
+    observation:
+        metric-flush:
+            queue-capacity: 2048
+            drop-policy: DROP_NEWEST
+            project-id: my-project
+
+ */
 @EnableConfigurationProperties(MetricDrainProperties.class)
 @EnableScheduling
 public class MetricDrainAutoConfiguration {
@@ -41,6 +52,15 @@ public class MetricDrainAutoConfiguration {
     @ConditionalOnMissingBean
     public MetricBucketRollupService metricBucketRollupService() {
         return new MetricBucketRollupService();
+    }
+
+    /**
+     * sealed bucket snapshot을 ingest envelope payload와 idempotency key 후보로 바꾸는 builder를 등록한다.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public IngestEnvelopeBuilderService ingestEnvelopeBuilderService(MetricDrainProperties properties) {
+        return new IngestEnvelopeBuilderService(properties.ingestEnvelopeIdentity());
     }
 
     /**

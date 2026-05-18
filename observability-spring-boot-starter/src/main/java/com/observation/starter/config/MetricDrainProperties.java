@@ -1,5 +1,6 @@
 package com.observation.starter.config;
 
+import com.observation.starter.model.ingest.IngestEnvelopeIdentity;
 import com.observation.starter.queue.MetricQueueDropPolicy;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -16,6 +17,10 @@ public class MetricDrainProperties {
 
     private int queueCapacity = 1024;
     private MetricQueueDropPolicy dropPolicy = MetricQueueDropPolicy.DROP_NEWEST;
+    private String projectId = "local-project";
+    private String applicationName = "application";
+    private String environment = "default";
+    private String instance = "local-instance";
 
     /**
      * runtime bounded queue capacity를 반환한다.
@@ -49,5 +54,75 @@ public class MetricDrainProperties {
             throw new IllegalArgumentException("metric flush drop policy must not be null");
         }
         this.dropPolicy = dropPolicy;
+    }
+
+    /**
+     * Idempotency-Key prefix에 사용할 starter local project identity를 반환한다.
+     */
+    public String getProjectId() {
+        return projectId;
+    }
+
+    /**
+     * Spring 설정 바인딩에서 받은 project identity를 검증한다.
+     */
+    public void setProjectId(String projectId) {
+        this.projectId = requireText(projectId, "metric flush project id");
+    }
+
+    /**
+     * envelope application.name에 사용할 starter local application name을 반환한다.
+     */
+    public String getApplicationName() {
+        return applicationName;
+    }
+
+    /**
+     * Spring 설정 바인딩에서 받은 application name을 검증한다.
+     */
+    public void setApplicationName(String applicationName) {
+        this.applicationName = requireText(applicationName, "metric flush application name");
+    }
+
+    /**
+     * envelope application.environment에 사용할 starter local environment를 반환한다.
+     */
+    public String getEnvironment() {
+        return environment;
+    }
+
+    /**
+     * Spring 설정 바인딩에서 받은 environment를 검증한다.
+     */
+    public void setEnvironment(String environment) {
+        this.environment = requireText(environment, "metric flush environment");
+    }
+
+    /**
+     * envelope application.instance에 사용할 starter local instance identity를 반환한다.
+     */
+    public String getInstance() {
+        return instance;
+    }
+
+    /**
+     * Spring 설정 바인딩에서 받은 instance identity를 검증한다.
+     */
+    public void setInstance(String instance) {
+        this.instance = requireText(instance, "metric flush instance");
+    }
+
+    /**
+     * builder가 사용할 local identity tuple로 변환한다.
+     */
+    public IngestEnvelopeIdentity ingestEnvelopeIdentity() {
+        return new IngestEnvelopeIdentity(projectId, applicationName, environment, instance);
+    }
+
+    private static String requireText(String value, String name) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(name + " must not be blank");
+        }
+        return value.trim();
     }
 }

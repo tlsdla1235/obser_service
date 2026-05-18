@@ -1,6 +1,8 @@
 package com.observation.starter.service;
 
 import com.observation.starter.client.PortalMetricBucketClient;
+import com.observation.starter.model.ingest.IngestEnvelopeCandidate;
+import com.observation.starter.model.ingest.IngestEnvelopeIdentity;
 import com.observation.starter.model.metric.AppMetricRollup;
 import com.observation.starter.model.metric.ClosedMetricBucket;
 import com.observation.starter.model.metric.HistogramBucket;
@@ -32,12 +34,13 @@ class MetricBucketFlushWorkerTest {
         BoundedMetricQueue queue = new BoundedMetricQueue(8, MetricQueueDropPolicy.DROP_NEWEST);
         CountDownLatch called = new CountDownLatch(1);
         AtomicReference<String> clientThreadName = new AtomicReference<>();
-        PortalMetricBucketClient client = bucket -> {
+        PortalMetricBucketClient client = candidate -> {
             clientThreadName.set(Thread.currentThread().getName());
             called.countDown();
         };
         MetricBucketFlushWorker worker = new MetricBucketFlushWorker(
                 queue,
+                builder(),
                 client,
                 new MetricFlushRetryPolicy(1, Duration.ZERO),
                 duration -> {
@@ -61,13 +64,14 @@ class MetricBucketFlushWorkerTest {
     void retriesWithWorkerLocalBackoffBeforeSuccess() {
         AtomicInteger attempts = new AtomicInteger();
         List<Duration> backoffs = new ArrayList<>();
-        PortalMetricBucketClient flakyClient = bucket -> {
+        PortalMetricBucketClient flakyClient = candidate -> {
             if (attempts.incrementAndGet() < 3) {
                 throw new IllegalStateException("portal down");
             }
         };
         MetricBucketFlushWorker worker = new MetricBucketFlushWorker(
                 new BoundedMetricQueue(8, MetricQueueDropPolicy.DROP_NEWEST),
+                builder(),
                 flakyClient,
                 new MetricFlushRetryPolicy(3, Duration.ofMillis(25)),
                 backoffs::add,
@@ -82,12 +86,13 @@ class MetricBucketFlushWorkerTest {
     @Test
     void exhaustsRetryWithoutPropagatingFailureToCaller() {
         AtomicInteger attempts = new AtomicInteger();
-        PortalMetricBucketClient downClient = bucket -> {
+        PortalMetricBucketClient downClient = candidate -> {
             attempts.incrementAndGet();
             throw new IllegalStateException("portal down");
         };
         MetricBucketFlushWorker worker = new MetricBucketFlushWorker(
                 new BoundedMetricQueue(8, MetricQueueDropPolicy.DROP_NEWEST),
+                builder(),
                 downClient,
                 new MetricFlushRetryPolicy(2, Duration.ofMillis(5)),
                 duration -> {
@@ -102,11 +107,12 @@ class MetricBucketFlushWorkerTest {
     @Test
     void requiresAtLeastOneMillisecondPollInterval() {
         BoundedMetricQueue queue = new BoundedMetricQueue(8, MetricQueueDropPolicy.DROP_NEWEST);
-        PortalMetricBucketClient client = bucket -> {
+        PortalMetricBucketClient client = candidate -> {
         };
 
         assertThrows(IllegalArgumentException.class, () -> new MetricBucketFlushWorker(
                 queue,
+                builder(),
                 client,
                 new MetricFlushRetryPolicy(1, Duration.ZERO),
                 duration -> {
@@ -114,11 +120,34 @@ class MetricBucketFlushWorkerTest {
                 Duration.ZERO));
         assertThrows(IllegalArgumentException.class, () -> new MetricBucketFlushWorker(
                 queue,
+                builder(),
                 client,
                 new MetricFlushRetryPolicy(1, Duration.ZERO),
                 duration -> {
                 },
                 Duration.ofNanos(999_999)));
+    }
+
+    @Test
+    void buildsEnvelopeCandidateBeforeCallingPortalClientBoundary() {
+        AtomicReference<IngestEnvelopeCandidate> sentCandidate = new AtomicReference<>();
+        MetricBucketFlushWorker worker = new MetricBucketFlushWorker(
+                new BoundedMetricQueue(8, MetricQueueDropPolicy.DROP_NEWEST),
+                builder(),
+                sentCandidate::set,
+                new MetricFlushRetryPolicy(1, Duration.ZERO),
+                duration -> {
+                },
+                Duration.ofMillis(10));
+
+        assertTrue(worker.flushBucket(bucket("2026-05-08T01:00:00Z")));
+
+        IngestEnvelopeCandidate candidate = sentCandidate.get();
+        assertEquals("project-123:orders-api:prod:instance-1:2026-05-08T01:00:00Z",
+                candidate.idempotencyKey());
+        assertEquals("1.0", candidate.payload().schemaVersion());
+        assertEquals("orders-api", candidate.payload().application().name());
+        assertEquals("2026-05-08T01:00:00Z", candidate.payload().bucket().startUtc());
     }
 
     private static ClosedMetricBucket bucket(String startUtc) {
@@ -130,7 +159,15 @@ class MetricBucketFlushWorkerTest {
                         0,
                         List.of(new HistogramBucket(50, 1)),
                         Optional.empty(),
-                        Optional.empty()),
+                Optional.empty()),
                 List.of());
+    }
+
+    private static IngestEnvelopeBuilderService builder() {
+        return new IngestEnvelopeBuilderService(new IngestEnvelopeIdentity(
+                "project-123",
+                "orders-api",
+                "prod",
+                "instance-1"));
     }
 }
