@@ -4,7 +4,7 @@ storyId: "2.2"
 epic: "Epic 2. Starter Direct Ingest Producer"
 title: "Route Normalization and Low-Cardinality Guard"
 architectureStyle: Traditional MVC
-status: review
+status: done
 date: 2026-05-10
 ---
 
@@ -158,6 +158,21 @@ date: 2026-05-10
 - Prometheus/scrape/query UI 경로, bucket rollup, queue/flush worker, HTTP ingest client, envelope builder, portal ingest validation/persistence는 추가하지 않았다.
 - 2026-05-14 B안 보정으로 raw path candidate는 `http.route` 부재 시 allowlist exact-one matching의 임시 입력으로만 사용하고, C안 자동 raw path 추론은 구현하지 않는다.
 
+### Review Closure - 2026-05-18
+
+- Route Attribution B안 기준으로 AC, Tasks/Subtasks, Dev Agent Record, Completion Notes를 구현 결과와 재대조했다.
+- 남은 review finding은 없다. `RouteNormalizationService`는 framework route/http.route 우선순위, raw path candidate allowlist exact-one fallback, query 폐기, miss/ambiguous/invalid/absolute URL/percent decoding failure의 `UNKNOWN` 수렴을 구현하고 테스트한다.
+- `LowCardinalityHttpObservationGuard`, `MetricBucketRollupService`, `IngestEnvelopeBuilderService` 경계는 raw path/query/high-cardinality tag를 다음 산출 모델, rollup key, envelope payload로 승격하지 않고 normalized route만 소비한다.
+- starter main source에는 Prometheus/scrape/query UI 경로, portal ingest validation/persistence, idempotency repository를 추가하지 않았다.
+
+검증 명령/결과:
+
+- `./gradlew :observability-spring-boot-starter:test --tests com.observation.starter.service.RouteNormalizationServiceTest --tests com.observation.starter.service.LowCardinalityHttpObservationGuardTest --tests com.observation.starter.spring.observation.MicrometerHttpServerObservationBinderTest --rerun-tasks` → `BUILD SUCCESSFUL`
+- `./gradlew :observability-spring-boot-starter:test --rerun-tasks` → `BUILD SUCCESSFUL`
+- `./gradlew :observability-spring-boot-starter:test --rerun-tasks --continue` → `BUILD SUCCESSFUL`
+- `./gradlew test --rerun-tasks --continue` → `observability-portal:CatalogSchemaMigrationIntegrationTest` initializationError로 실패. 원인은 Testcontainers가 유효한 Docker 환경을 찾지 못함(`/var/run/docker.sock` 없음)이며 Story 2.2 starter 구현 실패는 아니다.
+- `git diff --check` → 문제 없음
+
 ### File List
 
 - `implementation-artifacts/sprint-status.yaml`
@@ -187,4 +202,4 @@ date: 2026-05-10
 
 ## Status
 
-review
+done

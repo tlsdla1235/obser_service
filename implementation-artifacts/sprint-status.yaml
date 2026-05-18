@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-05-18T15:05:55+0900
+# last_updated: 2026-05-18T21:16:13+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -27,13 +27,12 @@
 # ===============
 # - Epic 1 portal foundation is done; 1.1 starter skeleton is in review and provides the Epic 2 starter module baseline.
 # - Epic 1 closes when Story 1.1 is accepted as done.
-# - Epic 2 story files are ready for development.
-# - Implement Epic 2 in order: 2.1 -> 2.2 -> 2.3 -> 2.4 -> 2.5 -> 2.6.
+# - Epic 2 is closed; stories 2.1 -> 2.6 and the retrospective are done.
 # - Story 2.1 must not repeat starter bootstrap.
 # - Do not pull portal ingest persistence, accepted_metric_buckets, dashboard_snapshots, p95/state/rule/read-model calculation into Epic 2.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-05-18T15:05:55+0900
+last_updated: 2026-05-18T21:16:13+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -47,14 +46,14 @@ development_status:
   1-4-portal-physical-schema-foundation: done
   epic-1-retrospective: done
 
-  epic-2: in-progress
+  epic-2: done
   2-1-micrometer-observation-binding: done
-  2-2-route-normalization-and-low-cardinality-guard: review
+  2-2-route-normalization-and-low-cardinality-guard: done
   2-3-bucket-rollup-service: done
   2-4-async-flush-worker: done
   2-5-ingest-envelope-builder-service: done
-  2-6-negative-path-guard: ready-for-dev
-  epic-2-retrospective: optional
+  2-6-negative-path-guard: done
+  epic-2-retrospective: done
 
   epic-3: backlog
   3-1-project-key-verification-service: backlog

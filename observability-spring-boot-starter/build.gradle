@@ -16,3 +16,16 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
+
+tasks.withType(Test).configureEach {
+    doFirst {
+        [
+                'starter.guard.mainCompileClasspath': sourceSets.main.compileClasspath,
+                'starter.guard.mainRuntimeClasspath': sourceSets.main.runtimeClasspath,
+                'starter.guard.testCompileClasspath': sourceSets.test.compileClasspath,
+                'starter.guard.testRuntimeClasspath': sourceSets.test.runtimeClasspath
+        ].each { propertyName, classpath ->
+            systemProperty propertyName, classpath.files.collect { it.absolutePath }.join(File.pathSeparator)
+        }
+    }
+}

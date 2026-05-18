@@ -11,14 +11,19 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.RecordComponent;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -220,6 +225,165 @@ class MicrometerHttpServerObservationBinderTest {
     }
 
     @Test
+    void highCardinalityCustomLabelsCannotBecomeIngestDimensions() {
+        RecordingCollector collector = new RecordingCollector();
+        AtomicLong nanos = new AtomicLong(1L);
+        ObservationRegistry registry = ObservationRegistry.create();
+        registry.observationConfig()
+                .observationHandler(new MicrometerHttpServerObservationBinder(collector, nanos::get));
+
+        Observation observation = Observation.start("http.server.requests", registry)
+                .lowCardinalityKeyValue("method", "GET")
+                .lowCardinalityKeyValue("status", "200")
+                .lowCardinalityKeyValue("tenantId", "tenant-low")
+                .lowCardinalityKeyValue("customLabel", "vip-low")
+                .lowCardinalityKeyValue("metricName", "checkout.low")
+                .highCardinalityKeyValue("tenantId", "tenant-42")
+                .highCardinalityKeyValue("userId", "user-99")
+                .highCardinalityKeyValue("sessionId", "session-abc")
+                .highCardinalityKeyValue("traceId", "trace-xyz")
+                .highCardinalityKeyValue("customLabel", "vip")
+                .highCardinalityKeyValue("metricName", "checkout.latency")
+                .highCardinalityKeyValue("http.route", "/tenants/{tenantId}/orders/{orderId}")
+                .highCardinalityKeyValue("uri", "/tenants/tenant-42/orders/123?debug=true");
+
+        nanos.addAndGet(5_000_000L);
+        observation.stop();
+
+        HttpServerObservationInput input = collector.onlyHttp();
+        LowCardinalityHttpServerObservation guarded = new LowCardinalityHttpObservationGuard().guard(input);
+
+        assertTrue(input.routePattern().isEmpty());
+        assertTrue(input.rawPathCandidate().isEmpty());
+        assertEquals("GET UNKNOWN", guarded.endpointKey().value());
+        assertDoesNotExpose(input, "tenant-low", "vip-low", "checkout.low",
+                "tenant-42", "user-99", "session-abc", "trace-xyz", "vip", "checkout.latency");
+        assertDoesNotExpose(guarded, "tenant-low", "vip-low", "checkout.low",
+                "tenant-42", "user-99", "session-abc", "trace-xyz", "vip", "checkout.latency");
+    }
+
+    @Test
+    void highCardinalityRouteLikeValuesCannotBecomeRawPathCandidate() {
+        RecordingCollector collector = new RecordingCollector();
+        AtomicLong nanos = new AtomicLong(1L);
+        ObservationRegistry registry = ObservationRegistry.create();
+        registry.observationConfig()
+                .observationHandler(new MicrometerHttpServerObservationBinder(collector, nanos::get));
+
+        Observation observation = Observation.start("http.server.requests", registry)
+                .lowCardinalityKeyValue("method", "GET")
+                .lowCardinalityKeyValue("status", "200")
+                .highCardinalityKeyValue("http.route", "/orders/{orderId}")
+                .highCardinalityKeyValue("uri", "/orders/123?debug=true")
+                .highCardinalityKeyValue("path", "/orders/123")
+                .highCardinalityKeyValue("http.url", "https://example.test/orders/123?debug=true");
+
+        nanos.addAndGet(5_000_000L);
+        observation.stop();
+
+        HttpServerObservationInput input = collector.onlyHttp();
+        LowCardinalityHttpServerObservation guarded = new LowCardinalityHttpObservationGuard(
+                new RouteNormalizationService(List.of("/orders/{orderId}"))).guard(input);
+
+        assertTrue(input.routePattern().isEmpty());
+        assertTrue(input.rawPathCandidate().isEmpty());
+        assertEquals("GET UNKNOWN", guarded.endpointKey().value());
+        assertDoesNotExpose(input, "/orders/123", "debug=true", "https://example.test");
+        assertDoesNotExpose(guarded, "/orders/123", "debug=true", "https://example.test");
+    }
+
+    @Test
+    void contextCustomValuesAreIgnoredAsRouteMethodRawPathAndTagCarriers() {
+        RecordingCollector collector = new RecordingCollector();
+        AtomicLong nanos = new AtomicLong(1L);
+        ObservationRegistry registry = ObservationRegistry.create();
+        registry.observationConfig()
+                .observationHandler(new MicrometerHttpServerObservationBinder(collector, nanos::get));
+
+        Observation.Context context = new Observation.Context();
+        context.put("method", "POST");
+        context.put("http.route", "/orders/{orderId}");
+        context.put("uri", "/orders/123?debug=true");
+        context.put("path", "/orders/123");
+        context.put("customLabels", Map.of(
+                "tenantId", "tenant-42",
+                "userId", "user-99",
+                "metricName", "checkout.latency"));
+
+        Observation observation = Observation.start("http.server.requests", () -> context, registry)
+                .lowCardinalityKeyValue("method", "GET")
+                .lowCardinalityKeyValue("status", "200");
+
+        nanos.addAndGet(5_000_000L);
+        observation.stop();
+
+        HttpServerObservationInput input = collector.onlyHttp();
+        LowCardinalityHttpServerObservation guarded = new LowCardinalityHttpObservationGuard(
+                new RouteNormalizationService(List.of("/orders/{orderId}"))).guard(input);
+
+        assertEquals("GET", input.method());
+        assertEquals(200, input.statusCode());
+        assertTrue(input.routePattern().isEmpty());
+        assertTrue(input.rawPathCandidate().isEmpty());
+        assertEquals("GET UNKNOWN", guarded.endpointKey().value());
+        assertDoesNotExpose(input, "POST", "/orders/123", "debug=true",
+                "tenant-42", "user-99", "checkout.latency");
+        assertDoesNotExpose(guarded, "POST", "/orders/123", "debug=true",
+                "tenant-42", "user-99", "checkout.latency");
+    }
+
+    @Test
+    void httpServerObservationInputDoesNotExposeCustomLabelCarrier() {
+        List<String> componentNames = Arrays.stream(HttpServerObservationInput.class.getRecordComponents())
+                .map(RecordComponent::getName)
+                .toList();
+        List<String> forbiddenNameTokens = List.of(
+                "tag",
+                "label",
+                "custom",
+                "tenant",
+                "user",
+                "session",
+                "trace",
+                "metric",
+                "metricname",
+                "dimension",
+                "attribute",
+                "keyvalue",
+                "baggage");
+
+        assertEquals(
+                List.of(
+                        "observedAt",
+                        "method",
+                        "statusCode",
+                        "error",
+                        "errorType",
+                        "duration",
+                        "routePattern",
+                        "rawPathCandidate"),
+                componentNames);
+
+        for (RecordComponent component : HttpServerObservationInput.class.getRecordComponents()) {
+            assertFalse(exposesMapCarrier(component),
+                    () -> HttpServerObservationInput.class.getName() + "#" + component.getName()
+                            + " must not expose a free-form high-cardinality label carrier");
+            assertFalse(component.getType().isArray(),
+                    () -> HttpServerObservationInput.class.getName() + "#" + component.getName()
+                            + " must not expose raw timeseries arrays");
+
+            if ("rawPathCandidate".equals(component.getName())) {
+                continue;
+            }
+
+            String normalizedName = component.getName().toLowerCase(Locale.ROOT);
+            assertTrue(forbiddenNameTokens.stream().noneMatch(normalizedName::contains),
+                    () -> HttpServerObservationInput.class.getName() + "#" + component.getName()
+                            + " must not expose tag/label/custom identity fields");
+        }
+    }
+
+    @Test
     void acceptsJvmAndDatasourceSamplesThroughCollectionBoundary() {
         RecordingCollector collector = new RecordingCollector();
         Instant observedAt = Instant.parse("2026-05-10T12:00:00Z");
@@ -260,6 +424,19 @@ class MicrometerHttpServerObservationBinderTest {
         private HttpServerObservationInput onlyHttp() {
             assertEquals(1, httpInputs.size());
             return httpInputs.get(0);
+        }
+    }
+
+    private static boolean exposesMapCarrier(RecordComponent component) {
+        return Map.class.isAssignableFrom(component.getType())
+                || component.getGenericType().getTypeName().contains("java.util.Map");
+    }
+
+    private static void assertDoesNotExpose(Object output, String... forbiddenValues) {
+        String text = String.valueOf(output);
+        for (String forbiddenValue : forbiddenValues) {
+            assertFalse(text.contains(forbiddenValue), () -> output.getClass().getSimpleName()
+                    + " must not expose " + forbiddenValue);
         }
     }
 }

@@ -4,7 +4,7 @@ storyId: "2.6"
 epic: "Epic 2. Starter Direct Ingest Producer"
 title: "Negative Path Guard"
 architectureStyle: Traditional MVC
-status: ready-for-dev
+status: done
 date: 2026-05-10
 ---
 
@@ -113,35 +113,67 @@ date: 2026-05-10
 
 ## Tasks/Subtasks
 
-- [ ] Epic 2 producer source/build/resource paths를 확인한다.
-- [ ] forbidden starter package guard를 추가한다.
-- [ ] starter web controller absence guard를 추가한다.
-- [ ] Prometheus/scrape/export/query dependency/resource absence guard를 추가한다.
-- [ ] arbitrary query UI/query builder absence guard를 추가한다.
-- [ ] envelope free-form tag/custom metric/raw timeseries absence test를 추가한다.
-- [ ] high-cardinality custom label ingestion 차단 테스트를 추가한다.
-- [ ] Epic 2 producer tests를 함께 실행한다.
-- [ ] planning/archive 문서 오탐이 없는지 범위를 조정한다.
-- [ ] completion notes에 MVP 제외 범위를 기록한다.
+- [x] Epic 2 producer source/build/resource paths를 확인한다.
+- [x] forbidden starter package guard를 추가한다.
+- [x] starter web controller absence guard를 추가한다.
+- [x] Prometheus/scrape/export/query dependency/resource absence guard를 추가한다.
+- [x] arbitrary query UI/query builder absence guard를 추가한다.
+- [x] envelope free-form tag/custom metric/raw timeseries absence test를 추가한다.
+- [x] high-cardinality custom label ingestion 차단 테스트를 추가한다.
+- [x] Epic 2 producer tests를 함께 실행한다.
+- [x] planning/archive 문서 오탐이 없는지 범위를 조정한다.
+- [x] completion notes에 MVP 제외 범위를 기록한다.
 
 ## Dev Agent Record
 
 ### Implementation Plan
 
-TBD by dev-story.
+- active starter `src/main/java`, `src/main/kotlin`, `src/main/groovy`, `src/main/scala`, `src/main/resources`, `build.gradle`을 검사하는 `NoPrometheusMvpPathTest`를 추가한다.
+- starter forbidden package, MVC/scrape controller, Prometheus scrape/export/query dependency/resource/code, arbitrary query UI/query builder 경로를 static guard로 고정한다.
+- Gradle test task가 starter main/test compile/runtime classpath를 system property로 넘기고, guard가 property 누락/빈 값을 fail-fast로 막도록 고정한다.
+- envelope candidate/model shape에 free-form tag map, arbitrary custom metric map, raw timeseries array가 없는지 reflection guard로 고정한다.
+- Micrometer observation binding에서 high-cardinality custom label이 ingest dimension으로 승격되지 않는 테스트를 보강한다.
+- 전체 `./gradlew test`로 Story 2.4 non-blocking test와 Story 2.5 contract tests를 함께 검증한다.
 
 ### Debug Log
 
-TBD by dev-story.
+- 2026-05-18T15:17:54+0900: `implementation-artifacts/sprint-status.yaml`에서 Story 2.6 상태를 `in-progress`로 전환했다.
+- `./gradlew :observability-spring-boot-starter:test --tests com.observation.starter.architecture.NoPrometheusMvpPathTest --tests com.observation.starter.spring.observation.MicrometerHttpServerObservationBinderTest` 통과.
+- `./gradlew test` 통과. Story 2.4 `StarterNonBlockingIngestTest`와 Story 2.5 `IngestEnvelopeContractJsonTest` 포함 전체 회귀가 성공했다.
+- `git diff --check` 통과.
+- 2026-05-18T16:43:57+0900: review findings 반영. resource query UI guard, `HttpServerObservationInput` custom label carrier reflection guard, p95/read-model/priority regex guard를 보강했다.
+- `./gradlew :observability-spring-boot-starter:test --tests com.observation.starter.architecture.NoPrometheusMvpPathTest --tests com.observation.starter.spring.observation.MicrometerHttpServerObservationBinderTest` 재통과.
+- `./gradlew test` 재통과.
+- `git diff --check HEAD` 통과.
+- 2026-05-18T17:06:03+0900: review findings 1-5 추가 반영. MVC/Actuator/WebFlux endpoint guard, build/resource query UI signal, envelope/producer model carrier reflection, low-cardinality tag allowlist, Micrometer arbitrary label/route-like high-cardinality value tests를 보강했다.
+- `./gradlew :observability-spring-boot-starter:test --tests com.observation.starter.architecture.NoPrometheusMvpPathTest --tests com.observation.starter.spring.observation.MicrometerHttpServerObservationBinderTest` 재통과.
+- `./gradlew test` 재통과.
+- 2026-05-18T17:57:10+0900: closure 확인 완료 후 Story 2.6 상태를 `done`으로 전환했다.
 
 ### Completion Notes
 
-TBD by dev-story.
+- guard 범위는 active starter `src/main/java`, `src/main/kotlin`, `src/main/groovy`, `src/main/scala`, `src/main/resources`, `build.gradle`로 제한했다. `planning-artifacts`, `archive`, `src/test`는 guard scan 대상에서 제외되어 과거 Prometheus 설명을 오탐하지 않는다.
+- starter에는 `application`, `port`, `adapter` package, MVC/web/Actuator/WebFlux endpoint, metrics scrape controller, Prometheus scrape/export/query dependency/resource/code, resource query UI asset, arbitrary query UI/query builder path가 없음을 테스트로 고정했다.
+- envelope candidate/model과 guarded producer model에는 free-form tag map, arbitrary custom metric map, raw timeseries array, raw path/query, p95/state/rule/priority field가 없음을 reflection test로 고정했다.
+- low-cardinality tag allowlist는 `application`, `environment`, `instance`, `method`, `normalizedRoute`로만 고정하고 tenant/user/session/trace/custom/metricName 계열 key를 허용하지 않는다.
+- low/high-cardinality `tenantId`, `customLabel`, `metricName`과 route-like high-cardinality `http.route`, `uri`, `path`, `http.url`은 Micrometer observation에 들어와도 starter ingest dimension이나 raw path candidate로 승격되지 않고 `GET UNKNOWN`으로 수렴함을 테스트했다. `HttpServerObservationInput` record에도 tag/label/custom/tenant/user/session/trace/metricName 계열 carrier가 없음을 별도 guard로 고정했다.
+- 이 story에서는 portal dashboard read model, p95/percentile, state, rule, endpoint priority 계산을 추가하지 않았다.
 
 ### File List
 
-TBD by dev-story.
+- `observability-spring-boot-starter/src/test/java/com/observation/starter/architecture/NoPrometheusMvpPathTest.java`
+- `observability-spring-boot-starter/src/test/java/com/observation/starter/spring/observation/MicrometerHttpServerObservationBinderTest.java`
+- `observability-spring-boot-starter/build.gradle`
+- `planning-artifacts/stories/2-6-negative-path-guard.md`
+- `implementation-artifacts/sprint-status.yaml`
+
+### Change Log
+
+- 2026-05-18: Story 2.6 negative MVP path guard tests를 추가하고 전체 Gradle 테스트 통과 후 review 상태로 전환했다.
+- 2026-05-18: Review findings에 따라 query UI resource guard, custom label carrier reflection guard, p95/read-model/priority regex guard를 보강했다.
+- 2026-05-18: Review findings 1-5에 따라 NoPrometheus/Micrometer guard coverage를 추가 보강했다.
+- 2026-05-18: Closure 확인 결과에 따라 Story 2.6을 done 상태로 전환했다.
 
 ## Status
 
-ready-for-dev
+done
