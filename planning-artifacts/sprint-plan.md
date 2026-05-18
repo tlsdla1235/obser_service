@@ -2,249 +2,209 @@
 artifactType: sprint-plan
 projectName: Spring Boot 운영 첫 화면 포털
 architectureStyle: Traditional MVC
-status: epic-2-ready-for-dev
-date: 2026-05-10
+status: epic-3-ready-for-dev
+date: 2026-05-18
 ---
 
-# Sprint Plan - Epic 2 Starter Direct Ingest Producer
+# Sprint Plan - Epic 3 Portal Ingest Acceptance
 
 ## 1. Sprint Planning 결과 요약
 
-이번 Sprint는 **Epic 2. Starter Direct Ingest Producer**를 개발 가능한 story 단위로 닫는다.
+이번 Sprint는 **Epic 3. Portal Ingest Acceptance**를 개발 가능한 story 단위로 준비한다.
 
-Sprint 목표는 사용자가 starter를 host Spring Boot app에 추가했을 때, host app request path를 portal 장애와 분리한 상태로 30초 UTC bucket을 비동기 전송할 수 있게 만드는 것이다.
+Sprint 목표는 Epic 2가 만든 `schemaVersion: 1.0` ingest envelope를 portal이 다시 검증하고, `accepted_metric_buckets`에 idempotent하게 저장하는 것이다.
 
 이번 계획의 기준은 active MVC 산출물이다.
 
 - active 구현 기준은 `planning-artifacts/`와 `implementation-artifacts/`다.
 - `archive/hexagonal-version/`의 Hexagonal 산출물은 구현 기준으로 사용하지 않는다.
-- `bmad-restart-context-pack/`는 제품 문제와 UX 의도 참고용이다.
 - 최종 아키텍처 선택은 **Traditional MVC + Service/Repository Layering** 하나다.
-- starter는 host app 안에 붙는 library/starter module이며 MVC web controller를 만들지 않는다.
-- starter에는 `domain`, `application`, `port`, `adapter` package 구조를 만들지 않는다.
+- portal source는 `com.observation.portal.domain.<feature>`의 feature-first MVC package를 따른다.
+- controller는 request/response 변환과 HTTP status mapping만 맡고 service에 위임한다.
+- service는 validation, orchestration, idempotency 판단을 담당한다.
+- repository는 PostgreSQL read/write와 unique constraint 처리만 담당한다.
 
-## 2. Epic 1 Closure 상태
+## 2. Epic 2 Closure 상태
 
-Epic 1의 portal foundation stories는 완료됐다.
+Epic 2는 완료됐다. `implementation-artifacts/sprint-status.yaml` 기준 `epic-2`, Story 2.1-2.6, `epic-2-retrospective`가 모두 `done`이다.
 
-| Story | 현재 상태 | Epic 2 영향 |
-|---|---|---|
-| 1.1 Starter Package Skeleton | review | `observability-spring-boot-starter` module/package skeleton이 구현되어 Epic 2 선행 조건을 충족한다. |
-| 1.2 Portal MVC Package Skeleton | done | portal module/build 기준이 준비됐다. |
-| 1.3 MVC Layer Guard Test | done | portal MVC 경계가 테스트로 고정됐다. |
-| 1.4 Portal Physical Schema Foundation | done | catalog schema foundation이 준비됐다. |
+Epic 3가 재사용할 Epic 2 산출물은 아래와 같다.
 
-Epic 1 전체 status는 Story 1.1이 `done`으로 승인될 때 닫는다. 다만 Epic 2 Sprint Planning은 Story 1.1의 review 산출물을 전제로 진행한다. Story 2.1은 starter bootstrap을 다시 포함하지 않는다.
+| Epic 2 산출물 | Epic 3 사용 방식 |
+|---|---|
+| Story 2.5 golden ingest envelope | portal validation success fixture로 재사용한다. |
+| `schemaVersion: 1.0` payload shape | `IngestAcceptanceService`의 유일한 MVP schema로 수용한다. |
+| deterministic `Idempotency-Key` 후보 | duplicate success와 conflict 판정 입력으로 사용한다. |
+| UTC 30초 bucket boundary | portal validation에서 다시 검증한다. |
+| normalized route-only endpoint | raw path/query/high-cardinality tag 유입을 portal에서도 거부한다. |
+| Story 2.6 negative guard | Prometheus/scrape/query UI와 read-model scope creep를 Epic 3에서도 금지한다. |
 
 ## 3. Sprint Goal
 
-Epic 2 Sprint Goal:
+Epic 3 Sprint Goal:
 
-> Starter가 Micrometer 기반 low-cardinality signal을 수집하고, UTC 30초 bucket으로 집계한 뒤, bounded queue와 background flush worker를 통해 ingest envelope를 전송할 수 있는 direct ingest producer 경로를 만든다. host app request path는 portal timeout/down 상황에서도 network timeout을 기다리지 않는다.
+> Portal이 `POST /api/ingest/v1/buckets` 입력을 project key, schema version, bucket boundary, metric taxonomy, idempotency key 기준으로 검증하고, 새 30초 bucket은 `accepted_metric_buckets`에 저장하며, 같은 payload 재전송은 duplicate success로, 같은 key의 다른 payload는 conflict로 응답한다.
 
 완료 판단은 아래 acceptance로 닫는다.
 
-- request path에서 portal network call이 발생하지 않는다.
-- portal timeout/down 또는 queue overflow가 host business request를 막지 않는다.
-- route/tag는 ingest envelope 작성 전에 low-cardinality 정책을 통과한다.
-- bucket boundary는 UTC 30초 기준으로 `time-buckets` contract와 일치한다.
-- payload는 `ingest-envelope`와 `metric-taxonomy` contract를 따른다.
-- Prometheus scrape, pull metric query, arbitrary query UI는 MVP 경로에 없다.
+- `X-OBS-Project-Key`는 raw key를 저장하지 않고 active project로 검증한다.
+- Story 2.5 golden envelope는 portal acceptance fixture로 성공한다.
+- invalid schema, bucket boundary, metric taxonomy, raw path/query/free tag/custom metric 후보는 거부된다.
+- `accepted_metric_buckets` migration, repository, Korean DB comments, uniqueness constraints가 구현된다.
+- 같은 project/idempotency key/payload hash 재전송은 중복 저장 없이 success로 응답한다.
+- 같은 project/idempotency key에 다른 payload hash는 `409 Conflict`로 응답한다.
+- Epic 3 완료 산출물은 accepted bucket 저장과 idempotent acceptance에 머문다.
 
 ## 4. 이번 Sprint에 포함할 범위
 
 포함:
 
-- Micrometer observation binding
-- route normalization and low-cardinality guard
-- 30초 UTC bucket rollup service
-- bounded queue, async flush worker, retry/backoff, drop policy
-- ingest envelope builder service
-- starter MVP negative path guard
-- starter module architecture guard 보강
-- request path non-blocking proof test
+- `ProjectKeyVerificationService`
+- project key repository lookup과 BCrypt hash verification
+- portal ingest request DTO/model
+- `IngestAcceptanceService` validation
+- Story 2.5 golden JSON을 재사용하는 portal validation fixture
+- `IngestController` status mapping
+- `V003__create_accepted_metric_buckets.sql`
+- `MetricBucketRepository`
+- application/application instance catalog get-or-create와 last-seen update
+- payload hash 저장
+- duplicate success와 idempotency conflict handling
+- controller-service-repository Spring context wiring test
+- Testcontainers 기반 migration/repository 검증
 
 ## 5. 이번 Sprint에서 제외할 범위
 
 제외:
 
-- starter module/package bootstrap 재구현
-- portal ingest controller 구현
-- portal ingest acceptance 저장 구현
-- project key verification service 구현
-- accepted bucket repository 구현
-- `accepted_metric_buckets` migration
-- ingest idempotency conflict 저장/검증 구현
-- `dashboard_snapshots` migration
-- dashboard read model snapshot 저장/조회
-- p95 histogram merge service
-- p99/tail latency judgment 또는 auxiliary evidence 노출
+- Epic 2 starter 구현 되돌리기 또는 재설계
+- starter durable outbox, Kafka, Redis, 별도 worker runtime
+- Prometheus install/scrape/export/query dependency나 query UI
+- pull metric backend, arbitrary query API, chart explorer
+- `dashboard_snapshots` migration/repository/read model
+- dashboard query API와 UI integration
 - lifecycle state service
+- p95/histogram merge service
 - insight rule service
 - endpoint priority read model
-- dashboard query API
-- operational event history service/API
-- dashboard snapshot history 또는 snapshot detail deep link
-- recent operational history UI
-- alert deep link 또는 snapshot deep link
-- dashboard UI integration
-- Prometheus pull metric path, scrape config, PromQL query, arbitrary query UI
+- operational event table/repository/API
+- p99/tail latency judgment
+- Post-MVP runtime aggregate schemaVersion 1.1, max/avg/sampleCount persistence
 - high-cardinality custom metric/tag ingestion
-- logs, traces, span search, large tenancy control plane
-- durable outbox, Kafka, Redis, 별도 worker runtime
 
-Portal ingest acceptance와 persistence는 Epic 3에서 닫는다. Dashboard read model, p95, state, rule, endpoint priority 계산은 Epic 4/5에서 닫는다. Operational event history, p99/tail latency judgment, dashboard snapshot history, alert/snapshot deep link는 Epic 5/6 착수 전 구현 기준으로만 문서화하며 Epic 2 범위가 아니다.
+`accepted_metric_buckets` persistence는 Epic 3 범위다. `dashboard_snapshots`와 dashboard read model은 Epic 5 범위다.
 
 ## 6. Story 범위와 권장 구현 순서
 
-권장 구현 순서는 아래와 같다.
+권장 구현 순서는 story 번호 순서를 유지한다.
 
-1. Story 2.1 - Micrometer Observation Binding
-2. Story 2.2 - Route Normalization and Low-Cardinality Guard
-3. Story 2.3 - Bucket Rollup Service
-4. Story 2.4 - Async Flush Worker
-5. Story 2.5 - Ingest Envelope Builder Service
-6. Story 2.6 - Negative Path Guard
+1. Story 3.1 - Project Key Verification Service
+2. Story 3.2 - Ingest Acceptance Service
+3. Story 3.3 - PostgreSQL Bucket Repository
+4. Story 3.4 - Duplicate Handling
 
 | Story | 파일 | 핵심 경계 | 선행 조건 |
 |---|---|---|---|
-| 2.1 | `planning-artifacts/stories/2-1-micrometer-observation-binding.md` | Micrometer/Spring signal을 starter 내부 observation input으로 변환한다. Starter bootstrap은 제외한다. | Story 1.1 review 산출물 |
-| 2.2 | `planning-artifacts/stories/2-2-route-normalization-and-low-cardinality-guard.md` | raw path와 high-cardinality tag를 차단하고 normalized route만 다음 단계로 넘긴다. | 2.1 |
-| 2.3 | `planning-artifacts/stories/2-3-bucket-rollup-service.md` | app summary와 endpoint histogram bucket을 UTC 30초 boundary로 집계한다. | 2.2 |
-| 2.4 | `planning-artifacts/stories/2-4-async-flush-worker.md` | bounded queue와 background worker로 request path와 portal network call을 분리한다. | 2.3 |
-| 2.5 | `planning-artifacts/stories/2-5-ingest-envelope-builder-service.md` | `ingest-envelope` contract payload와 idempotency header를 만든다. | 2.2, 2.3, 2.4 |
-| 2.6 | `planning-artifacts/stories/2-6-negative-path-guard.md` | Prometheus/scrape/query UI/high-cardinality MVP 역행 경로가 없음을 테스트한다. | 2.1-2.5 |
+| 3.1 | `planning-artifacts/stories/3-1-project-key-verification-service.md` | `X-OBS-Project-Key`를 active project로 검증한다. Raw key는 저장/반환/로그하지 않는다. | Epic 1 catalog schema, Epic 2 closure |
+| 3.2 | `planning-artifacts/stories/3-2-ingest-acceptance-service.md` | Story 2.5 golden envelope를 포함해 schema, bucket, metric taxonomy, idempotency key를 portal service에서 mirror validation한다. | 3.1 |
+| 3.3 | `planning-artifacts/stories/3-3-postgresql-bucket-repository.md` | `accepted_metric_buckets` migration과 repository를 추가하고 validated bucket을 저장한다. | 3.1, 3.2 |
+| 3.4 | `planning-artifacts/stories/3-4-duplicate-handling.md` | 같은 payload duplicate success와 같은 key/different payload conflict를 HTTP contract로 닫는다. | 3.1, 3.2, 3.3 |
 
 ## 7. Story Split 결정
 
-### 7.1 Micrometer Observation Binding
+### 7.1 Project Key Verification Service
 
-Story 2.1은 binding 자체만 담당한다.
+Story 3.1은 ingest 권한 경계만 담당한다.
 
-- `observability-spring-boot-starter` module은 Story 1.1 결과를 사용한다.
-- package bootstrap, Gradle skeleton, smoke test 재작업은 scope 밖이다.
-- Spring/Micrometer 객체는 `spring` package 경계에서 starter model/service input으로 변환한다.
-- request path에서 portal HTTP client, queue flush, envelope serialization을 호출하지 않는다.
+- `X-OBS-Project-Key` header가 없거나 비어 있으면 검증 실패다.
+- raw key에서 `key_prefix` 후보를 찾아 `projects` row를 조회한다.
+- `project_key_hash`는 BCrypt 검증만 수행하고 raw key를 저장하지 않는다.
+- `status = active` project만 성공한다.
+- public onboarding API, application catalog 생성, bucket persistence는 포함하지 않는다.
 
-### 7.2 Route Normalization and Low-Cardinality Guard
+### 7.2 Ingest Acceptance Service
 
-Story 2.2는 ingest envelope보다 먼저 low-cardinality 정책을 고정한다.
+Story 3.2는 portal-side mirror validation을 담당한다.
 
-- 허용 tag는 `application`, `environment`, `instance`, `method`, `normalized route`로 제한한다.
-- raw path parameter, query string, user id, tenant id, session id, trace id, arbitrary label은 payload 후보에 남기지 않는다.
-- framework route pattern 또는 `http.route`를 항상 최우선으로 사용한다.
-- framework route가 없을 때만 raw path candidate를 query 폐기 후 configured allowlist matcher의 일시 입력으로 사용한다.
-- allowlist에 정확히 하나의 template이 매칭될 때만 해당 template을 normalized route로 사용하고, miss/ambiguous/invalid/absolute URL/decoding failure는 `UNKNOWN`으로 수렴한다.
+- request DTO/model은 `ingest-envelope.md`의 `schemaVersion: 1.0` shape만 허용한다.
+- Story 2.5 golden JSON은 success fixture로 사용한다.
+- `bucket.durationSeconds = 30`, UTC 30초 boundary, `[startUtc, endUtc)` semantics를 검증한다.
+- app/endpoint count, cumulative histogram monotonicity, latest runtime ratio range를 검증한다.
+- endpoint route는 normalized route 또는 `UNKNOWN`이어야 하며 query string, absolute URL, raw identifier 후보를 거부한다.
+- DTO는 free tag map, arbitrary custom metric map, raw timeseries array, Post-MVP aggregate field를 허용하지 않는다.
+- persistence success path는 Story 3.3에서 연결한다.
 
-### 7.3 Bucket Rollup Service
+### 7.3 PostgreSQL Bucket Repository
 
-Story 2.3은 local rollup만 담당한다.
+Story 3.3은 validated bucket의 persistence를 담당한다.
 
-- bucket duration은 30초다.
-- start/end는 UTC 30초 boundary에 맞춘다.
-- app summary와 endpoint histogram bucket은 normalized route 기준으로만 집계한다.
-- portal network call과 ingest envelope serialization은 하지 않는다.
+- `V003__create_accepted_metric_buckets.sql`을 추가한다.
+- table/column Korean comments를 포함한다.
+- `uk_buckets_project_idempotency_key`와 `uk_buckets_instance_bucket_start`를 포함한다.
+- application/application instance catalog를 get-or-create하고 last-seen을 갱신한다.
+- payload hash, bucket boundary, app summary, endpoint JSON, latest runtime ratios를 저장한다.
+- p95, state, insight rule, endpoint priority, dashboard snapshot은 계산/저장하지 않는다.
 
-### 7.4 Async Flush Worker
+### 7.4 Duplicate Handling
 
-Story 2.4는 non-blocking acceptance의 핵심 story다.
+Story 3.4는 idempotent acceptance contract를 닫는다.
 
-- request path는 bounded queue enqueue 또는 local record만 수행한다.
-- HTTP timeout, retry, backoff는 background worker에서만 실행한다.
-- queue overflow는 configured drop policy로 처리하고 host business flow를 계속 진행한다.
-- durable outbox/Kafka/별도 runtime은 만들지 않는다.
+- 새 bucket은 `201 Created`, `duplicate: false`다.
+- 같은 project/idempotency key와 같은 payload hash는 중복 저장 없이 `200 OK`, `duplicate: true`다.
+- 같은 project/idempotency key와 다른 payload hash는 `409 Conflict`다.
+- unique constraint race는 insert 실패 후 재조회하여 duplicate/conflict로 안정적으로 수렴한다.
+- same instance/bucket start collision은 deterministic idempotency key 계약 위반으로 보고 conflict 계열로 처리한다.
 
-### 7.5 Ingest Envelope Builder Service
+## 8. Epic 2 Retrospective Action 반영
 
-Story 2.5는 starter-side payload contract를 닫는다.
-
-- `schemaVersion`은 `1.0`이다.
-- `bucket.durationSeconds`는 `30`이다.
-- endpoint route는 normalized route만 허용한다.
-- free tag map, arbitrary custom metric map, raw timeseries array는 만들지 않는다.
-- `Idempotency-Key` 후보를 만든다.
-- portal 저장, 중복 판정, conflict 응답은 Epic 3 scope다.
-
-### 7.6 Negative Path Guard
-
-Story 2.6은 MVP 경로 역행을 테스트로 막는다.
-
-- starter에 web controller를 만들지 않는다.
-- Prometheus registry/scrape/export/query UI dependency나 resource를 MVP 경로에 추가하지 않는다.
-- `application`, `port`, `adapter` package를 만들지 않는다.
-- arbitrary metric query나 high-cardinality custom tag ingestion 경로를 만들지 않는다.
-
-## 8. Non-Blocking 증명 테스트
-
-Epic 2의 핵심 acceptance는 Story 2.4에서 아래 테스트로 증명한다.
-
-| Test | 증명할 내용 |
+| 회고 Action | Sprint Planning 반영 |
 |---|---|
-| `StarterNonBlockingIngestTest` | fake portal client가 timeout/down 상태여도 request path 호출이 network timeout을 기다리지 않는다. |
-| `BoundedMetricQueueOverflowTest` | queue full 상태에서 drop policy가 적용되고 host request path가 예외/대기 없이 반환된다. |
-| `MetricBucketFlushWorkerTest` | retry/backoff는 background worker thread에서만 실행된다. |
-| starter architecture guard | request path integration component가 `client.http` 구현을 직접 호출하지 않는다. |
+| Epic 3 story가 schemaVersion 1.0, bucket boundary, metric taxonomy, idempotency, duplicate/conflict를 나누는지 확인 | Story 3.1-3.4로 각각 인증, validation, persistence, duplicate/idempotency를 분리했다. |
+| portal validation이 starter contract를 mirror하도록 service boundary 고정 | Story 3.2에서 Story 2.5 golden fixture와 `ingest-envelope`, `metric-taxonomy`, `time-buckets` validation을 명시했다. |
+| Story 2.5 golden payload를 portal acceptance fixture로 재사용 | Story 3.2 Test Requirements와 Sprint Goal에 success fixture로 고정했다. |
+| Docker/Testcontainers 전제와 환경 실패 판별 기준을 handoff에 추가 | Story 3.3 Test Requirements에 Testcontainers 전제와 fallback 검증 명령 기록을 포함했다. |
+| dashboard snapshot/read model, p95/state/rule/endpoint priority 계산을 Epic 3에 넣지 않음 | Sprint scope exclusions와 각 story guardrail에 명시했다. |
 
-테스트는 wall-clock 임계값에만 의존하지 않는다. fake client의 blocking delay보다 request path 반환이 먼저 일어나는지, HTTP client 호출 thread가 request thread와 분리되는지, enqueue overflow가 host flow에 전파되지 않는지를 함께 확인한다.
+## 9. Test Strategy
 
-## 9. Low-Cardinality Guard Acceptance
+| Test | Story | 증명할 내용 |
+|---|---|---|
+| `ProjectKeyVerificationServiceTest` | 3.1 | missing/invalid/disabled/active project key 검증과 raw key 비노출 |
+| `IngestAcceptanceServiceTest` | 3.2 | schemaVersion 1.0, bucket boundary, metric taxonomy, idempotency key validation |
+| `PortalIngestValidationFixtureTest` | 3.2 | Story 2.5 golden JSON success와 invalid schema/bucket/route reject |
+| `MetricBucketRepositoryIntegrationTest` | 3.3 | V003 migration, Korean comments, constraints, repository insert/read |
+| `IngestControllerStatusMappingTest` | 3.3, 3.4 | 201/200/400/401/409/500 mapping |
+| `DuplicateIngestAcceptanceTest` | 3.4 | same key/hash duplicate success, same key/different hash conflict, race convergence |
+| `MvcLayerBoundaryTest` | 3.1-3.4 | controller-service-repository dependency 방향 유지 |
 
-Story 2.2와 Story 2.5는 아래 acceptance를 공유한다.
+권장 실행 명령:
 
-- `route`는 normalized route만 가능하다.
-- `http.route` 또는 framework route template이 있으면 raw path candidate보다 항상 우선한다.
-- raw path candidate는 `http.route` 부재 시 allowlist matching의 일시 입력으로만 사용한다.
-- raw path parameter 값과 query key/value는 payload 후보에 남지 않는다.
-- query string은 matcher 입력 전에 폐기되며 route/tag/key/payload/log/read model에 포함되지 않는다.
-- `userId`, `tenantId`, `sessionId`, `traceId`, arbitrary label은 starter payload 후보에서 제거되거나 거부된다.
-- endpoint key는 `method + normalized route`만 사용한다.
-- allowlist match는 정확히 하나일 때만 성공하고, 그 외에는 `UNKNOWN`으로 수렴한다.
-- envelope builder는 low-cardinality guard를 통과하지 않은 endpoint를 직렬화하지 않는다.
+- `./gradlew :observability-portal:test --tests com.observation.portal.domain.ingest.service.ProjectKeyVerificationServiceTest`
+- `./gradlew :observability-portal:test --tests com.observation.portal.domain.ingest.service.IngestAcceptanceServiceTest`
+- `./gradlew :observability-portal:test --tests com.observation.portal.domain.metric.repository.MetricBucketRepositoryIntegrationTest`
+- `./gradlew :observability-portal:test`
+- `./gradlew test`
 
-## 10. Epic 3/4/5 Handoff Boundary
+Testcontainers 기반 repository test가 Docker socket 부재로 실패하면 코드 실패와 환경 실패를 구분해 story Debug Log에 남긴다. 이 경우 migration SQL static 검증과 service/controller unit test를 fallback evidence로 남기되, repository integration test는 Docker 가능 환경에서 재실행해야 한다.
 
-Epic 3으로 넘기는 것:
-
-- `POST /api/ingest/v1/buckets` portal controller
-- `X-OBS-Project-Key` verification
-- `IngestAcceptanceService`
-- `accepted_metric_buckets` migration and repository
-- payload hash 저장
-- duplicate success와 idempotency conflict handling
-
-Epic 4/5로 넘기는 것:
-
-- current/baseline window service
-- freshness, stale, down, degraded state 판단
-- histogram merge 기반 p95 계산
-- insight rule ranking
-- endpoint priority read model
-- dashboard snapshot 저장/조회
-- dashboard query API
-- UI read model 표시
-- operational event history read model/API 후보
-- snapshot detail deep link 후보
-- p99/tail latency auxiliary evidence 정책
-
-Epic 2는 starter producer까지만 닫는다.
-
-## 11. Sprint Status 기대값
+## 10. Sprint Status 기대값
 
 이 Sprint Planning 완료 후 기대 status:
 
-- `epic-2`: `in-progress`
-- `2-1`부터 `2-6`: story file 생성으로 `ready-for-dev`
-- `epic-2-retrospective`: `optional`
+- `epic-3`: `in-progress`
+- `3-1`부터 `3-4`: story file 생성으로 `ready-for-dev`
+- `epic-3-retrospective`: `optional`
 
-Story 2.1이 첫 구현 대상이다.
+Story 3.1이 첫 구현 대상이다.
 
-## 12. 다음 단계
+## 11. 다음 단계
 
-다음 dev context에서는 **Story 2.1 - Micrometer Observation Binding**부터 구현한다.
+다음 dev context에서는 **Story 3.1 - Project Key Verification Service**부터 구현한다.
 
 첫 story에서 다시 확인할 사항:
 
-- Story 1.1 starter skeleton이 review 상태이며 module/package skeleton은 이미 존재한다.
-- Story 2.1은 starter bootstrap을 다시 포함하지 않는다.
-- Micrometer binding은 route normalization, bucket rollup, queue, HTTP client, envelope builder를 구현하지 않는다.
-- request path network call 금지 전제를 Story 2.1부터 유지한다.
+- Epic 2 starter producer path는 완료됐으며 되돌리거나 재설계하지 않는다.
+- Project key verification은 raw key를 저장/반환/로그하지 않는다.
+- public onboarding/product API는 열지 않는다.
+- Application catalog 생성과 accepted bucket persistence는 Story 3.3에서 연결한다.
+- dashboard snapshot/read model과 p95/state/rule/endpoint priority 계산은 Epic 3 범위가 아니다.
