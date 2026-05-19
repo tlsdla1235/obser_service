@@ -106,3 +106,31 @@ Story 1.4:
 - Story 1.2 acceptance criteria는 Gradle Groovy DSL, `observability-portal`, `com.observation.portal`, `package-info.java`, smoke test 범위를 바로 개발 가능한 수준으로 닫고 있다.
 - `archive/hexagonal-version/`은 legacy/historical reference로만 언급되며 active 구현 기준으로 참조되는 곳은 없다.
 - 다음 단계는 Story 1.2 `bmad-dev-story`다.
+
+## 8. Account Auth 정책 정렬 기록
+
+재점검 일시: 2026-05-19
+
+### 판정
+
+**Policy aligned, implementation pending.**
+
+MVP account signup/login 기준은 GitHub OAuth only로 고정한다. 이 결정은 starter ingest의 `X-OBS-Project-Key` 검증과 별개이며, Epic 3 project key story가 사용자 계정 인증을 구현하거나 확장하지 않는다.
+
+### 적용 기준
+
+- 신규 account 생성은 GitHub OAuth 성공 후에만 허용한다.
+- GitHub user id 또는 provider subject를 external identity stable key로 사용한다.
+- Login도 MVP에서는 GitHub OAuth로 생성되었거나 연결된 account에만 허용한다.
+- Cookie 기반 server session은 MVP 인증 기준이 아니다.
+- API 인증은 `Authorization: Bearer <access_token>` header, 짧은 만료 JWT access token, rotation/revoke/reuse detection을 갖춘 refresh token 기준으로 둔다.
+- Redis는 token store 필수 인프라로 잠그지 않는다. 초기 후보는 RDBMS hashed refresh token 또는 token family metadata다.
+- Email/password, local account registration, password reset, email verification required for signup, magic link, Google/Kakao/Naver OAuth, anonymous flow는 MVP 범위 밖이다.
+
+### 남은 승인 차단
+
+| Priority | Finding | 필요 결정 |
+|---|---|---|
+| P1 | Bearer AT/RT를 cookie server session 없이 client에 전달해야 하지만, 일반 API response/log/error에는 token을 노출하지 않는 정책도 함께 요구된다. | Token issuance/refresh response의 예외 범위와 client 저장/전달 방식을 구현 story 전에 승인해야 한다. |
+| P1 | Account/auth physical schema는 아직 구현 story로 분리되어 있지 않다. | `users/accounts`, `external_identities`, `refresh_token_families` 또는 동등한 token store schema를 별도 story로 만들어야 한다. |
+| P2 | GitHub OAuth token 저장 여부는 GitHub API 호출 필요성에 따라 달라진다. | MVP에서 GitHub API 호출이 필요한지 결정하고, 필요하면 암호화/최소 scope/회전/폐기 기준을 닫아야 한다. |

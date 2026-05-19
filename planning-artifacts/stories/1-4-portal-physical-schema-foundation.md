@@ -56,6 +56,7 @@ date: 2026-05-10
 - UUID는 application-generated UUID로 만든다. PostgreSQL `pgcrypto` extension을 요구하지 않는다.
 - project key 검증은 `key_prefix`로 project 후보를 조회한 뒤 `project_key_hash`에 저장된 BCrypt hash로 검증하는 경계로 둔다.
 - raw project key는 DB에 저장하지 않는다.
+- 사용자 account/signup schema는 이 story에 포함하지 않는다. 이후 account auth story에서 추가할 경우 GitHub OAuth only와 provider subject stable key 기준을 따른다.
 - migration naming은 `V001__create_projects.sql`, `V002__create_applications_and_instances.sql`를 따른다.
 - table과 column에는 모두 한국어 `COMMENT ON`을 추가한다.
 - catalog repository package는 `com.observation.portal.domain.catalog.repository` 아래에 둔다.
@@ -105,6 +106,7 @@ date: 2026-05-10
 - catalog schema 안에 endpoint metric, bucket payload, dashboard read model을 섞지 않는다.
 - public project onboarding API를 이 story에 포함하지 않는다.
 - project seed는 local/demo story에서 다룬다.
+- local password, password reset, email verification, magic link, GitHub 외 OAuth provider, anonymous user 관련 table은 MVP foundation schema에 만들지 않는다.
 - controller에서 repository를 직접 호출하는 shortcut을 만들지 않는다.
 
 ## Tasks/Subtasks

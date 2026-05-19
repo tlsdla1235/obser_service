@@ -31,12 +31,15 @@ Redis는 필수 결정으로 잠그지 않고, 필요에 따라 도입하는 선
 - ingest 후 snapshot refresh 작업 분리
 - dashboard read model refresh scheduling 보조
 - 짧은 TTL 기반 캐시 또는 coordination
+- account auth의 고성능 revoke list, distributed token state, refresh token reuse detection 최적화
 
 환경별 전제:
 
 - 로컬 개발 환경에서는 Redis가 필요해질 경우 Docker로 실행한다.
 - 배포 환경에서도 Redis를 붙인다면 우선 Docker로 실행하는 방향을 고려한다.
 - Redis를 도입하지 않아도 MVP ingest/read path가 닫힐 수 있는지 먼저 검토한다.
+
+Account/auth token store는 Redis 도입을 전제로 잠그지 않는다. 초기 구현 후보는 PostgreSQL/RDBMS에 hashed refresh token 또는 token family metadata를 저장하는 방식이다. Redis는 logout/revoke/reuse detection 요구가 고성능 distributed state를 필요로 할 때 후속 선택지로 검토한다.
 
 ## 3. Reverse Proxy And Web Server
 
@@ -81,8 +84,9 @@ MVP에서는 WebSocket을 필수 구성으로 보지 않는다. dashboard first-
 
 - Redis 없이 PostgreSQL + in-process service 작업만으로 MVP 비동기 처리가 충분한가?
 - Redis를 쓴다면 queue source of truth를 Redis로 둘지, PostgreSQL outbox와 조합할지?
+- Account auth refresh token store를 RDBMS hashed token/token family metadata로 시작해도 rotation, revoke, reuse detection을 충분히 닫을 수 있는가?
+- Redis가 필요해지는 account auth 조건은 revoke list 규모, multi-node token state, reuse detection latency 중 무엇인가?
 - ingest accept와 snapshot refresh를 동기 transaction 안에서 처리할지, 비동기 job으로 분리할지?
 - dashboard 업데이트는 polling 또는 Server-Sent Events 중 무엇으로 갈지? MVP에서는 polling을 우선 검토한다.
 - Nginx 뒤에서 portal HTTP API와 static asset path를 어떻게 나눌지?
 - 로컬 Docker compose와 배포 환경 설정을 얼마나 동일하게 유지할지?
-

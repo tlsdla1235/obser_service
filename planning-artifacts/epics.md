@@ -117,15 +117,20 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
 
 ### Stories
 
-1. Minimal onboarding guide
+1. GitHub OAuth account signup/login
+   - account signup과 login은 GitHub OAuth only로 구현한다.
+   - GitHub OAuth 성공 후 내부 user/account row를 생성하거나 기존 GitHub identity와 연결한다.
+   - API 인증은 cookie 기반 server session이 아니라 Bearer access token/JWT와 refresh token rotation 기준을 따른다.
+   - email/password, magic link, GitHub 외 provider, anonymous flow는 MVP에 포함하지 않는다.
+2. Minimal onboarding guide
    - dependency 추가, portal base URL, project key, environment 설정만 설명한다.
-2. Demo app green path
+3. Demo app green path
    - starter 추가 후 first bucket 수신과 app alive 표시를 검증한다.
-3. Failure path demo
+4. Failure path demo
    - portal down, duplicate ingest, stale/down 상태를 시연한다.
-4. Dashboard UI integration
+5. Dashboard UI integration
    - UI는 read model을 표시하고 별도 state/rule 판단을 하지 않는다.
-5. Recent operational history UI와 snapshot deep link 후보
+6. Recent operational history UI와 snapshot deep link 후보
    - UI는 bounded event 목록과 snapshot detail link를 표시한다.
    - UI는 state/rule/p95/p99/endpoint priority를 재계산하지 않는다.
    - raw snapshot explorer, arbitrary time-series query UI, alert delivery log 병합은 non-goal이다.
@@ -184,6 +189,11 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
 - endpoint priority는 rank, reason, evidence, confidence, freshness를 포함한다.
 - Operational Event History는 Epic 5/6에서 dashboard snapshot/read model 기반 bounded surface로 다루며 Epic 2/3에는 포함하지 않는다.
 - MVP에서는 별도 `operational_events` table을 만들지 않는다.
+- Account signup과 login은 GitHub OAuth only다.
+- MVP는 cookie 기반 server session을 사용하지 않고, API 요청은 `Authorization: Bearer <access_token>` 기준으로 인증한다.
+- Refresh Token은 rotation, 만료, revoke, reuse detection을 갖춘 token store 기준을 따른다.
+- Local password, password reset, email verification required for signup, magic link, Google/Kakao/Naver OAuth, anonymous flow는 MVP 범위 밖이다.
+- Controller/API response, log, error에는 GitHub OAuth token, provider raw payload, secret을 노출하지 않는다. 일반 resource API response/log/error에는 access token, refresh token도 노출하지 않는다.
 
 ## AC Traceability Matrix
 
@@ -198,4 +208,6 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
 | 0-insight is explicit | Epic 5 | `read-model-contract.md` | `TriageSummaryService` | `ZeroInsightReadModelTest` |
 | Endpoint priority is explainable | Epic 5 | `insight-rules.md`, `read-model-contract.md` | `EndpointPriorityService` | `EndpointPriorityReadModelTest` |
 | Bounded operational event history | Epic 5, 6 | `operational-event-history.md`, `read-model-contract.md` | `OperationalEventHistoryService` candidate + `DashboardSnapshotRepository` | `OperationalEventHistoryReadModelTest` |
+| GitHub OAuth only account signup/login | Epic 6 | `account-auth-policy.md`, `api-surface.md` | `AccountAuthService`, `AccountAuthController` | `AccountAuthPolicyTest` |
+| Bearer JWT/refresh token session policy | Epic 6 | `account-auth-policy.md`, `architecture.md` | `ServiceTokenService`, `RefreshTokenStore` | `ServiceTokenPolicyTest` |
 | Demo promise | Epic 6 | `read-model-contract.md` | starter + portal e2e | `FirstBucketToAliveE2ETest` |

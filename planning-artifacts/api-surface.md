@@ -14,6 +14,7 @@ MVP API surface는 first-screen delivery에 필요한 것만 둔다.
 
 필수 API:
 
+- portal 사용자 account signup/login API: GitHub OAuth only
 - starter -> portal direct ingest API
 - dashboard UI -> portal read model query API
 
@@ -22,6 +23,7 @@ Bootstrap surface:
 - project key와 application metadata를 만들 수 있는 경로는 필요하다.
 - 다만 MVP 제품 surface로 public onboarding API를 열 필요는 없다.
 - 권장 시작점은 local/dev seed 또는 internal admin API다.
+- 사용자 계정 생성은 public project creation API와 별개이며, MVP에서는 GitHub OAuth 성공을 통해서만 내부 account를 만들거나 연결한다.
 
 MVC 기준에서 controller는 모두 `controller` package에 속한다. Controller는 request/response 변환과 HTTP status mapping만 수행하고 service에 위임한다.
 
@@ -376,3 +378,44 @@ GET /dashboard/*
 ```
 
 Static asset serving은 state/rule 판단을 하지 않는다. dashboard 화면은 API read model을 그대로 표시한다.
+
+## 7. Product Account Auth Surface
+
+이 surface는 portal 사용자 account signup/login 기준이다. Starter ingest의 `X-OBS-Project-Key` 인증과 섞지 않는다.
+
+### 7.1 Policy
+
+- Account signup은 GitHub OAuth only다.
+- Login도 MVP에서는 GitHub OAuth로 생성되었거나 연결된 account에만 허용한다.
+- GitHub OAuth 성공 후 내부 `user/account` row를 생성하거나 기존 GitHub identity와 연결한다.
+- GitHub user id 또는 provider subject를 외부 identity의 stable key로 사용한다.
+- email/password signup, local account registration, local password, password reset, email verification required for signup, magic link, multiple OAuth providers, Google/Kakao/Naver OAuth, anonymous user flow는 MVP에서 지원하지 않는다.
+
+### 7.2 Candidate Endpoints
+
+```http
+GET /api/auth/github/authorize
+GET /api/auth/github/callback?code=<code>&state=<state>
+POST /api/auth/token/refresh
+Authorization: Bearer <refresh-token>
+POST /api/auth/logout
+Authorization: Bearer <access-token>
+```
+
+`/authorize`는 GitHub OAuth 시작점이고, `/callback`은 GitHub OAuth 성공 결과를 내부 account와 연결하는 boundary다. OAuth 실패나 취소는 계정을 생성하지 않는다.
+
+`/token/refresh`는 Refresh Token을 Bearer token으로 받아 rotation, 만료, revoke, reuse detection을 적용한다. Refresh Token 저장소는 `token store` 추상으로 두며, 초기 구현 후보는 RDBMS에 hashed refresh token 또는 token family metadata를 저장하는 방식이다. Redis는 고성능 revoke list, distributed token state, reuse detection 최적화가 필요해질 때 후속 선택지로 둔다.
+
+### 7.3 Response / Log Boundary
+
+- MVP 인증은 cookie 기반 server session을 사용하지 않는다.
+- API 요청 인증은 `Authorization: Bearer <access_token>` header를 사용한다.
+- Access Token은 stateless하게 검증 가능한 짧은 만료 JWT다.
+- GitHub OAuth token과 우리 서비스 access token/refresh token을 구분한다.
+- MVP에서 GitHub API 호출이 필요 없다면 GitHub OAuth token을 저장하지 않는다.
+- Controller/API response, log, error에는 GitHub OAuth token, provider raw payload, secret을 노출하지 않는다.
+- 일반 resource API response, log, error에는 access token, refresh token도 노출하지 않는다.
+- Token issuance/refresh response에서 우리 서비스 access token/refresh token을 어떤 channel로 전달할지는 구현 story에서 별도 승인 기준으로 닫는다.
+- Signup/login 실패 메시지는 provider 내부 오류, raw payload, token 상태를 과도하게 드러내지 않는 일반화된 메시지로 둔다.
+
+상세 acceptance는 `planning-artifacts/contracts/account-auth-policy.md`를 따른다.

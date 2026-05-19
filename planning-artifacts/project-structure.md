@@ -80,6 +80,15 @@ observability-portal/
       package-info.java
       catalog/
         package-info.java
+        entity/package-info.java
+        model/package-info.java
+        repository/package-info.java
+        service/package-info.java
+      account/
+        package-info.java
+        controller/package-info.java
+        dto/package-info.java
+        entity/package-info.java
         model/package-info.java
         repository/package-info.java
         service/package-info.java
@@ -99,6 +108,7 @@ observability-portal/
         dto/package-info.java
       metric/
         package-info.java
+        entity/package-info.java
         model/package-info.java
         repository/package-info.java
         service/package-info.java
@@ -115,9 +125,11 @@ observability-portal/
         service/package-info.java
       snapshot/
         package-info.java
+        entity/package-info.java
         repository/package-info.java
       bucket/
         package-info.java
+        entity/package-info.java
         repository/package-info.java
     security/package-info.java
     scheduler/package-info.java
@@ -136,6 +148,10 @@ observability-portal/
 ```
 
 `package-info.java`는 빈 package가 Git/build 결과에서 사라지지 않도록 두는 marker다. Story 1.2에서 실제 controller, service, repository 구현 class를 만들지 않는다.
+
+JPA entity와 Spring Data repository marker는 feature-first package 안에서 실제 구현 story가 필요한 feature에만 추가한다. `domain.<feature>.repository.entity`나 `domain.<feature>.repository.jpa` 하위 package를 필수 구조로 요구하지 않는다.
+
+`domain.account`는 GitHub OAuth only 계정 생성/로그인 story가 열릴 때 추가할 feature package다. Story 1.2 skeleton 또는 Epic 3 ingest acceptance 구현에서 미리 만들 필요는 없다.
 
 `PortalApplication.java`는 Spring Boot portal runtime entrypoint가 필요할 때만 허용되는 최소 class다. API endpoint나 persistence behavior를 포함하지 않는다.
 
@@ -180,6 +196,14 @@ com.observation.portal
     time
   domain
     catalog
+      entity
+      model
+      repository
+      service
+    account
+      controller
+      dto
+      entity
       model
       repository
       service
@@ -195,6 +219,7 @@ com.observation.portal
       controller
       dto
     metric
+      entity
       model
       repository
       service
@@ -207,8 +232,10 @@ com.observation.portal
     cleanup
       service
     snapshot
+      entity
       repository
     bucket
+      entity
       repository
   security
   scheduler
@@ -230,13 +257,14 @@ com.observation.portal
 | Feature 하위 package | 책임 | 금지 |
 |---|---|---|
 | `domain.<feature>.controller` | HTTP request/response, validation error mapping, status mapping, service 호출 | repository 직접 참조, state/rule/p95/endpoint priority 계산 |
-| `domain.<feature>.service` | use case orchestration, validation orchestration, lifecycle state, insight rule, p95, endpoint priority, read model 생성 | HTTP status 결정, SQL 최적화 세부 구현, controller/dto package 의존 |
-| `domain.<feature>.repository` | PostgreSQL 저장/조회, constraint 활용, window bucket 조회, snapshot 저장/조회 | controller/dto 참조, state/rule/p95/endpoint priority 계산 |
+| `domain.<feature>.service` | use case orchestration, validation orchestration, lifecycle state, insight rule, p95, endpoint priority, read model 생성. 필요 시 Spring Data repository/JPA entity 직접 사용 | HTTP status 결정, controller/dto package 의존, JPA entity를 external return model로 노출 |
+| `domain.<feature>.repository` | Spring Data JPA/Jakarta Persistence + Hibernate 기반 PostgreSQL 저장/조회, constraint 활용, window bucket 조회, snapshot 저장/조회 | controller/dto 참조, state/rule/p95/endpoint priority 계산 |
+| `domain.<feature>.entity` 또는 feature 내부 persistence package | Flyway schema에 mapping되는 JPA entity | controller response DTO, public API surface, service result/external return model |
 | `domain.<feature>.model` | project/application/bucket/state/triage/read model 제품 언어 | Spring MVC request/response 타입 보관, persistence framework 세부 타입 노출 |
 | `domain.<feature>.dto` | controller boundary의 external API shape | repository 전달 객체, service 내부 source of truth |
 | `common.time` | 여러 feature에서 공유할 수 있는 시간/UTC bucket 보조 개념 | business feature별 판단 로직 보관 |
 | `config` | Spring bean wiring, properties, transaction/migration/test configuration | layer 우회 wiring, controller가 repository를 직접 호출하도록 노출 |
-| `security` | project key hash 검증 보조 component | product onboarding/control plane 확대 |
+| `security` | project key hash 검증 보조 component, service token 검증/서명 보조 | GitHub OAuth provider token/raw payload/secret 노출, cookie server session 강제 |
 | `scheduler` | cleanup 또는 optional refresh trigger | business semantics 직접 계산 |
 
 DTO 원칙:
@@ -244,6 +272,25 @@ DTO 원칙:
 - request/response DTO는 controller boundary shape다.
 - service는 command/query/model을 사용한다.
 - repository는 DTO를 참조하지 않는다.
+
+JPA persistence 원칙:
+
+- observability-portal repository 구현 표준은 Spring Data JPA/Jakarta Persistence + Hibernate다.
+- Flyway SQL migration이 schema source of truth다.
+- Hibernate DDL auto 생성/갱신은 사용하지 않는다.
+- Service는 빠른 MVC 구현을 위해 필요하면 Spring Data repository와 JPA entity를 직접 사용할 수 있다.
+- JPA entity와 Spring Data repository는 feature-first package 안에서 실제 코드 기준에 맞춰 둔다.
+- JPA entity는 controller response DTO, public API surface, service result/external return model로 노출하지 않는다.
+- raw project key 같은 secret은 DB row, migration, log, exception, response body, repository lookup surface에 남기지 않는다.
+
+Account/Auth package 원칙:
+
+- account signup/login 구현은 `domain.account` feature package 아래의 controller/dto/model/repository/service로 둔다.
+- Account signup과 login은 GitHub OAuth only다.
+- Local password, password reset, email verification required for signup, magic link, Google/Kakao/Naver OAuth, anonymous flow는 MVP package/API surface를 만들지 않는다.
+- OAuth provider identity는 provider=`github`와 GitHub user id/provider subject를 stable key로 저장한다.
+- GitHub OAuth token은 필요한 경우에만 저장하고, 저장한다면 암호화/최소 scope/회전/폐기 기준을 함께 둔다.
+- 우리 서비스 API 인증은 cookie 기반 server session이 아니라 Bearer access token/JWT와 refresh token rotation 기준을 따른다.
 
 ## 7. Test Package 구조
 
@@ -273,6 +320,8 @@ Flyway migration 위치:
 ```text
 observability-portal/src/main/resources/db/migration/
 ```
+
+Flyway migration은 PostgreSQL physical schema의 source of truth다. Hibernate DDL auto create/update로 schema를 생성하거나 갱신하지 않는다.
 
 Story 1.4에서 시작할 migration:
 

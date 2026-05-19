@@ -35,6 +35,8 @@ MVP에서는 별도 `operational_events` 테이블을 만들지 않는다. Opera
 
 endpoint별 데이터는 `accepted_metric_buckets.endpoints_json`에 bounded JSON으로 저장한다. MVP에서 endpoint 수는 이미 정규화된 route 기준의 bounded top-N 또는 allow set으로 제한되므로 별도 endpoint table 없이도 15분 current/baseline window를 service layer에서 병합할 수 있다. 이 제한은 저장/조회 cardinality cap이며 route attribution fallback이 아니다.
 
+사용자 account/auth 테이블은 별도 account auth story에서 추가한다. Epic 1/3의 ingest acceptance schema에는 포함하지 않지만, 추가 시 `account-auth-policy.md`의 GitHub OAuth only 정책을 따른다.
+
 별도 endpoint table은 아래 조건이 실제로 생길 때만 추가한다.
 
 - JSON 파싱이 read model refresh 구현을 지나치게 복잡하게 만든다.
@@ -56,6 +58,31 @@ History 조회는 `dashboard_snapshots`의 아래 값을 기반으로 service la
 별도 `operational_events` table, event repository, materialized view는 alert acknowledgement, durable event id, 장기 event retention, event annotation, alert delivery dedupe가 필요해질 때 후속 확장으로 검토한다.
 
 이 결정은 Epic 2와 Epic 3의 migration 범위를 변경하지 않는다.
+
+### 2.2 ORM / Repository Mapping Boundary
+
+observability-portal repository 구현 표준은 Spring Data JPA/Jakarta Persistence + Hibernate다.
+
+Flyway SQL migration이 PostgreSQL schema의 source of truth다. JPA entity annotation은 이 문서와 Flyway migration으로 정의된 table/column/constraint를 application code에 mapping하는 구현 세부사항이며, schema 정의를 대체하지 않는다.
+
+Hibernate DDL auto 생성/갱신은 사용하지 않는다. `create`, `create-drop`, `update`처럼 DB schema를 변경하는 모드는 금지한다. schema를 변경하지 않는 validation 모드는 Flyway migration과 JPA mapping mismatch를 조기에 발견하기 위한 보조 검증으로만 사용할 수 있다.
+
+Portal은 Traditional MVC + feature-first package structure를 따른다. JPA entity와 Spring Data repository는 해당 feature package 안의 persistence 책임 위치에 둔다. Service는 필요하면 Spring Data JPA repository와 JPA entity를 직접 사용할 수 있지만, JPA entity를 controller response DTO, public API surface, service result/external return model로 직접 반환하지 않는다.
+
+Testcontainers 기반 repository integration test는 PostgreSQL container에 Flyway migration을 먼저 적용한 뒤 JPA mapping과 repository 동작을 검증한다.
+
+### 2.3 Account/Auth Schema Boundary
+
+Account signup과 login은 GitHub OAuth only다. Account/auth schema를 추가할 때는 아래 경계를 지킨다.
+
+- 내부 `user/account` row와 provider identity row를 분리한다.
+- 외부 identity의 stable key는 provider=`github`와 GitHub user id 또는 provider subject 조합이다.
+- GitHub email은 profile metadata일 뿐 stable identity key가 아니다.
+- local password hash, password reset token, email verification required for signup, magic link, GitHub 외 provider, anonymous user를 위한 column/table은 MVP schema에 만들지 않는다.
+- GitHub OAuth token은 MVP에서 GitHub API 호출이 필요 없으면 저장하지 않는다.
+- GitHub OAuth token 저장이 필요해지면 암호화된 token 저장 컬럼, 최소 scope, 만료/회전, 폐기 기준을 migration/story에 함께 명시한다.
+- 우리 서비스 Refresh Token 저장소는 `token store` 추상으로 둔다. 초기 구현 후보는 RDBMS에 hashed refresh token 또는 token family metadata를 저장하는 방식이다.
+- Redis는 account/auth schema의 필수 전제가 아니다. 고성능 revoke list, distributed token state, reuse detection 최적화가 필요해질 때 후속 선택지로 둔다.
 
 ## 3. Tables
 
@@ -278,9 +305,15 @@ DB는 window bucket을 효율적으로 읽고 snapshot을 저장하는 repositor
 5. `V005__seed_local_project.sql`
    - local/demo project key seed
    - raw key는 migration 파일에 평문으로 고정하지 않고 local profile 또는 dev-only seed script에서 주입
+   - raw key 전체나 secret 성격의 project key material은 repository lookup surface에 남기지 않음
 6. `V006__retention_cleanup_support.sql`
    - retention cleanup에 필요한 index 확인
    - 별도 stored procedure는 만들지 않고 scheduled cleanup service에서 사용
+7. Account/auth migration 후보
+   - account auth story에서 별도 version으로 추가
+   - `users/accounts`, `external_identities`, `refresh_token_families` 또는 동등한 token store metadata 후보
+   - provider는 MVP에서 `github`만 허용
+   - raw access token, refresh token, GitHub OAuth token, provider raw payload, secret은 평문 저장하지 않음
 
 Operational Event History를 위한 별도 migration은 MVP에 없다.
 
@@ -288,6 +321,12 @@ Operational Event History를 위한 별도 migration은 MVP에 없다.
 
 - UUID는 application-generated UUID로 고정한다. PostgreSQL `pgcrypto` extension에 의존하지 않는다.
 - project key 검증은 `key_prefix`로 project 후보를 찾고, `project_key_hash`에 저장된 BCrypt hash로 검증한다.
+- raw project key 같은 secret은 DB row, migration, log, exception, response body, repository lookup surface에 남기지 않는다.
+- account signup/login은 GitHub OAuth only이며, local password/password reset/email verification/magic link/다른 OAuth provider/anonymous user schema를 MVP에 만들지 않는다.
+- GitHub provider subject는 external identity stable key로 사용한다.
+- 우리 서비스 refresh token은 fully stateless 전제로 두지 않고 hashed token 또는 token family metadata를 저장할 수 있는 token store 기준을 유지한다.
+- repository 구현 표준은 Spring Data JPA/Jakarta Persistence + Hibernate이며, JPA entity UUID도 application-generated UUID를 사용한다.
+- Flyway SQL migration이 schema source of truth다. Hibernate DDL auto 생성/갱신은 사용하지 않는다.
 - MVP endpoint bucket은 `accepted_metric_buckets.endpoints_json`에 bounded JSON으로 저장한다. 별도 endpoint table은 만들지 않는다.
 - dashboard snapshot refresh는 ingest transaction commit 후 portal in-process service 작업으로 수행한다.
 - dashboard query 시점에 snapshot이 없거나 명백히 오래된 경우 `DashboardReadModelService`가 fallback으로 재생성할 수 있다.

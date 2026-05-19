@@ -1,0 +1,103 @@
+Project story_3_1_project_key_verification {
+  database_type: 'PostgreSQL'
+  Note: '''
+  Story 3.1 Project Key Verification Service 이해를 위한 DBML이다.
+  검증 서비스가 직접 조회하는 테이블은 projects이며, applications와 application_instances는
+  검증 성공 뒤 Story 3.2 이후 ingest acceptance가 이어받는 catalog 맥락으로 함께 표시한다.
+
+  원문 project key는 저장하거나 repository lookup surface에 남기지 않는다. 서비스는 X-OBS-Project-Key에서 key_prefix 후보를 추출하고,
+  projects.key_prefix로 후보 row를 찾은 뒤 project_key_hash BCrypt 검증과 status=active 조건을 확인한다.
+  '''
+}
+
+TableGroup story_3_1_catalog_context {
+  projects
+  applications
+  application_instances
+}
+
+Table projects {
+  id uuid [pk, not null, note: '프로젝트의 application-generated UUID 기본키. 검증 성공 시 VerifiedProject.projectId로 전달된다.']
+  name varchar(120) [not null, note: '사람이 읽을 수 있는 프로젝트 이름. 검증 성공 시 VerifiedProject.projectName으로 전달된다.']
+  key_prefix varchar(32) [not null, note: 'ProjectKeyVerificationService가 raw key 전체를 남기지 않고 후보 row 조회에 사용하는 prefix 값.']
+  project_key_hash varchar(255) [not null, note: '원문 project key를 저장하지 않기 위한 BCrypt hash. 서비스 내부 검증에만 사용한다.']
+  status varchar(32) [not null, note: '프로젝트 사용 상태. active만 ingest 검증을 통과하고 disabled는 unauthorized로 처리한다.']
+  created_at timestamptz [not null, note: '프로젝트 row 생성 시각.']
+  updated_at timestamptz [not null, note: '프로젝트 row 마지막 수정 시각.']
+
+  Indexes {
+    name [unique, name: 'uk_projects_name', note: '프로젝트 이름 중복을 막는다.']
+    key_prefix [unique, name: 'uk_projects_key_prefix', note: 'Story 3.1의 project key 후보 조회 경로를 유일하게 만든다.']
+    project_key_hash [unique, name: 'uk_projects_project_key_hash', note: '동일 project key hash 재사용을 막는다.']
+  }
+
+  Note: '''
+  Story 3.1의 인증/권한 경계 테이블이다.
+  ProjectKeyVerificationService는 이 테이블에서 key_prefix, project_key_hash, status를 읽는다.
+  raw project key는 이 테이블, 결과 모델, repository lookup surface에 저장하거나 남기지 않는다.
+
+  제약:
+  - pk_projects primary key(id)
+  - uk_projects_name unique(name)
+  - uk_projects_key_prefix unique(key_prefix)
+  - uk_projects_project_key_hash unique(project_key_hash)
+  - ck_projects_status check(status in ('active', 'disabled'))
+  '''
+}
+
+Table applications {
+  id uuid [pk, not null, note: '애플리케이션의 application-generated UUID 기본키.']
+  project_id uuid [not null, note: '소속 프로젝트의 UUID 외래키.']
+  name varchar(160) [not null, note: 'ingest envelope의 application.name 값.']
+  environment varchar(80) [not null, note: 'ingest envelope의 application.environment 값.']
+  status varchar(32) [not null, note: '애플리케이션 사용 상태. active 또는 disabled. Story 3.1에서는 조회하지 않는다.']
+  first_seen_at timestamptz [note: '첫 accepted metric bucket이 수용된 시각.']
+  last_seen_at timestamptz [note: '마지막 accepted metric bucket이 수용된 시각.']
+  created_at timestamptz [not null, note: '애플리케이션 row 생성 시각.']
+  updated_at timestamptz [not null, note: '애플리케이션 row 마지막 수정 시각.']
+
+  Indexes {
+    (project_id, name, environment) [unique, name: 'uk_applications_project_name_env', note: '한 프로젝트 안에서 애플리케이션 이름과 환경 조합을 유일하게 유지한다.']
+    (project_id, status) [name: 'idx_applications_project_status', note: '프로젝트별 애플리케이션 상태 조회를 돕는다.']
+  }
+
+  Note: '''
+  프로젝트 안에서 애플리케이션과 환경 조합을 식별한다.
+  Story 3.1은 이 테이블을 생성하거나 조회하지 않지만, 검증된 project context가 이후 ingest acceptance에서
+  application catalog 경로로 이어진다는 관계를 보여주기 위해 포함한다.
+
+  제약:
+  - pk_applications primary key(id)
+  - fk_applications_project_id foreign key(project_id) references projects(id)
+  - uk_applications_project_name_env unique(project_id, name, environment)
+  - ck_applications_status check(status in ('active', 'disabled'))
+  '''
+}
+
+Table application_instances {
+  id uuid [pk, not null, note: '애플리케이션 인스턴스의 application-generated UUID 기본키.']
+  application_id uuid [not null, note: '소속 애플리케이션의 UUID 외래키.']
+  instance_name varchar(200) [not null, note: 'ingest envelope의 application.instance 값.']
+  first_seen_at timestamptz [not null, note: '해당 인스턴스의 첫 accepted metric bucket 수용 시각.']
+  last_seen_at timestamptz [not null, note: '해당 인스턴스의 마지막 accepted metric bucket 수용 시각.']
+  created_at timestamptz [not null, note: '애플리케이션 인스턴스 row 생성 시각.']
+  updated_at timestamptz [not null, note: '애플리케이션 인스턴스 row 마지막 수정 시각.']
+
+  Indexes {
+    (application_id, instance_name) [unique, name: 'uk_application_instances_app_instance', note: '한 애플리케이션 안에서 인스턴스 이름을 유일하게 유지한다.']
+    (application_id, last_seen_at) [name: 'idx_application_instances_app_last_seen', note: '애플리케이션별 최근 관측 인스턴스 조회를 돕는다. 실제 PostgreSQL migration은 last_seen_at desc 정렬을 사용한다.']
+  }
+
+  Note: '''
+  애플리케이션의 실행 인스턴스 식별자와 마지막 수신 시각을 저장한다.
+  Story 3.1의 project key 검증 범위 밖이며, Story 3.2 이후 accepted ingest 흐름의 catalog 맥락이다.
+
+  제약:
+  - pk_application_instances primary key(id)
+  - fk_application_instances_application_id foreign key(application_id) references applications(id)
+  - uk_application_instances_app_instance unique(application_id, instance_name)
+  '''
+}
+
+Ref fk_applications_project_id: applications.project_id > projects.id
+Ref fk_application_instances_application_id: application_instances.application_id > applications.id

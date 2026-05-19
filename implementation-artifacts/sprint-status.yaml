@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-05-18T21:24:13+0900
+# last_updated: 2026-05-19T16:34:27+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -32,9 +32,11 @@
 # - Story 2.1 must not repeat starter bootstrap.
 # - Do not pull Prometheus/scrape/query UI, dashboard_snapshots, p95/state/rule/read-model calculation into Epic 3.
 # - Epic 3 includes accepted_metric_buckets persistence and idempotent acceptance only.
+# - Correct-course 2026-05-19: observability-portal repository implementation standard is Spring Data JPA/Jakarta Persistence + Hibernate over PostgreSQL/Flyway.
+# - Traditional MVC 기준상 service는 필요하면 Spring Data repository/JPA entity를 직접 사용할 수 있다. Story 3.1의 raw key lookup surface와 BCrypt 72 byte blocker는 해결됐다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-05-18T21:24:13+0900
+last_updated: 2026-05-19T16:34:27+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -58,7 +60,7 @@ development_status:
   epic-2-retrospective: done
 
   epic-3: in-progress
-  3-1-project-key-verification-service: ready-for-dev
+  3-1-project-key-verification-service: done
   3-2-ingest-acceptance-service: ready-for-dev
   3-3-postgresql-bucket-repository: ready-for-dev
   3-4-duplicate-handling: ready-for-dev

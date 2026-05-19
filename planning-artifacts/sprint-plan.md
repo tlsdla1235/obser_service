@@ -22,7 +22,12 @@ Sprint 목표는 Epic 2가 만든 `schemaVersion: 1.0` ingest envelope를 portal
 - portal source는 `com.observation.portal.domain.<feature>`의 feature-first MVC package를 따른다.
 - controller는 request/response 변환과 HTTP status mapping만 맡고 service에 위임한다.
 - service는 validation, orchestration, idempotency 판단을 담당한다.
-- repository는 PostgreSQL read/write와 unique constraint 처리만 담당한다.
+- service는 빠른 MVC 구현을 위해 필요하면 Spring Data JPA repository와 JPA entity를 직접 사용할 수 있다.
+- repository는 Spring Data JPA/Jakarta Persistence + Hibernate 기반 PostgreSQL read/write와 unique constraint 처리만 담당한다.
+- Flyway SQL migration이 schema source of truth이며 Hibernate DDL auto 생성/갱신은 사용하지 않는다.
+- JPA entity는 persistence model이며 controller DTO, public API surface, service result/external return model로 노출하지 않는다.
+- raw project key 같은 secret은 DB row, migration, log, exception, response body, repository lookup surface에 남기지 않는다.
+- 사용자 account signup/login 정책은 GitHub OAuth only다. Epic 3의 project key 검증은 사용자 계정 인증과 별개이며, account auth 구현은 이 sprint 범위가 아니다.
 
 ## 2. Epic 2 Closure 상태
 
@@ -47,7 +52,7 @@ Epic 3 Sprint Goal:
 
 완료 판단은 아래 acceptance로 닫는다.
 
-- `X-OBS-Project-Key`는 raw key를 저장하지 않고 active project로 검증한다.
+- `X-OBS-Project-Key`는 raw key를 저장하거나 repository lookup surface에 남기지 않고 active project로 검증한다.
 - Story 2.5 golden envelope는 portal acceptance fixture로 성공한다.
 - invalid schema, bucket boundary, metric taxonomy, raw path/query/free tag/custom metric 후보는 거부된다.
 - `accepted_metric_buckets` migration, repository, Korean DB comments, uniqueness constraints가 구현된다.
@@ -91,6 +96,10 @@ Epic 3 Sprint Goal:
 - p99/tail latency judgment
 - Post-MVP runtime aggregate schemaVersion 1.1, max/avg/sampleCount persistence
 - high-cardinality custom metric/tag ingestion
+- account signup/login 구현
+- email/password signup, local account registration, password reset, email verification required for signup
+- magic link, multiple OAuth providers, Google/Kakao/Naver OAuth, anonymous user flow
+- cookie 기반 server session 인증 구현
 
 `accepted_metric_buckets` persistence는 Epic 3 범위다. `dashboard_snapshots`와 dashboard read model은 Epic 5 범위다.
 
@@ -139,6 +148,10 @@ Story 3.2는 portal-side mirror validation을 담당한다.
 Story 3.3은 validated bucket의 persistence를 담당한다.
 
 - `V003__create_accepted_metric_buckets.sql`을 추가한다.
+- `MetricBucketRepository`는 Spring Data JPA/Jakarta Persistence + Hibernate 기반으로 구현한다.
+- JPA entity와 Spring Data repository는 feature-first package 안에서 실제 구현 기준에 맞춰 둔다.
+- Service는 필요하면 Spring Data repository/JPA entity를 직접 사용할 수 있지만, entity를 controller DTO나 service result/external return model로 반환하지 않는다.
+- Hibernate DDL auto 생성/갱신은 사용하지 않고 Flyway migration을 schema source of truth로 유지한다.
 - table/column Korean comments를 포함한다.
 - `uk_buckets_project_idempotency_key`와 `uk_buckets_instance_bucket_start`를 포함한다.
 - application/application instance catalog를 get-or-create하고 last-seen을 갱신한다.
@@ -169,10 +182,10 @@ Story 3.4는 idempotent acceptance contract를 닫는다.
 
 | Test | Story | 증명할 내용 |
 |---|---|---|
-| `ProjectKeyVerificationServiceTest` | 3.1 | missing/invalid/disabled/active project key 검증과 raw key 비노출 |
+| `ProjectKeyVerificationServiceTest` | 3.1 | missing/invalid/disabled/active project key 검증과 raw key 비노출/lookup surface 차단 |
 | `IngestAcceptanceServiceTest` | 3.2 | schemaVersion 1.0, bucket boundary, metric taxonomy, idempotency key validation |
 | `PortalIngestValidationFixtureTest` | 3.2 | Story 2.5 golden JSON success와 invalid schema/bucket/route reject |
-| `MetricBucketRepositoryIntegrationTest` | 3.3 | V003 migration, Korean comments, constraints, repository insert/read |
+| `MetricBucketRepositoryIntegrationTest` | 3.3 | V003 migration, Korean comments, constraints, JPA mapping, repository insert/read |
 | `IngestControllerStatusMappingTest` | 3.3, 3.4 | 201/200/400/401/409/500 mapping |
 | `DuplicateIngestAcceptanceTest` | 3.4 | same key/hash duplicate success, same key/different hash conflict, race convergence |
 | `MvcLayerBoundaryTest` | 3.1-3.4 | controller-service-repository dependency 방향 유지 |
@@ -204,7 +217,9 @@ Story 3.1이 첫 구현 대상이다.
 첫 story에서 다시 확인할 사항:
 
 - Epic 2 starter producer path는 완료됐으며 되돌리거나 재설계하지 않는다.
-- Project key verification은 raw key를 저장/반환/로그하지 않는다.
+- Project key verification은 raw key를 저장/반환/로그하거나 repository lookup surface에 남기지 않는다.
+- Story 3.1은 Spring Data JPA repository를 service가 직접 사용하는 Traditional MVC 기준으로 review 중이다. 남은 승인 차단 항목은 key 길이와 prefix lookup 안전성이다.
 - public onboarding/product API는 열지 않는다.
+- 사용자 account signup/login을 언급해야 한다면 `account-auth-policy.md`의 GitHub OAuth only 기준을 따른다. Email/password, magic link, GitHub 외 provider, anonymous flow를 MVP 필수처럼 쓰지 않는다.
 - Application catalog 생성과 accepted bucket persistence는 Story 3.3에서 연결한다.
 - dashboard snapshot/read model과 p95/state/rule/endpoint priority 계산은 Epic 3 범위가 아니다.
