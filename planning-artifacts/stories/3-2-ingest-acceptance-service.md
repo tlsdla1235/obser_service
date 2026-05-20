@@ -132,7 +132,7 @@ date: 2026-05-18
 
 ### Review Findings
 
-- [x] [Review][Defer] Strict JSON scalar type hardening — 현재 Story 3.2 acceptance blocker는 아니며, supported field의 JSON token type coercion 차단은 future hardening으로 분리한다.
+- [x] [Review][Low / Residual] Portal JSON boundary accepts Jackson scalar coercion for same-version payloads — 현재 공식 starter가 ingest envelope의 유일한 producer이고 `schemaVersion` mismatch는 reject 테스트로 커버되어 있으므로 Story 3.2 acceptance blocker로 보지 않는다. 다만 `schemaVersion: "1.0"`을 유지한 채 일부 scalar field 타입이 계약과 다르게 들어오는 malformed payload는 Jackson 기본 coercion으로 DTO에 정상값처럼 들어올 수 있다. 외부 collector/third-party SDK를 허용하거나 portal ingest endpoint를 더 엄격한 trust boundary로 취급하는 시점에는 strict JSON type handling을 재검토한다.
 - [x] [Review][Defer] Endpoint/histogram collection cap — concrete endpoint cap과 histogram boundary-set hardening은 persistence/read-model 요구가 구체화되는 후속 story에서 다룬다.
 - [x] [Review][Defer] Duplicate endpoint key rejection — 동일 `method + route` 중복 payload 방어는 후속 persistence/merge semantics와 함께 다룬다.
 - [x] [Review][Defer] `ValidatedIngestCandidate` direct-construction guard — 현재 service path는 validation 이후 candidate를 생성하므로, 생성자 방어 강화는 Story 3.3 이후 hardening으로 남긴다.
@@ -164,7 +164,7 @@ date: 2026-05-18
 - 2026-05-19T16:53:47+0900: BMAD 3종 review 절차를 수행하지 않은 상태에서 `done`으로 전환했던 기록을 정정하고 Story 3.2를 `review`로 되돌렸다.
 - 2026-05-20T00:08:18+0900: review decision에 따라 endpoint `method`/`route` 원문 leading/trailing whitespace와 control character reject를 추가하고, unknown JSON field는 ignore-and-accept 정책으로 갱신했다.
 - 2026-05-20T00:08:52+0900: `./gradlew :observability-portal:test` 통과. 기존 starter worktree 변경 확인 차원에서 `./gradlew :observability-spring-boot-starter:test`도 통과.
-- 2026-05-20T00:31:55+0900: BMAD adversarial review 결과를 재-triage했고, Story 3.2 acceptance blocker는 없으며 남은 항목은 future hardening/deferred work로 분리했다.
+- 2026-05-20T00:31:55+0900: BMAD adversarial review 결과를 재-triage했고, Story 3.2 acceptance blocker는 없으며 남은 항목은 residual risk/future hardening/deferred work로 분리했다.
 
 ### Completion Notes
 
@@ -178,7 +178,7 @@ date: 2026-05-18
 - request model은 unknown field를 무시해 free tag map, arbitrary custom metric map, raw timeseries array, future extension field가 service validation을 막지 않게 한다. 무시된 field는 metric taxonomy, aggregation, route attribution, persisted accepted metric 후보에 반영되지 않는다.
 - invalid result/error model과 `toString()`은 raw project key, raw route/query 값을 보관하거나 출력하지 않는다.
 - 이번 story에서는 persistence, duplicate handling, dashboard snapshot/read model, p95/state/insight/endpoint priority 계산을 구현하지 않았다.
-- BMAD review에서 제기된 strict JSON token type, endpoint cap, duplicate endpoint key, direct candidate construction, idempotency project component binding은 이번 story의 acceptance blocker가 아니라 future hardening으로 분리했다.
+- BMAD review에서 제기된 strict JSON token type은 현재 공식 starter-only producer 모델에서는 release blocker가 아닌 Low / Residual risk로 추적한다. endpoint cap, duplicate endpoint key, direct candidate construction, idempotency project component binding도 이번 story의 acceptance blocker가 아니라 future hardening으로 분리했다.
 
 ### File List
 
@@ -199,7 +199,7 @@ date: 2026-05-18
 - 2026-05-19: Story 3.2 Ingest Acceptance Service를 구현하고 portal validation fixture, service tests, MVC boundary test, portal 전체 테스트를 통과해 review 상태로 전환했다.
 - 2026-05-19: BMAD review 미수행 상태에서 `done`으로 올린 기록을 정정하고, review 완료 전까지 status를 `review`로 유지하도록 수정했다.
 - 2026-05-20: review decision에 따라 endpoint method/route 원문 whitespace/control character rejection을 추가하고, unknown JSON field는 무시 후 지원 envelope만 accept/count하도록 story 기준을 갱신했다.
-- 2026-05-20: BMAD review findings를 future hardening으로 defer하고 Story 3.2를 완료 상태로 전환했다.
+- 2026-05-20: BMAD review findings를 residual risk/future hardening으로 defer하고 Story 3.2를 완료 상태로 전환했다.
 
 ## Status
 
