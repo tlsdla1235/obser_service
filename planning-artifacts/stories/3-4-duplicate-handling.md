@@ -4,7 +4,7 @@ storyId: "3.4"
 epic: "Epic 3. Portal Ingest Acceptance"
 title: "Duplicate Handling"
 architectureStyle: Traditional MVC
-status: ready-for-dev
+status: done
 date: 2026-05-18
 ---
 
@@ -111,15 +111,71 @@ date: 2026-05-18
 
 ## Tasks/Subtasks
 
-- [ ] repository idempotency lookup을 확인한다.
-- [ ] acceptance result model을 확장한다.
-- [ ] duplicate decision flow를 구현한다.
-- [ ] unique constraint race convergence를 구현한다.
-- [ ] controller response mapping을 완성한다.
-- [ ] duplicate success/conflict tests를 추가한다.
-- [ ] no second row assertion을 추가한다.
-- [ ] 전체 portal/Gradle tests를 실행한다.
+- [x] repository idempotency lookup을 확인한다.
+- [x] acceptance result model을 확장한다.
+- [x] duplicate decision flow를 구현한다.
+- [x] idempotency unique violation race를 duplicate key reject로 매핑한다.
+- [x] controller response mapping을 완성한다.
+- [x] duplicate key reject/controller 409 tests를 추가한다.
+- [x] no second row assertion을 추가한다.
+- [x] 전체 portal/Gradle tests를 실행한다.
+
+### Review Findings
+
+- [x] [Review][Patch] Repository duplicate/no-overwrite 검증이 row count에만 머문다 [observability-portal/src/test/java/com/observation/portal/domain/bucket/repository/MetricBucketRepositoryIntegrationTest.java:150]
+- [x] [Review][Patch] Deferred full-idempotency 항목이 완료 체크리스트에 완료로 남아 있다 [planning-artifacts/stories/3-4-duplicate-handling.md:117]
+- [x] [Review][Patch] Story frontmatter status가 review 상태와 불일치한다 [planning-artifacts/stories/3-4-duplicate-handling.md:7]
+
+## Dev Agent Record
+
+### Implementation Plan
+
+- `mvp-deferred-risk-spec.md`를 Story 3.4 원문의 full idempotency 요구보다 우선 적용해 duplicate replay success를 구현하지 않는다.
+- `MetricBucketRepository.findByProjectIdAndIdempotencyKey` pre-read 결과가 있으면 payload hash 비교 없이 `DUPLICATE_IDEMPOTENCY_KEY` service result로 닫고 insert를 호출하지 않는다.
+- idempotency unique constraint race는 re-read convergence 대신 MVP 정책에 맞춰 duplicate key reject로 매핑한다.
+- controller는 first accepted ingest를 `201 Created duplicate=false`, duplicate key reject를 `409 Conflict duplicate_idempotency_key`로 매핑한다.
+- repository integration test는 unique constraint 실패 뒤에도 accepted bucket row가 하나만 남는지 확인한다.
+
+### Debug Log
+
+- 2026-05-20T14:18:29+0900: `implementation-artifacts/sprint-status.yaml`에서 Story 3.4 상태를 `in-progress`로 전환했다.
+- `planning-artifacts/mvp-deferred-risk-spec.md`, `implementation-artifacts/deferred-work.md`, `planning-artifacts/stories/3-3-postgresql-bucket-repository.md`, `_bmad/custom/project-context.md`를 읽고 MVP duplicate 정책을 Story 3.4 실행 기준으로 확정했다.
+- 기존 생산 코드에서 repository idempotency lookup, `DUPLICATE_IDEMPOTENCY_KEY` result, service duplicate pre-read reject, idempotency unique violation mapping, controller `409 duplicate_idempotency_key` mapping이 MVP 정책과 맞는지 확인했다.
+- `IngestAcceptanceServiceTest`에 duplicate pre-read가 payload hash 계산과 insert를 호출하지 않는 회귀 테스트를 보강했다.
+- 같은 idempotency key의 다른 payload도 payload hash 비교 없이 `duplicate_idempotency_key`로 reject되는 회귀 테스트를 추가했다.
+- `IngestControllerTest`에 invalid payload `400`, invalid project key `401`, duplicate key `409` mapping 검증을 보강했다.
+- `MetricBucketRepositoryIntegrationTest`에 idempotency/instance bucket unique constraint 실패 후 `accepted_metric_buckets` row count가 1개로 유지되는 assertion을 추가했다.
+- `./gradlew :observability-portal:test --tests com.observation.portal.domain.ingest.service.IngestAcceptanceServiceTest --tests com.observation.portal.domain.ingest.controller.IngestControllerTest` 통과.
+- `./gradlew :observability-portal:test --tests com.observation.portal.domain.bucket.repository.MetricBucketRepositoryIntegrationTest` 통과.
+- `./gradlew :observability-portal:test` 통과.
+- `./gradlew test` 통과.
+- `git diff --check` 통과.
+- 2026-05-20T14:49:06+0900: code review patch findings 3건을 반영했다.
+- `MetricBucketRepositoryIntegrationTest`가 unique constraint 실패 뒤 row count뿐 아니라 기존 bucket row 내용과 catalog first/last seen 값이 그대로 유지되는지 검증하도록 보강했다.
+- Story 3.4 Tasks/Subtasks 문구를 active MVP duplicate policy에 맞춰 정리하고 frontmatter/footer 상태를 `done`으로 동기화했다.
+- Review patch 적용 후 `./gradlew :observability-portal:test --tests com.observation.portal.domain.bucket.repository.MetricBucketRepositoryIntegrationTest`, `./gradlew :observability-portal:test`, `./gradlew test`, `git diff --check` 통과.
+
+### Completion Notes
+
+- Story 3.4 원문의 `200 OK duplicate=true`, payload hash 기반 same/different payload 분류, insert race 후 re-read convergence는 active MVP 정책에 따라 구현하지 않았다.
+- 현재 MVP duplicate path는 같은 `(project_id, idempotency_key)`가 있으면 payload hash 계산 없이 `409 Conflict`와 `duplicate_idempotency_key`로 reject하며 `MetricBucketRepository.insert`를 호출하지 않는다.
+- first accepted ingest는 기존처럼 `201 Created`, `duplicate=false`, bucket id, accepted timestamp를 반환한다.
+- idempotency unique violation race는 duplicate key reject로 매핑하고, unique constraint 실패 이후에도 기존 row overwrite, 두 번째 row 생성, catalog seen timestamp 오염이 없음을 repository integration test로 검증했다.
+- dashboard snapshot/read model refresh, p95/state/rule/endpoint priority, operational event 저장은 추가하지 않았다.
+
+### File List
+
+- `implementation-artifacts/sprint-status.yaml`
+- `planning-artifacts/stories/3-4-duplicate-handling.md`
+- `observability-portal/src/test/java/com/observation/portal/domain/bucket/repository/MetricBucketRepositoryIntegrationTest.java`
+- `observability-portal/src/test/java/com/observation/portal/domain/ingest/controller/IngestControllerTest.java`
+- `observability-portal/src/test/java/com/observation/portal/domain/ingest/service/IngestAcceptanceServiceTest.java`
+
+### Change Log
+
+- 2026-05-20: Story 3.4를 active MVP duplicate policy에 맞춰 완료했다. Duplicate replay success/full idempotency는 deferred로 유지하고, duplicate key reject 및 no-second-row 회귀 테스트를 보강했다.
+- 2026-05-20: Code review patch findings 3건을 해결하고 Story 3.4를 done으로 동기화했다.
 
 ## Status
 
-ready-for-dev
+done

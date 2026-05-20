@@ -1,5 +1,7 @@
 package com.observation.portal.domain.ingest.service;
 
+import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
+
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -7,23 +9,28 @@ import java.util.Optional;
 /**
  * ingest acceptance service가 controller에 전달할 수 있는 validation/authorization 결과다.
  *
- * <p>401, 400, accepted path를 구분하되 raw project key나 raw route/query 후보는 결과 객체에 담지 않는다.</p>
+ * <p>401, 400, 409 중복, accepted path를 구분하되 raw project key나 raw route/query 후보는 결과 객체에 담지 않는다.</p>
  */
 public final class IngestAcceptanceResult {
 
     private static final IngestAcceptanceResult UNAUTHORIZED =
-            new IngestAcceptanceResult(Status.UNAUTHORIZED, null, List.of());
+            new IngestAcceptanceResult(Status.UNAUTHORIZED, null, null, List.of());
+    private static final IngestAcceptanceResult DUPLICATE_IDEMPOTENCY_KEY =
+            new IngestAcceptanceResult(Status.DUPLICATE_IDEMPOTENCY_KEY, null, null, List.of());
 
     private final Status status;
     private final ValidatedIngestCandidate acceptedCandidate;
+    private final AcceptedMetricBucketReceipt acceptedReceipt;
     private final List<IngestValidationError> errors;
 
     private IngestAcceptanceResult(
             Status status,
             ValidatedIngestCandidate acceptedCandidate,
+            AcceptedMetricBucketReceipt acceptedReceipt,
             List<IngestValidationError> errors) {
         this.status = Objects.requireNonNull(status, "status must not be null");
         this.acceptedCandidate = acceptedCandidate;
+        this.acceptedReceipt = acceptedReceipt;
         this.errors = List.copyOf(Objects.requireNonNull(errors, "errors must not be null"));
     }
 
@@ -42,16 +49,26 @@ public final class IngestAcceptanceResult {
         if (copiedErrors.isEmpty()) {
             throw new IllegalArgumentException("errors must not be empty");
         }
-        return new IngestAcceptanceResult(Status.INVALID_REQUEST, null, copiedErrors);
+        return new IngestAcceptanceResult(Status.INVALID_REQUEST, null, null, copiedErrors);
     }
 
     /**
-     * project key와 envelope validation을 모두 통과한 결과를 만든다.
+     * MVP duplicate 정책에 따라 같은 project/idempotency key가 이미 있음을 conflict로 닫는다.
      */
-    public static IngestAcceptanceResult accepted(ValidatedIngestCandidate candidate) {
+    public static IngestAcceptanceResult duplicateIdempotencyKey() {
+        return DUPLICATE_IDEMPOTENCY_KEY;
+    }
+
+    /**
+     * project key와 envelope validation을 통과하고 bucket 저장까지 끝난 결과를 만든다.
+     */
+    public static IngestAcceptanceResult accepted(
+            ValidatedIngestCandidate candidate,
+            AcceptedMetricBucketReceipt receipt) {
         return new IngestAcceptanceResult(
                 Status.ACCEPTED,
                 Objects.requireNonNull(candidate, "candidate must not be null"),
+                Objects.requireNonNull(receipt, "receipt must not be null"),
                 List.of());
     }
 
@@ -84,10 +101,24 @@ public final class IngestAcceptanceResult {
     }
 
     /**
+     * 같은 project/idempotency key가 이미 수용된 경우인지 확인한다.
+     */
+    public boolean isDuplicateIdempotencyKey() {
+        return status == Status.DUPLICATE_IDEMPOTENCY_KEY;
+    }
+
+    /**
      * accepted path에서만 검증 완료 후보를 반환한다.
      */
     public Optional<ValidatedIngestCandidate> acceptedCandidate() {
         return Optional.ofNullable(acceptedCandidate);
+    }
+
+    /**
+     * accepted path에서 controller response로 매핑할 bucket 저장 receipt를 반환한다.
+     */
+    public Optional<AcceptedMetricBucketReceipt> acceptedReceipt() {
+        return Optional.ofNullable(acceptedReceipt);
     }
 
     /**
@@ -108,6 +139,7 @@ public final class IngestAcceptanceResult {
     public enum Status {
         ACCEPTED,
         INVALID_REQUEST,
-        UNAUTHORIZED
+        UNAUTHORIZED,
+        DUPLICATE_IDEMPOTENCY_KEY
     }
 }

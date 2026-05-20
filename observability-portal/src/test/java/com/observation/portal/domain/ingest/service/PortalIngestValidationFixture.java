@@ -11,14 +11,14 @@ import java.util.function.Consumer;
 /**
  * Story 2.5 starter golden envelope를 portal validation success fixture로 재사용하는 test helper다.
  */
-final class PortalIngestValidationFixture {
+public final class PortalIngestValidationFixture {
 
-    static final String PROJECT_KEY_HEADER = "pk_live_checkout.secret-part-kept-out-of-results";
-    static final VerifiedProject VERIFIED_PROJECT = new VerifiedProject(
+    public static final String PROJECT_KEY_HEADER = "pk_live_checkout.secret-part-kept-out-of-results";
+    public static final VerifiedProject VERIFIED_PROJECT = new VerifiedProject(
             UUID.fromString("00000000-0000-0000-0000-000000003201"),
             "checkout",
             ProjectStatus.ACTIVE);
-    static final String IDEMPOTENCY_KEY =
+    public static final String IDEMPOTENCY_KEY =
             "project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:20260508T010000Z";
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -113,28 +113,28 @@ final class PortalIngestValidationFixture {
     /**
      * Story 2.5 golden JSON 문자열을 반환한다.
      */
-    static String goldenJson() {
+    public static String goldenJson() {
         return GOLDEN_JSON;
     }
 
     /**
      * Story 2.5 golden JSON을 portal request model로 deserialize한다.
      */
-    static IngestEnvelopeRequest goldenRequest() throws JsonProcessingException {
+    public static IngestEnvelopeRequest goldenRequest() throws JsonProcessingException {
         return OBJECT_MAPPER.readValue(GOLDEN_JSON, IngestEnvelopeRequest.class);
     }
 
     /**
      * golden JSON을 일부 변경한 뒤 portal request model로 deserialize한다.
      */
-    static IngestEnvelopeRequest requestWith(Consumer<ObjectNode> mutation) throws JsonProcessingException {
+    public static IngestEnvelopeRequest requestWith(Consumer<ObjectNode> mutation) throws JsonProcessingException {
         return OBJECT_MAPPER.readValue(jsonWith(mutation), IngestEnvelopeRequest.class);
     }
 
     /**
      * JSON boundary test에서 사용할 변형 JSON을 만든다.
      */
-    static String jsonWith(Consumer<ObjectNode> mutation) throws JsonProcessingException {
+    public static String jsonWith(Consumer<ObjectNode> mutation) throws JsonProcessingException {
         ObjectNode root = (ObjectNode) OBJECT_MAPPER.readTree(GOLDEN_JSON);
         mutation.accept(root);
         return OBJECT_MAPPER.writeValueAsString(root);

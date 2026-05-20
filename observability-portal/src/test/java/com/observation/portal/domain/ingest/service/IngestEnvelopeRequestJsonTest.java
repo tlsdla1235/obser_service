@@ -2,9 +2,16 @@ package com.observation.portal.domain.ingest.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
+import com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommand;
+import com.observation.portal.domain.bucket.repository.MetricBucketRepository;
 import org.junit.jupiter.api.Test;
 
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -22,7 +29,10 @@ class IngestEnvelopeRequestJsonTest {
             ((ObjectNode) root.get("endpoints").get(0)).putObject("tags").put("userId", "u-123");
         });
         IngestEnvelopeRequest request = objectMapper.readValue(json, IngestEnvelopeRequest.class);
-        IngestAcceptanceService service = new IngestAcceptanceService(verifiedProjectKeyService());
+        IngestAcceptanceService service = new IngestAcceptanceService(
+                verifiedProjectKeyService(),
+                acceptingRepository(),
+                new IngestPayloadHasher(objectMapper));
 
         IngestAcceptanceResult result = service.accept(
                 PortalIngestValidationFixture.PROJECT_KEY_HEADER,
@@ -45,5 +55,14 @@ class IngestEnvelopeRequestJsonTest {
         when(projectKeyVerificationService.verify(PortalIngestValidationFixture.PROJECT_KEY_HEADER))
                 .thenReturn(ProjectKeyVerificationResult.verified(PortalIngestValidationFixture.VERIFIED_PROJECT));
         return projectKeyVerificationService;
+    }
+
+    private static MetricBucketRepository acceptingRepository() {
+        MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        when(metricBucketRepository.insert(any(AcceptedMetricBucketWriteCommand.class)))
+                .thenReturn(new AcceptedMetricBucketReceipt(
+                        UUID.fromString("00000000-0000-0000-0000-00000000a332"),
+                        OffsetDateTime.parse("2026-05-08T01:00:31Z")));
+        return metricBucketRepository;
     }
 }

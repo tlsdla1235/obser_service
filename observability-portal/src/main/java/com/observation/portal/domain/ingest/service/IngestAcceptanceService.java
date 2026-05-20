@@ -1,10 +1,15 @@
 package com.observation.portal.domain.ingest.service;
 
+import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
+import com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommand;
+import com.observation.portal.domain.bucket.repository.MetricBucketRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.ResolverStyle;
@@ -19,7 +24,7 @@ import java.util.regex.Pattern;
  * starter ingest envelope를 포털 계약 기준으로 다시 검증하는 acceptance service다.
  *
  * <p>project key 검증을 먼저 수행한 뒤 schemaVersion, UTC 30초 bucket, metric taxonomy,
- * normalized route, Idempotency-Key 일관성을 검증한다. 저장과 duplicate 처리는 후속 story 책임이다.</p>
+ * normalized route, Idempotency-Key 일관성을 검증하고 첫 successful ingest를 persistence path에 연결한다.</p>
  */
 @Service
 public class IngestAcceptanceService {
@@ -32,6 +37,7 @@ public class IngestAcceptanceService {
             "(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
     private static final Pattern LONG_HEX_SEGMENT = Pattern.compile("(?i)[0-9a-f]{8,}");
     private static final Pattern LITERAL_ROUTE_SEGMENT = Pattern.compile("[A-Za-z0-9._~-]+");
+    private static final String IDEMPOTENCY_UNIQUE_CONSTRAINT = "uk_buckets_project_idempotency_key";
     private static final DateTimeFormatter IDEMPOTENCY_BUCKET_START_FORMAT =
             DateTimeFormatter.ofPattern("uuuuMMdd'T'HHmmss'Z'")
                     .withResolverStyle(ResolverStyle.STRICT);
@@ -39,18 +45,27 @@ public class IngestAcceptanceService {
             "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE", "UNKNOWN");
 
     private final ProjectKeyVerificationService projectKeyVerificationService;
+    private final MetricBucketRepository metricBucketRepository;
+    private final IngestPayloadHasher payloadHasher;
 
     /**
-     * project key 검증 service와 함께 ingest acceptance service를 구성한다.
+     * project key 검증, payload hash, bucket repository를 연결해 ingest acceptance service를 구성한다.
      */
-    public IngestAcceptanceService(ProjectKeyVerificationService projectKeyVerificationService) {
+    public IngestAcceptanceService(
+            ProjectKeyVerificationService projectKeyVerificationService,
+            MetricBucketRepository metricBucketRepository,
+            IngestPayloadHasher payloadHasher) {
         this.projectKeyVerificationService = Objects.requireNonNull(
                 projectKeyVerificationService,
                 "projectKeyVerificationService must not be null");
+        this.metricBucketRepository = Objects.requireNonNull(
+                metricBucketRepository,
+                "metricBucketRepository must not be null");
+        this.payloadHasher = Objects.requireNonNull(payloadHasher, "payloadHasher must not be null");
     }
 
     /**
-     * project key, Idempotency-Key, envelope payload를 검증하고 accepted/400/401 후보 결과를 반환한다.
+     * project key, Idempotency-Key, envelope payload를 검증하고 accepted/400/401/409 후보 결과를 반환한다.
      */
     public IngestAcceptanceResult accept(
             String projectKeyHeader,
@@ -67,10 +82,48 @@ public class IngestAcceptanceService {
             return IngestAcceptanceResult.invalid(errors);
         }
 
-        return IngestAcceptanceResult.accepted(new ValidatedIngestCandidate(
+        ValidatedIngestCandidate candidate = new ValidatedIngestCandidate(
                 projectKeyResult.verifiedProject().orElseThrow(),
                 idempotencyKeyHeader,
-                request));
+                request);
+        if (metricBucketRepository.findByProjectIdAndIdempotencyKey(
+                candidate.verifiedProject().projectId(),
+                candidate.idempotencyKey()).isPresent()) {
+            return IngestAcceptanceResult.duplicateIdempotencyKey();
+        }
+
+        String payloadHash = payloadHasher.sha256(request);
+        AcceptedMetricBucketWriteCommand command = AcceptedMetricBucketWriteCommand.from(
+                candidate,
+                payloadHash,
+                OffsetDateTime.now(ZoneOffset.UTC));
+        AcceptedMetricBucketReceipt receipt;
+        try {
+            receipt = metricBucketRepository.insert(command);
+        } catch (DataIntegrityViolationException exception) {
+            if (isIdempotencyUniqueViolation(exception)) {
+                // MVP에서는 insert race 후 re-read/hash 비교 없이 명시적인 duplicate key reject로 수렴시킨다.
+                return IngestAcceptanceResult.duplicateIdempotencyKey();
+            }
+            throw exception;
+        }
+
+        return IngestAcceptanceResult.accepted(candidate, receipt);
+    }
+
+    /**
+     * Spring exception chain에서 idempotency unique constraint 이름을 찾아 insert race 여부를 좁혀 판단한다.
+     */
+    private static boolean isIdempotencyUniqueViolation(Throwable throwable) {
+        Throwable cursor = throwable;
+        while (cursor != null) {
+            String message = cursor.getMessage();
+            if (message != null && message.contains(IDEMPOTENCY_UNIQUE_CONSTRAINT)) {
+                return true;
+            }
+            cursor = cursor.getCause();
+        }
+        return false;
     }
 
     private static final class EnvelopeValidator {
