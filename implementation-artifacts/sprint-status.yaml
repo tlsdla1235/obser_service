@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-05-20T00:31:55+0900
+# last_updated: 2026-05-20T14:10:19+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -36,7 +36,7 @@
 # - Traditional MVC 기준상 service는 필요하면 Spring Data repository/JPA entity를 직접 사용할 수 있다. Story 3.1의 raw key lookup surface와 BCrypt 72 byte blocker는 해결됐다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-05-20T00:31:55+0900
+last_updated: 2026-05-20T14:10:19+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -62,7 +62,7 @@ development_status:
   epic-3: in-progress
   3-1-project-key-verification-service: done
   3-2-ingest-acceptance-service: done
-  3-3-postgresql-bucket-repository: ready-for-dev
+  3-3-postgresql-bucket-repository: done
   3-4-duplicate-handling: ready-for-dev
   epic-3-retrospective: optional
 

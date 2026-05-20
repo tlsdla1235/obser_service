@@ -4,7 +4,7 @@ storyId: "3.3"
 epic: "Epic 3. Portal Ingest Acceptance"
 title: "PostgreSQL Bucket Repository"
 architectureStyle: Traditional MVC
-status: ready-for-dev
+status: done
 date: 2026-05-18
 ---
 
@@ -127,16 +127,96 @@ date: 2026-05-18
 
 ## Tasks/Subtasks
 
-- [ ] V003 accepted bucket migration을 추가한다.
-- [ ] migration comment/constraint/index tests를 확장한다.
-- [ ] accepted bucket persistence model을 추가한다.
-- [ ] accepted bucket JPA entity와 Spring Data repository interface를 추가한다.
-- [ ] catalog get-or-create path를 JPA 기반으로 추가한다.
-- [ ] `MetricBucketRepository`를 JPA 기반으로 구현한다.
-- [ ] service success path를 repository insert와 연결한다.
-- [ ] controller `201 Created` mapping을 검증한다.
-- [ ] Testcontainers repository integration test를 실행한다.
+- [x] V003 accepted bucket migration을 추가한다.
+- [x] migration comment/constraint/index tests를 확장한다.
+- [x] accepted bucket persistence model을 추가한다.
+- [x] accepted bucket JPA entity와 Spring Data repository interface를 추가한다.
+- [x] catalog get-or-create path를 JPA 기반으로 추가한다.
+- [x] `MetricBucketRepository`를 JPA 기반으로 구현한다.
+- [x] service success path를 repository insert와 연결한다.
+- [x] controller `201 Created` mapping을 검증한다.
+- [x] Testcontainers repository integration test를 실행한다.
+
+## Dev Agent Record
+
+### Implementation Plan
+
+- `database-schema.md`의 `accepted_metric_buckets` DDL만 Flyway V003 migration으로 옮기고, dashboard/read-model/operational event schema는 추가하지 않는다.
+- accepted bucket 저장 입력은 `AcceptedMetricBucketWriteCommand`, 저장 결과는 `AcceptedMetricBucketReceipt`로 분리해 JPA entity가 service result/controller DTO로 노출되지 않게 한다.
+- catalog get-or-create는 `applications`와 `application_instances` JPA repository를 통해 수행하고, successful ingest 수용 시각으로 first/last seen을 관리한다.
+- `MetricBucketRepository`는 Spring Data JPA repository와 catalog repository를 감싼 repository facade로 두고, duration/endpoints는 bounded JSON으로 저장한다.
+- `IngestAcceptanceService` success path에서 payload hash를 계산하고 repository insert를 호출한 뒤 receipt를 반환한다.
+- `IngestController`는 first successful ingest를 `201 Created`와 `{ status, duplicate, bucketId, acceptedAt }` response DTO로 매핑한다.
+
+### Debug Log
+
+- 2026-05-20T09:09:31+0900: `implementation-artifacts/sprint-status.yaml`에서 Story 3.3 상태를 `in-progress`로 전환했다.
+- 2026-05-20T09:11:46+0900: RED 단계로 확장한 `CatalogSchemaMigrationIntegrationTest` 실행이 Testcontainers 초기화에서 실패했다. 원인은 `Could not find a valid Docker environment`, `/var/run/docker.sock` 부재였고 코드 assertion 실패와 구분했다.
+- `V003__create_accepted_metric_buckets.sql`에 accepted bucket table, FK/unique/check constraints, indexes, Korean comments를 추가했다. dashboard_snapshots, operational_events, view, trigger, stored procedure는 추가하지 않았다.
+- `CatalogSchemaMigrationIntegrationTest`를 V003 migration count, excluded table absence, accepted bucket Korean comments, unique/check constraints, index coverage까지 확장했다.
+- `AcceptedMetricBucketWriteCommand`/`AcceptedMetricBucketReceipt`, accepted bucket JPA entity, Spring Data JPA repository, catalog application/instance entity와 repository, `ApplicationCatalogRepository`, `MetricBucketRepository`를 추가했다.
+- `MetricBucketRepositoryIntegrationTest` 최초 실행에서 Docker가 아니라 Spring context의 `ObjectMapper` bean 누락으로 실패했고, `PortalJsonConfiguration`을 추가해 JSON persistence/hash 직렬화 구성을 명시했다.
+- `IngestPayloadHasher`를 추가해 validated request model 기준 SHA-256 payload hash를 계산하고, unknown field가 hash/persistence 후보에 반영되지 않음을 테스트했다.
+- `IngestAcceptanceService` success path를 repository insert와 연결하고, `IngestAcceptanceResult`에 entity가 아닌 receipt를 추가했다.
+- `IngestController`, `IngestAcceptedResponse`, `IngestErrorResponse`를 추가하고 first successful ingest가 `201 Created`와 `duplicate=false` body로 매핑됨을 검증했다.
+- `./gradlew :observability-portal:test --tests com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommandTest` 통과.
+- `./gradlew :observability-portal:test --tests com.observation.portal.domain.ingest.service.IngestPayloadHasherTest --tests com.observation.portal.domain.ingest.service.IngestAcceptanceServiceTest --tests com.observation.portal.domain.ingest.service.IngestEnvelopeRequestJsonTest` 통과.
+- `./gradlew :observability-portal:test --tests com.observation.portal.domain.ingest.controller.IngestControllerTest` 통과.
+- `./gradlew :observability-portal:test --tests com.observation.portal.domain.bucket.repository.MetricBucketRepositoryIntegrationTest` 통과.
+- `./gradlew :observability-portal:test --tests com.observation.portal.domain.catalog.repository.CatalogSchemaMigrationIntegrationTest` 통과.
+- `./gradlew :observability-portal:test --tests com.observation.portal.architecture.MvcLayerBoundaryTest` 통과.
+- `./gradlew :observability-portal:test` 통과.
+- `./gradlew test` 통과.
+- `git diff --check` 통과.
+- 2026-05-20T14:10:19+0900: MVP duplicate idempotency policy review에서 blocker가 없음을 확인하고 Story 3.3을 `done`으로 전환했다.
+
+### Completion Notes
+
+- Flyway V003가 `accepted_metric_buckets`만 생성하며, accepted bucket constraints/indexes/comments를 PostgreSQL Testcontainers 기반으로 검증한다.
+- JPA persistence는 accepted bucket, catalog application, catalog instance entity/repository를 사용하지만 controller DTO/public API/service result에는 JPA entity를 반환하지 않는다.
+- `MetricBucketRepository`는 project/application/instance/schema/idempotency/payload hash/bucket boundary/counts/histogram JSON/latest runtime ratios/endpoint JSON/accepted timestamp를 저장한다.
+- catalog get-or-create path는 valid bucket 수용 시 application/application instance row를 생성하거나 찾고 last-seen timestamps를 갱신한다.
+- first successful ingest path는 validation 이후 payload hash를 계산하고 repository insert receipt를 `201 Created` response로 매핑한다.
+- duplicate success/conflict final handling, dashboard snapshot/read model, p95/state/rule/priority 계산은 구현하지 않았다.
+
+### File List
+
+- `implementation-artifacts/sprint-status.yaml`
+- `planning-artifacts/stories/3-3-postgresql-bucket-repository.md`
+- `observability-portal/build.gradle`
+- `observability-portal/src/main/resources/db/migration/V003__create_accepted_metric_buckets.sql`
+- `observability-portal/src/main/java/com/observation/portal/config/PortalJsonConfiguration.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/bucket/entity/AcceptedMetricBucketEntity.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/bucket/model/AcceptedMetricBucketReceipt.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/bucket/model/AcceptedMetricBucketWriteCommand.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/bucket/repository/AcceptedMetricBucketJpaRepository.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/bucket/repository/MetricBucketRepository.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/catalog/entity/ApplicationEntity.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/catalog/entity/ApplicationInstanceEntity.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/catalog/model/ApplicationCatalogEntry.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/catalog/repository/ApplicationCatalogRepository.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/catalog/repository/ApplicationInstanceRepository.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/catalog/repository/ApplicationRepository.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/ingest/controller/IngestController.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/ingest/dto/IngestAcceptedResponse.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/ingest/dto/IngestErrorResponse.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/ingest/service/IngestAcceptanceResult.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/ingest/service/IngestAcceptanceService.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/ingest/service/IngestPayloadHasher.java`
+- `observability-portal/src/test/java/com/observation/portal/domain/bucket/model/AcceptedMetricBucketWriteCommandTest.java`
+- `observability-portal/src/test/java/com/observation/portal/domain/bucket/repository/MetricBucketRepositoryIntegrationTest.java`
+- `observability-portal/src/test/java/com/observation/portal/domain/catalog/repository/CatalogSchemaMigrationIntegrationTest.java`
+- `observability-portal/src/test/java/com/observation/portal/domain/ingest/controller/IngestControllerTest.java`
+- `observability-portal/src/test/java/com/observation/portal/domain/ingest/service/IngestAcceptanceServiceTest.java`
+- `observability-portal/src/test/java/com/observation/portal/domain/ingest/service/IngestEnvelopeRequestJsonTest.java`
+- `observability-portal/src/test/java/com/observation/portal/domain/ingest/service/IngestPayloadHasherTest.java`
+- `observability-portal/src/test/java/com/observation/portal/domain/ingest/service/PortalIngestValidationFixture.java`
+
+### Change Log
+
+- 2026-05-20: Story 3.3 PostgreSQL accepted bucket repository 구현을 완료하고 V003 migration, JPA persistence, catalog get-or-create, first successful ingest persistence path, `201 Created` mapping, repository integration tests를 추가했다.
+- 2026-05-20: MVP duplicate idempotency policy review 결과 Done을 막는 blocker가 없어 Story 3.3을 완료 처리했다.
 
 ## Status
 
-ready-for-dev
+done

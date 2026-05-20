@@ -28,6 +28,7 @@ class CatalogSchemaMigrationIntegrationTest {
     private static final Pattern KOREAN_TEXT = Pattern.compile(".*[가-힣].*");
     private static final String UNIQUE_VIOLATION = "23505";
     private static final String FOREIGN_KEY_VIOLATION = "23503";
+    private static final String CHECK_VIOLATION = "23514";
 
     @Container
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
@@ -36,10 +37,13 @@ class CatalogSchemaMigrationIntegrationTest {
     void appliesMigrationsToCleanDatabase() throws SQLException {
         MigrateResult result = cleanAndMigrate();
 
-        assertThat(result.migrationsExecuted).isEqualTo(2);
+        assertThat(result.migrationsExecuted).isEqualTo(3);
         assertThat(tableExists("projects")).isTrue();
         assertThat(tableExists("applications")).isTrue();
         assertThat(tableExists("application_instances")).isTrue();
+        assertThat(tableExists("accepted_metric_buckets")).isTrue();
+        assertThat(tableExists("dashboard_snapshots")).isFalse();
+        assertThat(tableExists("operational_events")).isFalse();
     }
 
     @Test
@@ -96,6 +100,63 @@ class CatalogSchemaMigrationIntegrationTest {
     }
 
     @Test
+    void enforcesAcceptedBucketConstraintsAndIndexes() throws SQLException {
+        cleanAndMigrate();
+
+        UUID projectId = UUID.fromString("00000000-0000-0000-0000-000000000701");
+        UUID applicationId = UUID.fromString("00000000-0000-0000-0000-000000000702");
+        UUID instanceId = UUID.fromString("00000000-0000-0000-0000-000000000703");
+        insertProject(projectId, "bucket-project", "bucket", "hash-bucket");
+        insertApplication(applicationId, projectId, "orders-api", "prod");
+        insertApplicationInstance(instanceId, applicationId, "pod-a");
+
+        assertThat(constraintExists("accepted_metric_buckets", "uk_buckets_project_idempotency_key")).isTrue();
+        assertThat(constraintExists("accepted_metric_buckets", "uk_buckets_instance_bucket_start")).isTrue();
+        assertThat(indexExists("idx_buckets_app_window")).isTrue();
+        assertThat(indexExists("idx_buckets_app_last_end")).isTrue();
+        assertThat(indexExists("idx_buckets_instance_window")).isTrue();
+        assertThat(indexExists("idx_buckets_accepted_at")).isTrue();
+
+        insertAcceptedBucket(
+                UUID.fromString("00000000-0000-0000-0000-000000000704"),
+                projectId,
+                applicationId,
+                instanceId,
+                "bucket-project:orders-api:prod:pod-a:20260508T010000Z",
+                "hash-1",
+                "2026-05-08T01:00:00Z");
+
+        assertSqlState(UNIQUE_VIOLATION,
+                () -> insertAcceptedBucket(
+                        UUID.fromString("00000000-0000-0000-0000-000000000705"),
+                        projectId,
+                        applicationId,
+                        instanceId,
+                        "bucket-project:orders-api:prod:pod-a:20260508T010000Z",
+                        "hash-2",
+                        "2026-05-08T01:00:30Z"));
+        assertSqlState(UNIQUE_VIOLATION,
+                () -> insertAcceptedBucket(
+                        UUID.fromString("00000000-0000-0000-0000-000000000706"),
+                        projectId,
+                        applicationId,
+                        instanceId,
+                        "bucket-project:orders-api:prod:pod-a:20260508T010030Z",
+                        "hash-3",
+                        "2026-05-08T01:00:00Z"));
+        assertSqlState(CHECK_VIOLATION,
+                () -> insertAcceptedBucketWithDuration(
+                        UUID.fromString("00000000-0000-0000-0000-000000000707"),
+                        projectId,
+                        applicationId,
+                        instanceId,
+                        "bucket-project:orders-api:prod:pod-a:20260508T010100Z",
+                        "hash-4",
+                        "2026-05-08T01:01:00Z",
+                        60));
+    }
+
+    @Test
     void keepsKoreanCommentsForEveryCatalogTableAndColumn() throws SQLException {
         cleanAndMigrate();
 
@@ -121,7 +182,28 @@ class CatalogSchemaMigrationIntegrationTest {
                         "first_seen_at",
                         "last_seen_at",
                         "created_at",
-                        "updated_at"));
+                        "updated_at"),
+                "accepted_metric_buckets",
+                List.of(
+                        "id",
+                        "project_id",
+                        "application_id",
+                        "application_instance_id",
+                        "schema_version",
+                        "idempotency_key",
+                        "payload_hash",
+                        "bucket_start_utc",
+                        "bucket_end_utc",
+                        "duration_seconds",
+                        "accepted_at",
+                        "request_count",
+                        "error_count",
+                        "duration_buckets_json",
+                        "cpu_usage_ratio",
+                        "heap_used_ratio",
+                        "datasource_pool_usage_ratio",
+                        "endpoints_json",
+                        "created_at"));
 
         for (Map.Entry<String, List<String>> table : expectedColumnsByTable.entrySet()) {
             assertKoreanComment(tableComment(table.getKey()), table.getKey() + " table comment");
@@ -195,6 +277,38 @@ class CatalogSchemaMigrationIntegrationTest {
         }
     }
 
+    private static boolean constraintExists(String tableName, String constraintName) throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     """
+                     select exists (
+                       select 1
+                       from information_schema.table_constraints
+                       where table_schema = 'public'
+                         and table_name = ?
+                         and constraint_name = ?
+                     )
+                     """)) {
+            statement.setString(1, tableName);
+            statement.setString(2, constraintName);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                assertThat(resultSet.next()).isTrue();
+                return resultSet.getBoolean(1);
+            }
+        }
+    }
+
+    private static boolean indexExists(String indexName) throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement("select to_regclass(?) is not null")) {
+            statement.setString(1, "public." + indexName);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                assertThat(resultSet.next()).isTrue();
+                return resultSet.getBoolean(1);
+            }
+        }
+    }
+
     private static void insertProject(UUID id, String name, String keyPrefix, String projectKeyHash) throws SQLException {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
@@ -249,6 +363,66 @@ class CatalogSchemaMigrationIntegrationTest {
             statement.setObject(5, OffsetDateTime.parse("2026-05-10T00:00:00Z"));
             statement.setObject(6, OffsetDateTime.parse("2026-05-10T00:00:00Z"));
             statement.setObject(7, OffsetDateTime.parse("2026-05-10T00:00:00Z"));
+            statement.executeUpdate();
+        }
+    }
+
+    private static void insertAcceptedBucket(
+            UUID id,
+            UUID projectId,
+            UUID applicationId,
+            UUID applicationInstanceId,
+            String idempotencyKey,
+            String payloadHash,
+            String bucketStartUtc) throws SQLException {
+        insertAcceptedBucketWithDuration(
+                id,
+                projectId,
+                applicationId,
+                applicationInstanceId,
+                idempotencyKey,
+                payloadHash,
+                bucketStartUtc,
+                30);
+    }
+
+    private static void insertAcceptedBucketWithDuration(
+            UUID id,
+            UUID projectId,
+            UUID applicationId,
+            UUID applicationInstanceId,
+            String idempotencyKey,
+            String payloadHash,
+            String bucketStartUtc,
+            int durationSeconds) throws SQLException {
+        OffsetDateTime start = OffsetDateTime.parse(bucketStartUtc);
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     """
+                     insert into accepted_metric_buckets (
+                       id, project_id, application_id, application_instance_id, schema_version,
+                       idempotency_key, payload_hash, bucket_start_utc, bucket_end_utc, duration_seconds,
+                       accepted_at, request_count, error_count, duration_buckets_json,
+                       cpu_usage_ratio, heap_used_ratio, datasource_pool_usage_ratio, endpoints_json, created_at
+                     )
+                     values (
+                       ?, ?, ?, ?, '1.0',
+                       ?, ?, ?, ?, ?,
+                       ?, 3, 1, '[{"leMs":50,"count":1}]'::jsonb,
+                       0.64000, 0.71000, 0.82000, '[{"method":"GET","route":"/orders/{orderId}","requestCount":2,"errorCount":0,"durationBuckets":[{"leMs":50,"count":1}]}]'::jsonb, ?
+                     )
+                     """)) {
+            statement.setObject(1, id);
+            statement.setObject(2, projectId);
+            statement.setObject(3, applicationId);
+            statement.setObject(4, applicationInstanceId);
+            statement.setString(5, idempotencyKey);
+            statement.setString(6, payloadHash);
+            statement.setObject(7, start);
+            statement.setObject(8, start.plusSeconds(30));
+            statement.setInt(9, durationSeconds);
+            statement.setObject(10, OffsetDateTime.parse("2026-05-08T01:00:31Z"));
+            statement.setObject(11, OffsetDateTime.parse("2026-05-08T01:00:31Z"));
             statement.executeUpdate();
         }
     }

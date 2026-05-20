@@ -1,0 +1,165 @@
+Project story_3_3_postgresql_bucket_repository {
+  database_type: 'PostgreSQL'
+  Note: '''
+  Story 3.3 PostgreSQL Bucket Repository 이해를 위한 DBML이다.
+  검증을 통과한 30초 ingest bucket을 accepted_metric_buckets에 저장하고,
+  application/application instance catalog row를 찾거나 생성하는 persistence 흐름을 표현한다.
+
+  이 DBML은 V003__create_accepted_metric_buckets.sql의 schema를 기준으로 한다.
+  dashboard_snapshots, operational_events, read model view, trigger, stored procedure는 Story 3.3 범위가 아니므로 제외한다.
+  p95, lifecycle state, insight rule, endpoint priority 계산도 이 schema에 숨기지 않는다.
+  '''
+}
+
+TableGroup story_3_3_bucket_persistence_context {
+  projects
+  applications
+  application_instances
+  accepted_metric_buckets
+}
+
+Table projects {
+  id uuid [pk, not null, note: '프로젝트의 application-generated UUID 기본키. accepted bucket의 project_id가 참조한다.']
+  name varchar(120) [not null, note: '사람이 읽을 수 있는 프로젝트 이름.']
+  key_prefix varchar(32) [not null, note: 'ProjectKeyVerificationService가 raw key 전체를 남기지 않고 후보 row 조회에 사용하는 prefix 값.']
+  project_key_hash varchar(255) [not null, note: '원문 project key를 저장하지 않기 위한 BCrypt hash.']
+  status varchar(32) [not null, note: '프로젝트 사용 상태. active 또는 disabled.']
+  created_at timestamptz [not null, note: '프로젝트 row 생성 시각.']
+  updated_at timestamptz [not null, note: '프로젝트 row 마지막 수정 시각.']
+
+  Indexes {
+    name [unique, name: 'uk_projects_name', note: '프로젝트 이름 중복을 막는다.']
+    key_prefix [unique, name: 'uk_projects_key_prefix', note: 'project key prefix 후보 row를 유일하게 만든다.']
+    project_key_hash [unique, name: 'uk_projects_project_key_hash', note: '동일 project key hash 재사용을 막는다.']
+  }
+
+  Note: '''
+  프로젝트 키와 애플리케이션 묶음의 최상위 식별자를 저장한다.
+
+  제약:
+  - pk_projects primary key(id)
+  - uk_projects_name unique(name)
+  - uk_projects_key_prefix unique(key_prefix)
+  - uk_projects_project_key_hash unique(project_key_hash)
+  - ck_projects_status check(status in ('active', 'disabled'))
+  '''
+}
+
+Table applications {
+  id uuid [pk, not null, note: '애플리케이션의 application-generated UUID 기본키. accepted bucket의 application_id가 참조한다.']
+  project_id uuid [not null, note: '소속 프로젝트의 UUID 외래키.']
+  name varchar(160) [not null, note: 'ingest envelope의 application.name 값.']
+  environment varchar(80) [not null, note: 'ingest envelope의 application.environment 값.']
+  status varchar(32) [not null, note: '애플리케이션 사용 상태. active 또는 disabled.']
+  first_seen_at timestamptz [note: '첫 accepted metric bucket이 수용된 시각.']
+  last_seen_at timestamptz [note: '마지막 accepted metric bucket이 수용된 시각.']
+  created_at timestamptz [not null, note: '애플리케이션 row 생성 시각.']
+  updated_at timestamptz [not null, note: '애플리케이션 row 마지막 수정 시각.']
+
+  Indexes {
+    (project_id, name, environment) [unique, name: 'uk_applications_project_name_env', note: '한 프로젝트 안에서 애플리케이션 이름과 환경 조합을 유일하게 유지한다.']
+    (project_id, status) [name: 'idx_applications_project_status', note: '프로젝트별 애플리케이션 상태 조회를 돕는다.']
+  }
+
+  Note: '''
+  프로젝트 안에서 애플리케이션과 환경 조합을 식별한다.
+  Story 3.3에서는 valid bucket 도착 시 get-or-create 대상이며, accepted_at으로 first_seen_at과 last_seen_at을 관리한다.
+
+  제약:
+  - pk_applications primary key(id)
+  - fk_applications_project_id foreign key(project_id) references projects(id)
+  - uk_applications_project_name_env unique(project_id, name, environment)
+  - ck_applications_status check(status in ('active', 'disabled'))
+  '''
+}
+
+Table application_instances {
+  id uuid [pk, not null, note: '애플리케이션 인스턴스의 application-generated UUID 기본키. accepted bucket의 application_instance_id가 참조한다.']
+  application_id uuid [not null, note: '소속 애플리케이션의 UUID 외래키.']
+  instance_name varchar(200) [not null, note: 'ingest envelope의 application.instance 값.']
+  first_seen_at timestamptz [not null, note: '해당 인스턴스의 첫 accepted metric bucket 수용 시각.']
+  last_seen_at timestamptz [not null, note: '해당 인스턴스의 마지막 accepted metric bucket 수용 시각.']
+  created_at timestamptz [not null, note: '애플리케이션 인스턴스 row 생성 시각.']
+  updated_at timestamptz [not null, note: '애플리케이션 인스턴스 row 마지막 수정 시각.']
+
+  Indexes {
+    (application_id, instance_name) [unique, name: 'uk_application_instances_app_instance', note: '한 애플리케이션 안에서 인스턴스 이름을 유일하게 유지한다.']
+    (application_id, last_seen_at) [name: 'idx_application_instances_app_last_seen', note: '애플리케이션별 최근 관측 인스턴스 조회를 돕는다. 실제 PostgreSQL migration은 last_seen_at desc 정렬을 사용한다.']
+  }
+
+  Note: '''
+  애플리케이션의 실행 인스턴스 식별자와 마지막 수신 시각을 저장한다.
+  Story 3.3에서는 valid bucket 도착 시 get-or-create 대상이며, accepted_at으로 first_seen_at과 last_seen_at을 관리한다.
+
+  제약:
+  - pk_application_instances primary key(id)
+  - fk_application_instances_application_id foreign key(application_id) references applications(id)
+  - uk_application_instances_app_instance unique(application_id, instance_name)
+  '''
+}
+
+Table accepted_metric_buckets {
+  id uuid [pk, not null, note: 'accepted metric bucket의 application-generated UUID 기본키.']
+  project_id uuid [not null, note: 'bucket이 속한 프로젝트의 UUID 외래키.']
+  application_id uuid [not null, note: 'bucket이 속한 애플리케이션의 UUID 외래키.']
+  application_instance_id uuid [not null, note: 'bucket을 보낸 애플리케이션 인스턴스의 UUID 외래키.']
+  schema_version varchar(16) [not null, note: 'ingest envelope schema version. MVP에서는 1.0만 허용한다.']
+  idempotency_key varchar(300) [not null, note: 'starter가 보낸 멱등성 키. Story 3.4 duplicate handling의 lookup surface로 재사용된다.']
+  payload_hash varchar(128) [not null, note: '동일 멱등성 키에 다른 payload가 들어왔는지 감지하기 위한 payload hash.']
+  bucket_start_utc timestamptz [not null, note: '30초 UTC bucket 시작 시각.']
+  bucket_end_utc timestamptz [not null, note: '30초 UTC bucket 종료 시각.']
+  duration_seconds integer [not null, note: 'bucket 길이. MVP에서는 30초로 고정한다.']
+  accepted_at timestamptz [not null, note: 'portal이 bucket을 수용한 시각. catalog first/last seen에도 반영된다.']
+  request_count bigint [not null, note: 'bucket window의 애플리케이션 전체 요청 수.']
+  error_count bigint [not null, note: 'bucket window의 애플리케이션 전체 오류 수.']
+  duration_buckets_json jsonb [not null, note: '애플리케이션 전체 HTTP server duration cumulative histogram bucket 배열. DB는 단조성 검증을 하지 않고 service validation이 책임진다.']
+  cpu_usage_ratio numeric(6,5) [note: 'JVM process CPU 사용률 latest sample. 없으면 null.']
+  heap_used_ratio numeric(6,5) [note: 'JVM heap 사용률 latest sample. 없으면 null.']
+  datasource_pool_usage_ratio numeric(6,5) [note: 'datasource connection pool 사용률 latest sample. 없으면 null.']
+  endpoints_json jsonb [not null, note: 'bounded endpoint별 method, normalized route, request/error count, duration histogram bucket 배열. arbitrary query/explorer storage가 아니다.']
+  created_at timestamptz [not null, note: 'accepted metric bucket row 생성 시각.']
+
+  Indexes {
+    (project_id, idempotency_key) [unique, name: 'uk_buckets_project_idempotency_key', note: 'project scope idempotency key를 유일하게 유지한다.']
+    (application_instance_id, bucket_start_utc) [unique, name: 'uk_buckets_instance_bucket_start', note: '동일 인스턴스의 같은 30초 bucket 중복 저장을 막는다.']
+    (application_id, bucket_start_utc, bucket_end_utc) [name: 'idx_buckets_app_window', note: '애플리케이션 bucket window 조회를 돕는다.']
+    (application_id, bucket_end_utc) [name: 'idx_buckets_app_last_end', note: '애플리케이션 freshness 조회를 돕는다. 실제 PostgreSQL migration은 bucket_end_utc desc 정렬을 사용한다.']
+    (application_instance_id, bucket_start_utc) [name: 'idx_buckets_instance_window', note: '인스턴스 bucket window 조회를 돕는다.']
+    accepted_at [name: 'idx_buckets_accepted_at', note: '7일 보관 cleanup 후보 조회를 돕는다.']
+  }
+
+  Note: '''
+  검증을 통과해 수용된 30초 단위 애플리케이션 및 endpoint metric bucket을 저장한다.
+  이 테이블은 accepted bucket persistence source이며 raw time series store나 dashboard read model store가 아니다.
+
+  제약:
+  - pk_accepted_metric_buckets primary key(id)
+  - fk_buckets_project_id foreign key(project_id) references projects(id)
+  - fk_buckets_application_id foreign key(application_id) references applications(id)
+  - fk_buckets_application_instance_id foreign key(application_instance_id) references application_instances(id)
+  - uk_buckets_project_idempotency_key unique(project_id, idempotency_key)
+  - uk_buckets_instance_bucket_start unique(application_instance_id, bucket_start_utc)
+  - ck_buckets_schema_version check(schema_version = '1.0')
+  - ck_buckets_duration_30 check(duration_seconds = 30)
+  - ck_buckets_window_positive check(bucket_end_utc > bucket_start_utc)
+  - ck_buckets_counts_non_negative check(request_count >= 0 and error_count >= 0 and error_count <= request_count)
+  - ck_buckets_duration_buckets_array check(jsonb_typeof(duration_buckets_json) = 'array')
+  - ck_buckets_endpoints_array check(jsonb_typeof(endpoints_json) = 'array')
+  - ck_buckets_cpu_ratio_range check(cpu_usage_ratio is null or cpu_usage_ratio between 0 and 1)
+  - ck_buckets_heap_ratio_range check(heap_used_ratio is null or heap_used_ratio between 0 and 1)
+  - ck_buckets_datasource_ratio_range check(datasource_pool_usage_ratio is null or datasource_pool_usage_ratio between 0 and 1)
+
+  제외:
+  - dashboard_snapshots migration/repository
+  - operational_events table/repository
+  - read model view, trigger, stored procedure
+  - p95, lifecycle state, insight rule, endpoint priority 계산
+  - Post-MVP max/avg/sampleCount runtime aggregate columns
+  '''
+}
+
+Ref fk_applications_project_id: applications.project_id > projects.id
+Ref fk_application_instances_application_id: application_instances.application_id > applications.id
+Ref fk_buckets_project_id: accepted_metric_buckets.project_id > projects.id
+Ref fk_buckets_application_id: accepted_metric_buckets.application_id > applications.id
+Ref fk_buckets_application_instance_id: accepted_metric_buckets.application_instance_id > application_instances.id
