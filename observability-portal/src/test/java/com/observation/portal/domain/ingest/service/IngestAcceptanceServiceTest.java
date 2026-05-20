@@ -61,14 +61,15 @@ class IngestAcceptanceServiceTest {
     }
 
     @Test
-    void rejectsExistingProjectIdempotencyKeyWithoutInsert() throws Exception {
+    void rejectsExistingProjectIdempotencyKeyWithoutHashingOrInsert() throws Exception {
         ProjectKeyVerificationService projectKeyVerificationService = verifiedProjectKeyService();
         MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        IngestPayloadHasher payloadHasher = mock(IngestPayloadHasher.class);
         when(metricBucketRepository.findByProjectIdAndIdempotencyKey(
                 PortalIngestValidationFixture.VERIFIED_PROJECT.projectId(),
                 PortalIngestValidationFixture.IDEMPOTENCY_KEY))
                 .thenReturn(Optional.of(ACCEPTED_RECEIPT));
-        IngestAcceptanceService service = newService(projectKeyVerificationService, metricBucketRepository);
+        IngestAcceptanceService service = newService(projectKeyVerificationService, metricBucketRepository, payloadHasher);
 
         IngestAcceptanceResult result = service.accept(
                 PortalIngestValidationFixture.PROJECT_KEY_HEADER,
@@ -79,6 +80,29 @@ class IngestAcceptanceServiceTest {
         verify(metricBucketRepository).findByProjectIdAndIdempotencyKey(
                 PortalIngestValidationFixture.VERIFIED_PROJECT.projectId(),
                 PortalIngestValidationFixture.IDEMPOTENCY_KEY);
+        verifyNoInteractions(payloadHasher);
+        verify(metricBucketRepository, never()).insert(any(AcceptedMetricBucketWriteCommand.class));
+    }
+
+    @Test
+    void rejectsSameKeyDifferentPayloadAsDuplicateKeyWithoutPayloadComparison() throws Exception {
+        ProjectKeyVerificationService projectKeyVerificationService = verifiedProjectKeyService();
+        MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        IngestPayloadHasher payloadHasher = mock(IngestPayloadHasher.class);
+        when(metricBucketRepository.findByProjectIdAndIdempotencyKey(
+                PortalIngestValidationFixture.VERIFIED_PROJECT.projectId(),
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY))
+                .thenReturn(Optional.of(ACCEPTED_RECEIPT));
+        IngestAcceptanceService service = newService(projectKeyVerificationService, metricBucketRepository, payloadHasher);
+
+        IngestAcceptanceResult result = service.accept(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                PortalIngestValidationFixture.requestWith(
+                        root -> ((ObjectNode) root.get("summary")).put("requestCount", 4)));
+
+        assertDuplicateIdempotencyKey(result);
+        verifyNoInteractions(payloadHasher);
         verify(metricBucketRepository, never()).insert(any(AcceptedMetricBucketWriteCommand.class));
     }
 
@@ -354,10 +378,20 @@ class IngestAcceptanceServiceTest {
     private static IngestAcceptanceService newService(
             ProjectKeyVerificationService projectKeyVerificationService,
             MetricBucketRepository metricBucketRepository) {
-        return new IngestAcceptanceService(
+        return newService(
                 projectKeyVerificationService,
                 metricBucketRepository,
                 new IngestPayloadHasher(new ObjectMapper()));
+    }
+
+    private static IngestAcceptanceService newService(
+            ProjectKeyVerificationService projectKeyVerificationService,
+            MetricBucketRepository metricBucketRepository,
+            IngestPayloadHasher payloadHasher) {
+        return new IngestAcceptanceService(
+                projectKeyVerificationService,
+                metricBucketRepository,
+                payloadHasher);
     }
 
     private static MetricBucketRepository acceptingRepository() {

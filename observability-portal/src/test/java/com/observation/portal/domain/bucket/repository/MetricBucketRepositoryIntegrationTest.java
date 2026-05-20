@@ -127,13 +127,13 @@ class MetricBucketRepositoryIntegrationTest {
     }
 
     @Test
-    void databaseEnforcesIdempotencyAndInstanceBucketUniqueness() {
+    void databaseEnforcesIdempotencyAndInstanceBucketUniqueness() throws SQLException {
         AcceptedMetricBucketWriteCommand first = command(
                 "project-123:orders-api:prod:pod-a:20260508T010000Z",
                 "hash-1",
                 "2026-05-08T01:00:00Z",
                 FIXED_TIME);
-        metricBucketRepository.insert(first);
+        AcceptedMetricBucketReceipt receipt = metricBucketRepository.insert(first);
 
         assertThatThrownBy(() -> metricBucketRepository.insert(command(
                 "project-123:orders-api:prod:pod-a:20260508T010000Z",
@@ -147,6 +147,9 @@ class MetricBucketRepositoryIntegrationTest {
                 "2026-05-08T01:00:00Z",
                 OffsetDateTime.parse("2026-05-08T01:01:02Z"))))
                 .isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(countAcceptedBuckets()).isEqualTo(1);
+        assertPersistedBucketRow(receipt.bucketId(), first);
+        assertCatalogSeenAt(FIXED_TIME);
     }
 
     private static AcceptedMetricBucketWriteCommand command(
@@ -221,6 +224,17 @@ class MetricBucketRepositoryIntegrationTest {
         }
     }
 
+    private void assertCatalogSeenAt(OffsetDateTime expectedSeenAt) {
+        var application = applicationRepository.findByProjectIdAndNameAndEnvironment(PROJECT_ID, "orders-api", "prod")
+                .orElseThrow();
+        var instance = applicationInstanceRepository.findByApplicationIdAndInstanceName(application.id(), "pod-a")
+                .orElseThrow();
+        assertThat(application.firstSeenAt()).isEqualTo(expectedSeenAt);
+        assertThat(application.lastSeenAt()).isEqualTo(expectedSeenAt);
+        assertThat(instance.firstSeenAt()).isEqualTo(expectedSeenAt);
+        assertThat(instance.lastSeenAt()).isEqualTo(expectedSeenAt);
+    }
+
     private static void cleanAndMigrate() {
         Flyway flyway = Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
@@ -230,5 +244,17 @@ class MetricBucketRepositoryIntegrationTest {
 
         flyway.clean();
         flyway.migrate();
+    }
+
+    private static long countAcceptedBuckets() throws SQLException {
+        try (Connection connection = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(),
+                POSTGRES.getUsername(),
+                POSTGRES.getPassword());
+             PreparedStatement statement = connection.prepareStatement("select count(*) from accepted_metric_buckets");
+             ResultSet resultSet = statement.executeQuery()) {
+            assertThat(resultSet.next()).isTrue();
+            return resultSet.getLong(1);
+        }
     }
 }

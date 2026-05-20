@@ -5,6 +5,7 @@ import com.observation.portal.domain.ingest.dto.IngestAcceptedResponse;
 import com.observation.portal.domain.ingest.dto.IngestErrorResponse;
 import com.observation.portal.domain.ingest.service.IngestAcceptanceResult;
 import com.observation.portal.domain.ingest.service.IngestAcceptanceService;
+import com.observation.portal.domain.ingest.service.IngestValidationError;
 import com.observation.portal.domain.ingest.service.PortalIngestValidationFixture;
 import com.observation.portal.domain.ingest.service.ValidatedIngestCandidate;
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 
 import java.net.URI;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -56,6 +58,50 @@ class IngestControllerTest {
                 PortalIngestValidationFixture.PROJECT_KEY_HEADER,
                 PortalIngestValidationFixture.IDEMPOTENCY_KEY,
                 request);
+    }
+
+    @Test
+    void mapsInvalidPayloadTo400BadRequest() throws Exception {
+        IngestAcceptanceService service = mock(IngestAcceptanceService.class);
+        IngestController controller = new IngestController(service);
+        var request = PortalIngestValidationFixture.goldenRequest();
+        List<IngestValidationError> errors = List.of(IngestValidationError.of(
+                "unsupported_schema_version",
+                "schemaVersion",
+                "schemaVersion must be 1.0"));
+        when(service.accept(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                request))
+                .thenReturn(IngestAcceptanceResult.invalid(errors));
+
+        ResponseEntity<?> response = controller.acceptBucket(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isEqualTo(IngestErrorResponse.invalidRequest(errors));
+    }
+
+    @Test
+    void mapsInvalidProjectKeyTo401Unauthorized() throws Exception {
+        IngestAcceptanceService service = mock(IngestAcceptanceService.class);
+        IngestController controller = new IngestController(service);
+        var request = PortalIngestValidationFixture.goldenRequest();
+        when(service.accept(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                request))
+                .thenReturn(IngestAcceptanceResult.unauthorized());
+
+        ResponseEntity<?> response = controller.acceptBucket(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody()).isEqualTo(IngestErrorResponse.unauthorized());
     }
 
     @Test
