@@ -7,10 +7,10 @@ import java.util.List;
 /**
  * 포털이 starter ingest envelope를 다시 검증하기 위해 사용하는 schemaVersion 1.0 요청 모델이다.
  *
- * <p>허용된 contract field만 표현하며 Jackson unknown field 거부를 통해 free tag, custom metric,
- * raw timeseries, Post-MVP runtime aggregate 후보가 service boundary로 들어오지 못하게 한다.</p>
+ * <p>허용된 contract field만 표현하며 Jackson unknown field는 forward compatibility를 위해 무시한다.
+ * 무시된 field는 metric taxonomy, aggregation, route attribution, accepted metric 후보에 반영하지 않는다.</p>
  */
-@JsonIgnoreProperties(ignoreUnknown = false)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record IngestEnvelopeRequest(
         String schemaVersion,
         Application application,
@@ -29,21 +29,21 @@ public record IngestEnvelopeRequest(
     /**
      * application/environment/instance identity block이다.
      */
-    @JsonIgnoreProperties(ignoreUnknown = false)
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record Application(String name, String environment, String instance) {
     }
 
     /**
      * UTC 30초 bucket interval metadata block이다.
      */
-    @JsonIgnoreProperties(ignoreUnknown = false)
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record Bucket(String startUtc, String endUtc, Integer durationSeconds) {
     }
 
     /**
      * application-level request/error count, cumulative histogram, latest runtime ratio block이다.
      */
-    @JsonIgnoreProperties(ignoreUnknown = false)
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record Summary(
             Long requestCount,
             Long errorCount,
@@ -65,21 +65,21 @@ public record IngestEnvelopeRequest(
     /**
      * schemaVersion 1.0에서 허용하는 JVM latest ratio block이다.
      */
-    @JsonIgnoreProperties(ignoreUnknown = false)
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record Jvm(Double cpuUsage, Double heapUsedRatio) {
     }
 
     /**
      * schemaVersion 1.0에서 허용하는 datasource latest ratio block이다.
      */
-    @JsonIgnoreProperties(ignoreUnknown = false)
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record Datasource(Double poolUsageRatio) {
     }
 
     /**
      * method + normalized route 기준 endpoint metric block이다.
      */
-    @JsonIgnoreProperties(ignoreUnknown = false)
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record Endpoint(
             String method,
             String route,
@@ -99,7 +99,7 @@ public record IngestEnvelopeRequest(
     /**
      * cumulative HTTP duration histogram bucket 한 칸이다.
      */
-    @JsonIgnoreProperties(ignoreUnknown = false)
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record DurationBucket(Long leMs, Long count) {
     }
 }

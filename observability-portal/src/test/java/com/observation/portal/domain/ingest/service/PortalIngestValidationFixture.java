@@ -132,7 +132,7 @@ final class PortalIngestValidationFixture {
     }
 
     /**
-     * unknown field rejection test에서 사용할 변형 JSON을 만든다.
+     * JSON boundary test에서 사용할 변형 JSON을 만든다.
      */
     static String jsonWith(Consumer<ObjectNode> mutation) throws JsonProcessingException {
         ObjectNode root = (ObjectNode) OBJECT_MAPPER.readTree(GOLDEN_JSON);

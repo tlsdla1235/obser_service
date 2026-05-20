@@ -1,5 +1,7 @@
 package com.observation.starter.model.ingest;
 
+import com.observation.starter.model.metric.EndpointKey;
+import com.observation.starter.model.route.NormalizedRoute;
 import com.observation.starter.model.time.MetricBucketInterval;
 
 import java.time.Duration;
@@ -93,7 +95,7 @@ public record IngestEnvelope(
             httpServerDurationBuckets = List.copyOf(Objects.requireNonNull(
                     httpServerDurationBuckets,
                     "httpServerDurationBuckets must not be null"));
-            validateHistogram("summary.httpServerDurationBuckets", httpServerDurationBuckets);
+            validateHistogram("summary.httpServerDurationBuckets", httpServerDurationBuckets, requestCount);
         }
     }
 
@@ -139,11 +141,11 @@ public record IngestEnvelope(
          * endpoint key와 count, histogram shape를 검증한다.
          */
         public Endpoint {
-            method = requireText(method, "endpoint.method");
-            route = requireText(route, "endpoint.route");
+            method = EndpointKey.normalizeMethod(method);
+            route = NormalizedRoute.of(route).value();
             validateCounts(requestCount, errorCount);
             durationBuckets = List.copyOf(Objects.requireNonNull(durationBuckets, "durationBuckets must not be null"));
-            validateHistogram("endpoint.durationBuckets", durationBuckets);
+            validateHistogram("endpoint.durationBuckets", durationBuckets, requestCount);
         }
     }
 
@@ -198,7 +200,7 @@ public record IngestEnvelope(
         }
     }
 
-    private static void validateHistogram(String name, List<DurationBucket> buckets) {
+    private static void validateHistogram(String name, List<DurationBucket> buckets, long requestCount) {
         if (buckets.isEmpty()) {
             throw new IllegalArgumentException(name + " must not be empty");
         }
@@ -210,6 +212,9 @@ public record IngestEnvelope(
             }
             if (bucket.count() < previousCount) {
                 throw new IllegalArgumentException(name + " count must be cumulative and non-decreasing");
+            }
+            if (bucket.count() > requestCount) {
+                throw new IllegalArgumentException(name + " count must not exceed requestCount");
             }
             previousLeMs = bucket.leMs();
             previousCount = bucket.count();

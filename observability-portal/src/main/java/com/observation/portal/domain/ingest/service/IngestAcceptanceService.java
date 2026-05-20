@@ -69,7 +69,7 @@ public class IngestAcceptanceService {
 
         return IngestAcceptanceResult.accepted(new ValidatedIngestCandidate(
                 projectKeyResult.verifiedProject().orElseThrow(),
-                idempotencyKeyHeader.trim(),
+                idempotencyKeyHeader,
                 request));
     }
 
@@ -203,7 +203,11 @@ public class IngestAcceptanceService {
                 add("invalid_idempotency_key", "Idempotency-Key", "Idempotency-Key contains unsupported characters");
                 return;
             }
-            String idempotencyKey = idempotencyKeyHeader.trim();
+            if (hasLeadingOrTrailingWhitespace(idempotencyKeyHeader)) {
+                add("invalid_idempotency_key", "Idempotency-Key", "Idempotency-Key contains unsupported characters");
+                return;
+            }
+            String idempotencyKey = idempotencyKeyHeader;
 
             String[] components = idempotencyKey.split(":", -1);
             if (components.length != 5) {
@@ -301,7 +305,10 @@ public class IngestAcceptanceService {
         }
 
         private void validateMethod(String field, String method) {
-            if (!hasText(method) || !ALLOWED_METHODS.contains(method.trim())) {
+            if (!hasText(method)
+                    || hasLeadingOrTrailingWhitespace(method)
+                    || containsControlCharacter(method)
+                    || !ALLOWED_METHODS.contains(method)) {
                 add("invalid_endpoint_method", field, "endpoint method must be a bounded uppercase HTTP method");
             }
         }
@@ -311,7 +318,11 @@ public class IngestAcceptanceService {
                 add("invalid_endpoint_route", field, "endpoint route is required");
                 return;
             }
-            String candidate = route.trim();
+            if (hasLeadingOrTrailingWhitespace(route) || containsControlCharacter(route)) {
+                add("invalid_endpoint_route", field, "endpoint route contains unsupported characters");
+                return;
+            }
+            String candidate = route;
             if ("UNKNOWN".equals(candidate)) {
                 return;
             }
@@ -366,7 +377,11 @@ public class IngestAcceptanceService {
                 add("required", field, "UTC instant is required");
                 return Optional.empty();
             }
-            String candidate = value.trim();
+            if (hasLeadingOrTrailingWhitespace(value) || containsControlCharacter(value)) {
+                add("invalid_bucket_timestamp", field, "timestamp contains unsupported characters");
+                return Optional.empty();
+            }
+            String candidate = value;
             if (!candidate.endsWith("Z")) {
                 add("invalid_bucket_timestamp", field, "timestamp must be UTC");
                 return Optional.empty();
@@ -402,11 +417,13 @@ public class IngestAcceptanceService {
         private void requireText(String value, String field) {
             if (!hasText(value)) {
                 add("required", field, field + " is required");
+            } else if (hasLeadingOrTrailingWhitespace(value) || containsControlCharacter(value)) {
+                add("invalid_identity", field, field + " contains unsupported characters");
             }
         }
 
         private void requireMatchingComponent(String component, String payloadValue, String field) {
-            if (hasText(payloadValue) && !component.equals(payloadValue.trim())) {
+            if (hasText(payloadValue) && !component.equals(payloadValue)) {
                 add("idempotency_payload_mismatch", field, "Idempotency-Key component must match payload");
             }
         }
@@ -426,6 +443,15 @@ public class IngestAcceptanceService {
                 }
             }
             return false;
+        }
+
+        private static boolean hasLeadingOrTrailingWhitespace(String value) {
+            return !value.isEmpty()
+                    && (isWhitespace(value.charAt(0)) || isWhitespace(value.charAt(value.length() - 1)));
+        }
+
+        private static boolean isWhitespace(char value) {
+            return Character.isWhitespace(value) || Character.isSpaceChar(value);
         }
 
         private static boolean isTemplateVariable(String segment) {

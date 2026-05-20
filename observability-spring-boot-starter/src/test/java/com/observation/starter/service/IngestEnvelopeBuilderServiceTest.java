@@ -156,6 +156,10 @@ class IngestEnvelopeBuilderServiceTest {
                 () -> builder.build(bucketWithSummaryHistogram(List.of(
                         new HistogramBucket(50, 2),
                         new HistogramBucket(100, 1)))));
+        assertThrows(IllegalArgumentException.class,
+                () -> builder.build(bucketWithSummaryHistogram(List.of(
+                        new HistogramBucket(50, 1),
+                        new HistogramBucket(100, 3)))));
     }
 
     @Test
@@ -172,6 +176,23 @@ class IngestEnvelopeBuilderServiceTest {
                 () -> builder.build(bucketWithEndpointHistogram(List.of(
                         new HistogramBucket(50, 2),
                         new HistogramBucket(100, 1)))));
+        assertThrows(IllegalArgumentException.class,
+                () -> builder.build(bucketWithEndpointHistogram(List.of(
+                        new HistogramBucket(50, 1),
+                        new HistogramBucket(100, 3)))));
+    }
+
+    @Test
+    void envelopeConvergesUnsupportedEndpointMethodAndInvalidRouteToUnknown() {
+        IngestEnvelope.Endpoint endpoint = new IngestEnvelope.Endpoint(
+                "CONNECT",
+                "/orders/",
+                1,
+                0,
+                List.of(new IngestEnvelope.DurationBucket(50, 1)));
+
+        assertEquals("UNKNOWN", endpoint.method());
+        assertEquals("UNKNOWN", endpoint.route());
     }
 
     @Test

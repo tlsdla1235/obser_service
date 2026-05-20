@@ -1,7 +1,5 @@
 package com.observation.starter.model.route;
 
-import java.util.Objects;
-
 /**
  * starter 내부에서 endpoint 식별자로 사용할 수 있는 정규화된 route 값이다.
  *
@@ -48,13 +46,14 @@ public record NormalizedRoute(String value) {
 
         String candidate = stripQueryString(rawValue.trim());
         if (candidate.isBlank()
-                || UNKNOWN_VALUE.equalsIgnoreCase(candidate)
-                || candidate.startsWith("http://")
-                || candidate.startsWith("https://")
-                || !candidate.equals(UNKNOWN_VALUE) && !candidate.startsWith("/")) {
+                || UNKNOWN_VALUE.equalsIgnoreCase(candidate)) {
             return UNKNOWN_VALUE;
         }
-        return Objects.requireNonNull(candidate);
+        try {
+            return RouteTemplateContract.normalizeTemplate(candidate);
+        } catch (IllegalArgumentException ignored) {
+            return UNKNOWN_VALUE;
+        }
     }
 
     private static String stripQueryString(String value) {

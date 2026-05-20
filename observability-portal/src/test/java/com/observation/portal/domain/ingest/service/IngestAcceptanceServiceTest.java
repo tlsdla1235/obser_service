@@ -93,6 +93,34 @@ class IngestAcceptanceServiceTest {
     }
 
     @Test
+    void rejectsApplicationIdentityRawWhitespaceOrControlCharacters() throws Exception {
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("application")).put("name", "orders-api ")),
+                "application.name",
+                "invalid_identity");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("application")).put("environment", "prod\n")),
+                "application.environment",
+                "invalid_identity");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("application")).put("instance", "\torders-api-7f9c9c8c9d-x2p4k")),
+                "application.instance",
+                "invalid_identity");
+    }
+
+    @Test
+    void rejectsBucketTimestampRawWhitespaceOrControlCharacters() throws Exception {
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("bucket")).put("startUtc", "2026-05-08T01:00:00Z\n")),
+                "bucket.startUtc",
+                "invalid_bucket_timestamp");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("bucket")).put("endUtc", " 2026-05-08T01:00:30Z")),
+                "bucket.endUtc",
+                "invalid_bucket_timestamp");
+    }
+
+    @Test
     void rejectsInvalidCountsHistogramsAndRuntimeRatios() throws Exception {
         assertInvalid(
                 accept(root -> ((ObjectNode) root.get("summary")).put("requestCount", -1)),
@@ -134,6 +162,14 @@ class IngestAcceptanceServiceTest {
                 "endpoints[0].method",
                 "invalid_endpoint_method");
         assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("method", " GET ")),
+                "endpoints[0].method",
+                "invalid_endpoint_method");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("method", "GET\n")),
+                "endpoints[0].method",
+                "invalid_endpoint_method");
+        assertInvalid(
                 accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("route", "/orders/12345")),
                 "endpoints[0].route",
                 "invalid_endpoint_route");
@@ -161,6 +197,38 @@ class IngestAcceptanceServiceTest {
                 accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("route", "/orders/")),
                 "endpoints[0].route",
                 "invalid_endpoint_route");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("route", "/orders//{orderId}")),
+                "endpoints[0].route",
+                "invalid_endpoint_route");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("route", "/orders/{order-id}")),
+                "endpoints[0].route",
+                "invalid_endpoint_route");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("route", " /orders/{orderId}")),
+                "endpoints[0].route",
+                "invalid_endpoint_route");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("route", "/orders/{orderId}\n")),
+                "endpoints[0].route",
+                "invalid_endpoint_route");
+    }
+
+    @Test
+    void acceptsCanonicalEndpointMethodAndRouteWithoutRewriting() throws Exception {
+        IngestAcceptanceResult result = accept(root -> {
+            ObjectNode endpoint = (ObjectNode) root.get("endpoints").get(0);
+            endpoint.put("method", "GET");
+            endpoint.put("route", "/orders/{orderId}");
+        });
+
+        assertThat(result.isAccepted()).isTrue();
+        assertThat(result.acceptedCandidate()).hasValueSatisfying(candidate -> {
+            IngestEnvelopeRequest.Endpoint endpoint = candidate.payload().endpoints().get(0);
+            assertThat(endpoint.method()).isEqualTo("GET");
+            assertThat(endpoint.route()).isEqualTo("/orders/{orderId}");
+        });
     }
 
     @Test
@@ -177,6 +245,10 @@ class IngestAcceptanceServiceTest {
         assertInvalid(accept("project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k", request),
                 "Idempotency-Key", "invalid_idempotency_key");
         assertInvalid(accept("project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:20260508T010000Z\u0001", request),
+                "Idempotency-Key", "invalid_idempotency_key");
+        assertInvalid(accept(" project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:20260508T010000Z", request),
+                "Idempotency-Key", "invalid_idempotency_key");
+        assertInvalid(accept("project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:20260508T010000Z ", request),
                 "Idempotency-Key", "invalid_idempotency_key");
         assertInvalid(accept("project-123:orders-api:stage:orders-api-7f9c9c8c9d-x2p4k:20260508T010000Z", request),
                 "Idempotency-Key.environment", "idempotency_payload_mismatch");

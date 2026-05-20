@@ -123,10 +123,16 @@ MVP `schemaVersion: "1.0"`은 JVM/datasource runtime ratio를 latest sample shap
 - `bucket.startUtc`와 `bucket.endUtc`는 UTC이고 30초 boundary에 맞아야 한다.
 - `application.name`, `environment`, `instance`는 비어 있으면 안 된다.
 - endpoint `route`는 framework route template, configured allowlist template, 또는 `UNKNOWN`이어야 한다.
-- raw path candidate, query string, query key/value, high-cardinality tag, attribution source raw detail은 payload shape에 존재할 수 없다.
+- raw path candidate, query string, query key/value, high-cardinality tag, attribution source raw detail은 지원 payload shape에 존재할 수 없다.
 - endpoint 항목은 이미 정규화된 route 기준의 bounded top-N 또는 허용 route set 안에 있어야 한다. 이 제한은 출력 cardinality cap이며 route attribution fallback으로 사용하지 않는다.
 - histogram bucket은 cumulative count를 사용한다.
-- 자유 tag map, arbitrary custom metric map, raw timeseries 배열은 허용하지 않는다.
+- 자유 tag map, arbitrary custom metric map, raw timeseries 배열은 지원 payload field로 정의하지 않는다.
+
+### 4.1 Unsupported Unknown Field Handling
+
+Portal ingest는 forward compatibility를 위해 JSON unknown field를 거부하지 않고 무시한다. 예를 들어 `customMetrics`, `tags`, `rawTimeseries`, 또는 future unsupported field가 포함되어도 지원 envelope field가 유효하면 request는 counting/acceptance 대상으로 남는다.
+
+무시된 field는 metric taxonomy 확장, aggregation 입력, route attribution, idempotency payload identity, persisted accepted metric 후보에 반영하지 않는다. 즉, unknown field를 받는 것은 semantic acceptance가 아니라 "지원하지 않는 입력을 읽지 않고 버린다"는 boundary 정책이다. 지원 field 자체가 잘못된 경우, 예를 들어 `schemaVersion`이 `1.0`이 아니거나 endpoint `route`에 query string/raw identifier가 남아 있는 경우에는 기존 validation rule대로 reject한다.
 
 Post-MVP runtime aggregate schema를 열 경우에는 각 ratio aggregate에 대해 `0 <= latest <= max <= 1`, `0 <= avg <= max`, `sampleCount > 0`을 검증한다. 특정 metric aggregate가 없을 수는 있지만, 한 metric을 보낼 때는 `latest`, `max`, `avg`, `sampleCount`가 함께 있어야 한다. 이 검증은 starter local builder와 portal `IngestAcceptanceService` 양쪽에 둔다.
 
@@ -153,5 +159,6 @@ portal idempotency는 재전송/duplicate 안전망이지, starter duplicate flu
 - pull exposition format 지원
 - arbitrary query를 위한 raw metric 저장
 - allowlist matching의 임시 입력으로 사용된 raw path/query 저장
+- ignored unknown field 저장 또는 metric taxonomy 반영
 - high-cardinality label 검색
 - user-defined custom metric ingestion

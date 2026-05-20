@@ -18,10 +18,11 @@ public record ValidatedIngestCandidate(
      */
     public ValidatedIngestCandidate {
         verifiedProject = Objects.requireNonNull(verifiedProject, "verifiedProject must not be null");
-        if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            throw new IllegalArgumentException("idempotencyKey must not be blank");
+        if (idempotencyKey == null || idempotencyKey.isBlank()
+                || hasLeadingOrTrailingWhitespace(idempotencyKey)
+                || containsControlCharacter(idempotencyKey)) {
+            throw new IllegalArgumentException("idempotencyKey must be a validated raw header value");
         }
-        idempotencyKey = idempotencyKey.trim();
         payload = Objects.requireNonNull(payload, "payload must not be null");
     }
 
@@ -33,5 +34,23 @@ public record ValidatedIngestCandidate(
                         payload.application().name(),
                         payload.application().environment(),
                         payload.application().instance());
+    }
+
+    private static boolean containsControlCharacter(String value) {
+        for (int index = 0; index < value.length(); index++) {
+            if (Character.isISOControl(value.charAt(index))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasLeadingOrTrailingWhitespace(String value) {
+        return !value.isEmpty()
+                && (isWhitespace(value.charAt(0)) || isWhitespace(value.charAt(value.length() - 1)));
+    }
+
+    private static boolean isWhitespace(char value) {
+        return Character.isWhitespace(value) || Character.isSpaceChar(value);
     }
 }

@@ -1,7 +1,6 @@
 package com.observation.portal.domain.ingest.service;
 
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
-import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 
@@ -24,15 +23,21 @@ class PortalIngestValidationFixtureTest {
     }
 
     @Test
-    void rejectsUnknownTopLevelAndNestedFields() {
-        assertJsonRejectedWithUnknownField(root -> root.putObject("customMetrics"));
-        assertJsonRejectedWithUnknownField(root -> ((ObjectNode) root.get("summary")).putObject("tags"));
-        assertJsonRejectedWithUnknownField(root -> root.putArray("rawTimeseries").add(1));
-        assertJsonRejectedWithUnknownField(root -> ((ObjectNode) root.get("endpoints").get(0)).putObject("rawPath"));
+    void ignoresUnknownTopLevelAndNestedFields() throws Exception {
+        IngestEnvelopeRequest request = PortalIngestValidationFixture.requestWith(root -> {
+            root.putObject("customMetrics").put("ignored", 1);
+            ((ObjectNode) root.get("summary")).putObject("tags").put("tenant", "checkout");
+            root.putArray("rawTimeseries").add(1);
+            ((ObjectNode) root.get("endpoints").get(0)).putObject("rawPath").put("value", "/orders/12345");
+        });
+
+        assertThat(request.summary().requestCount()).isEqualTo(3);
+        assertThat(request.endpoints().get(0).method()).isEqualTo("GET");
+        assertThat(request.endpoints().get(0).route()).isEqualTo("/orders/{orderId}");
     }
 
     @Test
-    void rejectsPostMvpRuntimeAggregateShapeBeforeServiceValidation() {
+    void rejectsUnsupportedRuntimeAggregateShapeOnSupportedRatioField() {
         assertThatThrownBy(() -> PortalIngestValidationFixture.requestWith(root -> {
             root.put("schemaVersion", "1.1");
             ObjectNode cpuUsage = ((ObjectNode) root.get("summary").get("jvm")).putObject("cpuUsage");
@@ -42,19 +47,5 @@ class PortalIngestValidationFixtureTest {
             cpuUsage.put("sampleCount", 6);
         }))
                 .isInstanceOf(MismatchedInputException.class);
-    }
-
-    private static void assertJsonRejectedWithUnknownField(JsonMutation mutation) {
-        assertThatThrownBy(() -> PortalIngestValidationFixture.requestWith(mutation::mutate))
-                .isInstanceOf(UnrecognizedPropertyException.class);
-    }
-
-    @FunctionalInterface
-    private interface JsonMutation {
-
-        /**
-         * golden JSON tree를 contract 위반 형태로 변형한다.
-         */
-        void mutate(ObjectNode root);
     }
 }

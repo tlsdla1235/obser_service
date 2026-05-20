@@ -35,9 +35,17 @@ class RouteAttributionPropertiesTest {
         assertThrows(IllegalArgumentException.class,
                 () -> properties.setAllowlist(List.of("https://example.test/orders/{orderId}")));
         assertThrows(IllegalArgumentException.class,
+                () -> properties.setAllowlist(List.of("/orders/")));
+        assertThrows(IllegalArgumentException.class,
+                () -> properties.setAllowlist(List.of("/orders//{orderId}")));
+        assertThrows(IllegalArgumentException.class,
                 () -> properties.setAllowlist(List.of("/orders/12345")));
         assertThrows(IllegalArgumentException.class,
+                () -> properties.setAllowlist(List.of("/assets/deadbeef")));
+        assertThrows(IllegalArgumentException.class,
                 () -> properties.setAllowlist(List.of("/orders/550e8400-e29b-41d4-a716-446655440000")));
+        assertThrows(IllegalArgumentException.class,
+                () -> properties.setAllowlist(List.of("/orders/{order-id}")));
     }
 
     @Test
