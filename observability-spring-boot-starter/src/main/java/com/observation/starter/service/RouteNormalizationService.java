@@ -72,8 +72,7 @@ public final class RouteNormalizationService {
         return frameworkCandidate
                 .map(RouteNormalizationService::stripQueryString)
                 .map(String::trim)
-                .filter(RouteNormalizationService::isRouteShaped)
-                .map(NormalizedRoute::of);
+                .flatMap(RouteNormalizationService::normalizeRouteTemplate);
     }
     // http.route가 없을 때 raw path 후보를 allowlist에 매칭합니다.
     private Optional<NormalizedRoute> normalizeAllowlistMatch(Optional<String> rawPathCandidate) {
@@ -118,6 +117,14 @@ public final class RouteNormalizationService {
             return false;
         }
         return !hasTemplateMarker(value);
+    }
+
+    private static Optional<NormalizedRoute> normalizeRouteTemplate(String candidate) {
+        try {
+            return Optional.of(NormalizedRoute.of(RouteAttributionProperties.normalizeAllowlistTemplate(candidate)));
+        } catch (IllegalArgumentException ignored) {
+            return Optional.empty();
+        }
     }
 
     private static boolean hasTemplateMarker(String value) {

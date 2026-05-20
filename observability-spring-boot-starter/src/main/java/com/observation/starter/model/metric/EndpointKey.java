@@ -4,6 +4,7 @@ import com.observation.starter.model.route.NormalizedRoute;
 
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * endpoint rollup의 유일한 식별자다.
@@ -14,6 +15,8 @@ import java.util.Objects;
 public record EndpointKey(String method, NormalizedRoute normalizedRoute) {
 
     private static final String UNKNOWN_METHOD = "UNKNOWN";
+    private static final Set<String> PORTAL_ACCEPTED_METHODS = Set.of(
+            "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE", UNKNOWN_METHOD);
 
     /**
      * method와 normalized route만 남기도록 endpoint key 입력을 정리한다.
@@ -40,6 +43,9 @@ public record EndpointKey(String method, NormalizedRoute normalizedRoute) {
 
         String candidate = method.trim().toUpperCase(Locale.ROOT);
         if (!candidate.matches("[A-Z]+")) {
+            return UNKNOWN_METHOD;
+        }
+        if (!PORTAL_ACCEPTED_METHODS.contains(candidate)) {
             return UNKNOWN_METHOD;
         }
         return candidate;

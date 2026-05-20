@@ -1,0 +1,297 @@
+package com.observation.portal.domain.ingest.service;
+
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.junit.jupiter.api.Test;
+
+import java.util.function.Consumer;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+class IngestAcceptanceServiceTest {
+
+    @Test
+    void acceptsStory25GoldenEnvelopeAndIdempotencyKeyAfterProjectVerification() throws Exception {
+        ProjectKeyVerificationService projectKeyVerificationService = verifiedProjectKeyService();
+        IngestAcceptanceService service = new IngestAcceptanceService(projectKeyVerificationService);
+
+        IngestAcceptanceResult result = service.accept(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                PortalIngestValidationFixture.goldenRequest());
+
+        assertThat(result.isAccepted()).isTrue();
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.acceptedCandidate()).hasValueSatisfying(candidate -> {
+            assertThat(candidate.verifiedProject()).isEqualTo(PortalIngestValidationFixture.VERIFIED_PROJECT);
+            assertThat(candidate.idempotencyKey()).isEqualTo(PortalIngestValidationFixture.IDEMPOTENCY_KEY);
+            assertThat(candidate.payload().application().name()).isEqualTo("orders-api");
+        });
+        verify(projectKeyVerificationService).verify(PortalIngestValidationFixture.PROJECT_KEY_HEADER);
+    }
+
+    @Test
+    void mapsInvalidProjectKeyToUnauthorizedAndSkipsPayloadValidation() {
+        ProjectKeyVerificationService projectKeyVerificationService = mock(ProjectKeyVerificationService.class);
+        when(projectKeyVerificationService.verify(PortalIngestValidationFixture.PROJECT_KEY_HEADER))
+                .thenReturn(ProjectKeyVerificationResult.unauthorized());
+        IngestAcceptanceService service = new IngestAcceptanceService(projectKeyVerificationService);
+
+        IngestAcceptanceResult result = service.accept(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                "not-a-valid-idempotency-key",
+                null);
+
+        assertThat(result.isUnauthorized()).isTrue();
+        assertThat(result.acceptedCandidate()).isEmpty();
+        assertThat(result.errors()).isEmpty();
+        verify(projectKeyVerificationService).verify(PortalIngestValidationFixture.PROJECT_KEY_HEADER);
+    }
+
+    @Test
+    void rejectsUnsupportedSchemaVersion() throws Exception {
+        IngestAcceptanceResult result = accept(root -> root.put("schemaVersion", "1.1"));
+
+        assertInvalid(result, "schemaVersion", "unsupported_schema_version");
+    }
+
+    @Test
+    void rejectsInvalidBucketBoundaryAndDuration() throws Exception {
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("bucket")).put("startUtc", "2026-05-08T01:00:01Z")),
+                "bucket.startUtc",
+                "invalid_bucket_boundary");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("bucket")).put("startUtc", "2026-05-08T10:00:00+09:00")),
+                "bucket.startUtc",
+                "invalid_bucket_timestamp");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("bucket")).put("endUtc", "2026-05-08T01:00:31Z")),
+                "bucket",
+                "invalid_bucket_interval");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("bucket")).put("durationSeconds", 60)),
+                "bucket.durationSeconds",
+                "invalid_bucket_duration");
+    }
+
+    @Test
+    void rejectsBlankApplicationIdentityValues() throws Exception {
+        IngestAcceptanceResult result = accept(root -> {
+            ObjectNode application = (ObjectNode) root.get("application");
+            application.put("name", " ");
+            application.put("environment", "");
+            application.put("instance", "  ");
+        });
+
+        assertThat(result.errors())
+                .extracting(IngestValidationError::field)
+                .contains("application.name", "application.environment", "application.instance");
+    }
+
+    @Test
+    void rejectsApplicationIdentityRawWhitespaceOrControlCharacters() throws Exception {
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("application")).put("name", "orders-api ")),
+                "application.name",
+                "invalid_identity");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("application")).put("environment", "prod\n")),
+                "application.environment",
+                "invalid_identity");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("application")).put("instance", "\torders-api-7f9c9c8c9d-x2p4k")),
+                "application.instance",
+                "invalid_identity");
+    }
+
+    @Test
+    void rejectsBucketTimestampRawWhitespaceOrControlCharacters() throws Exception {
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("bucket")).put("startUtc", "2026-05-08T01:00:00Z\n")),
+                "bucket.startUtc",
+                "invalid_bucket_timestamp");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("bucket")).put("endUtc", " 2026-05-08T01:00:30Z")),
+                "bucket.endUtc",
+                "invalid_bucket_timestamp");
+    }
+
+    @Test
+    void rejectsInvalidCountsHistogramsAndRuntimeRatios() throws Exception {
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("summary")).put("requestCount", -1)),
+                "summary.requestCount",
+                "invalid_count");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("summary")).put("errorCount", 4)),
+                "summary.errorCount",
+                "invalid_count");
+        assertInvalid(
+                accept(root -> ((ArrayNode) root.get("summary").get("httpServerDurationBuckets")).removeAll()),
+                "summary.httpServerDurationBuckets",
+                "invalid_histogram");
+        assertInvalid(
+                accept(root -> {
+                    ArrayNode buckets = (ArrayNode) root.get("endpoints").get(0).get("durationBuckets");
+                    ((ObjectNode) buckets.get(2)).put("count", 1);
+                }),
+                "endpoints[0].durationBuckets[2].count",
+                "invalid_histogram");
+        assertInvalid(
+                accept(root -> ((ArrayNode) root.get("endpoints").get(0).get("durationBuckets")).removeAll()),
+                "endpoints[0].durationBuckets",
+                "invalid_histogram");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("summary").get("jvm")).put("cpuUsage", 1.5d)),
+                "summary.jvm.cpuUsage",
+                "invalid_ratio");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("summary").get("datasource")).put("poolUsageRatio", -0.1d)),
+                "summary.datasource.poolUsageRatio",
+                "invalid_ratio");
+    }
+
+    @Test
+    void rejectsEndpointMethodAndNonNormalizedRoutes() throws Exception {
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("method", "get")),
+                "endpoints[0].method",
+                "invalid_endpoint_method");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("method", " GET ")),
+                "endpoints[0].method",
+                "invalid_endpoint_method");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("method", "GET\n")),
+                "endpoints[0].method",
+                "invalid_endpoint_method");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("route", "/orders/12345")),
+                "endpoints[0].route",
+                "invalid_endpoint_route");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put(
+                        "route",
+                        "/orders/550e8400-e29b-41d4-a716-446655440000")),
+                "endpoints[0].route",
+                "invalid_endpoint_route");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("route", "/assets/deadbeef")),
+                "endpoints[0].route",
+                "invalid_endpoint_route");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("route", "/orders/{orderId}?debug=true")),
+                "endpoints[0].route",
+                "invalid_endpoint_route");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put(
+                        "route",
+                        "https://example.test/orders/{orderId}")),
+                "endpoints[0].route",
+                "invalid_endpoint_route");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("route", "/orders/")),
+                "endpoints[0].route",
+                "invalid_endpoint_route");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("route", "/orders//{orderId}")),
+                "endpoints[0].route",
+                "invalid_endpoint_route");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("route", "/orders/{order-id}")),
+                "endpoints[0].route",
+                "invalid_endpoint_route");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("route", " /orders/{orderId}")),
+                "endpoints[0].route",
+                "invalid_endpoint_route");
+        assertInvalid(
+                accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("route", "/orders/{orderId}\n")),
+                "endpoints[0].route",
+                "invalid_endpoint_route");
+    }
+
+    @Test
+    void acceptsCanonicalEndpointMethodAndRouteWithoutRewriting() throws Exception {
+        IngestAcceptanceResult result = accept(root -> {
+            ObjectNode endpoint = (ObjectNode) root.get("endpoints").get(0);
+            endpoint.put("method", "GET");
+            endpoint.put("route", "/orders/{orderId}");
+        });
+
+        assertThat(result.isAccepted()).isTrue();
+        assertThat(result.acceptedCandidate()).hasValueSatisfying(candidate -> {
+            IngestEnvelopeRequest.Endpoint endpoint = candidate.payload().endpoints().get(0);
+            assertThat(endpoint.method()).isEqualTo("GET");
+            assertThat(endpoint.route()).isEqualTo("/orders/{orderId}");
+        });
+    }
+
+    @Test
+    void acceptsUnknownRouteFallbackWhenEverythingElseIsValid() throws Exception {
+        IngestAcceptanceResult result = accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put("route", "UNKNOWN"));
+
+        assertThat(result.isAccepted()).isTrue();
+    }
+
+    @Test
+    void rejectsMalformedOrPayloadMismatchedIdempotencyKey() throws Exception {
+        IngestEnvelopeRequest request = PortalIngestValidationFixture.goldenRequest();
+
+        assertInvalid(accept("project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k", request),
+                "Idempotency-Key", "invalid_idempotency_key");
+        assertInvalid(accept("project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:20260508T010000Z\u0001", request),
+                "Idempotency-Key", "invalid_idempotency_key");
+        assertInvalid(accept(" project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:20260508T010000Z", request),
+                "Idempotency-Key", "invalid_idempotency_key");
+        assertInvalid(accept("project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:20260508T010000Z ", request),
+                "Idempotency-Key", "invalid_idempotency_key");
+        assertInvalid(accept("project-123:orders-api:stage:orders-api-7f9c9c8c9d-x2p4k:20260508T010000Z", request),
+                "Idempotency-Key.environment", "idempotency_payload_mismatch");
+        assertInvalid(accept("project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:20260508T010030Z", request),
+                "Idempotency-Key.bucketStartUtc", "idempotency_payload_mismatch");
+        assertInvalid(accept("project-123:orders:api:prod:orders-api-7f9c9c8c9d-x2p4k:20260508T010000Z", request),
+                "Idempotency-Key", "invalid_idempotency_key");
+    }
+
+    @Test
+    void invalidResultsDoNotRetainRawRouteOrProjectKeyValues() throws Exception {
+        IngestAcceptanceResult result = accept(root -> ((ObjectNode) root.get("endpoints").get(0)).put(
+                "route",
+                "/orders/12345?token=secret"));
+
+        assertThat(result.isInvalidRequest()).isTrue();
+        assertThat(result.toString()).doesNotContain("/orders/12345", "token=secret", PortalIngestValidationFixture.PROJECT_KEY_HEADER);
+        assertThat(result.errors().toString()).doesNotContain("/orders/12345", "token=secret", PortalIngestValidationFixture.PROJECT_KEY_HEADER);
+    }
+
+    private static IngestAcceptanceResult accept(Consumer<ObjectNode> mutation) throws Exception {
+        return accept(PortalIngestValidationFixture.IDEMPOTENCY_KEY, PortalIngestValidationFixture.requestWith(mutation));
+    }
+
+    private static IngestAcceptanceResult accept(String idempotencyKey, IngestEnvelopeRequest request) {
+        IngestAcceptanceService service = new IngestAcceptanceService(verifiedProjectKeyService());
+        return service.accept(PortalIngestValidationFixture.PROJECT_KEY_HEADER, idempotencyKey, request);
+    }
+
+    private static ProjectKeyVerificationService verifiedProjectKeyService() {
+        ProjectKeyVerificationService projectKeyVerificationService = mock(ProjectKeyVerificationService.class);
+        when(projectKeyVerificationService.verify(PortalIngestValidationFixture.PROJECT_KEY_HEADER))
+                .thenReturn(ProjectKeyVerificationResult.verified(PortalIngestValidationFixture.VERIFIED_PROJECT));
+        return projectKeyVerificationService;
+    }
+
+    private static void assertInvalid(IngestAcceptanceResult result, String field, String code) {
+        assertThat(result.isInvalidRequest()).isTrue();
+        assertThat(result.acceptedCandidate()).isEmpty();
+        assertThat(result.errors())
+                .anySatisfy(error -> {
+                    assertThat(error.field()).isEqualTo(field);
+                    assertThat(error.code()).isEqualTo(code);
+                });
+    }
+}

@@ -4,7 +4,8 @@ storyId: "3.2"
 epic: "Epic 3. Portal Ingest Acceptance"
 title: "Ingest Acceptance Service"
 architectureStyle: Traditional MVC
-status: ready-for-dev
+status: done
+baseline_commit: "9a9ad3ab1a6f6fd790e5f1a120728e94c28ce3ad"
 date: 2026-05-18
 ---
 
@@ -69,7 +70,7 @@ date: 2026-05-18
 - `Idempotency-Key`는 5개 component 형식과 header-safe 문자 집합을 검증한다.
 - idempotency key의 application/environment/instance/bucket-start component는 payload와 일치해야 한다.
 - payload hash 계산이 이 story에서 시작되면 validated canonical representation 기준으로 deterministic하게 만든다.
-- DTO는 unknown field를 허용하지 않아 free tag map, arbitrary custom metric map, raw timeseries array, Post-MVP aggregate field를 차단한다.
+- DTO는 forward compatibility를 위해 unknown field를 무시한다. `customMetrics`, `tags`, `rawTimeseries` 같은 unsupported field는 request counting을 막지 않지만, metric taxonomy, aggregation, route attribution, persisted accepted metric 후보에는 반영하지 않는다.
 - Story 2.5 golden JSON은 portal acceptance success fixture로 재사용한다.
 - persistence success response는 Story 3.3에서 repository와 연결한다.
 
@@ -81,8 +82,8 @@ date: 2026-05-18
 4. blank application name, environment, or instance is rejected.
 5. negative counts, `errorCount > requestCount`, non-monotonic cumulative histogram buckets, or invalid ratio range is rejected.
 6. endpoint method/route/count/histogram fields follow `metric-taxonomy` and `ingest-envelope` rules.
-7. route with query string, absolute URL, raw identifier candidate, or non-normalized shape is rejected where the MVP contract can detect it.
-8. free-form tags, arbitrary custom metric map, raw timeseries array, and schemaVersion `1.1` runtime aggregate fields are rejected.
+7. final payload route with query string, absolute URL, raw identifier candidate, or non-normalized shape is rejected where the MVP contract can detect it. Starter-side framework route query discard is allowed only when the resulting normalized route satisfies the portal route contract.
+8. unsupported unknown fields such as free-form tags, arbitrary custom metric maps, raw timeseries arrays, and future extension fields are ignored rather than rejected; ignored fields do not affect metric taxonomy, aggregation, route attribution, or persisted accepted metrics.
 9. invalid project key result from Story 3.1 maps to unauthorized acceptance result.
 10. this story does not write `accepted_metric_buckets` or create dashboard snapshots.
 
@@ -94,7 +95,7 @@ date: 2026-05-18
 4. `IngestAcceptanceService`를 추가한다.
 5. project key verification result를 acceptance context로 연결한다.
 6. schema/bucket/metric/idempotency key validation tests를 추가한다.
-7. unknown field/free tag/custom metric/raw timeseries rejection test를 추가한다.
+7. unknown field/free tag/custom metric/raw timeseries ignore-and-accept test를 추가한다.
 8. controller status mapping이 필요한 경우 invalid path 중심 slice test를 추가한다.
 9. `MvcLayerBoundaryTest`를 실행한다.
 
@@ -104,7 +105,7 @@ date: 2026-05-18
 - `PortalIngestValidationFixtureTest`
 - Story 2.5 golden envelope success fixture
 - invalid schema/bucket/route/idempotency key tests
-- free tag/custom metric/raw timeseries unknown field rejection test
+- free tag/custom metric/raw timeseries unknown field ignore-and-accept test
 - invalid project key unauthorized mapping test
 - `MvcLayerBoundaryTest`
 - 권장 실행 명령: `./gradlew :observability-portal:test`
@@ -114,20 +115,92 @@ date: 2026-05-18
 - starter payload를 신뢰만 하고 저장하지 않는다. Portal validation은 starter contract를 mirror한다.
 - schemaVersion `1.1` runtime aggregate 후보를 MVP validation에 섞지 않는다.
 - raw path/query/high-cardinality tag를 "나중에 쓸 수 있게" 보관하지 않는다.
+- framework `http.route`에 붙은 query string은 starter가 final payload 생성 전에 폐기할 수 있지만, portal validation은 약화하지 않는다. final payload route에 query string이 남아 있으면 reject한다.
 - accepted bucket repository, duplicate conflict, dashboard read model을 이 story에서 끝까지 구현하려고 범위를 넓히지 않는다.
 - controller가 repository를 직접 호출하지 않는다.
 
 ## Tasks/Subtasks
 
-- [ ] Story 2.5 golden fixture를 확인한다.
-- [ ] ingest DTO/model을 추가한다.
-- [ ] validation error/result model을 추가한다.
-- [ ] `IngestAcceptanceService`를 구현한다.
-- [ ] project key verification 연동을 추가한다.
-- [ ] schema/bucket/metric/idempotency validation tests를 추가한다.
-- [ ] forbidden field rejection tests를 추가한다.
-- [ ] portal architecture tests를 실행한다.
+- [x] Story 2.5 golden fixture를 확인한다.
+- [x] ingest DTO/model을 추가한다.
+- [x] validation error/result model을 추가한다.
+- [x] `IngestAcceptanceService`를 구현한다.
+- [x] project key verification 연동을 추가한다.
+- [x] schema/bucket/metric/idempotency validation tests를 추가한다.
+- [x] unsupported unknown field ignore-and-accept tests를 추가한다.
+- [x] portal architecture tests를 실행한다.
+
+### Review Findings
+
+- [x] [Review][Defer] Strict JSON scalar type hardening — 현재 Story 3.2 acceptance blocker는 아니며, supported field의 JSON token type coercion 차단은 future hardening으로 분리한다.
+- [x] [Review][Defer] Endpoint/histogram collection cap — concrete endpoint cap과 histogram boundary-set hardening은 persistence/read-model 요구가 구체화되는 후속 story에서 다룬다.
+- [x] [Review][Defer] Duplicate endpoint key rejection — 동일 `method + route` 중복 payload 방어는 후속 persistence/merge semantics와 함께 다룬다.
+- [x] [Review][Defer] `ValidatedIngestCandidate` direct-construction guard — 현재 service path는 validation 이후 candidate를 생성하므로, 생성자 방어 강화는 Story 3.3 이후 hardening으로 남긴다.
+- [x] [Review][Defer] Idempotency project component binding — 첫 component의 의미가 verified project id인지 starter-local identity인지 제품 결정이 필요하므로 후속 idempotency/persistence story에서 결정한다.
+
+## Dev Agent Record
+
+### Implementation Plan
+
+- Story 2.5 `IngestEnvelopeContractJsonTest`의 representative golden JSON과 deterministic idempotency key를 portal test fixture로 복제해 success path를 고정한다.
+- service가 controller DTO에 의존하지 않도록 `domain.ingest.service` 안에 ingest envelope request model, validation error/result model, validated candidate model을 둔다.
+- `IngestAcceptanceService`는 `ProjectKeyVerificationService`를 먼저 호출하고, unauthorized project key는 payload validation 전에 닫는다.
+- service validation은 schemaVersion, UTC 30초 bucket, application identity, app/endpoint counts, cumulative histogram, runtime ratio, endpoint method/route, Idempotency-Key format과 payload consistency를 검증한다.
+- unknown field/free tag/custom metric/raw timeseries/future extension field는 Jackson request model boundary에서 무시하고, service validation은 지원 envelope field만 기준으로 수행한다.
+- `accepted_metric_buckets` migration/repository, duplicate success/conflict persistence, dashboard snapshot/read model, p95/state/insight/endpoint priority 계산은 추가하지 않는다.
+
+### Debug Log
+
+- 2026-05-19T16:43:21+0900: `implementation-artifacts/sprint-status.yaml`에서 Story 3.2 상태를 `in-progress`로 전환하고 story frontmatter에 baseline commit을 기록했다.
+- Story 2.5 starter golden JSON과 idempotency key를 `PortalIngestValidationFixture`로 옮겨 portal validation success fixture를 만들었다.
+- `IngestEnvelopeRequest`, `IngestValidationError`, `IngestAcceptanceResult`, `ValidatedIngestCandidate`, `IngestAcceptanceService`를 추가했다.
+- `IngestAcceptanceServiceTest` 최초 실행에서 idempotency key 끝의 control character가 `trim()` 이후 검사되어 통과될 수 있음을 확인했고, header 원문을 먼저 검사하도록 수정했다.
+- `./gradlew :observability-portal:test --tests com.observation.portal.domain.ingest.service.IngestAcceptanceServiceTest` 통과.
+- `./gradlew :observability-portal:test --tests com.observation.portal.domain.ingest.service.PortalIngestValidationFixtureTest` 통과.
+- `./gradlew :observability-portal:test --tests com.observation.portal.architecture.MvcLayerBoundaryTest` 통과.
+- `./gradlew :observability-portal:test --tests com.observation.portal.domain.ingest.service.IngestAcceptanceServiceTest --tests com.observation.portal.domain.ingest.service.PortalIngestValidationFixtureTest --tests com.observation.portal.architecture.MvcLayerBoundaryTest` 통과.
+- `./gradlew :observability-portal:test` 통과.
+- `git diff --check` 통과.
+- 2026-05-19T16:53:47+0900: BMAD 3종 review 절차를 수행하지 않은 상태에서 `done`으로 전환했던 기록을 정정하고 Story 3.2를 `review`로 되돌렸다.
+- 2026-05-20T00:08:18+0900: review decision에 따라 endpoint `method`/`route` 원문 leading/trailing whitespace와 control character reject를 추가하고, unknown JSON field는 ignore-and-accept 정책으로 갱신했다.
+- 2026-05-20T00:08:52+0900: `./gradlew :observability-portal:test` 통과. 기존 starter worktree 변경 확인 차원에서 `./gradlew :observability-spring-boot-starter:test`도 통과.
+- 2026-05-20T00:31:55+0900: BMAD adversarial review 결과를 재-triage했고, Story 3.2 acceptance blocker는 없으며 남은 항목은 future hardening/deferred work로 분리했다.
+
+### Completion Notes
+
+- Portal validation은 Story 2.5 golden envelope와 `project-123:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:20260508T010000Z` idempotency key를 accepted result로 통과시킨다.
+- invalid project key는 `ProjectKeyVerificationResult.unauthorized()`를 받아 payload validation 전에 `IngestAcceptanceResult.unauthorized()`로 닫는다.
+- schemaVersion은 `1.0`만 허용하며, `bucket.durationSeconds = 30`, `[startUtc, endUtc)` 30초 간격, UTC `Z` timestamp, 30초 boundary 정렬을 검증한다.
+- application name/environment/instance blank, 음수 count, `errorCount > requestCount`, empty/non-monotonic cumulative histogram, requestCount 초과 histogram count, `0.0..1.0` 밖 JVM/datasource ratio를 거부한다.
+- endpoint method는 bounded uppercase HTTP method로 제한하고, endpoint route는 `UNKNOWN` 또는 normalized route template만 허용한다. Portal은 final payload route에 남은 query string, absolute URL, numeric/UUID/long-hex identifier segment, trailing slash, double slash, malformed template shape를 거부한다.
+- framework `http.route`의 query discard는 starter-side normalization 정책이다. query 폐기 후 final normalized route가 portal contract를 만족하는 경우는 허용하지만, portal final payload validation 자체는 query string을 계속 reject한다.
+- `Idempotency-Key`는 5개 component와 header-safe 문자 집합을 검증하고, application/environment/instance/bucket-start component가 payload와 일치해야 한다.
+- request model은 unknown field를 무시해 free tag map, arbitrary custom metric map, raw timeseries array, future extension field가 service validation을 막지 않게 한다. 무시된 field는 metric taxonomy, aggregation, route attribution, persisted accepted metric 후보에 반영되지 않는다.
+- invalid result/error model과 `toString()`은 raw project key, raw route/query 값을 보관하거나 출력하지 않는다.
+- 이번 story에서는 persistence, duplicate handling, dashboard snapshot/read model, p95/state/insight/endpoint priority 계산을 구현하지 않았다.
+- BMAD review에서 제기된 strict JSON token type, endpoint cap, duplicate endpoint key, direct candidate construction, idempotency project component binding은 이번 story의 acceptance blocker가 아니라 future hardening으로 분리했다.
+
+### File List
+
+- `implementation-artifacts/sprint-status.yaml`
+- `planning-artifacts/stories/3-2-ingest-acceptance-service.md`
+- `observability-portal/src/main/java/com/observation/portal/domain/ingest/service/IngestAcceptanceService.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/ingest/service/IngestAcceptanceResult.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/ingest/service/IngestEnvelopeRequest.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/ingest/service/IngestValidationError.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/ingest/service/ValidatedIngestCandidate.java`
+- `observability-portal/src/test/java/com/observation/portal/domain/ingest/service/IngestAcceptanceServiceTest.java`
+- `observability-portal/src/test/java/com/observation/portal/domain/ingest/service/IngestEnvelopeRequestJsonTest.java`
+- `observability-portal/src/test/java/com/observation/portal/domain/ingest/service/PortalIngestValidationFixture.java`
+- `observability-portal/src/test/java/com/observation/portal/domain/ingest/service/PortalIngestValidationFixtureTest.java`
+
+### Change Log
+
+- 2026-05-19: Story 3.2 Ingest Acceptance Service를 구현하고 portal validation fixture, service tests, MVC boundary test, portal 전체 테스트를 통과해 review 상태로 전환했다.
+- 2026-05-19: BMAD review 미수행 상태에서 `done`으로 올린 기록을 정정하고, review 완료 전까지 status를 `review`로 유지하도록 수정했다.
+- 2026-05-20: review decision에 따라 endpoint method/route 원문 whitespace/control character rejection을 추가하고, unknown JSON field는 무시 후 지원 envelope만 accept/count하도록 story 기준을 갱신했다.
+- 2026-05-20: BMAD review findings를 future hardening으로 defer하고 Story 3.2를 완료 상태로 전환했다.
 
 ## Status
 
-ready-for-dev
+done

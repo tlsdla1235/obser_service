@@ -57,6 +57,26 @@ class RouteNormalizationServiceTest {
     }
 
     @Test
+    void frameworkRouteRejectCandidatesConvergeToUnknownBeforeEnvelopeBuild() {
+        RouteNormalizationService service = new RouteNormalizationService(List.of("/orders/{orderId}"));
+        List<String> rejectCandidates = List.of(
+                "/orders/",
+                "/orders//{orderId}",
+                "/orders/12345",
+                "/assets/deadbeef",
+                "/orders/{1}",
+                "/orders/{order-id}",
+                "/orders/{orderId",
+                "/orders/*");
+
+        for (String candidate : rejectCandidates) {
+            assertEquals(NormalizedRoute.unknown(),
+                    service.normalize(Optional.of(candidate), Optional.of("/orders/12345")),
+                    () -> candidate + " must converge to UNKNOWN");
+        }
+    }
+
+    @Test
     void allowlistMatchSucceedsOnlyWhenExactlyOneTemplateMatches() {
         RouteNormalizationService exactOneService = new RouteNormalizationService(
                 List.of("/orders/{orderId}", "/search"));

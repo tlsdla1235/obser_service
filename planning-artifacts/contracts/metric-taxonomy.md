@@ -47,18 +47,25 @@ p99를 위해 raw percentile, per-request sample, trace id, arbitrary latency di
 
 raw path, user id, tenant id, session id, trace id, arbitrary label은 MVP ingest payload에 넣지 않는다.
 
+Portal ingest request에 `tags` 같은 unknown field가 포함되더라도 forward compatibility를 위해 JSON boundary에서 무시한다. 무시된 tag/custom field는 metric taxonomy를 확장하지 않고, aggregation key, route attribution, read model, persisted accepted metric 후보에 반영하지 않는다.
+
 ## 4. Route Attribution Policy
 
 MVP route attribution precedence는 아래 순서다.
 
-1. framework가 제공한 `http.route` 또는 route template
-2. `http.route`가 없을 때만 raw path candidate를 query 폐기 후 configured allowlist matcher에 적용
-3. 정확히 하나의 allowlist template이 매칭되면 해당 template
-4. 그 외 모든 경우 `UNKNOWN`
+1. framework가 제공한 `http.route` 또는 route template을 low-cardinality route candidate로 우선 사용한다.
+2. framework route candidate에 query string이 있으면 starter는 query를 폐기한 뒤 route template contract를 검증할 수 있다.
+3. query 폐기 후 final payload route contract를 만족하면 그 값을 normalized route로 사용한다.
+4. query 폐기 후에도 absolute URL, slash 없는 path, trailing slash, double slash, raw identifier candidate, malformed template, wildcard 등 invalid shape이면 `UNKNOWN`으로 수렴한다.
+5. `http.route`가 없거나 blank/`UNKNOWN`일 때만 raw path candidate를 query 폐기 후 configured allowlist matcher의 임시 입력으로 사용한다.
+6. 정확히 하나의 allowlist template이 매칭되면 해당 configured template을 사용한다.
+7. 그 외 모든 경우 `UNKNOWN`
 
-query string은 정규화하지 않는다. 이는 query key/value를 route, tag, metric key, payload, 로그, rollup key, read model로 해석하거나 보존하지 않는다는 뜻이다. `?` 이후를 버려 path 후보만 남기는 것은 query 정규화가 아니라 query 폐기이며, 이 path 후보는 configured allowlist matching의 일시 입력으로만 사용할 수 있다.
+query string은 정규화하지 않는다. 이는 query key/value를 route, tag, metric key, payload, 로그, rollup key, read model로 해석하거나 보존하지 않는다는 뜻이다. framework route candidate와 raw path candidate 모두에서 `?` 이후를 버릴 수 있지만, 이는 query 정규화가 아니라 query 폐기다. framework route는 query 폐기 후에도 route template contract를 통과해야 하고, raw path는 `http.route` 부재/blank/`UNKNOWN` 상황에서 allowlist matching의 임시 입력으로만 사용할 수 있다.
 
 MVP route allowlist는 starter configuration으로 선언하며 namespace는 `observation.route-attribution.allowlist`다. Allowlist 항목은 `/orders/{orderId}` 같은 route template이며 query string, absolute URL, 실제 사용자/주문/세션 식별자 값을 포함할 수 없다. Annotation 기반 endpoint 표시명, route/display masking, query dimension opt-in은 post-MVP 후보이며 MVP attribution guard를 우회할 수 없다.
+
+final ingest payload에는 query string, raw path, query key/value, high-cardinality tag가 남을 수 없다. Portal validation은 final payload route에 query string이 있으면 reject하며, starter-side query 폐기로 safe normalized template이 만들어진 경우만 허용한다.
 
 Allowlist 작성 규칙, concrete identifier heuristic, ambiguous match 처리, invalid `http.route` fallback 금지는 [route-attribution-policy.md](route-attribution-policy.md)를 따른다.
 
@@ -81,6 +88,8 @@ MVP의 JVM/datasource runtime ratio는 30초 bucket 안에서 관측된 latest v
 - `sampleCount`: `avg`와 multi-instance merge를 검증하기 위한 valid sample 수. 평균 병합은 단순 average-of-averages가 아니라 sampleCount 기반 weighted average를 사용한다.
 
 대상 metric은 app-level `CPU usage ratio`, `heap used ratio`, `datasource pool usage ratio`로 제한한다. 이 확장은 raw timeseries, per-request sample, arbitrary metric map, high-cardinality tag ingestion을 허용하지 않는다. Starter는 bucket 안에서 bounded aggregate만 계산해 보내고, portal은 같은 ratio range와 aggregate 일관성(`0 <= avg <= max <= 1`, `latest <= max`, `sampleCount > 0`)을 다시 검증해야 한다.
+
+`customMetrics`, `rawTimeseries`, 또는 future unsupported field가 unknown JSON field로 도착하면 portal은 이를 무시한다. 무시된 field는 metric 추가나 저장 근거가 아니며, 지원 envelope field가 유효한 request를 거부하지 않기 위한 lenient acceptance 정책일 뿐이다.
 
 이 후보를 구현하려면 `ingest-envelope` schema version을 `1.0`과 분리하고, accepted bucket persistence, dashboard read model, saturation hint rule의 evidence shape를 함께 갱신한다.
 
