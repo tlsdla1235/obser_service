@@ -27,3 +27,9 @@ Source specification: `planning-artifacts/mvp-deferred-risk-spec.md`
 - Endpoint cardinality and duplicate endpoint key guard: starter bounded top-N/allow-set 책임을 MVP 전제로 두고, portal-side endpoint cap, duplicate `method + route`, endpoint sum consistency 검증은 read model merge 전에 재검토한다.
 - Idempotency key length and payload hash strict format validation: MVP는 DB column/constraint를 저장 경계로 두며 API error polish나 third-party producer 허용 전 service-level validation으로 올린다.
 - Accepted bucket index/test hardening: 중복 가능 index 정리, check constraint/index column-order 회귀 테스트 보강은 query plan tuning 또는 retention cleanup 성능 테스트 전까지 deferred로 둔다.
+
+## Deferred from: dashboard snapshot/history contract alignment (2026-05-21)
+
+- Resolved by planning alignment: suppression window는 같은 `application + endpointKey + ruleId` 기준 60분으로 확정했다.
+- Resolved by planning alignment: degraded enter/resolve hysteresis, dashboard triage 노출 기준(confidence `>= 0.65`), operational history 승격 기준(confidence `>= 0.82`), `dashboard_snapshots` 14일 retention, important state-change capture policy, endpoint evidence 최대 10개 boundary를 contract/schema/API 문서에 반영했다.
+- Remaining experiment: 짧지만 강한 spike capture는 confidence `>= 0.90` + 최근 5개 bucket 중 2개 이상 bad일 때 state 변화 없이도 capture 후보가 될 수 있는 실험값으로만 남긴다. Minimum sample guard와 60분 suppression window는 항상 적용한다.

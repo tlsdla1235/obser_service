@@ -82,6 +82,9 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
    - 30초 bucket, 15분 current, 15분 baseline, UTC 기준을 구현한다.
 2. Lifecycle state service
    - `waiting_first_data`, `unknown`, `idle`, `active`, `stale`, `down`, `degraded`를 판정한다.
+   - degraded enter는 rule guard 통과, confidence `>= 0.75`, 최근 5개 30초 bucket 중 3개 이상 bad일 때만 통과한다.
+   - degraded resolve는 concern absence, confidence `< 0.60`, rule별 recovery/threshold 하회 중 하나가 5 consecutive buckets 동안 유지될 때 통과한다.
+   - 30초 단발 blip은 degraded state로 만들지 않는다.
 3. Recovery guidance
    - stale/down 이후 sample 부족 상태를 안전하게 표현한다.
 4. State semantics tests
@@ -99,16 +102,28 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
    - UI/client-side p95 계산을 금지한다.
 2. Insight rule service
    - MVP rule set과 guard, ranking, max 3 노출을 구현한다.
+   - Dashboard triage card 기본 노출 기준은 confidence `>= 0.65`로 둔다.
 3. App triage summary read model
    - state, rationale, core metrics, triage cards, zero-insight reason, recovery guidance를 반환한다.
 4. Endpoint priority read model
    - slow/error/comparative evidence, confidence, freshness 기반 목록을 만든다.
 5. Dashboard query API
    - `read-model-contract` contract를 반환한다.
+   - current response는 query 시점 기준 15분 current와 직전 15분 baseline을 사용한다.
+   - `DashboardReadModelService`가 state, p95, triage cards, endpoint priority를 계산하고 UI는 표시만 한다.
+   - `dashboard_snapshots`는 application별 1시간 scheduled snapshot을 기본으로 저장한다.
+   - dashboard query 시 최신 snapshot이 없거나 오래된 경우 service layer fallback regeneration을 허용한다.
+   - 의미 있는 state-change, confidence `>= 0.82` high-confidence concern, 짧지만 강한 spike 실험값, query fallback 조건에서만 1시간 cadence 외 추가 snapshot capture를 허용한다.
+   - `dashboard_snapshots` 기본 retention은 14일이며 config로 조정 가능하게 둔다.
+   - snapshot endpoint evidence는 최대 10개만 남기고 raw path/query/trace/per-request sample은 포함하지 않는다.
+   - ingest commit마다 30초 dashboard snapshot을 refresh하지 않는다.
 6. Operational event history read model/API 후보
    - Epic 5/6 착수 전 구현 기준으로 `operational-event-history` contract를 따른다.
    - `dashboard_snapshots` 기반으로 bounded event 목록을 파생한다.
    - 별도 `operational_events` table이나 event repository는 만들지 않는다.
+   - 같은 `application + endpointKey + ruleId` 반복 concern은 60분 suppression window 안에서 중복 event로 만들지 않는다.
+   - `high_confidence_concern` event 승격 기준은 confidence `>= 0.82`로 둔다.
+   - 짧지만 강한 spike는 confidence `>= 0.90` + 최근 5개 bucket 중 2개 이상 bad인 실험값으로만 둔다.
    - p99/tail latency는 auxiliary evidence로만 사용하고 단독 판단으로 쓰지 않는다.
 
 ## Epic 6. First-Screen Delivery and Demo Hardening
@@ -187,6 +202,13 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
 - 아키텍처 스타일은 Traditional MVC 하나다.
 - `triageCards=[]`이면 zero-insight reason과 recommended action이 반드시 있다.
 - endpoint priority는 rank, reason, evidence, confidence, freshness를 포함한다.
+- `accepted_metric_buckets`는 30초 계산 원천이고, `dashboard_snapshots`는 1시간 기본 cadence의 coarse-grained dashboard history다.
+- `dashboard_snapshots` 기본 retention은 14일이며 config로 조정 가능하다.
+- 같은 `application + endpointKey + ruleId` concern은 60분 안에 중복 operational history event로 승격하지 않는다.
+- degraded enter/resolve hysteresis는 `state-semantics.md`의 확정 기준을 따르며 30초 단발 blip을 degraded로 만들지 않는다.
+- Dashboard triage card 노출 기준(confidence `>= 0.65`)과 operational history event 승격 기준(confidence `>= 0.82`)을 분리한다.
+- Snapshot `read_model_json`의 endpoint evidence는 최대 10개까지 보존하고 raw path/query/trace/per-request sample은 포함하지 않는다.
+- 30초 단위 dashboard snapshot 장기 보관, endpoint timeseries table, materialized view, Redis/outbox는 MVP 범위 밖이다.
 - Operational Event History는 Epic 5/6에서 dashboard snapshot/read model 기반 bounded surface로 다루며 Epic 2/3에는 포함하지 않는다.
 - MVP에서는 별도 `operational_events` table을 만들지 않는다.
 - Account signup과 login은 GitHub OAuth only다.

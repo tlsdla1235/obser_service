@@ -15,7 +15,7 @@ PostgreSQL은 MVP에서 아래 데이터만 저장한다.
 
 - project/application/instance metadata
 - idempotent하게 수용된 30초 metric bucket
-- dashboard first-screen read model snapshot
+- coarse-grained dashboard read model history snapshot
 
 PostgreSQL을 범용 TSDB나 rule engine으로 쓰지 않는다. lifecycle state, insight rule ranking, endpoint priority, p95 계산의 source of truth는 portal service layer다.
 
@@ -31,7 +31,7 @@ MVP에서는 별도 `operational_events` 테이블을 만들지 않는다. Opera
 | `applications` | project 안의 application/environment 식별 |
 | `application_instances` | application instance 식별과 last seen 추적 |
 | `accepted_metric_buckets` | idempotent하게 수용된 30초 app/endpoint bucket 저장 |
-| `dashboard_snapshots` | UI가 그대로 소비할 read model snapshot 저장 |
+| `dashboard_snapshots` | 특정 시점의 dashboard read model 전체를 history snapshot으로 저장 |
 
 endpoint별 데이터는 `accepted_metric_buckets.endpoints_json`에 bounded JSON으로 저장한다. MVP에서 endpoint 수는 이미 정규화된 route 기준의 bounded top-N 또는 allow set으로 제한되므로 별도 endpoint table 없이도 15분 current/baseline window를 service layer에서 병합할 수 있다. 이 제한은 저장/조회 cardinality cap이며 route attribution fallback이 아니다.
 
@@ -54,10 +54,15 @@ History 조회는 `dashboard_snapshots`의 아래 값을 기반으로 service la
 - `generated_at`
 - `state_code`
 - `read_model_json`
+- 필요한 경우 저장된 read model에서 복사한 bounded index column
 
 별도 `operational_events` table, event repository, materialized view는 alert acknowledgement, durable event id, 장기 event retention, event annotation, alert delivery dedupe가 필요해질 때 후속 확장으로 검토한다.
 
 이 결정은 Epic 2와 Epic 3의 migration 범위를 변경하지 않는다.
+
+`dashboard_snapshots`는 application별 1시간 scheduled snapshot을 기본 cadence로 둔다. 30초 단위 원천은 이미 `accepted_metric_buckets`에 저장되므로, ingest commit마다 dashboard snapshot을 생성하거나 30초 dashboard snapshot을 장기 보관하지 않는다. Dashboard query fallback regeneration은 current response 보장을 위한 service 동작이지 raw metric 복제 저장 정책이 아니다.
+
+1시간 cadence 외 추가 snapshot row는 의미 있는 `state_code` 변화, confidence `>= 0.82` high-confidence concern, 짧지만 강한 spike 실험값(confidence `>= 0.90` + 최근 5개 30초 bucket 중 2개 이상 bad), dashboard query fallback regeneration 조건에서만 남긴다. 이 capture 정책도 `dashboard_snapshots`에 read model 전체를 저장하는 bounded history 정책이며, 별도 event table이나 endpoint timeseries 저장소를 만들기 위한 우회 경로가 아니다.
 
 ### 2.2 ORM / Repository Mapping Boundary
 
@@ -226,7 +231,7 @@ Post-MVP runtime aggregate migration 후보:
 
 ### 3.5 `dashboard_snapshots`
 
-목적: dashboard first-screen이 그대로 소비할 read model snapshot을 저장한다.
+목적: 특정 시점의 dashboard read model 전체를 coarse-grained history snapshot으로 저장한다.
 
 | Column | Type | Null | 설명 |
 |---|---|---|---|
@@ -261,21 +266,54 @@ Indexes:
 Notes:
 
 - `read_model_json`은 UI response source로 저장하되, 계산 source는 service layer다.
+- `read_model_json`은 state, p95, triage cards, bounded endpoint evidence, `endpointPriority`를 포함할 수 있다. raw bucket retention이 지난 뒤 endpoint별 history/detail은 이 bounded evidence까지만 제공한다.
 - `state_code`는 조회/운영 편의를 위한 복사 컬럼이다. DB trigger나 view가 state를 계산하지 않는다.
+- `generated_at`, `state_code`, `current_window_end_utc`, `read_model_json`이 operational history 파생의 기본 source다. JSON 검색 성능이 부족하면 아래 bounded index/search helper column을 사용하지만, raw metric이나 endpoint timeseries를 저장하는 column으로 확장하지 않는다.
+- snapshot cadence는 service scheduler 정책으로 관리한다. DB unique key는 중복 방지와 조회 편의를 돕지만 1시간 cadence 자체를 business rule로 계산하지 않는다.
+
+#### 3.5.1 Bounded Index/Search Helper Column 후보
+
+아래 후보 목록은 저장된 read model 검색 편의를 위한 복사값으로 고정한다. Service layer가 read model 생성 시 함께 채우며, DB trigger/view가 rule이나 state를 다시 계산하지 않는다.
+
+| Candidate Column | Type | 의미 |
+|---|---|---|
+| `capture_reason` | `varchar(48)` | `scheduled`, `state_change`, `high_confidence_concern`, `short_strong_spike`, `query_fallback` 같은 snapshot row 생성 사유 |
+| `primary_rule_id` | `varchar(80)` | 가장 행동 가능한 primary concern의 rule id 복사값 |
+| `primary_endpoint_key` | `varchar(240)` | primary concern endpoint의 low-cardinality key 복사값 |
+| `max_confidence` | `numeric(4,3)` | snapshot 안 concern confidence 최댓값 |
+| `state_code` | `varchar(40)` | read model lifecycle state code 복사값. 기본 table column으로 둔다 |
+| `generated_at` | `timestamptz` | read model 생성 시각. 기본 table column으로 둔다 |
+| `current_window_end_utc` | `timestamptz` | query/current 판단 window 끝. 기본 table column으로 둔다 |
+
+Index 후보:
+
+- `idx_snapshots_app_capture_generated (application_id, capture_reason, generated_at desc)`
+- `idx_snapshots_app_rule_generated (application_id, primary_rule_id, generated_at desc)`
+- `idx_snapshots_app_endpoint_generated (application_id, primary_endpoint_key, generated_at desc)`
+- `idx_snapshots_app_confidence_generated (application_id, max_confidence desc, generated_at desc)`
+
+이 helper column과 index는 operational history 조회를 빠르게 하기 위한 bounded search surface다. raw path, query string, query key/value, trace id, per-request sample, endpoint별 장기 timeseries 값은 넣지 않는다.
+
+#### 3.5.2 Snapshot Endpoint Evidence Boundary
+
+`read_model_json` 안에 장기 보존할 endpoint evidence는 최대 `10개`다. 우선순위는 top triage card에 연결된 endpoint, `endpointPriority` 상위 항목, high-confidence concern endpoint 순서다.
+
+허용 field 후보는 `method`, `route`, `endpointKey`, `rank`, `reason`, `ruleIds`, `confidence`, `requestCount`, `errorRate`, `p95Ms`, `baselineP95Ms`, guard 통과 시 `p99Ms`, `tailLatencyEvidence`, `freshness`, `recommendedAction`이다. raw path, query string, query key/value, trace id, per-request sample은 snapshot JSON에 남기지 않는다.
 
 ## 4. Retention 정책
 
 MVP 기본 retention:
 
 - `accepted_metric_buckets`: 7일 보관
-- `dashboard_snapshots`: 7일 보관
+- `dashboard_snapshots`: 14일 보관
 - `projects`, `applications`, `application_instances`: 자동 삭제하지 않음
 
 운영 방식:
 
 - portal 내부 scheduled cleanup service가 retention 기준보다 오래된 bucket/snapshot을 삭제한다.
 - cleanup은 application semantics를 계산하지 않고 단순 timestamp 기준으로만 동작한다.
-- retention 값은 config로 조정 가능하게 하되, MVP 테스트와 UX는 장기 history에 의존하지 않는다.
+- retention 값은 config로 조정 가능하게 하되, MVP 테스트와 UX는 무제한 history에 의존하지 않는다.
+- `accepted_metric_buckets` retention은 30초 raw-ish 계산 원천의 짧은 보관 정책이고, `dashboard_snapshots` retention은 저장된 read model history 보관 정책이다. 두 값을 같은 의미로 해석하지 않는다.
 
 ## 5. DB에서 하지 않는 계산
 
@@ -302,6 +340,7 @@ DB는 window bucket을 효율적으로 읽고 snapshot을 저장하는 repositor
    - accepted bucket 테이블, idempotency unique constraint, bucket window index 추가
 4. `V004__create_dashboard_snapshots.sql`
    - snapshot 테이블, latest 조회 index, current window unique upsert key 추가
+   - operational history 조회가 필요하면 bounded index/search helper column 후보를 같은 story 또는 보강 migration에서 추가
 5. `V005__seed_local_project.sql`
    - local/demo project key seed
    - raw key는 migration 파일에 평문으로 고정하지 않고 local profile 또는 dev-only seed script에서 주입
@@ -328,8 +367,11 @@ Operational Event History를 위한 별도 migration은 MVP에 없다.
 - repository 구현 표준은 Spring Data JPA/Jakarta Persistence + Hibernate이며, JPA entity UUID도 application-generated UUID를 사용한다.
 - Flyway SQL migration이 schema source of truth다. Hibernate DDL auto 생성/갱신은 사용하지 않는다.
 - MVP endpoint bucket은 `accepted_metric_buckets.endpoints_json`에 bounded JSON으로 저장한다. 별도 endpoint table은 만들지 않는다.
-- dashboard snapshot refresh는 ingest transaction commit 후 portal in-process service 작업으로 수행한다.
-- dashboard query 시점에 snapshot이 없거나 명백히 오래된 경우 `DashboardReadModelService`가 fallback으로 재생성할 수 있다.
+- dashboard snapshot 저장은 application별 1시간 scheduled snapshot을 기본으로 한다. ingest transaction commit 직후 30초 bucket마다 snapshot refresh를 수행하지 않는다.
+- dashboard query 시점에 snapshot이 없거나 current response로 쓰기에 명백히 오래된 경우 `DashboardReadModelService`가 fallback으로 재생성하고 필요하면 snapshot으로 저장할 수 있다.
+- `dashboard_snapshots` retention은 기본 14일이며 config로 조정 가능하게 둔다.
+- 의미 있는 state-change, confidence `>= 0.82` high-confidence concern, 짧지만 강한 spike 실험값, dashboard query fallback regeneration 조건에서만 1시간 cadence 외 추가 snapshot capture를 허용한다.
+- snapshot endpoint evidence는 최대 10개만 `read_model_json`에 남기고 raw path/query/trace/per-request sample은 저장하지 않는다.
 - operational event history는 별도 table 없이 `dashboard_snapshots` 기반 service-layer 파생으로 둔다.
 - 별도 Redis queue, PostgreSQL outbox, materialized view는 MVP physical schema에 포함하지 않는다.
 
@@ -567,7 +609,7 @@ create index idx_snapshots_project_state_generated
 create index idx_snapshots_created_at
   on dashboard_snapshots (created_at);
 
-comment on table dashboard_snapshots is 'dashboard first-screen UI가 그대로 소비할 read model snapshot을 저장한다.';
+comment on table dashboard_snapshots is '특정 시점의 dashboard read model 전체를 coarse-grained history snapshot으로 저장한다.';
 comment on column dashboard_snapshots.id is 'dashboard snapshot의 application-generated UUID 기본키.';
 comment on column dashboard_snapshots.project_id is 'snapshot이 속한 프로젝트의 UUID 외래키.';
 comment on column dashboard_snapshots.application_id is 'snapshot이 속한 애플리케이션의 UUID 외래키.';

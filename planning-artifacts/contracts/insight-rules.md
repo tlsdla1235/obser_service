@@ -55,15 +55,19 @@ Route attribution이 `UNKNOWN`인 endpoint-level rule은 actionability를 낮게
 3. confidence
 4. actionability
 
-노출은 최대 3개다.
+Dashboard triage card 기본 노출 기준은 confidence `>= 0.65`다. 노출은 최대 3개다. 이 기준은 operational history event 승격 기준과 다르며, dashboard에 보이는 warning candidate가 곧 history event가 된다는 뜻이 아니다.
 
 ## 5. Operational Event Promotion
 
 Operational event로 승격되는 concern은 high-confidence candidate로 제한한다.
 
-low-confidence candidate, minimum sample guard를 통과하지 못한 candidate, 중복된 endpoint concern은 history event로 만들지 않는다. Event 승격은 `operational-event-history.md` contract에 따라 service layer에서 수행한다.
+Standalone operational history `high_confidence_concern` 승격 기준은 confidence `>= 0.82`다. low-confidence candidate, minimum sample guard를 통과하지 못한 candidate, `60분` suppression window 안에서 반복된 같은 `application + endpointKey + ruleId` concern은 history event로 만들지 않는다. Event 승격은 `operational-event-history.md` contract에 따라 service layer에서 수행한다.
 
 p99/tail latency는 primary rule judgment가 아니라 auxiliary evidence다. p99 단독으로 장애나 degraded를 단정하지 않으며, 충분한 request count와 p95/error/saturation evidence가 함께 있을 때 confidence를 높이는 근거로만 사용한다.
+
+짧지만 강한 spike 실험값은 confidence `>= 0.90`이고 최근 5개 30초 bucket 중 2개 이상 bad이면 state 변화가 없어도 capture 후보가 될 수 있다. 이 실험값에도 minimum sample guard와 suppression window는 항상 적용한다.
+
+Spike 구간 색인은 추가 raw metric 영속화가 아니라 저장된 dashboard read model의 rule result/evidence를 기반으로 한다. 필요한 bounded index column을 `dashboard_snapshots`에 추가할 수는 있지만, endpoint timeseries table이나 `operational_events` table을 만들지는 않는다.
 
 ## 6. MVP Rule Set
 

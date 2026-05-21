@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-05-20T14:49:06+0900
+# last_updated: 2026-05-21T12:53:11+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -34,9 +34,11 @@
 # - Epic 3 includes accepted_metric_buckets persistence and idempotent acceptance only.
 # - Correct-course 2026-05-19: observability-portal repository implementation standard is Spring Data JPA/Jakarta Persistence + Hibernate over PostgreSQL/Flyway.
 # - Traditional MVC 기준상 service는 필요하면 Spring Data repository/JPA entity를 직접 사용할 수 있다. Story 3.1의 raw key lookup surface와 BCrypt 72 byte blocker는 해결됐다.
+# - Correct-course 2026-05-21: dashboard current는 query 시점 15분 current/baseline 판단을 유지하고, dashboard_snapshots는 application별 1시간 coarse read model history로 둔다.
+# - Epic 5/6 history는 snapshot/read model 기반 파생으로 정렬하며, per-ingest snapshot refresh, operational_events table, endpoint timeseries table은 MVP에 넣지 않는다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-05-20T14:49:06+0900
+last_updated: 2026-05-21T12:53:11+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
