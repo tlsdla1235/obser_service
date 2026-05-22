@@ -3,9 +3,9 @@ package com.observation.portal.domain.ingest.controller;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
 import com.observation.portal.domain.ingest.dto.IngestAcceptedResponse;
 import com.observation.portal.domain.ingest.dto.IngestErrorResponse;
+import com.observation.portal.domain.ingest.model.IngestEnvelopeRequest;
 import com.observation.portal.domain.ingest.service.IngestAcceptanceResult;
 import com.observation.portal.domain.ingest.service.IngestAcceptanceService;
-import com.observation.portal.domain.ingest.service.IngestEnvelopeRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,8 +25,9 @@ import java.util.Objects;
 @RestController
 @RequestMapping("/api/ingest/v1/buckets")
 public class IngestController {
-
+    // ingest 요청이 어느 프로젝트의 요청인지 확인하고, 허가된 project key인지 검증한다.
     private static final String PROJECT_KEY_HEADER = "X-OBS-Project-Key";
+    // 멱등성 키.
     private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
 
     private final IngestAcceptanceService ingestAcceptanceService;

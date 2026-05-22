@@ -1,4 +1,4 @@
-package com.observation.portal.domain.ingest.service;
+package com.observation.portal.domain.ingest.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 

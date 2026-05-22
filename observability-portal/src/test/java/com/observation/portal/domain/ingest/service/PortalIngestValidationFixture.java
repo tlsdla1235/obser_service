@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.observation.portal.domain.catalog.model.ProjectStatus;
+import com.observation.portal.domain.ingest.model.IngestEnvelopeRequest;
 
 import java.util.UUID;
 import java.util.function.Consumer;

@@ -1,5 +1,7 @@
 package com.observation.portal.domain.ingest.service;
 
+import com.observation.portal.domain.ingest.model.IngestEnvelopeRequest;
+
 import java.util.Objects;
 
 /**

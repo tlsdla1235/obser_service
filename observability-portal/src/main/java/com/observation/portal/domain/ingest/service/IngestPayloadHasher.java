@@ -2,6 +2,7 @@ package com.observation.portal.domain.ingest.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.observation.portal.domain.ingest.model.IngestEnvelopeRequest;
 import org.springframework.stereotype.Component;
 
 import java.security.MessageDigest;

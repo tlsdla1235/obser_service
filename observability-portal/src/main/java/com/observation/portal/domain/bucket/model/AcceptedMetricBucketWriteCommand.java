@@ -1,6 +1,6 @@
 package com.observation.portal.domain.bucket.model;
 
-import com.observation.portal.domain.ingest.service.IngestEnvelopeRequest;
+import com.observation.portal.domain.ingest.model.IngestEnvelopeRequest;
 import com.observation.portal.domain.ingest.service.ValidatedIngestCandidate;
 
 import java.time.OffsetDateTime;

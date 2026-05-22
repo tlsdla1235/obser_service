@@ -2,6 +2,7 @@ package com.observation.portal.domain.ingest.service;
 
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.observation.portal.domain.ingest.model.IngestEnvelopeRequest;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
