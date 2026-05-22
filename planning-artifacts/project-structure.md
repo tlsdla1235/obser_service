@@ -391,7 +391,7 @@ Story 1.2 제외 범위:
 - `dashboard_snapshots`
 - project key verification
 - idempotency conflict handling
-- histogram merge, p95 calculation
+- histogram bucket distribution merge와 starter canonical percentile 표시 정책
 - lifecycle state calculation
 - insight rule ranking
 - endpoint priority calculation

@@ -17,7 +17,7 @@ PostgreSQL은 MVP에서 아래 데이터만 저장한다.
 - idempotent하게 수용된 30초 metric bucket
 - coarse-grained dashboard read model history snapshot
 
-PostgreSQL을 범용 TSDB나 rule engine으로 쓰지 않는다. lifecycle state, insight rule ranking, endpoint priority, p95 계산의 source of truth는 portal service layer다.
+PostgreSQL을 범용 TSDB나 rule engine으로 쓰지 않는다. lifecycle state, insight rule ranking, endpoint priority, percentile 표시 정책의 source of truth는 portal service layer다. p95/p99 값 자체의 canonical source는 starter가 ingest envelope로 보낸 `localPercentiles.p95Ms`/`p99Ms`다.
 
 MVP에서는 별도 `operational_events` 테이블을 만들지 않는다. Operational event history는 Epic 5/6에서 `dashboard_snapshots.generated_at`, `state_code`, `read_model_json`을 기반으로 service layer가 파생한다.
 
@@ -210,7 +210,8 @@ Indexes:
 Notes:
 
 - `duration_buckets_json`과 `endpoints_json`의 histogram monotonicity, boundary set 일치 여부는 DB check가 아니라 `IngestAcceptanceService`에서 검증한다.
-- p95는 이 테이블에서 SQL view로 계산하지 않는다. `HistogramMergeService`가 window bucket을 읽어 `histogram-merge` contract에 따라 계산한다.
+- p95/p99는 이 테이블에서 SQL view로 계산하지 않는다. `localPercentiles`로 수용한 starter canonical percentile만 같은 scope의 p95/p99로 사용한다.
+- `duration_buckets_json`과 endpoint `durationBuckets`는 distribution display와 진단용 bucket 원자료다. DB view, service, UI가 이 bucket에서 p95/p99 scalar를 만들지 않는다.
 - MVP의 `cpu_usage_ratio`, `heap_used_ratio`, `datasource_pool_usage_ratio`는 bucket 안의 latest valid sample을 저장한다.
 
 Post-MVP runtime aggregate migration 후보:
@@ -266,7 +267,7 @@ Indexes:
 Notes:
 
 - `read_model_json`은 UI response source로 저장하되, 계산 source는 service layer다.
-- `read_model_json`은 state, p95, triage cards, bounded endpoint evidence, `endpointPriority`를 포함할 수 있다. raw bucket retention이 지난 뒤 endpoint별 history/detail은 이 bounded evidence까지만 제공한다.
+- `read_model_json`은 state, starter canonical p95/p99, triage cards, bounded endpoint bucket evidence, `endpointPriority`를 포함할 수 있다. raw bucket retention이 지난 뒤 endpoint별 history/detail은 이 bounded evidence까지만 제공한다.
 - `state_code`는 조회/운영 편의를 위한 복사 컬럼이다. DB trigger나 view가 state를 계산하지 않는다.
 - `generated_at`, `state_code`, `current_window_end_utc`, `read_model_json`이 operational history 파생의 기본 source다. JSON 검색 성능이 부족하면 아래 bounded index/search helper column을 사용하지만, raw metric이나 endpoint timeseries를 저장하는 column으로 확장하지 않는다.
 - snapshot cadence는 service scheduler 정책으로 관리한다. DB unique key는 중복 방지와 조회 편의를 돕지만 1시간 cadence 자체를 business rule로 계산하지 않는다.
@@ -298,7 +299,7 @@ Index 후보:
 
 `read_model_json` 안에 장기 보존할 endpoint evidence는 최대 `10개`다. 우선순위는 top triage card에 연결된 endpoint, `endpointPriority` 상위 항목, high-confidence concern endpoint 순서다.
 
-허용 field 후보는 `method`, `route`, `endpointKey`, `rank`, `reason`, `ruleIds`, `confidence`, `requestCount`, `errorRate`, `p95Ms`, `baselineP95Ms`, guard 통과 시 `p99Ms`, `tailLatencyEvidence`, `freshness`, `recommendedAction`이다. raw path, query string, query key/value, trace id, per-request sample은 snapshot JSON에 남기지 않는다.
+허용 field 후보는 `method`, `route`, `endpointKey`, `rank`, `reason`, `ruleIds`, `confidence`, `requestCount`, `errorRate`, `durationBuckets`, `baselineDurationBuckets`, `bucketDistributionSource`, `freshness`, `recommendedAction`이다. raw path, query string, query key/value, trace id, per-request sample, endpoint p95/p99는 snapshot JSON에 남기지 않는다.
 
 ## 4. Retention 정책
 
@@ -322,7 +323,8 @@ MVP 기본 retention:
 - lifecycle state 계산 금지
 - insight rule ranking 금지
 - endpoint priority 재계산 금지
-- p95 계산을 DB view/materialized view에 숨기는 것 금지
+- p95/p99 계산을 DB view/materialized view에 숨기는 것 금지
+- histogram bucket에서 percentile scalar를 만드는 DB view/materialized view 금지
 - operational event history 계산/deduplication 금지
 - zero insight reason 생성 금지
 - recovery guidance 문구 생성 금지

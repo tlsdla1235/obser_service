@@ -35,7 +35,7 @@ date: 2026-05-18
 - duplicate success/conflict final handling
 - `dashboard_snapshots` migration/repository
 - dashboard read model refresh
-- p95/histogram merge
+- starter canonical percentile display policy와 bucket distribution merge
 - lifecycle state, insight rule, endpoint priority 계산
 - operational event table/repository
 - Post-MVP aggregate max/avg/sampleCount columns

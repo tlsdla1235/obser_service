@@ -17,9 +17,9 @@
 ## Conversion Rule
 
 - 제품 약속과 UX 의도는 유지한다.
-- direct ingest, 30초 bucket, 15분 current/baseline window, server-side p95, read model source of truth는 유지한다.
+- direct ingest, 30초 bucket, 15분 current/baseline window, starter canonical percentile, read model source of truth는 유지한다.
 - 기존 Hexagonal의 `domain/application/port/adapter` 경계는 복원하지 않는다.
 - Portal의 `domain` package는 순수 DDD domain layer가 아니라 catalog, ingest, dashboard 같은 업무 기능 묶음 namespace다.
 - `controller/service/repository/model/dto` 책임은 최상위 layer package가 아니라 `domain.<feature>` 아래에 모아 둔다.
-- lifecycle state, insight rule, endpoint priority, p95 계산은 feature-first MVC의 `service` 또는 `model` package에 둔다.
+- lifecycle state, insight rule, endpoint priority, starter canonical percentile 표시 정책은 feature-first MVC의 `service` 또는 `model` package에 둔다.
 - controller, repository, DB, frontend는 판단 로직의 source of truth가 아니다.

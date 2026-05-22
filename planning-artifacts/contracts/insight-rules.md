@@ -33,14 +33,22 @@ Route attribution이 `UNKNOWN`인 endpoint-level rule은 actionability를 낮게
   "ruleId": "endpoint_latency_spike",
   "severity": "warning",
   "title": "GET /products 응답 지연 증가",
-  "summary": "current window p95가 baseline보다 높습니다.",
-  "recommendation": "이 endpoint의 DB query와 외부 호출을 먼저 확인해보세요.",
+  "summary": "current window의 duration bucket 분포가 baseline보다 느린 구간에 몰렸습니다.",
+  "recommendation": "이 endpoint의 bucket 분포와 DB query, 외부 호출을 먼저 확인해보세요.",
   "affectedEndpoint": "GET /products",
   "score": 72,
   "confidence": 0.78,
   "evidence": {
-    "currentP95Ms": 620,
-    "baselineP95Ms": 210,
+    "durationBuckets": [
+      { "leMs": 250, "count": 900 },
+      { "leMs": 500, "count": 1500 },
+      { "leMs": 1000, "count": 1800 }
+    ],
+    "baselineDurationBuckets": [
+      { "leMs": 250, "count": 1500 },
+      { "leMs": 500, "count": 1750 },
+      { "leMs": 1000, "count": 1800 }
+    ],
     "requestCount": 1800
   }
 }
@@ -63,7 +71,9 @@ Operational event로 승격되는 concern은 high-confidence candidate로 제한
 
 Standalone operational history `high_confidence_concern` 승격 기준은 confidence `>= 0.82`다. low-confidence candidate, minimum sample guard를 통과하지 못한 candidate, `60분` suppression window 안에서 반복된 같은 `application + endpointKey + ruleId` concern은 history event로 만들지 않는다. Event 승격은 `operational-event-history.md` contract에 따라 service layer에서 수행한다.
 
-p99/tail latency는 primary rule judgment가 아니라 auxiliary evidence다. p99 단독으로 장애나 degraded를 단정하지 않으며, 충분한 request count와 p95/error/saturation evidence가 함께 있을 때 confidence를 높이는 근거로만 사용한다.
+Rule이 p95/p99를 참조해야 한다면 source는 starter canonical percentile이어야 한다. 같은 scope에 starter-reported p95/p99와 histogram-derived p95/p99를 함께 두지 않는다.
+
+Endpoint-level rule은 endpoint별 p95/p99를 계산하지 않는다. Endpoint latency rule은 duration bucket distribution, request count, error rate, freshness 같은 bounded evidence를 사용하며 endpoint percentile rollup, endpoint percentile judgment, endpoint p99 alert 기준을 만들지 않는다.
 
 짧지만 강한 spike 실험값은 confidence `>= 0.90`이고 최근 5개 30초 bucket 중 2개 이상 bad이면 state 변화가 없어도 capture 후보가 될 수 있다. 이 실험값에도 minimum sample guard와 suppression window는 항상 적용한다.
 
@@ -86,7 +96,7 @@ Spike 구간 색인은 추가 raw metric 영속화가 아니라 저장된 dashbo
   - `cpu_high_with_latency`
   - `heap_high_hint`
 - endpoint priority
-  - slow/error/comparative evidence ranking
+  - bucket distribution/error/comparative evidence ranking
 
 ## 7. Post-MVP Runtime Aggregate Evidence
 
@@ -96,7 +106,7 @@ MVP saturation hint는 JVM/datasource runtime ratio의 latest sample과 HTTP lat
 - `max`: bucket 안 순간 피크다. 짧은 DB pool 포화, CPU spike, heap pressure를 놓치지 않는 보조 evidence로 사용한다.
 - `avg`: bucket 안 지속 압력이다. 단발성 spike인지 window 전체 압박인지 confidence 계산에 사용한다.
 
-`max` 하나만으로 degraded/down을 단정하지 않는다. Saturation hint는 p95/error/freshness/minimum sample guard와 함께 있을 때만 high-confidence concern으로 승격할 수 있다. `avg` 병합은 instance별 sample count 기반 weighted average를 사용하며, average-of-averages로 계산하지 않는다.
+`max` 하나만으로 degraded/down을 단정하지 않는다. Saturation hint는 starter canonical percentile, bucket distribution, error, freshness, minimum sample guard와 함께 있을 때만 high-confidence concern으로 승격할 수 있다. `avg` 병합은 instance별 sample count 기반 weighted average를 사용하며, average-of-averages로 계산하지 않는다.
 
 ## 8. Copy Rules
 

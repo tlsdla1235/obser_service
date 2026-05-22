@@ -106,7 +106,7 @@ date: 2026-05-18
 - duplicate handling을 starter duplicate flush primary mechanism으로 해석하지 않는다.
 - accepted bucket row를 conflict path에서 overwrite하지 않는다.
 - dashboard snapshot/read model refresh를 이 story에 연결하지 않는다.
-- p95/histogram merge, lifecycle state, insight rule, endpoint priority 계산을 추가하지 않는다.
+- starter canonical percentile display policy, bucket distribution merge, lifecycle state, insight rule, endpoint priority 계산을 추가하지 않는다.
 - operational event 저장이나 alert delivery dedupe로 scope를 넓히지 않는다.
 
 ## Tasks/Subtasks

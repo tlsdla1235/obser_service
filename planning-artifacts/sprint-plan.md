@@ -89,11 +89,11 @@ Epic 3 Sprint Goal:
 - `dashboard_snapshots` migration/repository/read model
 - dashboard query API와 UI integration
 - lifecycle state service
-- p95/histogram merge service
+- starter canonical percentile 표시 정책과 bucket distribution merge service
 - insight rule service
 - endpoint priority read model
 - operational event table/repository/API
-- p99/tail latency judgment
+- p99 source/scope display policy
 - Post-MVP runtime aggregate schemaVersion 1.1, max/avg/sampleCount persistence
 - high-cardinality custom metric/tag ingestion
 - account signup/login 구현

@@ -112,9 +112,10 @@ generatedArtifacts:
 
 - application name
 - environment
-- last accepted ingest time
+- last accepted bucket time
+- starter heartbeat / connection status, 표시 시 별도 축으로 분리
 - current window / baseline window
-- project health context
+- project key / connection context
 
 #### Zone 2. State Semantic Strip
 
@@ -152,7 +153,8 @@ generatedArtifacts:
 
 - detailed charts
 - more endpoints
-- request sample / trace stretch detail
+- bounded endpoint evidence
+- instance-local 30초 bucket p95/p99 summary 후보
 
 #### Zone 7. Alert Surface
 
@@ -168,7 +170,7 @@ generatedArtifacts:
 
 | State | 의미 | Primary Copy | Recommended Next Action | UX Tone |
 | --- | --- | --- | --- | --- |
-| `waiting first data` | starter 또는 ingest가 아직 첫 bucket을 충분히 보내지 못함 | `첫 데이터를 기다리는 중입니다.` | `앱을 30초 정도 더 실행하거나 몇 개의 요청을 발생시켜 보세요.` | 기대감, 진행 중 |
+| `waiting first data` | 아직 accepted bucket이 없어 application state를 판단할 수 없음. starter heartbeat가 있어도 이 상태가 유지될 수 있음 | `첫 데이터를 기다리는 중입니다.` | `앱을 30초 정도 더 실행하거나 몇 개의 요청을 발생시켜 보세요.` | 기대감, 진행 중 |
 | `insufficient sample` | 신호는 들어오지만 비교형 판단을 내릴 표본이 부족함 | `아직 판단 표본이 부족합니다.` | `조금 더 트래픽을 모으거나 짧은 시나리오 요청을 재생해 보세요.` | 정직함, 미완료 |
 | `no triage worth surfacing` | 충분히 봤지만 지금 우선 띄울 이슈가 없음 | `지금 우선 띄울 triage는 없습니다.` | `slow/error endpoint를 훑어보거나 이 상태를 기준선으로 삼으세요.` | 안정감, 차분함 |
 
@@ -337,6 +339,8 @@ flowchart LR
 - dependency + minimal config 안내
 - project key 확인
 - outbound HTTPS 확인
+- starter heartbeat 수신 여부
+- 마지막 accepted bucket 수신 여부
 - 첫 데이터 대기 진입 CTA
 
 #### 3. First Data Waiting
@@ -388,14 +392,21 @@ flowchart LR
 - slow/error evidence snapshot
 - related next checks
 
+#### 10. Instance Detail Evidence 후보
+
+- accepted bucket freshness와 starter heartbeat/connection status를 분리 표시
+- instance-local 30초 bucket p95/p99 요약을 headline evidence로 표시 가능
+- `bucket p99 평균`, `bucket p99 중앙값`, `bucket p99 최댓값`처럼 non-mergeable evidence임을 라벨에 드러냄
+- app/project p95/p99, state, rule, endpoint priority를 화면에서 재계산하지 않음
+
 ## User Journey Flows
 
 ### Journey 1. Starter를 붙이고 첫 화면을 기다린다
 
 1. 사용자가 dependency와 최소 설정을 넣는다.
 2. 앱을 실행한다.
-3. 화면은 `waiting first data`를 보여준다.
-4. 첫 bucket이 들어오면 상태와 freshness를 먼저 보여준다.
+3. 화면은 starter heartbeat/connection status와 `waiting first data`를 별도 축으로 보여준다.
+4. 첫 accepted bucket이 들어오면 application state와 freshness를 accepted bucket 기준으로 보여준다.
 5. 표본이 충분하지 않으면 `insufficient sample`로 정직하게 전환한다.
 
 ### Journey 2. low traffic 앱에서 triage 없음 상태를 만난다
@@ -437,7 +448,7 @@ flowchart LR
 
 #### State Semantic Strip
 
-- input: current state, freshness, one-line explanation, next action
+- input: accepted bucket 기반 current state, freshness, one-line explanation, next action
 - output: 상단 hero 상태 모듈
 
 #### Insight Stack
@@ -455,6 +466,12 @@ flowchart LR
 
 - input: slow list, error list, or recovery checklist
 - output: next-check surface
+
+#### Starter Connection Strip 후보
+
+- input: starter heartbeat status, last heartbeat time, project key validation result, last accepted bucket time
+- output: setup/connection 상태 보조 모듈
+- rule: heartbeat status를 application health나 accepted bucket freshness로 표현하지 않음
 
 #### Discord Alert Settings Card
 
@@ -518,10 +535,12 @@ flowchart LR
 
 아래를 반드시 예시로 보여줘야 한다.
 
-- waiting first data에서 UI가 기대하는 최소 freshness signal
+- waiting first data에서 UI가 기대하는 accepted bucket freshness signal
+- starter heartbeat가 수신됐지만 accepted bucket이 아직 없는 setup/first-data state
 - sample-insufficient 상태를 표현하기 위한 최소 metric presence
 - anomaly-present 상태에서 triage card와 split desk를 지지하는 example payload 흐름
 - Discord alert payload가 참조할 app-level error spike example 흐름
+- instance detail에서 `localPercentileSummary`를 30초 bucket percentile point summary로 표시하는 예시
 
 ### Recommended Next Output
 

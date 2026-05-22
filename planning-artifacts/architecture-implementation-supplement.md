@@ -147,7 +147,7 @@ com.observation.portal
 Portal 원칙:
 
 - `domain.<feature>.controller`는 request/response 변환과 HTTP status mapping만 맡는다.
-- `domain.<feature>.service`는 lifecycle state, insight rule ranking, endpoint priority, p95 merge, read model 생성을 맡는다.
+- `domain.<feature>.service`는 lifecycle state, insight rule ranking, endpoint priority, starter canonical percentile 표시 정책, bucket distribution merge, read model 생성을 맡는다.
 - `domain.<feature>.service`는 빠른 MVC 구현을 위해 필요하면 Spring Data JPA repository와 JPA entity를 직접 사용할 수 있다.
 - `domain.<feature>.repository`는 Spring Data JPA/Jakarta Persistence + Hibernate 기반 저장과 조회 최적화를 맡지만 의미 계산을 만들지 않는다.
 - JPA entity와 Spring Data repository는 해당 feature package 안의 persistence 책임 위치에 둔다. `domain.<feature>.repository.entity` 또는 `domain.<feature>.repository.jpa`는 필수 구조가 아니다.
@@ -185,7 +185,7 @@ Infrastructure dependency:
 | `AccountAuthService` | GitHub OAuth 성공 결과를 내부 user/account와 연결하고 GitHub OAuth only signup/login 정책 적용 |
 | `ServiceTokenService` | Bearer access token JWT와 refresh token rotation/revoke/reuse detection 정책 담당 |
 | `ApplicationCatalogService` | `domain.catalog.service`에서 project/application/instance 식별과 생성/조회 |
-| `HistogramMergeService` | `domain.metric.service`에서 accepted bucket을 app/endpoint window 기준으로 병합하고 p95 계산 |
+| `HistogramMergeService` | compatibility name. `domain.metric.service`에서 accepted bucket을 app/endpoint window 기준으로 병합해 bucket distribution display payload를 만들며 p95/p99는 계산하지 않음 |
 | `LifecycleStateService` | `domain.state.service`에서 `state-semantics` 순서에 따라 waiting/unknown/idle/active/stale/down/degraded 판단 |
 | `TriageSummaryService` | `domain.triage.service`에서 app-level state, rationale, zero insight, recovery, triage cards 생성 |
 | `EndpointPriorityService` | `domain.metric.service` 또는 `domain.dashboard.service`에서 slow/error/comparative evidence 기반 endpoint priority 생성 |
@@ -293,14 +293,14 @@ MVP 첫 스프린트에서 최소 아래 guard를 둔다.
 - `..portal.domain..repository..`는 `..portal.domain..controller..` 또는 `..portal.domain..dto..`를 참조하지 않는다.
 - `..portal.domain..service..`는 `..portal.domain..controller..` 또는 controller response DTO에 의존하지 않는다.
 - 이 guard는 Traditional MVC 기준상 service가 Spring Data repository나 JPA entity를 직접 사용하는 것을 결함으로 보지 않는다.
-- lifecycle state, insight rule, endpoint priority, p95 계산 class는 `service` 또는 `model` 아래에만 존재한다.
+- lifecycle state, insight rule, endpoint priority, starter canonical percentile 표시 정책 class는 `service` 또는 `model` 아래에만 존재한다.
 - `port`, `adapter`, `application` package는 만들지 않는다.
-- dashboard controller test는 `read-model-contract`를 serialization할 뿐 state/rule/p95 계산을 하지 않음을 검증한다.
+- dashboard controller test는 `read-model-contract`를 serialization할 뿐 state/rule/p95/p99 계산을 하지 않음을 검증한다.
 - operational history controller 후보는 저장된 snapshot 기반 event read model을 serialization할 뿐 state/rule/p95/p99를 재계산하지 않음을 검증한다.
 
 Frontend/UI는 architecture test 대상은 아니지만 아래 정적/리뷰 기준을 둔다.
 
-- UI 코드에 p95 histogram merge 구현을 두지 않는다.
+- UI 코드에 histogram bucket 기반 p95/p99 계산 구현을 두지 않는다.
 - UI 코드에 lifecycle transition table이나 insight ranking rule을 복제하지 않는다.
 - UI는 `state`, `zeroInsight`, `recovery`, `triageCards`, `endpointPriority`를 read model에서 받은 대로 표시한다.
 - UI는 recent operational history를 표시하더라도 event selection, deduplication, p99 판단을 직접 구현하지 않는다.

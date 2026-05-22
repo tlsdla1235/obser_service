@@ -30,7 +30,7 @@ date: 2026-05-09
 | portal ingest validation은 starter `schemaVersion: 1.0` 계약을 mirror한다 | Epic 3 / Story 3.2 | `ingest-envelope.md`, `metric-taxonomy.md`, `time-buckets.md` | `IngestAcceptanceService` | `PortalIngestValidationFixtureTest` |
 | accepted metric bucket은 PostgreSQL에 idempotency metadata와 함께 저장된다 | Epic 3 / Story 3.3 | `database-schema.md`, `ingest-envelope.md` | `MetricBucketRepository`, `ApplicationCatalogService` | `MetricBucketRepositoryIntegrationTest` |
 | duplicate ingest는 같은 payload success, 다른 payload conflict로 수렴한다 | Epic 3 / Story 3.4 | `ingest-envelope.md`, `api-surface.md`, `database-schema.md` | `IngestAcceptanceService`, `MetricBucketRepository` | `DuplicateIngestAcceptanceTest` |
-| p95는 server-side histogram merge 결과다 | Epic 5 | `histogram-merge.md` | `HistogramMergeService` | `HistogramMergeGoldenFixtureTest` |
+| p95/p99는 starter canonical percentile source를 따른다 | Epic 5 | `ingest-envelope.md`, `histogram-merge.md` | `DashboardReadModelService` | `StarterCanonicalPercentileReadModelTest` |
 | UI는 state/rule/p95/p99/endpoint priority를 재계산하지 않는다 | Epic 1, 5, 6 | `read-model-contract.md`, `histogram-merge.md` | `DashboardReadModelService`, `HistogramMergeService` | `DashboardReadModelSnapshotTest` |
 | `triageCards=[]`는 빈 화면이 아니라 zero-insight reason을 가진다 | Epic 5 | `read-model-contract.md` | `TriageSummaryService` | `ZeroInsightReadModelTest` |
 | stale/down/recovery는 사용자 행동으로 이어진다 | Epic 4, 5 | `state-semantics.md`, `read-model-contract.md` | `LifecycleStateService` | `RecoveryReadModelTest` |

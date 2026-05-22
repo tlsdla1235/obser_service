@@ -36,7 +36,7 @@ date: 2026-05-18
 - `accepted_metric_buckets` migration/repository insert
 - duplicate success/conflict persistence handling
 - dashboard snapshot/read model refresh
-- p95/histogram merge
+- starter canonical percentile display policy와 bucket distribution merge
 - lifecycle state, insight rule, endpoint priority 계산
 - Post-MVP runtime aggregate schemaVersion `1.1`
 - Prometheus/scrape/query UI path

@@ -78,6 +78,13 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
 
 ### Stories
 
+0. Starter heartbeat and instance-level ingest contract gate
+   - Story 4-0은 구현 story가 아니라 contract gate다.
+   - `POST /api/ingest/v1/heartbeat`는 bucket ingest와 분리된 periodic control-plane/liveness signal로 문서화한다.
+   - heartbeat 성공은 accepted bucket, host application health, dashboard snapshot, operational event, state/read-model calculation을 생성하거나 암시하지 않는다.
+   - heartbeat 미수신은 host application down 판정이 아니며 starter connection status와 accepted bucket freshness/application state를 분리한다.
+   - `localPercentiles`는 instance-local 30초 bucket의 starter canonical p95/p99로 허용한다.
+   - 여러 starter 값이 같은 app/project/window에 존재하면 임의 평균/병합으로 새 p95/p99를 만들지 않고 instance/source 단위로 노출하거나 상위 scope에는 bucket distribution을 표시한다.
 1. Time bucket contract implementation
    - 30초 bucket, 15분 current, 15분 baseline, UTC 기준을 구현한다.
 2. Lifecycle state service
@@ -96,10 +103,13 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
 
 ### Stories
 
-1. Histogram merge service
-   - instance bucket을 app/endpoint 기준으로 병합해 p95를 계산한다.
-   - `histogram-merge` golden fixture를 통과한다.
-   - UI/client-side p95 계산을 금지한다.
+1. Histogram bucket distribution service
+   - instance bucket을 app/endpoint 기준으로 병합해 bucket distribution display payload를 만든다.
+   - `histogram-merge` compatibility contract의 bucket distribution fixture를 통과한다.
+   - UI/client-side p95/p99 계산을 금지한다.
+   - p95/p99는 `localPercentiles`로 들어온 starter canonical percentile만 사용한다.
+   - `localPercentiles` 숫자끼리 app/project/window p95/p99를 평균/병합하지 않는다.
+   - endpoint별 p95/p99 계산, endpoint percentile rollup, endpoint p99 alert 기준을 만들지 않는다.
 2. Insight rule service
    - MVP rule set과 guard, ranking, max 3 노출을 구현한다.
    - Dashboard triage card 기본 노출 기준은 confidence `>= 0.65`로 둔다.
@@ -117,14 +127,21 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
    - `dashboard_snapshots` 기본 retention은 14일이며 config로 조정 가능하게 둔다.
    - snapshot endpoint evidence는 최대 10개만 남기고 raw path/query/trace/per-request sample은 포함하지 않는다.
    - ingest commit마다 30초 dashboard snapshot을 refresh하지 않는다.
-6. Operational event history read model/API 후보
+6. Snapshot Marker and Bounded Tail Summary Contract
+   - Snapshot marker, bounded tail summary, snapshot detail response shape를 별도 story에서 확정한다.
+   - 단일 long-window p99 대표값을 만들지 않는다.
+   - starter canonical percentile과 bucket distribution evidence를 분리한다.
+   - `trendSlices`는 p95/p99 후보를 만들지 않고 subwindow bucket distribution만 표시한다.
+   - `worstBuckets`는 전체 raw bucket list가 아니라 top-N representative bucket으로 제한한다.
+   - snapshot detail은 저장 당시 read model과 bounded tail evidence를 보여주며 current state를 재판정하지 않는다.
+7. Operational event history read model/API 후보
    - Epic 5/6 착수 전 구현 기준으로 `operational-event-history` contract를 따른다.
    - `dashboard_snapshots` 기반으로 bounded event 목록을 파생한다.
    - 별도 `operational_events` table이나 event repository는 만들지 않는다.
    - 같은 `application + endpointKey + ruleId` 반복 concern은 60분 suppression window 안에서 중복 event로 만들지 않는다.
    - `high_confidence_concern` event 승격 기준은 confidence `>= 0.82`로 둔다.
    - 짧지만 강한 spike는 confidence `>= 0.90` + 최근 5개 bucket 중 2개 이상 bad인 실험값으로만 둔다.
-   - p99/tail latency는 auxiliary evidence로만 사용하고 단독 판단으로 쓰지 않는다.
+   - p95/p99를 표시해야 하면 starter canonical percentile만 사용하고, histogram-derived p99를 만들지 않는다.
 
 ## Epic 6. First-Screen Delivery and Demo Hardening
 
@@ -197,7 +214,14 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
 
 - MVP 필수 경로에 Prometheus 설치, scrape config, selector 등록, PromQL query가 없다.
 - host app build/startup/request path는 portal 장애에 의해 막히지 않는다.
-- p95 source of truth는 server-side histogram merge다.
+- starter heartbeat는 bucket ingest와 분리된 periodic control-plane/liveness signal이다.
+- heartbeat 성공 또는 미수신은 accepted bucket, host application health, dashboard snapshot, operational event, state/read-model calculation을 생성하거나 암시하지 않는다.
+- accepted bucket만 application freshness/state/read-model source-of-truth다.
+- p95/p99 source of truth는 starter-reported canonical percentile이다.
+- `localPercentiles`는 instance-local 30초 bucket의 starter canonical p95/p99다.
+- 여러 starter p95/p99 값이 섞이는 app/project/window에서는 임의 평균/병합으로 단일 p95/p99를 만들지 않는다.
+- Histogram bucket은 distribution/bucket display/diagnostic raw bucket source다.
+- Endpoint는 bucket display only이며 endpoint별 p95/p99 계산, endpoint percentile judgment, endpoint p99 alert 기준을 만들지 않는다.
 - first-screen state와 triage 문구는 dashboard read model에서 온다.
 - 아키텍처 스타일은 Traditional MVC 하나다.
 - `triageCards=[]`이면 zero-insight reason과 recommended action이 반드시 있다.
@@ -210,6 +234,7 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
 - Snapshot `read_model_json`의 endpoint evidence는 최대 10개까지 보존하고 raw path/query/trace/per-request sample은 포함하지 않는다.
 - 30초 단위 dashboard snapshot 장기 보관, endpoint timeseries table, materialized view, Redis/outbox는 MVP 범위 밖이다.
 - Operational Event History는 Epic 5/6에서 dashboard snapshot/read model 기반 bounded surface로 다루며 Epic 2/3에는 포함하지 않는다.
+- Snapshot detail shape는 Epic 5의 `Snapshot Marker and Bounded Tail Summary Contract`에서 닫는다.
 - MVP에서는 별도 `operational_events` table을 만들지 않는다.
 - Account signup과 login은 GitHub OAuth only다.
 - MVP는 cookie 기반 server session을 사용하지 않고, API 요청은 `Authorization: Bearer <access_token>` 기준으로 인증한다.
@@ -225,7 +250,7 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
 | No pull metric MVP path | Epic 1, 2, 6 | `metric-taxonomy.md`, `ingest-envelope.md` | starter direct ingest service only | `NoPrometheusMvpPathTest` |
 | Host build/startup/request path not blocked | Epic 2 | `architecture.md`, `ingest-envelope.md`, `starter-failure-semantics.md` | spring integration -> service -> bounded queue | `StarterNonBlockingIngestTest` |
 | Ingest idempotency | Epic 3 | `ingest-envelope.md` | `IngestAcceptanceService` + `MetricBucketRepository` | `IngestAcceptanceServiceTest` |
-| Server-side p95 source | Epic 5 | `histogram-merge.md` | `HistogramMergeService` | `HistogramMergeGoldenFixtureTest` |
+| Starter canonical percentile source | Epic 5 | `ingest-envelope.md`, `histogram-merge.md` | `DashboardReadModelService` | `StarterCanonicalPercentileReadModelTest` |
 | First-screen state source | Epic 4, 5 | `state-semantics.md`, `read-model-contract.md` | `DashboardReadModelService` | `DashboardReadModelSnapshotTest` |
 | 0-insight is explicit | Epic 5 | `read-model-contract.md` | `TriageSummaryService` | `ZeroInsightReadModelTest` |
 | Endpoint priority is explainable | Epic 5 | `insight-rules.md`, `read-model-contract.md` | `EndpointPriorityService` | `EndpointPriorityReadModelTest` |

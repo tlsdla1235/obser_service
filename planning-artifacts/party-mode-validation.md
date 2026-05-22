@@ -37,7 +37,7 @@ Required Fix reflected:
 - starter는 web controller가 없는 library임을 명시하고, `model/service/spring/client/queue/config`로 따로 잡았다.
 - no pull metric MVP path negative AC를 유지했다.
 - host request path non-blocking AC와 timeout/drop policy를 유지했다.
-- server-side histogram merge contract와 golden fixture 기준을 유지했다.
+- histogram bucket distribution contract와 starter canonical percentile 기준을 유지했다.
 
 ## UX View
 
@@ -63,4 +63,3 @@ Required Fix reflected:
 - 첫 화면 성공 기준 `alive / slow / error / where to look first`를 architecture AC로 유지했다.
 - generic platform, arbitrary query, high-cardinality 확장 냄새를 MVP 금지 경로로 고정했다.
 - MVC 버전에서도 controller 비대화와 repository 의미 계산을 금지했다.
-

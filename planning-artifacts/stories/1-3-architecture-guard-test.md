@@ -68,7 +68,7 @@ date: 2026-05-10
 4. `..portal.domain..repository..`는 `..portal.domain..dto..`를 참조하지 않는다.
 5. `..portal.domain..service..`는 `..portal.domain..controller..`를 참조하지 않는다.
 6. `..portal.domain..service..`는 controller response DTO에 의존하지 않는다.
-7. lifecycle state, insight rule, endpoint priority, p95 계산 class는 `service` 또는 `model` package 아래에만 존재한다는 guard 방향이 문서화되거나 테스트로 고정된다.
+7. lifecycle state, insight rule, endpoint priority, starter canonical percentile 표시 정책 class는 `service` 또는 `model` package 아래에만 존재한다는 guard 방향이 문서화되거나 테스트로 고정된다.
 8. `port`, `adapter`, `application` package가 생기지 않았음을 테스트로 고정한다.
 9. architecture test command가 성공한다.
 10. 이 story에서는 API behavior, DB migration, repository behavior를 구현하지 않는다.
@@ -139,7 +139,7 @@ date: 2026-05-10
 - feature-first controller가 repository를 직접 참조하지 않는 규칙을 추가했다.
 - feature-first repository가 controller/dto package를 참조하지 않는 규칙을 추가했다.
 - feature-first service가 controller/dto package를 참조하지 않는 규칙을 추가했다.
-- lifecycle state, insight rule, endpoint priority, p95 계산 class가 service/model package 밖에 생기지 않도록 skeleton 수준의 guard를 추가했다.
+- lifecycle state, insight rule, endpoint priority, starter canonical percentile 표시 정책 class가 service/model package 밖에 생기지 않도록 skeleton 수준의 guard를 추가했다.
 - `port`, `adapter`, `application` package가 생기지 않도록 guard를 추가했다.
 
 ## File List

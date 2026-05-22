@@ -153,9 +153,9 @@ date: 2026-05-10
 ### Implementation Plan
 
 - `IngestEnvelopeIdentity`를 local starter 설정에서 온 project/application/environment/instance tuple로 두고, nonblank validation을 생성 시점에 수행한다.
-- `IngestEnvelope` DTO는 `schemaVersion: 1.0`, application, UTC 30초 bucket metadata, app summary, endpoint summary, cumulative duration bucket만 표현한다.
+- `IngestEnvelope` DTO는 `schemaVersion: 1.0`, application, UTC 30초 bucket metadata, app summary, endpoint summary, cumulative duration bucket, starter canonical `localPercentiles` 후보만 표현한다.
 - `IngestEnvelopeBuilderService`는 `ClosedMetricBucket`만 입력으로 받아 deterministic payload와 `Idempotency-Key` 후보를 만들고, clock/network/client/repository/dedupe state를 갖지 않는다.
-- endpoint와 histogram bucket은 stable ordering으로 직렬화 후보를 만들며, raw path/query/tag/custom metric/p95/state/rule/priority field는 payload shape에 두지 않는다.
+- endpoint와 histogram bucket은 stable ordering으로 직렬화 후보를 만들며, raw path/query/tag/custom metric/state/rule/priority field는 payload shape에 두지 않는다. p95/p99는 endpoint field가 아니라 `summary.localPercentiles`의 starter canonical percentile로만 둔다.
 - `MetricBucketFlushWorker`는 queue에서 꺼낸 sealed bucket을 builder output인 `IngestEnvelopeCandidate`로 변환한 뒤 `PortalMetricBucketClient`에 전달한다.
 
 ### Debug Log

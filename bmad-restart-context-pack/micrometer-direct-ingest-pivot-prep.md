@@ -13,13 +13,15 @@
 `{output_folder}/planning-artifacts/legacy-archive/2026-05-06-prometheus-pivot/`
 로 이동되었으며, 현재는 archive reference로만 취급한다.
 
+최신 p95/p99 계약에서는 이 메모의 예전 서버 재계산 방향을 쓰지 않는다. `summary.localPercentiles.p95Ms` / `p99Ms`는 starter가 해당 instance의 해당 30초 bucket에서 직접 산출해 보낸 canonical 값이며, histogram bucket은 distribution visualization, endpoint bucket display, diagnostic raw bucket source다.
+
 ## Proposed MVP Contract
 
 - 애플리케이션 계측 계층은 `Micrometer`로 유지한다.
 - `Prometheus`는 MVP 필수 의존성에서 제거한다.
 - starter는 앱 내부에서 low-cardinality metric을 수집한다.
-- starter는 요약 metric과 histogram bucket을 비동기로 우리 ingest API에 전송한다.
-- 서버는 histogram bucket을 합산해서 멀티 인스턴스 기준 `p95`를 계산한다.
+- starter는 요약 metric, starter-reported p95/p99, histogram bucket을 비동기로 우리 ingest API에 전송한다.
+- Histogram bucket 합산은 distribution display payload를 만들 때만 사용하고, app/project/window p95/p99는 그 합산 결과로 계산하지 않는다.
 - 사용자는 내부 배치, 재시도, 큐, bucket merge 방식을 알 필요가 없다.
 - 사용자 계약은 `starter 추가 + 최소 설정 + 앱 실행`으로 닫는다.
 
@@ -30,7 +32,8 @@
 - high-cardinality tag는 허용하지 않는다.
 - portal 장애가 애플리케이션 request path를 막으면 안 된다.
 - push 실패 시 비동기 drop / backoff / retry 정책은 starter 내부 책임으로 둔다.
-- 멀티 인스턴스 정확도는 `starter-local p95`보다 `server-side histogram merge`를 우선한다.
+- 여러 starter instance의 p95/p99가 같은 app/project/window에 섞이면 평균/최댓값/병합/히스토그램 재계산으로 단일 p95/p99를 만들지 않는다.
+- endpoint별 p95/p99는 계산하지 않고 endpoint 상세는 histogram bucket distribution을 그대로 보여준다.
 
 ## Documents To Rewrite
 

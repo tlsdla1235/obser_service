@@ -27,7 +27,7 @@ PRD와 UX specification은 검증 완료 산출물로 보고 본문을 수정하
 | `planning-artifacts/contracts/starter-failure-semantics.md` | starter 장애 전파 정책 | portal 연결 실패가 host app build/startup/request path로 전파되지 않는 기준 |
 | `planning-artifacts/contracts/account-auth-policy.md` | 2026-05-19 account auth 정책 정렬 | GitHub OAuth only signup/login, Bearer JWT/refresh token, provider token 비노출 기준 |
 | `planning-artifacts/contracts/insight-rules.md` | 기존 insight rules | triage service rule 기준 |
-| `planning-artifacts/contracts/histogram-merge.md` | 기존 histogram merge | server-side service p95 계산 기준 |
+| `planning-artifacts/contracts/histogram-merge.md` | 기존 histogram merge 파일명 호환 | bucket distribution merge와 endpoint bucket display 기준 |
 | `planning-artifacts/epics.md` | 기존 epics | MVC 구현 순서 |
 | `planning-artifacts/acceptance-traceability.md` | 기존 traceability | AC -> MVC layer -> test 추적 |
 | `planning-artifacts/architecture-implementation-supplement.md` | 기존 implementation supplement | repo/module/package/service/repository/test 보조 설계 |

@@ -36,7 +36,8 @@ date: 2026-05-10
 - retry/backoff
 - ingest envelope serialization
 - portal ingest acceptance/persistence
-- p95 calculation
+- starter `localPercentiles` p95/p99 calculation/serialization
+- portal-side 또는 histogram-derived p95/p99 calculation
 - dashboard read model calculation
 
 ## Source Artifacts
@@ -72,7 +73,7 @@ date: 2026-05-10
 - app-level histogram과 endpoint-level histogram은 cumulative count shape로 유지한다.
 - JVM/datasource ratio는 MVP에서 bucket 안의 latest valid sample로 둔다. absent sample은 host request processing을 막지 않는다.
 - Post-MVP에서 latest/max/avg/sampleCount runtime aggregate를 추가하려면 `metric-taxonomy`와 `ingest-envelope`의 Runtime Gauge Aggregate Extension 후보를 별도 story로 구현한다.
-- p95는 starter에서 계산하지 않는다. server-side histogram merge는 Epic 5 scope다.
+- starter는 `localPercentiles`로 canonical p95/p99를 보고할 수 있다. 이 story의 bucket rollup은 `localPercentiles` 계산 구현을 하지 않고, histogram bucket을 distribution display와 진단 원자료로 만드는 범위까지만 다룬다.
 
 ## Acceptance Criteria
 
@@ -88,7 +89,7 @@ date: 2026-05-10
 10. drain 이후 같은 interval sample은 drop되며 duplicate flush candidate를 만들지 않는다.
 11. sealed watermark는 단조 증가한다.
 12. 이 story에서는 network call, HTTP client, queue worker, envelope builder를 구현하지 않는다.
-13. p95, lifecycle state, insight rule, endpoint priority 계산을 구현하지 않는다.
+13. starter `localPercentiles` p95/p99, portal-side p95/p99, lifecycle state, insight rule, endpoint priority 계산을 구현하지 않는다.
 
 ## Suggested Tasks
 
@@ -114,12 +115,12 @@ date: 2026-05-10
 - 동일 `bucket.startUtc` duplicate flush candidate prevention test
 - sealed watermark monotonicity test
 - normalized route only input test
-- no p95/state/rule calculation guard
+- no starter `localPercentiles`/portal p95/p99/state/rule calculation guard
 - 권장 실행 명령: `./gradlew test`
 
 ## Developer Guardrails
 
-- local p95를 starter에서 계산하지 않는다.
+- 이 story에서는 starter `localPercentiles` p95/p99 계산을 구현하지 않는다. starter가 해당 값을 계산해 보내는 최신 정책 자체를 부정하지 않는다.
 - bucket duration을 config로 열더라도 MVP default와 acceptance는 30초로 고정한다.
 - MVP drain grace window도 1 bucket duration, 즉 30초로 고정한다.
 - `drainClosedBuckets(nowUtc)`를 bucket end 도달 즉시 drain으로 해석하지 않는다.

@@ -29,11 +29,13 @@ MVP는 first-screen triage에 필요한 metric만 허용한다.
 - error count
 - duration histogram bucket
 
-## 2. Tail Latency Evidence Boundary
+## 2. Percentile and Histogram Boundary
 
-Tail latency evidence는 별도 starter metric 추가 없이 HTTP server duration cumulative histogram bucket에서 portal service layer가 계산한다.
+`summary.localPercentiles.p95Ms`와 `summary.localPercentiles.p99Ms`는 starter가 ingest envelope로 보내는 canonical p95/p99 값이다. 필드명은 호환성 때문에 `localPercentiles`로 유지하지만, 의미는 약한 local hint가 아니라 `starter-reported percentile`이다.
 
-p99를 위해 raw percentile, per-request sample, trace id, arbitrary latency distribution payload를 추가하지 않는다. p99는 `histogram-merge.md`와 `operational-event-history.md`의 auxiliary evidence 정책을 따르며 starter ingest payload 확장 근거가 아니다.
+HTTP server duration cumulative histogram bucket은 계속 수집한다. 다만 이 bucket은 canonical p95/p99 계산 입력이 아니라 distribution visualization, endpoint bucket display, diagnostic raw bucket의 source다.
+
+p95/p99를 위해 per-request sample, trace id, arbitrary latency distribution payload를 추가하지 않는다. 같은 scope에서 starter-reported p95/p99와 histogram-derived p95/p99를 병렬 표시하지 않는다.
 
 ## 3. Tag Policy
 
