@@ -2,6 +2,7 @@ package com.observation.portal.domain.state.model;
 
 import com.observation.portal.common.time.AcceptedBucketFreshness;
 
+import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -15,7 +16,8 @@ public record MetricLifecycleInput(
         MetricSampleReadiness sampleReadiness,
         MetricTrafficActivity trafficActivity,
         DegradedHysteresisInput degradedHysteresis,
-        Optional<LifecycleStateCode> previousState
+        Optional<LifecycleStateCode> previousState,
+        Optional<Instant> previousHealthyAt
 ) {
 
     /**
@@ -27,5 +29,18 @@ public record MetricLifecycleInput(
         Objects.requireNonNull(trafficActivity, "trafficActivity must not be null");
         Objects.requireNonNull(degradedHysteresis, "degradedHysteresis must not be null");
         previousState = Objects.requireNonNull(previousState, "previousState must not be null");
+        previousHealthyAt = Objects.requireNonNull(previousHealthyAt, "previousHealthyAt must not be null");
+    }
+
+    /**
+     * 이전 healthy 시각 source가 없는 기존 adapter/test 호출을 명시적으로 non-recovery source 없음으로 연결한다.
+     */
+    public MetricLifecycleInput(
+            AcceptedBucketFreshness freshness,
+            MetricSampleReadiness sampleReadiness,
+            MetricTrafficActivity trafficActivity,
+            DegradedHysteresisInput degradedHysteresis,
+            Optional<LifecycleStateCode> previousState) {
+        this(freshness, sampleReadiness, trafficActivity, degradedHysteresis, previousState, Optional.empty());
     }
 }

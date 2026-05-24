@@ -7,6 +7,7 @@ import com.observation.portal.domain.state.model.MetricLifecycleInput;
 import com.observation.portal.domain.state.model.MetricLifecycleState;
 import com.observation.portal.domain.state.model.MetricSampleReadiness;
 import com.observation.portal.domain.state.model.MetricTrafficActivity;
+import com.observation.portal.domain.state.model.RecoveryGuidance;
 import com.observation.portal.domain.state.model.StarterConnectionDiagnosis;
 import com.observation.portal.domain.state.model.StarterConnectionFreshness;
 import com.observation.portal.domain.state.model.StarterConnectionInput;
@@ -43,7 +44,8 @@ public class LifecycleStateService {
                 requiredMetricInput.freshness().status(),
                 metricState.code(),
                 requiredStarterInput);
-        return new LifecycleStateDecision(metricState, starterConnection);
+        RecoveryGuidance recovery = decideRecoveryGuidance(requiredMetricInput);
+        return new LifecycleStateDecision(metricState, starterConnection, recovery);
     }
 
     private MetricLifecycleState decideMetricState(MetricLifecycleInput input) {
@@ -194,6 +196,19 @@ public class LifecycleStateService {
         return freshnessStatus == AcceptedBucketFreshnessStatus.WAITING_FIRST_DATA
                 || freshnessStatus == AcceptedBucketFreshnessStatus.STALE_CANDIDATE
                 || freshnessStatus == AcceptedBucketFreshnessStatus.DOWN_CANDIDATE;
+    }
+
+    private static RecoveryGuidance decideRecoveryGuidance(MetricLifecycleInput input) {
+        boolean staleOrDownPreviousState = input.previousState()
+                .filter(previousState -> previousState == LifecycleStateCode.STALE || previousState == LifecycleStateCode.DOWN)
+                .isPresent();
+        boolean recoveryTriggerMet = staleOrDownPreviousState
+                && input.freshness().status() == AcceptedBucketFreshnessStatus.CURRENT
+                && input.sampleReadiness() == MetricSampleReadiness.INSUFFICIENT;
+        if (recoveryTriggerMet) {
+            return RecoveryGuidance.recovering(input.previousHealthyAt());
+        }
+        return RecoveryGuidance.notRecovering(input.previousHealthyAt());
     }
 
     private static MetricLifecycleState activeState() {

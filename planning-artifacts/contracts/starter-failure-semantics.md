@@ -90,6 +90,8 @@ Starter heartbeat도 같은 fail-open 원칙을 따른다. heartbeat는 starter/
 
 UI가 heartbeat telemetry를 보여줄 경우에는 `starter heartbeat/연결 상태`를 `accepted bucket freshness/application state`와 분리해서 표현한다. 예를 들어 heartbeat가 최근 수신됐더라도 accepted bucket이 없으면 application state는 계속 `waiting_first_data`일 수 있고, copy는 `starter connected but no accepted bucket`, `waiting for traffic`, `metric data idle`처럼 표현한다.
 
+Recovery guidance도 같은 분리 원칙을 따른다. stale/down 이후 새 accepted bucket이 수용됐지만 sample이 부족한 구간은 metric recovery copy에서 "복구 관찰 중"으로 설명하고, heartbeat stale/unknown 여부는 starter connection copy에서 별도로 설명한다. 두 문구를 결합해 host application down, host process down, 앱 내려감 같은 확정 표현을 만들지 않는다.
+
 | Heartbeat | Accepted bucket | 의미 |
 |---|---|---|
 | 최근 수신 | 없음/오래됨 | starter/control-plane은 도달 가능하지만 metric data가 최근 없다. 요청 없음 또는 bucket flush 없음 후보이며 host down 확정이 아니다. |

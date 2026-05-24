@@ -98,7 +98,7 @@ Snapshot detail의 세부 shape는 Epic 5의 `Snapshot Marker and Bounded Tail S
   "zeroInsight": null,
   "recovery": {
     "isRecovering": false,
-    "lastRecoveredAt": null,
+    "lastHealthyAt": null,
     "retryAfterSeconds": null,
     "recommendedAction": null
   },
@@ -185,6 +185,10 @@ Snapshot detail의 세부 shape는 Epic 5의 `Snapshot Marker and Bounded Tail S
 | `telemetry_unreachable` | heartbeat도 오래됐고 accepted bucket도 오래됐거나 없다 | starter/portal/network 연결 확인. host application down은 미확정 |
 | `observing_recovery` | stale/down 이후 회복 관찰 중이다 | 다음 bucket까지 대기하며 ingest 경로 확인 |
 
+`no_recent_traffic`은 starter connection diagnosis로는 사용할 수 있지만 MVP zeroInsight reason code로는 새로 추가하지 않는다. `triageCards=[]`이고 최근 heartbeat와 오래된/없는 accepted bucket 조합이 traffic 부재를 가리키면 `metric_data_idle`로 수렴한다.
+
+Recovery 활성화와 `triageCards=[]` 조합은 `observing_recovery`를 우선한다. 이는 "복구 완료"가 아니라 "복구 관찰 중"을 뜻한다.
+
 예시:
 
 ```json
@@ -206,11 +210,18 @@ Snapshot detail의 세부 shape는 Epic 5의 `Snapshot Marker and Bounded Tail S
 - `starterConnection`은 heartbeat telemetry를 표시할 때만 사용하는 별도 축이며 metric state를 직접 바꾸지 않는다. `stateImpact = none`은 metric state를 바꾸지 않는 diagnostic/control-plane 정보라는 뜻이다.
 - 최근 heartbeat와 없음/오래된 accepted bucket 조합은 no recent traffic/waiting for traffic/metric data idle 계열로 표현한다.
 - heartbeat도 없고 accepted bucket도 오래된 조합은 telemetry unreachable/unknown 계열로 표현하며 host application down을 확정하지 않는다.
+- `recovery.isRecovering=true`는 이전 metric state가 `stale` 또는 `down`이고 현재 accepted bucket freshness는 current지만 sample이 insufficient인 경우에만 사용한다.
+- `recovery.isRecovering=false`는 recovery trigger가 성립하지 않는 모든 경우에 사용한다. 현재 freshness가 current이고 sample이 sufficient이면 recovery는 종료된다.
+- `recovery.lastHealthyAt`은 이전 healthy/active read model 또는 snapshot에서 받은 값만 사용한다. 현재 request의 accepted bucket만으로 추론하지 않고, 값이 없으면 `null`이다.
+- `recovery.retryAfterSeconds`는 recovery 중일 때 `30`, recovery가 아닐 때 `null`이다. 이는 "다음 판단까지 약 30초"를 뜻하며 자동 재시도 예약이 아니다.
+- `recovery.recommendedAction`은 recovery 중일 때 "다음 판단까지 약 30초 기다린 뒤 accepted bucket 수용과 sample 증가를 확인하세요." 계열의 copy를 제공하고, recovery가 아닐 때 `null`이다.
+- `lastRecoveredAt`은 회복 완료 시각처럼 읽히므로 MVP current read model recovery field에 포함하지 않는다.
 - `metrics`에는 request/error처럼 app/project/window scalar로 안전한 값만 둔다. p95/p99는 `sourceScopedPercentiles`에서 source/instance/bucket scope와 함께 표시한다.
 - `sourceScopedPercentiles`는 `summary.localPercentiles.p95Ms` / `p99Ms`에서 온 starter canonical point를 노출한다. 이 block의 item을 평균/최댓값/병합/히스토그램 재계산으로 단일 app/project/window p95/p99로 만들지 않는다.
 - stale/down/degraded state는 `state.recommendedAction`을 포함한다.
 - endpoint priority item은 endpoint-level `freshness`, `evidence`, `confidence`, `recommendedAction`을 포함한다.
 - `lastHealthyAt`은 stale/down/recovery 안내에 사용한다. 값이 없으면 UI는 "이전 정상 시점 없음"으로 표시한다.
+- Metric recovery guidance와 starter connection guidance는 별도 field/copy로 유지한다. 두 문구를 합쳐 host application down, host process down, 앱 내려감 같은 확정 표현을 만들지 않는다.
 
 ## 4.1 Instance Detail Starter Percentile Candidate
 
