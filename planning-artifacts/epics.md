@@ -81,14 +81,18 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
 0. Starter heartbeat and instance-level ingest contract gate
    - Story 4-0은 구현 story가 아니라 contract gate다.
    - `POST /api/ingest/v1/heartbeat`는 bucket ingest와 분리된 periodic control-plane/liveness signal로 문서화한다.
-   - heartbeat 성공은 accepted bucket, host application health, dashboard snapshot, operational event, state/read-model calculation을 생성하거나 암시하지 않는다.
+   - heartbeat 성공은 accepted bucket, host business health, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 생성하거나 암시하지 않는다.
+   - heartbeat는 starter/application process liveness, portal reachability, project key validity, metadata validity의 control-plane source다.
    - heartbeat 미수신은 host application down 판정이 아니며 starter connection status와 accepted bucket freshness/application state를 분리한다.
    - `localPercentiles`는 instance-local 30초 bucket의 starter canonical p95/p99로 허용한다.
    - 여러 starter 값이 같은 app/project/window에 존재하면 임의 평균/병합으로 새 p95/p99를 만들지 않고 instance/source 단위로 노출하거나 상위 scope에는 bucket distribution을 표시한다.
 1. Time bucket contract implementation
    - 30초 bucket, 15분 current, 15분 baseline, UTC 기준을 구현한다.
 2. Lifecycle state service
-   - `waiting_first_data`, `unknown`, `idle`, `active`, `stale`, `down`, `degraded`를 판정한다.
+   - accepted bucket 기반 metric state로 `waiting_first_data`, `unknown`, `idle`, `active`, `stale`, `down`, `degraded`를 판정한다.
+   - heartbeat telemetry가 있으면 starter connection/liveness 축을 별도 입력으로 받아 `starter connected but no accepted bucket`, `waiting for traffic`, `telemetry unreachable`, `unknown` 계열 copy/recommended action을 만든다.
+   - heartbeat가 최근 수신됐지만 accepted bucket이 없거나 오래된 경우 host application down으로 단정하지 않는다.
+   - heartbeat도 끊기고 accepted bucket도 오래된 경우에도 host application down을 확정하지 않고 telemetry disconnected/unknown 계열로 표현한다.
    - degraded enter는 rule guard 통과, confidence `>= 0.75`, 최근 5개 30초 bucket 중 3개 이상 bad일 때만 통과한다.
    - degraded resolve는 concern absence, confidence `< 0.60`, rule별 recovery/threshold 하회 중 하나가 5 consecutive buckets 동안 유지될 때 통과한다.
    - 30초 단발 blip은 degraded state로 만들지 않는다.
@@ -215,8 +219,11 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
 - MVP 필수 경로에 Prometheus 설치, scrape config, selector 등록, PromQL query가 없다.
 - host app build/startup/request path는 portal 장애에 의해 막히지 않는다.
 - starter heartbeat는 bucket ingest와 분리된 periodic control-plane/liveness signal이다.
-- heartbeat 성공 또는 미수신은 accepted bucket, host application health, dashboard snapshot, operational event, state/read-model calculation을 생성하거나 암시하지 않는다.
-- accepted bucket만 application freshness/state/read-model source-of-truth다.
+- heartbeat 성공 또는 미수신은 accepted bucket, host business health, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 생성하거나 암시하지 않는다.
+- accepted bucket은 application metric freshness/state/read-model source-of-truth다.
+- heartbeat는 starter/application process liveness, portal reachability, project key validity, metadata validity의 control-plane source다.
+- 최근 heartbeat와 없음/오래된 accepted bucket 조합은 no recent traffic/waiting for traffic/metric data idle 계열로 표현하고 host application down으로 단정하지 않는다.
+- heartbeat도 끊기고 accepted bucket도 오래된 조합은 starter disconnected/telemetry unreachable/unknown 계열로 표현하고 host application down 원인은 확정하지 않는다.
 - p95/p99 source of truth는 starter-reported canonical percentile이다.
 - `localPercentiles`는 instance-local 30초 bucket의 starter canonical p95/p99다.
 - 여러 starter p95/p99 값이 섞이는 app/project/window에서는 임의 평균/병합으로 단일 p95/p99를 만들지 않는다.

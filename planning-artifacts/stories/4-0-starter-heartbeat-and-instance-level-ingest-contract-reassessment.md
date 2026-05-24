@@ -122,11 +122,14 @@ Content-Type: application/json
 Boundary:
 
 - heartbeat는 metric ingest가 아니라 starter liveness/control-plane 신호다.
-- heartbeat 성공은 accepted bucket 존재나 host application health를 의미하지 않는다.
-- heartbeat는 `accepted_metric_buckets`, `dashboard_snapshots`, operational event, state/read-model calculation을 생성하지 않는다.
+- heartbeat는 starter/application process liveness, portal reachability, project key validity, metadata validity의 source다.
+- heartbeat 성공은 accepted bucket 존재나 host business health를 의미하지 않는다.
+- heartbeat는 `accepted_metric_buckets`, `dashboard_snapshots`, operational event, p95/p99, rule/read-model calculation을 생성하지 않는다.
 - heartbeat는 application/instance catalog upsert source가 아니다. 첫 accepted bucket이 계속 catalog upsert source다.
-- heartbeat는 별도 lightweight telemetry로 `lastHeartbeatAt`, `lastHeartbeatStatus`, failure category를 저장할 수 있지만, 이 값은 dashboard operational state source-of-truth가 아니다.
-- heartbeat는 UI state를 직접 바꾸지 않는다. `waiting_first_data`, `stale`, `down`은 accepted bucket 기준으로 유지된다. UI가 heartbeat를 보여줄 경우 “starter 연결/heartbeat 상태”와 “수집 bucket freshness”를 분리해 표시한다.
+- heartbeat는 별도 lightweight telemetry로 `lastHeartbeatAt`, `lastHeartbeatStatus`, failure category를 저장할 수 있으며, 이 값은 starter connection/liveness surface의 source다. 다만 accepted bucket freshness나 host business degraded 판단의 source-of-truth는 아니다.
+- heartbeat는 metric state를 직접 바꾸지 않는다. `waiting_first_data`, `stale`, `down` 같은 accepted bucket 기반 state는 metric data 축으로 유지된다. UI/read model이 heartbeat를 보여줄 경우 “starter 연결/heartbeat 상태”와 “수집 bucket freshness”를 분리해 표시한다.
+- heartbeat가 최근 수신됐지만 accepted bucket이 없거나 오래된 경우는 `starter connected but no accepted bucket`, `waiting for traffic`, `metric data idle`, `no recent traffic` 계열 의미로 표현하고 host application down으로 단정하지 않는다.
+- heartbeat도 오래됐고 accepted bucket도 없거나 오래된 경우는 `starter disconnected`, `telemetry unreachable`, `unknown` 계열 의미로 표현하고 host application down 원인은 미확정으로 둔다.
 - heartbeat 응답에서 accepted bucket 참고 시각을 함께 제공하더라도 `ingestBoundary.lastAcceptedBucketAt`처럼 별도 namespace에 두며, heartbeat 성공/failure 문구와 같은 상태축으로 표현하지 않는다.
 - starter는 기본적으로 host startup/request path를 막지 않는 background schedule로 heartbeat를 보낸다. 권장 interval은 config로 열되, MVP 기본값은 30초 후보이며 jitter/backoff/rate-limited logging을 적용한다.
 
@@ -208,7 +211,7 @@ Boundary:
 4. project key 누락 또는 검증 실패는 `401`로 반환하며 raw key material을 response/log/error에 노출하지 않는다.
 5. disabled project처럼 인증은 됐지만 ingest를 허용할 수 없는 상태는 `403` 후보로 문서화한다.
 6. `application.name`, `environment`, `instance`, `schemaVersion` shape가 잘못되면 `400`으로 반환한다.
-7. heartbeat 성공은 accepted metric bucket, dashboard snapshot, operational event, state/read-model calculation을 생성하거나 암시하지 않는다.
+7. heartbeat 성공은 accepted metric bucket, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 생성하거나 암시하지 않는다.
 8. heartbeat 응답이 accepted bucket 참고 시각을 제공하더라도 `ingestBoundary.lastAcceptedBucketAt`처럼 분리하며, heartbeat status와 freshness status를 같은 상태로 표현하지 않는다.
 9. heartbeat는 기본적으로 application/instance catalog row를 upsert하지 않으며, 첫 accepted bucket이 catalog upsert source라는 기존 경계를 유지한다.
 10. starter heartbeat는 기본 fail-open 정책을 따른다. portal 장애나 timeout은 host app startup/request path를 실패시키지 않는다.
@@ -223,6 +226,7 @@ Boundary:
 19. 후속 snapshot contract는 단일 long-window p99를 만들지 않으며, starter canonical percentile과 bucket distribution evidence의 세부 shape는 별도 story에서 확정한다.
 20. heartbeat 미수신은 host application down 판정 근거가 아니며, starter connection 상태와 accepted bucket 기반 operational state를 분리해 표현한다.
 21. portal ingest validation 검토는 Story 4.0 신규/변경 field와 contract에 한정하며, Story 3.x에서 이미 수용된 기존 ingest field의 추가 안정성 검증을 Story 4.0 또는 다음 sprint planning blocker로 삼지 않는다.
+22. 최근 heartbeat와 없음/오래된 accepted bucket 조합은 no recent traffic/waiting for traffic/metric data idle 계열로 표현하고, heartbeat도 끊긴 조합은 starter disconnected/telemetry unreachable/unknown 계열로 표현한다.
 
 ## Dev Notes
 
@@ -261,8 +265,9 @@ Boundary:
   - metadata validation 재사용 또는 같은 validation vocabulary 적용
   - heartbeat가 bucket/snapshot/event/read-model 계산을 호출하지 않음
   - heartbeat가 application/instance catalog upsert를 호출하지 않음
-  - heartbeat telemetry를 저장하더라도 accepted bucket freshness/state 계산에 반영하지 않음
+  - heartbeat telemetry를 저장하더라도 accepted bucket freshness 계산에 반영하지 않고 starter connection/liveness 축으로만 사용함
   - heartbeat 미수신 fixture가 host application down 판정으로 변환되지 않음
+  - 최근 heartbeat + 없음/오래된 accepted bucket fixture가 no recent traffic/waiting for traffic/metric data idle 계열 copy로 수렴함
 
 - `StarterHeartbeatClientTest`
   - bounded timeout 설정 적용
@@ -302,14 +307,16 @@ Boundary:
 
 ## Suggested Follow-Up Stories
 
-1. Starter heartbeat endpoint and lightweight telemetry
+1. Starter heartbeat lightweight telemetry persistence
 2. Instance-local percentile read model projection
 3. Project/Application selector read model
-4. Application instance list with freshness/state hints
-5. Instance detail evidence read model and local percentile headline
-6. Snapshot marker and bounded tail summary contract
-7. Snapshot detail read-model endpoint
-8. UX copy guardrails for heartbeat, freshness, p99, and non-mergeable metrics
+4. Story 4.2 LifecycleStateService two-axis state/liveness semantics
+5. Application instance list with freshness/state and starter connection hints
+6. Instance detail evidence read model and local percentile headline
+7. Snapshot marker and bounded tail summary contract
+8. Snapshot detail read-model endpoint
+9. UX copy guardrails for heartbeat, freshness, p99, and non-mergeable metrics
+10. `down` enum/copy rename 검토: host application process down처럼 읽히면 `telemetry_unreachable` 또는 `data_plane_down` 계열로 변경
 
 ## Developer Guardrails
 
@@ -321,8 +328,9 @@ Boundary:
 - endpoint detail은 histogram bucket display only이며 endpoint별 p95/p99를 계산하지 않는다.
 - snapshot에서 `hourP99`, `dayP99`, `14dP99` 같은 단일 long-window p99 대표값을 만들지 않는다.
 - heartbeat 성공을 accepted ingest로 해석하지 않는다.
-- heartbeat를 host application health/down 판정으로 연결하지 않는다.
+- heartbeat를 host business health/degraded 판정으로 연결하지 않는다.
 - heartbeat 미수신을 host application down 판정으로 연결하지 않는다.
+- heartbeat를 accepted bucket freshness source로 사용하지 않는다.
 - bucket ingest와 heartbeat의 retry/logging/idempotency 의미를 섞지 않는다.
 - Story 3.x에서 이미 수용된 기존 ingest field hardening을 Story 4.0 blocker로 되살리지 않는다. 필요하면 deferred hardening item으로만 기록한다.
 

@@ -14,7 +14,9 @@ date: 2026-05-09
 
 UI는 이 응답을 표시할 뿐 lifecycle state, zero-insight reason, insight rule, endpoint priority, p95/p99를 재계산하지 않는다. 이 계약은 `state-semantics`, `time-buckets`, `insight-rules`, starter canonical percentile, histogram bucket distribution 결과를 한 응답으로 묶는 구현 기준이다.
 
-Application freshness/state/read-model의 source-of-truth는 accepted bucket이다. Starter heartbeat는 별도 connection/liveness surface이며, heartbeat 성공 또는 미수신은 accepted bucket freshness, state, operational event, dashboard snapshot 생성을 직접 만들거나 암시하지 않는다.
+Application metric freshness/state/read-model의 source-of-truth는 accepted bucket이다. Starter heartbeat는 별도 connection/liveness surface이며 starter/application process liveness, portal reachability, project key validity, metadata validity의 control-plane source다. Heartbeat 성공 또는 미수신은 accepted bucket freshness, host business health/degraded 판단, operational event, dashboard snapshot 생성을 직접 만들거나 암시하지 않는다.
+
+요청이 없어 bucket이 오지 않는 상황은 host application down이 아니다. Read model은 accepted bucket axis와 heartbeat axis를 분리해, heartbeat가 최근 수신됐지만 bucket이 없거나 오래된 경우 `starter connected but no accepted bucket`, `waiting for traffic`, `metric data idle` 계열 copy를 사용할 수 있다. 두 축이 모두 오래된 경우에도 host down 확정 대신 `starter disconnected`, `telemetry unreachable`, `unknown` 계열로 표현한다.
 
 ### 1.1 Current Response와 Snapshot 저장 경계
 
@@ -90,6 +92,7 @@ Snapshot detail의 세부 shape는 Epic 5의 `Snapshot Marker and Bounded Tail S
     "statusSource": "starter_heartbeat",
     "lastHeartbeatAt": "2026-05-08T01:10:20Z",
     "lastHeartbeatStatus": "received",
+    "connectionMeaning": "starter_connected",
     "stateImpact": "none"
   },
   "zeroInsight": null,
@@ -177,7 +180,9 @@ Snapshot detail의 세부 shape는 Epic 5의 `Snapshot Marker and Bounded Tail S
 |---|---|---|
 | `no_action_needed` | freshness와 sample은 충분하지만 노출할 concern이 없다 | 현재 우선 조치 없음 |
 | `insufficient_sample` | 판단에 필요한 요청 수가 부족하다 | 더 많은 요청 또는 다음 bucket 대기 |
-| `waiting_first_data` | 아직 accepted bucket이 없다 | starter 설정과 앱 실행 상태 확인 |
+| `waiting_first_data` | 아직 accepted bucket이 없다 | heartbeat가 최근이면 traffic 대기, heartbeat도 없으면 starter 연결 확인 |
+| `metric_data_idle` | starter heartbeat는 최근 수신됐지만 accepted bucket이 없거나 오래됐다 | 요청 없음 또는 bucket 생성 대기 |
+| `telemetry_unreachable` | heartbeat도 오래됐고 accepted bucket도 오래됐거나 없다 | starter/portal/network 연결 확인. host application down은 미확정 |
 | `observing_recovery` | stale/down 이후 회복 관찰 중이다 | 다음 bucket까지 대기하며 ingest 경로 확인 |
 
 예시:
@@ -198,7 +203,9 @@ Snapshot detail의 세부 shape는 Epic 5의 `Snapshot Marker and Bounded Tail S
 - 모든 response는 `generatedAt`을 포함한다.
 - application freshness는 `lastObservedAt`, `staleAt`, `downAt`을 포함한다.
 - application metadata의 `lastAcceptedBucketAt`은 마지막 accepted bucket 기준 시각이다.
-- `starterConnection`은 heartbeat telemetry를 표시할 때만 사용하는 별도 축이며 `stateImpact = none`을 유지한다.
+- `starterConnection`은 heartbeat telemetry를 표시할 때만 사용하는 별도 축이며 metric state를 직접 바꾸지 않는다. `stateImpact = none`은 metric state를 바꾸지 않는 diagnostic/control-plane 정보라는 뜻이다.
+- 최근 heartbeat와 없음/오래된 accepted bucket 조합은 no recent traffic/waiting for traffic/metric data idle 계열로 표현한다.
+- heartbeat도 없고 accepted bucket도 오래된 조합은 telemetry unreachable/unknown 계열로 표현하며 host application down을 확정하지 않는다.
 - `metrics`에는 request/error처럼 app/project/window scalar로 안전한 값만 둔다. p95/p99는 `sourceScopedPercentiles`에서 source/instance/bucket scope와 함께 표시한다.
 - `sourceScopedPercentiles`는 `summary.localPercentiles.p95Ms` / `p99Ms`에서 온 starter canonical point를 노출한다. 이 block의 item을 평균/최댓값/병합/히스토그램 재계산으로 단일 app/project/window p95/p99로 만들지 않는다.
 - stale/down/degraded state는 `state.recommendedAction`을 포함한다.

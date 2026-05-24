@@ -22,7 +22,7 @@ date: 2026-05-09
 | repeated concern suppression window | 같은 application + endpointKey + ruleId 기준 60분 |
 | time zone | UTC |
 | stale 후보 | 최근 accepted bucket이 90초 이상 없음 |
-| down 후보 | 최근 accepted bucket이 180초 이상 없음 |
+| down 후보 | 최근 accepted bucket이 180초 이상 없는 data-plane freshness 후보 |
 
 `starter flush cadence`는 drain check/tick 주기이며, drain eligibility의 grace 조건을 대체하지 않는다.
 
@@ -73,7 +73,11 @@ raw bucket retention이 지난 뒤 endpoint별 detail은 snapshot `read_model_js
 
 ## 6. Freshness Source
 
-freshness는 starter가 주장하는 현재 시간이 아니라, portal이 수용한 마지막 bucket의 `endUtc` 기준으로 판단한다. 30초 drain grace 때문에 UI freshness가 최대 30초 늦어지는 것은 MVP에서 허용한다.
+freshness는 starter가 주장하는 현재 시간이나 heartbeat 시간이 아니라, portal이 수용한 마지막 bucket의 `endUtc` 기준으로 판단한다. 이 freshness는 **metric data freshness**이며 host application process liveness를 직접 뜻하지 않는다.
+
+30초 drain grace 때문에 UI freshness가 최대 30초 늦어지는 것은 MVP에서 허용한다. 사용자 서버에 몇 분 동안 요청이 없어서 새 bucket이 오지 않는 상황도 가능하므로, accepted bucket 부재나 오래됨만으로 host application down을 확정하지 않는다.
+
+Starter heartbeat가 구현되어 있으면 heartbeat는 starter/application process liveness, portal reachability, project key validity, metadata validity의 별도 control-plane source다. 이 값은 accepted bucket freshness age를 바꾸지 않지만, 후속 read model은 "starter connected but no accepted bucket", "waiting for traffic", "telemetry unreachable" 같은 copy를 선택하는 별도 입력으로 사용할 수 있다.
 
 ## 7. MVC Boundary
 

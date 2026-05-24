@@ -38,7 +38,7 @@ portal 구현자로서, dashboard/state/read-model service가 같은 UTC 30초 b
 - degraded enter/resolve hysteresis 구현
 - dashboard read model/API 구현
 - snapshot persistence 또는 operational event history 구현
-- heartbeat를 freshness/state source로 연결하는 것
+- heartbeat를 accepted bucket freshness source로 연결하거나 metric state와 같은 축으로 섞는 것
 - p95/p99, histogram merge, endpoint priority, insight rule 계산
 
 ## Acceptance Criteria
@@ -47,7 +47,7 @@ portal 구현자로서, dashboard/state/read-model service가 같은 UTC 30초 b
 2. 모든 bucket 계산은 UTC 30초 boundary를 사용하고 `[startUtc, endUtc)` interval semantics를 명시한다.
 3. query 시점 기준 current window는 최근 15분이며, baseline window는 current 바로 이전 15분이다.
 4. current/baseline window 계산은 `Clock` 또는 UTC clock bean을 통해 테스트 가능한 query 시각을 사용한다.
-5. freshness 계산은 starter heartbeat가 아니라 마지막 accepted bucket의 `endUtc`만 입력으로 사용한다.
+5. metric freshness 계산은 starter heartbeat가 아니라 마지막 accepted bucket의 `endUtc`만 입력으로 사용한다.
 6. freshness threshold는 stale 후보 90초 이상, down 후보 180초 이상을 표현하되, lifecycle state enum 판정 전체는 Story 4.2로 남긴다.
 7. repository는 application scope 마지막 accepted bucket `endUtc`를 저장/조회할 수 있게만 확장하고 freshness/state 의미를 판단하지 않는다.
 8. controller/UI 경계에는 stale/down/current/baseline 재판정 로직이 추가되지 않는다.
@@ -63,7 +63,7 @@ portal 구현자로서, dashboard/state/read-model service가 같은 UTC 30초 b
 - [x] freshness 계산 모델 구현 (AC: 5, 6, 8)
   - [x] 마지막 accepted bucket `endUtc`와 query 시각으로 freshness age를 계산한다.
   - [x] `current`, `stale_candidate`, `down_candidate`, `waiting_first_data` 후보 수준만 표현하고 최종 lifecycle state 판정은 구현하지 않는다.
-  - [x] heartbeat 입력, starter liveness, controller/UI 재판정 로직을 추가하지 않는다.
+  - [x] metric freshness 계산에 heartbeat 입력, starter liveness, controller/UI 재판정 로직을 추가하지 않는다.
 - [x] repository timestamp 조회 경계 추가 (AC: 7, 8)
   - [x] `MetricBucketRepository`에 application scope 마지막 accepted bucket `endUtc` 조회 메서드를 추가한다.
   - [x] Spring Data JPA repository는 timestamp 조회만 수행하고 freshness/state 판단을 하지 않는다.
@@ -85,7 +85,8 @@ portal 구현자로서, dashboard/state/read-model service가 같은 UTC 30초 b
 - JPA entity는 persistence model이며 controller DTO, public API surface, service result/external return model로 직접 반환하지 않는다.
 - existing accepted bucket persistence는 `MetricBucketRepository`, `AcceptedMetricBucketJpaRepository`, `AcceptedMetricBucketEntity`, `AcceptedMetricBucketWriteCommand`를 사용한다.
 - `IngestAcceptanceService`는 현재 `OffsetDateTime.now(ZoneOffset.UTC)`를 직접 사용한다. Story 4.1 범위에서는 production clock bean을 추가할 수 있지만 ingest accepted timestamp semantics를 불필요하게 바꾸지 않는다.
-- freshness source는 `accepted_metric_buckets.bucket_end_utc`다. `accepted_at`, starter heartbeat, heartbeat telemetry, UI local time은 source가 아니다.
+- metric freshness source는 `accepted_metric_buckets.bucket_end_utc`다. `accepted_at`, starter heartbeat, heartbeat telemetry, UI local time은 source가 아니다.
+- 후속 Story 4.2는 heartbeat telemetry를 starter connection/liveness 축으로 별도 사용할 수 있지만, 이 값으로 accepted bucket freshness age를 바꾸지는 않는다.
 - `current`와 `baseline`은 dashboard query 시점 기준이다. snapshot/history horizon과 섞지 않는다.
 - baseline이 충분하지 않으면 comparative rule을 끄는 판단은 후속 insight/lifecycle story 범위다. 이 story는 window interval을 제공하는 데 그친다.
 - `stale_candidate`는 마지막 accepted bucket `endUtc`가 query 시점보다 90초 이상 과거일 때, `down_candidate`는 180초 이상 과거일 때를 표현한다. `down` 우선순위 같은 최종 state ordering은 Story 4.2에서 닫는다.
@@ -95,7 +96,7 @@ portal 구현자로서, dashboard/state/read-model service가 같은 UTC 30초 b
 
 - `planning-artifacts/epics.md` - Epic 4 Story 4.1
 - `planning-artifacts/contracts/time-buckets.md` - bucket duration, UTC boundary, current/baseline, freshness source, MVC boundary
-- `planning-artifacts/contracts/state-semantics.md` - state source-of-truth, freshness thresholds, heartbeat exclusion
+- `planning-artifacts/contracts/state-semantics.md` - state source-of-truth, freshness thresholds, heartbeat liveness axis separation
 - `planning-artifacts/contracts/ingest-envelope.md` - accepted bucket contract and controller/service/repository boundary
 - `planning-artifacts/stories/4-0-starter-heartbeat-and-instance-level-ingest-contract-reassessment.md` - heartbeat and starter percentile guardrails
 - `_bmad/custom/project-context.md` - MVC + Spring Data JPA implementation policy
@@ -124,7 +125,7 @@ portal 구현자로서, dashboard/state/read-model service가 같은 UTC 30초 b
 - recovery guidance는 Story 4.3으로 남긴다.
 - degraded enter/resolve hysteresis는 Story 4.2/4.4로 남긴다.
 - dashboard read model/API, snapshot persistence, operational event history를 구현하지 않는다.
-- heartbeat를 freshness/state source로 연결하지 않는다.
+- heartbeat를 accepted bucket freshness source로 연결하지 않는다. 후속 Story 4.2에서 사용하더라도 starter connection/liveness 축으로만 분리한다.
 - p95/p99, histogram merge, endpoint priority, insight rule 계산을 구현하지 않는다.
 - controller/UI boundary에서 stale/down/current/baseline을 재판정하지 않는다.
 - 불필요한 코드 변경이나 unrelated refactor를 하지 않는다.
@@ -158,7 +159,7 @@ GPT-5 Codex
 - Ultimate context engine analysis completed - comprehensive developer guide created.
 - UTC 30초 bucket boundary와 `[startUtc, endUtc)` interval semantics를 `UtcTimeInterval`/`TimeBucketWindowCalculator`로 고정했다.
 - query 시점 기준 current 15분과 직전 baseline 15분을 `DashboardTimeWindow`로 제공하고 `Clock` 주입 기반 UTC system clock bean을 추가했다.
-- 마지막 accepted bucket `endUtc`만 사용해 `CURRENT`, `STALE_CANDIDATE`, `DOWN_CANDIDATE`, `WAITING_FIRST_DATA` freshness 후보를 계산한다.
+- 마지막 accepted bucket `endUtc`만 사용해 `CURRENT`, `STALE_CANDIDATE`, `DOWN_CANDIDATE`, `WAITING_FIRST_DATA` metric freshness 후보를 계산한다.
 - repository는 application scope 마지막 `bucket_end_utc` timestamp만 조회하며 freshness/state 판단은 하지 않는다.
 - controller/UI, dashboard read model/API, lifecycle state service, heartbeat 연결, p95/p99/rule/priority 계산은 추가하지 않았다.
 

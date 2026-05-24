@@ -1,5 +1,6 @@
 package com.observation.starter.service;
 
+import com.observation.starter.client.HeartbeatFailureClassifier;
 import com.observation.starter.client.PortalHeartbeatClient;
 import com.observation.starter.config.HeartbeatProperties;
 import com.observation.starter.model.heartbeat.HeartbeatRequest;
@@ -11,7 +12,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 /**
- * starter heartbeat payload를 만들고 client 실패를 fail-open으로 격리하는 service다.
+ * starter heartbeat payload를 만들고 client 실패를 fail-open result로 격리하는 service다.
  */
 public final class StarterHeartbeatService {
 
@@ -48,14 +49,21 @@ public final class StarterHeartbeatService {
      * heartbeat 한 번을 만들고 전송한다. 실패는 boolean 결과로만 남기며 caller로 전파하지 않는다.
      */
     public boolean sendOnce() {
+        return sendOnceResult().success();
+    }
+
+    /**
+     * heartbeat 한 번의 성공/실패와 failure category를 raw exception message 없이 반환한다.
+     */
+    public StarterHeartbeatResult sendOnceResult() {
         if (!canSend()) {
-            return false;
+            return StarterHeartbeatResult.disabled();
         }
         try {
             client.send(buildRequest(sequence.incrementAndGet()));
-            return true;
-        } catch (RuntimeException ignored) {
-            return false;
+            return StarterHeartbeatResult.sent();
+        } catch (RuntimeException exception) {
+            return StarterHeartbeatResult.failure(HeartbeatFailureClassifier.classify(exception));
         }
     }
 

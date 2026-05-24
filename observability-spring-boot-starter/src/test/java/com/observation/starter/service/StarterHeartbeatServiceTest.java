@@ -2,11 +2,14 @@ package com.observation.starter.service;
 
 import com.observation.starter.client.NoopPortalHeartbeatClient;
 import com.observation.starter.client.PortalHeartbeatClient;
+import com.observation.starter.client.HeartbeatFailureCategory;
+import com.observation.starter.client.PortalHeartbeatException;
 import com.observation.starter.config.HeartbeatProperties;
 import com.observation.starter.model.heartbeat.HeartbeatRequest;
 import com.observation.starter.model.ingest.IngestEnvelopeIdentity;
 import org.junit.jupiter.api.Test;
 
+import java.net.http.HttpTimeoutException;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -56,6 +59,60 @@ class StarterHeartbeatServiceTest {
                 () -> Instant.parse("2026-05-24T08:30:00Z"));
 
         assertFalse(service.sendOnce());
+    }
+
+    @Test
+    void exposesFailureCategoryWithoutThrowingOrLeakingRawProjectKeyInResult() {
+        PortalHeartbeatClient failingClient = request -> {
+            throw PortalHeartbeatException.forStatus(401);
+        };
+        StarterHeartbeatService service = new StarterHeartbeatService(
+                failingClient,
+                identity(),
+                properties(),
+                () -> Instant.parse("2026-05-24T08:30:00Z"));
+
+        StarterHeartbeatResult result = service.sendOnceResult();
+
+        assertFalse(result.success());
+        assertTrue(result.failed());
+        assertEquals(HeartbeatFailureCategory.UNAUTHORIZED, result.failureCategory());
+        assertFalse(result.toString().contains("pk_live.secret"));
+    }
+
+    @Test
+    void rawGenericExceptionMessageDoesNotEnterResult() {
+        PortalHeartbeatClient failingClient = request -> {
+            throw new IllegalStateException("portal rejected raw key pk_live.secret");
+        };
+        StarterHeartbeatService service = new StarterHeartbeatService(
+                failingClient,
+                identity(),
+                properties(),
+                () -> Instant.parse("2026-05-24T08:30:00Z"));
+
+        StarterHeartbeatResult result = service.sendOnceResult();
+
+        assertFalse(result.success());
+        assertEquals(HeartbeatFailureCategory.UNKNOWN, result.failureCategory());
+        assertFalse(result.toString().contains("pk_live.secret"));
+    }
+
+    @Test
+    void classifiesWrappedTimeoutFailureAsReadTimeout() {
+        PortalHeartbeatClient failingClient = request -> {
+            throw new RuntimeException(new HttpTimeoutException("request timed out"));
+        };
+        StarterHeartbeatService service = new StarterHeartbeatService(
+                failingClient,
+                identity(),
+                properties(),
+                () -> Instant.parse("2026-05-24T08:30:00Z"));
+
+        StarterHeartbeatResult result = service.sendOnceResult();
+
+        assertFalse(result.success());
+        assertEquals(HeartbeatFailureCategory.READ_TIMEOUT, result.failureCategory());
     }
 
     @Test

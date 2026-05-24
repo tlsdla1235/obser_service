@@ -32,6 +32,14 @@ Source specification: `planning-artifacts/mvp-deferred-risk-spec.md`
 
 - Existing ingest envelope field hardening: Story 3.x에서 이미 구현/수용된 `schemaVersion`, `application`, `bucket`, `summary.requestCount/errorCount`, `summary.httpServerDurationBuckets`, `summary.jvm`, `summary.datasource`, `endpoints`, `idempotencyKey` 계열의 추가 안정성 검증은 Story 4.0과 다음 sprint planning의 blocker로 삼지 않는다. 더 강한 검증이 필요하면 별도 hardening story에서 다룬다.
 
+## Deferred from: heartbeat/state semantics correction (2026-05-24)
+
+- Heartbeat telemetry persistence: starter heartbeat를 `lastHeartbeatAt`, `lastHeartbeatStatus`, failure category, metadata validity 등 lightweight control-plane record로 저장하는 후속 story를 만든다. 이 저장소는 accepted bucket freshness, p95/p99, rule, endpoint priority, dashboard snapshot 생성 source가 아니다.
+- Story 4.2 two-axis state/liveness implementation: `LifecycleStateService` 또는 `DashboardReadModelService`가 accepted bucket metric state와 starter connection/liveness를 별도 typed input/output으로 다루도록 구현한다.
+- Copy/read-model guard: 최근 heartbeat + 없음/오래된 accepted bucket은 `starter connected but no accepted bucket`, `waiting for traffic`, `metric data idle`, `no recent traffic` 계열로 표현하고 host application down으로 단정하지 않는다.
+- Telemetry unreachable guard: heartbeat도 끊기고 accepted bucket도 오래된 경우에도 `starter disconnected`, `telemetry unreachable`, `unknown` 계열로 표현하고 host application down 원인은 미확정으로 둔다.
+- `down` enum/copy rename review: `down`이 host application process down으로 계속 읽히면 `telemetry_unreachable`, `data_plane_down`, `metric_data_disconnected` 같은 이름으로 변경하거나 UI label을 data-plane 기준으로 제한한다.
+
 ## Deferred from: dashboard snapshot/history contract alignment (2026-05-21)
 
 - Resolved by planning alignment: suppression window는 같은 `application + endpointKey + ruleId` 기준 60분으로 확정했다.

@@ -24,11 +24,11 @@ context:
 
 ## Boundaries & Constraints
 
-**Always:** heartbeat는 control-plane/liveness 신호다. Valid heartbeat response는 `ingestBoundary.lastAcceptedBucketAt`와 `statusSource=accepted_bucket`을 통해 accepted bucket 기준 freshness를 분리한다. Starter sender는 bounded timeout client와 background fail-open path를 사용한다. Raw project key는 response, error model, result `toString`, log에 노출하지 않는다.
+**Always:** heartbeat는 control-plane/liveness 신호다. Valid heartbeat response는 `ingestBoundary.lastAcceptedBucketAt`와 `statusSource=accepted_bucket`을 통해 accepted bucket 기준 metric freshness를 분리한다. Heartbeat는 starter/application process liveness, portal reachability, project key validity, metadata validity의 source로 해석할 수 있다. Starter sender는 bounded timeout client와 background fail-open path를 사용한다. Raw project key는 response, error model, result `toString`, log에 노출하지 않는다.
 
 **Ask First:** heartbeat telemetry persistence, disabled project `403`, heartbeat-driven catalog upsert, heartbeat UI/read model surface가 필요해지면 중단하고 확인한다.
 
-**Never:** LifecycleStateService, dashboard read model/API, snapshot/event persistence, operational event history, accepted_metric_buckets heartbeat 저장, catalog upsert, heartbeat 기반 stale/down/waiting/current 판단, UI, p95/p99/rule/endpoint priority 계산을 만들지 않는다.
+**Never:** LifecycleStateService, dashboard read model/API, snapshot/event persistence, operational event history, accepted_metric_buckets heartbeat 저장, catalog upsert, heartbeat만으로 accepted bucket freshness 또는 metric state 판단, UI, p95/p99/rule/endpoint priority 계산을 만들지 않는다.
 
 ## I/O & Edge-Case Matrix
 
@@ -85,6 +85,7 @@ context:
 - Portal heartbeat endpoint는 `POST /api/ingest/v1/heartbeat`로 분리했고 project key verification을 재사용한다.
 - Portal service는 request shape 검증 후 기존 application catalog row가 있을 때만 마지막 accepted bucket timestamp를 조회한다.
 - Heartbeat path는 accepted bucket insert, catalog upsert, snapshot/event/state calculation, dashboard surface를 만들지 않는다.
+- 후속 state/read-model 구현은 heartbeat를 metric freshness source가 아니라 starter connection/liveness 축으로만 사용할 수 있다.
 
 ### File List
 

@@ -10,11 +10,13 @@ date: 2026-05-09
 
 ## 1. 역할
 
-`ingest-envelope`는 starter와 portal 사이의 accepted bucket 및 starter canonical percentile source of truth다.
+`ingest-envelope`는 starter와 portal 사이의 metric data accepted bucket 및 starter canonical percentile source of truth다.
 
 이 계약은 pull-based scrape/query 방식을 MVP 필수 경로에서 제외하고, portal service layer가 lifecycle state, triage summary, endpoint priority, distribution display를 구성할 수 있는 최소 bounded payload만 허용한다. p95/p99 값 자체는 `summary.localPercentiles.p95Ms`/`p99Ms`로 starter가 보고한 값을 canonical source로 삼는다.
 
-Starter heartbeat는 이 계약의 metric ingest가 아니다. 주기적 starter heartbeat는 `POST /api/ingest/v1/heartbeat`의 별도 control-plane/liveness 신호로 다루며, accepted bucket, host application health, dashboard snapshot, operational event, state/read-model calculation을 생성하거나 암시하지 않는다.
+Starter heartbeat는 이 계약의 metric ingest가 아니다. 주기적 starter heartbeat는 `POST /api/ingest/v1/heartbeat`의 별도 control-plane/liveness 신호로 다루며, starter/application process liveness, portal reachability, project key validity, metadata validity를 표현한다. Heartbeat는 accepted bucket, host business health, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 생성하거나 암시하지 않는다.
+
+accepted bucket이 없거나 오래된 것은 "최근 metric data가 없다"는 뜻이다. 사용자 서버에 요청이 없어 bucket이 안 온 상황을 host application down으로 해석하지 않는다. Heartbeat가 최근 수신됐다면 후속 read model은 이 조합을 `starter connected but no accepted bucket`, `waiting for traffic`, `metric data idle` 계열로 표현할 수 있다.
 
 ## 2. API
 
@@ -210,6 +212,7 @@ portal idempotency는 재전송/duplicate 안전망이지, starter duplicate flu
 - high-cardinality label 검색
 - user-defined custom metric ingestion
 - heartbeat를 metric bucket으로 취급하는 것
-- heartbeat 성공으로 accepted bucket, dashboard snapshot, operational event, read model 계산을 만드는 것
+- heartbeat 성공으로 accepted bucket, dashboard snapshot, operational event, p95/p99, rule/read model 계산을 만드는 것
+- heartbeat를 accepted bucket freshness source나 host business health/degraded 판단 근거로 사용하는 것
 - `localPercentiles` 값으로 app/project/window p95/p99 rollup을 만드는 것
 - endpoint별 p95/p99 계산, endpoint percentile rollup, endpoint p99 alert 기준을 만드는 것

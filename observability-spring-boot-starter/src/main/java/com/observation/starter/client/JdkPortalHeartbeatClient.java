@@ -64,13 +64,15 @@ public final class JdkPortalHeartbeatClient implements PortalHeartbeatClient {
             response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("portal heartbeat request was interrupted", exception);
+            throw PortalHeartbeatException.forTransportFailure(exception);
         } catch (IOException exception) {
-            throw new IllegalStateException("portal heartbeat request failed", exception);
+            throw PortalHeartbeatException.forTransportFailure(exception);
+        } catch (RuntimeException exception) {
+            throw PortalHeartbeatException.forTransportFailure(exception);
         }
         int statusCode = response.statusCode();
         if (statusCode < 200 || statusCode >= 300) {
-            throw new IllegalStateException("portal heartbeat returned non-success status " + statusCode);
+            throw PortalHeartbeatException.forStatus(statusCode);
         }
     }
 
