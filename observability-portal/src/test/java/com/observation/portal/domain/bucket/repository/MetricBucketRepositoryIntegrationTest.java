@@ -180,6 +180,15 @@ class MetricBucketRepositoryIntegrationTest {
                 0.64d,
                 0.71d,
                 0.82d,
+                new AcceptedMetricBucketWriteCommand.LocalPercentiles(
+                        "instance_bucket",
+                        "starter_local",
+                        start.toString(),
+                        start.plusSeconds(30).toString(),
+                        3L,
+                        250L,
+                        1000L,
+                        false),
                 List.of(new AcceptedMetricBucketWriteCommand.EndpointBucket(
                         "GET",
                         "/orders/{orderId}",
@@ -200,7 +209,8 @@ class MetricBucketRepositoryIntegrationTest {
                      select schema_version, idempotency_key, payload_hash,
                             bucket_start_utc, bucket_end_utc, request_count, error_count,
                             duration_buckets_json::text, endpoints_json::text,
-                            cpu_usage_ratio, heap_used_ratio, datasource_pool_usage_ratio, accepted_at
+                            cpu_usage_ratio, heap_used_ratio, datasource_pool_usage_ratio,
+                            local_percentiles_json::text, accepted_at
                      from accepted_metric_buckets
                      where id = ?
                      """)) {
@@ -219,7 +229,13 @@ class MetricBucketRepositoryIntegrationTest {
                 assertThat(resultSet.getBigDecimal(10)).isEqualByComparingTo("0.64000");
                 assertThat(resultSet.getBigDecimal(11)).isEqualByComparingTo("0.71000");
                 assertThat(resultSet.getBigDecimal(12)).isEqualByComparingTo("0.82000");
-                assertThat(resultSet.getObject(13, OffsetDateTime.class)).isEqualTo(command.acceptedAt());
+                assertThat(resultSet.getString(13)).contains(
+                        "\"scope\": \"instance_bucket\"",
+                        "\"source\": \"starter_local\"",
+                        "\"p95Ms\": 250",
+                        "\"p99Ms\": 1000",
+                        "\"mergeable\": false");
+                assertThat(resultSet.getObject(14, OffsetDateTime.class)).isEqualTo(command.acceptedAt());
             }
         }
     }

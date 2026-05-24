@@ -76,6 +76,10 @@ public class AcceptedMetricBucketEntity {
     private BigDecimal datasourcePoolUsageRatio;
 
     @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "local_percentiles_json", columnDefinition = "jsonb")
+    private String localPercentilesJson;
+
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "endpoints_json", nullable = false, columnDefinition = "jsonb")
     private String endpointsJson;
 
@@ -109,6 +113,7 @@ public class AcceptedMetricBucketEntity {
             BigDecimal cpuUsageRatio,
             BigDecimal heapUsedRatio,
             BigDecimal datasourcePoolUsageRatio,
+            String localPercentilesJson,
             String endpointsJson,
             OffsetDateTime createdAt) {
         this.id = Objects.requireNonNull(id, "id must not be null");
@@ -130,6 +135,7 @@ public class AcceptedMetricBucketEntity {
         this.cpuUsageRatio = cpuUsageRatio;
         this.heapUsedRatio = heapUsedRatio;
         this.datasourcePoolUsageRatio = datasourcePoolUsageRatio;
+        this.localPercentilesJson = localPercentilesJson;
         this.endpointsJson = requireText(endpointsJson, "endpointsJson");
         this.createdAt = Objects.requireNonNull(createdAt, "createdAt must not be null");
     }

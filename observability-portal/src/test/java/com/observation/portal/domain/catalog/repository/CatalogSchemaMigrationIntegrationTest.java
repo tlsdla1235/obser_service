@@ -37,7 +37,7 @@ class CatalogSchemaMigrationIntegrationTest {
     void appliesMigrationsToCleanDatabase() throws SQLException {
         MigrateResult result = cleanAndMigrate();
 
-        assertThat(result.migrationsExecuted).isEqualTo(3);
+        assertThat(result.migrationsExecuted).isEqualTo(4);
         assertThat(tableExists("projects")).isTrue();
         assertThat(tableExists("applications")).isTrue();
         assertThat(tableExists("application_instances")).isTrue();
@@ -112,6 +112,7 @@ class CatalogSchemaMigrationIntegrationTest {
 
         assertThat(constraintExists("accepted_metric_buckets", "uk_buckets_project_idempotency_key")).isTrue();
         assertThat(constraintExists("accepted_metric_buckets", "uk_buckets_instance_bucket_start")).isTrue();
+        assertThat(constraintExists("accepted_metric_buckets", "ck_buckets_local_percentiles_object")).isTrue();
         assertThat(indexExists("idx_buckets_app_window")).isTrue();
         assertThat(indexExists("idx_buckets_app_last_end")).isTrue();
         assertThat(indexExists("idx_buckets_instance_window")).isTrue();
@@ -202,6 +203,7 @@ class CatalogSchemaMigrationIntegrationTest {
                         "cpu_usage_ratio",
                         "heap_used_ratio",
                         "datasource_pool_usage_ratio",
+                        "local_percentiles_json",
                         "endpoints_json",
                         "created_at"));
 

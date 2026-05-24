@@ -51,6 +51,21 @@ class IngestEnvelopeRequestJsonTest {
         });
     }
 
+    @Test
+    void jsonBoundaryParsesLocalPercentilesAsSupportedField() throws Exception {
+        String json = PortalIngestValidationFixture.jsonWith(PortalIngestValidationFixture::addValidLocalPercentiles);
+
+        IngestEnvelopeRequest request = objectMapper.readValue(json, IngestEnvelopeRequest.class);
+
+        assertThat(request.summary().localPercentiles()).satisfies(localPercentiles -> {
+            assertThat(localPercentiles.scope()).isEqualTo("instance_bucket");
+            assertThat(localPercentiles.source()).isEqualTo("starter_local");
+            assertThat(localPercentiles.p95Ms()).isEqualTo(250L);
+            assertThat(localPercentiles.p99Ms()).isEqualTo(1000L);
+            assertThat(localPercentiles.mergeable()).isFalse();
+        });
+    }
+
     private static ProjectKeyVerificationService verifiedProjectKeyService() {
         ProjectKeyVerificationService projectKeyVerificationService = mock(ProjectKeyVerificationService.class);
         when(projectKeyVerificationService.verify(PortalIngestValidationFixture.PROJECT_KEY_HEADER))

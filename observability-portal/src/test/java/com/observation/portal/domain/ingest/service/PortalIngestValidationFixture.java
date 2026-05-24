@@ -126,6 +126,13 @@ public final class PortalIngestValidationFixture {
     }
 
     /**
+     * Story 4.0의 starter canonical percentile 후보를 포함한 request model을 만든다.
+     */
+    public static IngestEnvelopeRequest requestWithLocalPercentiles() throws JsonProcessingException {
+        return requestWith(PortalIngestValidationFixture::addValidLocalPercentiles);
+    }
+
+    /**
      * golden JSON을 일부 변경한 뒤 portal request model로 deserialize한다.
      */
     public static IngestEnvelopeRequest requestWith(Consumer<ObjectNode> mutation) throws JsonProcessingException {
@@ -139,5 +146,21 @@ public final class PortalIngestValidationFixture {
         ObjectNode root = (ObjectNode) OBJECT_MAPPER.readTree(GOLDEN_JSON);
         mutation.accept(root);
         return OBJECT_MAPPER.writeValueAsString(root);
+    }
+
+    /**
+     * localPercentiles 후보를 valid instance_bucket scope starter canonical point로 추가한다.
+     */
+    public static ObjectNode addValidLocalPercentiles(ObjectNode root) {
+        ObjectNode localPercentiles = ((ObjectNode) root.get("summary")).putObject("localPercentiles");
+        localPercentiles.put("scope", "instance_bucket");
+        localPercentiles.put("source", "starter_local");
+        localPercentiles.put("bucketStartUtc", "2026-05-08T01:00:00Z");
+        localPercentiles.put("bucketEndUtc", "2026-05-08T01:00:30Z");
+        localPercentiles.put("requestCount", 3);
+        localPercentiles.put("p95Ms", 250);
+        localPercentiles.put("p99Ms", 1000);
+        localPercentiles.put("mergeable", false);
+        return localPercentiles;
     }
 }
