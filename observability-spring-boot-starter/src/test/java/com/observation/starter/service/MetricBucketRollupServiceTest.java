@@ -7,6 +7,7 @@ import com.observation.starter.model.metric.EndpointMetricRollup;
 import com.observation.starter.model.metric.HistogramBucket;
 import com.observation.starter.model.metric.LowCardinalityHttpServerObservation;
 import com.observation.starter.model.metric.JvmMetricSample;
+import com.observation.starter.model.metric.LocalPercentileRollup;
 import com.observation.starter.model.route.NormalizedRoute;
 import com.observation.starter.model.time.MetricBucketInterval;
 import org.junit.jupiter.api.Test;
@@ -63,6 +64,7 @@ class MetricBucketRollupServiceTest {
         assertEquals(3, countFor(summary.httpServerDurationBuckets(), 250));
         assertEquals(3, countFor(summary.httpServerDurationBuckets(), 500));
         assertEquals(3, countFor(summary.httpServerDurationBuckets(), 1000));
+        assertEquals(new LocalPercentileRollup(3, 250, 250), summary.localPercentiles().orElseThrow());
 
         EndpointMetricRollup getOrders = endpoint(bucket, "GET /orders/{orderId}");
         assertEquals(2, getOrders.requestCount());
@@ -76,6 +78,25 @@ class MetricBucketRollupServiceTest {
         assertEquals(1, postOrders.errorCount());
         assertEquals(0, countFor(postOrders.durationBuckets(), 100));
         assertEquals(1, countFor(postOrders.durationBuckets(), 250));
+    }
+
+    @Test
+    void calculatesStarterLocalNearestRankPercentilesForInstanceBucketOnly() {
+        MetricBucketRollupService service = new MetricBucketRollupService();
+        for (int millis = 1; millis <= 100; millis++) {
+            service.recordHttpServerObservation(http("GET", "/orders",
+                    "2026-05-08T01:00:01Z", 200, false, millis));
+        }
+
+        ClosedMetricBucket bucket = service.drainClosedBuckets(Instant.parse("2026-05-08T01:01:00Z")).get(0);
+
+        assertEquals(new LocalPercentileRollup(100, 95, 99), bucket.appSummary().localPercentiles().orElseThrow());
+        assertEquals(1, bucket.endpointRollups().size());
+        RecordComponent[] endpointComponents = EndpointMetricRollup.class.getRecordComponents();
+        assertTrue(List.of(endpointComponents).stream()
+                .noneMatch(component -> component.getName().toLowerCase(Locale.ROOT).contains("percentile")));
+        assertTrue(List.of(endpointComponents).stream()
+                .noneMatch(component -> component.getName().toLowerCase(Locale.ROOT).contains("p95")));
     }
 
     @Test
@@ -222,14 +243,14 @@ class MetricBucketRollupServiceTest {
     }
 
     @Test
-    void rollupModelsDoNotExposeP95LifecycleInsightOrPriorityCalculations() {
+    void rollupModelsDoNotExposeLifecycleInsightOrPriorityCalculations() {
         List<Class<?>> rollupClasses = List.of(
                 MetricBucketRollupService.class,
                 MetricBucketInterval.class,
                 ClosedMetricBucket.class,
                 AppMetricRollup.class,
                 EndpointMetricRollup.class);
-        List<String> forbiddenTokens = List.of("p95", "percentile", "lifecycle", "insight", "priority");
+        List<String> forbiddenTokens = List.of("lifecycle", "insight", "priority");
 
         for (Class<?> rollupClass : rollupClasses) {
             for (Method method : rollupClass.getDeclaredMethods()) {

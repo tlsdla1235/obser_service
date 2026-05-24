@@ -11,6 +11,7 @@ import com.observation.starter.model.metric.EndpointKey;
 import com.observation.starter.model.metric.EndpointMetricRollup;
 import com.observation.starter.model.metric.HistogramBucket;
 import com.observation.starter.model.metric.JvmMetricSample;
+import com.observation.starter.model.metric.LocalPercentileRollup;
 import com.observation.starter.model.metric.LowCardinalityHttpServerObservation;
 import com.observation.starter.model.metric.LowCardinalityTagKey;
 import com.observation.starter.model.route.NormalizedRoute;
@@ -74,6 +75,13 @@ class NoPrometheusMvpPathTest {
             "/query",
             "/scrape",
             "/export");
+    private static final List<String> ALLOWED_STARTER_LOCAL_PERCENTILE_PATHS = List.of(
+            "src/main/java/com/observation/starter/model/ingest/IngestEnvelope.java",
+            "src/main/java/com/observation/starter/model/metric/AppMetricRollup.java",
+            "src/main/java/com/observation/starter/model/metric/ClosedMetricBucket.java",
+            "src/main/java/com/observation/starter/model/metric/LocalPercentileRollup.java",
+            "src/main/java/com/observation/starter/service/IngestEnvelopeBuilderService.java",
+            "src/main/java/com/observation/starter/service/MetricBucketRollupService.java");
     private static final List<String> GUARDED_CLASSPATH_PROPERTIES = List.of(
             "starter.guard.mainCompileClasspath",
             "starter.guard.mainRuntimeClasspath",
@@ -120,7 +128,17 @@ class NoPrometheusMvpPathTest {
                             component("errorCount", long.class),
                             listComponent("httpServerDurationBuckets", IngestEnvelope.DurationBucket.class),
                             component("jvm", IngestEnvelope.Jvm.class),
-                            component("datasource", IngestEnvelope.Datasource.class))),
+                            component("datasource", IngestEnvelope.Datasource.class),
+                            component("localPercentiles", IngestEnvelope.LocalPercentiles.class))),
+                    Map.entry(IngestEnvelope.LocalPercentiles.class, List.of(
+                            component("scope", String.class),
+                            component("source", String.class),
+                            component("bucketStartUtc", String.class),
+                            component("bucketEndUtc", String.class),
+                            component("requestCount", long.class),
+                            component("p95Ms", long.class),
+                            component("p99Ms", long.class),
+                            component("mergeable", boolean.class))),
                     Map.entry(IngestEnvelope.Endpoint.class, List.of(
                             component("method", String.class),
                             component("route", String.class),
@@ -156,7 +174,8 @@ class NoPrometheusMvpPathTest {
                             component("errorCount", long.class),
                             listComponent("httpServerDurationBuckets", HistogramBucket.class),
                             optionalComponent("jvm", JvmMetricSample.class),
-                            optionalComponent("datasource", DatasourcePoolMetricSample.class))),
+                            optionalComponent("datasource", DatasourcePoolMetricSample.class),
+                            optionalComponent("localPercentiles", LocalPercentileRollup.class))),
                     Map.entry(ClosedMetricBucket.class, List.of(
                             component("interval", MetricBucketInterval.class),
                             component("appSummary", AppMetricRollup.class),
@@ -173,6 +192,10 @@ class NoPrometheusMvpPathTest {
                             component("observedAt", java.time.Instant.class),
                             component("cpuUsageRatio", double.class),
                             component("heapUsedRatio", double.class))),
+                    Map.entry(LocalPercentileRollup.class, List.of(
+                            component("requestCount", long.class),
+                            component("p95Ms", long.class),
+                            component("p99Ms", long.class))),
                     Map.entry(DatasourcePoolMetricSample.class, List.of(
                             component("observedAt", java.time.Instant.class),
                             component("poolUsageRatio", double.class))),
@@ -318,6 +341,7 @@ class NoPrometheusMvpPathTest {
                 IngestEnvelope.Application.class,
                 IngestEnvelope.Bucket.class,
                 IngestEnvelope.Summary.class,
+                IngestEnvelope.LocalPercentiles.class,
                 IngestEnvelope.Endpoint.class,
                 IngestEnvelope.DurationBucket.class,
                 IngestEnvelope.Jvm.class,
@@ -335,6 +359,7 @@ class NoPrometheusMvpPathTest {
                 LowCardinalityHttpServerObservation.class,
                 EndpointKey.class,
                 AppMetricRollup.class,
+                LocalPercentileRollup.class,
                 ClosedMetricBucket.class,
                 EndpointMetricRollup.class,
                 HistogramBucket.class,
@@ -609,18 +634,27 @@ class NoPrometheusMvpPathTest {
                 "endpointpriority",
                 "priority",
                 "lifecyclestate",
-                "insightrule",
-                "p95",
-                "percentile95",
-                "percentile");
-        return forbiddenNameFragments.stream().anyMatch(relativeName::contains);
+                "insightrule");
+        boolean forbiddenPercentileName = relativeName.contains("p95")
+                || relativeName.contains("percentile95")
+                || relativeName.contains("percentile");
+        return forbiddenNameFragments.stream().anyMatch(relativeName::contains)
+                || forbiddenPercentileName && !isAllowedStarterLocalPercentilePath(sourceFile);
     }
 
     private static boolean containsForbiddenMvpPathCode(Path sourceFile) {
-        return containsForbiddenMvpPathCodeText(readUnchecked(sourceFile));
+        return containsForbiddenMvpPathCodeText(
+                readUnchecked(sourceFile),
+                isAllowedStarterLocalPercentilePath(sourceFile));
     }
 
     private static boolean containsForbiddenMvpPathCodeText(String rawText) {
+        return containsForbiddenMvpPathCodeText(rawText, false);
+    }
+
+    private static boolean containsForbiddenMvpPathCodeText(
+            String rawText,
+            boolean allowStarterLocalPercentile) {
         String codeText = stripComments(rawText);
         List<String> forbiddenSymbols = List.of(
                 "Prometheus",
@@ -641,15 +675,24 @@ class NoPrometheusMvpPathTest {
         List<Pattern> forbiddenCodePatterns = List.of(
                 Pattern.compile("\\b(class|interface|record|enum)\\s+\\w*(PrometheusQuery|PullMetricQuery|MetricQuery|QueryBuilder|QueryUi)\\w*"),
                 Pattern.compile("\\b(class|interface|record|enum)\\s+\\w*(DashboardReadModel|EndpointPriority|LifecycleState|InsightRule)\\w*"),
-                Pattern.compile("p95", Pattern.CASE_INSENSITIVE),
-                Pattern.compile("percentile\\w*", Pattern.CASE_INSENSITIVE),
-                Pattern.compile("calculate\\w*percentile", Pattern.CASE_INSENSITIVE),
                 Pattern.compile("read[-_\\s]*model", Pattern.CASE_INSENSITIVE),
                 Pattern.compile("priority", Pattern.CASE_INSENSITIVE));
+        List<Pattern> forbiddenPercentilePatterns = List.of(
+                Pattern.compile("p95", Pattern.CASE_INSENSITIVE),
+                Pattern.compile("percentile\\w*", Pattern.CASE_INSENSITIVE),
+                Pattern.compile("calculate\\w*percentile", Pattern.CASE_INSENSITIVE));
 
         return forbiddenSymbols.stream().anyMatch(codeText::contains)
                 || forbiddenCodePatterns.stream().anyMatch(pattern -> pattern.matcher(codeText).find())
+                || !allowStarterLocalPercentile && forbiddenPercentilePatterns.stream()
+                        .anyMatch(pattern -> pattern.matcher(codeText).find())
                 || FORBIDDEN_ENDPOINT_PATH_FRAGMENTS.stream().anyMatch(codeText::contains);
+    }
+
+    private static boolean isAllowedStarterLocalPercentilePath(Path sourceFile) {
+        String relativeName = STARTER_ROOT.relativize(sourceFile.toAbsolutePath().normalize()).toString()
+                .replace('\\', '/');
+        return ALLOWED_STARTER_LOCAL_PERCENTILE_PATHS.contains(relativeName);
     }
 
     private static String readUnchecked(Path path) {

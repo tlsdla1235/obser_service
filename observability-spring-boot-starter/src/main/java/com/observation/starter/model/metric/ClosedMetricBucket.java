@@ -19,7 +19,8 @@ import java.util.Objects;
  * |   |-- errorCount
  * |   |-- httpServerDurationBuckets: List<HistogramBucket>
  * |   |-- jvm: Optional<JvmMetricSample>
- * |   `-- datasource: Optional<DatasourcePoolMetricSample>
+ * |   |-- datasource: Optional<DatasourcePoolMetricSample>
+ * |   `-- localPercentiles: Optional<LocalPercentileRollup>
  * `-- endpointRollups: List<EndpointMetricRollup>
  *     |-- endpointKey: EndpointKey
  *     |-- requestCount

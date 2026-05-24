@@ -38,6 +38,7 @@ class AcceptedMetricBucketWriteCommandTest {
         assertThat(command.localPercentiles()).satisfies(localPercentiles -> {
             assertThat(localPercentiles.scope()).isEqualTo("instance_bucket");
             assertThat(localPercentiles.source()).isEqualTo("starter_local");
+            assertThat(localPercentiles.requestCount()).isEqualTo(3L);
             assertThat(localPercentiles.p95Ms()).isEqualTo(250L);
             assertThat(localPercentiles.p99Ms()).isEqualTo(1000L);
             assertThat(localPercentiles.mergeable()).isFalse();
@@ -78,5 +79,42 @@ class AcceptedMetricBucketWriteCommandTest {
                 java.util.List.of()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("errorCount");
+    }
+
+    @Test
+    void rejectsLocalPercentilesRequestCountMismatchBeforePersistence() {
+        OffsetDateTime acceptedAt = OffsetDateTime.parse("2026-05-08T01:00:31Z");
+
+        assertThatThrownBy(() -> new AcceptedMetricBucketWriteCommand(
+                PortalIngestValidationFixture.VERIFIED_PROJECT.projectId(),
+                "checkout",
+                "orders-api",
+                "prod",
+                "pod-a",
+                "1.0",
+                "idempotency-key",
+                "hash",
+                OffsetDateTime.parse("2026-05-08T01:00:00Z"),
+                OffsetDateTime.parse("2026-05-08T01:00:30Z"),
+                30,
+                acceptedAt,
+                3L,
+                1L,
+                java.util.List.of(new AcceptedMetricBucketWriteCommand.DurationBucket(50L, 1L)),
+                0.1d,
+                0.2d,
+                0.3d,
+                new AcceptedMetricBucketWriteCommand.LocalPercentiles(
+                        "instance_bucket",
+                        "starter_local",
+                        "2026-05-08T01:00:00Z",
+                        "2026-05-08T01:00:30Z",
+                        2L,
+                        250L,
+                        1000L,
+                        false),
+                java.util.List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("localPercentiles requestCount");
     }
 }

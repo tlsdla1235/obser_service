@@ -71,6 +71,9 @@ public record AcceptedMetricBucketWriteCommand(
         validateRatio(cpuUsageRatio, "cpuUsageRatio");
         validateRatio(heapUsedRatio, "heapUsedRatio");
         validateRatio(datasourcePoolUsageRatio, "datasourcePoolUsageRatio");
+        if (localPercentiles != null && !Objects.equals(localPercentiles.requestCount(), requestCount)) {
+            throw new IllegalArgumentException("localPercentiles requestCount must match requestCount");
+        }
     }
 
     /**
@@ -208,6 +211,24 @@ public record AcceptedMetricBucketWriteCommand(
             Objects.requireNonNull(p95Ms, "localPercentiles.p95Ms must not be null");
             Objects.requireNonNull(p99Ms, "localPercentiles.p99Ms must not be null");
             Objects.requireNonNull(mergeable, "localPercentiles.mergeable must not be null");
+            if (!"instance_bucket".equals(scope)) {
+                throw new IllegalArgumentException("localPercentiles.scope must be instance_bucket");
+            }
+            if (!"starter_local".equals(source)) {
+                throw new IllegalArgumentException("localPercentiles.source must be starter_local");
+            }
+            if (requestCount < 0) {
+                throw new IllegalArgumentException("localPercentiles.requestCount must not be negative");
+            }
+            if (p95Ms < 0) {
+                throw new IllegalArgumentException("localPercentiles.p95Ms must not be negative");
+            }
+            if (p99Ms < 0 || p99Ms < p95Ms) {
+                throw new IllegalArgumentException("localPercentiles.p99Ms must be greater than or equal to p95Ms");
+            }
+            if (!Boolean.FALSE.equals(mergeable)) {
+                throw new IllegalArgumentException("localPercentiles.mergeable must be false");
+            }
         }
 
         private static LocalPercentiles from(IngestEnvelopeRequest.LocalPercentiles localPercentiles) {

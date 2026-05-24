@@ -279,6 +279,7 @@ class MetricBucketRepositoryIntegrationTest {
                 assertThat(resultSet.getString(13)).contains(
                         "\"scope\": \"instance_bucket\"",
                         "\"source\": \"starter_local\"",
+                        "\"requestCount\": 3",
                         "\"p95Ms\": 250",
                         "\"p99Ms\": 1000",
                         "\"mergeable\": false");

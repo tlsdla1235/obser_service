@@ -8,6 +8,7 @@ import com.observation.starter.model.metric.EndpointMetricRollup;
 import com.observation.starter.model.metric.HistogramBucket;
 import com.observation.starter.model.metric.LowCardinalityHttpServerObservation;
 import com.observation.starter.model.metric.JvmMetricSample;
+import com.observation.starter.model.metric.LocalPercentileRollup;
 import com.observation.starter.model.time.MetricBucketInterval;
 
 import java.time.Duration;
@@ -182,6 +183,7 @@ public final class MetricBucketRollupService {
 
         private final MetricBucketInterval interval;
         private final DurationHistogramAccumulator appDurationHistogram;
+        private final DurationPercentileAccumulator appDurationPercentiles = new DurationPercentileAccumulator();
         private final Map<EndpointKey, MutableEndpointRollup> endpoints = new TreeMap<>(
                 Comparator.comparing(EndpointKey::value));
         private long requestCount;
@@ -200,6 +202,7 @@ public final class MetricBucketRollupService {
                 errorCount++;
             }
             appDurationHistogram.record(observation.duration());
+            appDurationPercentiles.record(observation.duration());
             endpoints.computeIfAbsent(observation.endpointKey(),
                     key -> new MutableEndpointRollup(key, appDurationHistogram.bounds()))
                     .record(observation);
@@ -224,7 +227,8 @@ public final class MetricBucketRollupService {
                     errorCount,
                     appDurationHistogram.snapshot(),
                     Optional.ofNullable(latestJvmSample),
-                    Optional.ofNullable(latestDatasourceSample));
+                    Optional.ofNullable(latestDatasourceSample),
+                    Optional.of(appDurationPercentiles.snapshot()));
             List<EndpointMetricRollup> endpointRollups = endpoints.values().stream()
                     .map(MutableEndpointRollup::snapshot)
                     .toList();
@@ -268,6 +272,41 @@ public final class MetricBucketRollupService {
 
 
 
+
+    /**
+     * instance bucket 전체 요청 duration에서 starter-local nearest-rank percentile을 산출한다.
+     */
+    private static final class DurationPercentileAccumulator {
+
+        private final List<Long> durationMillis = new ArrayList<>();
+
+        private void record(Duration duration) {
+            Duration requiredDuration = Objects.requireNonNull(duration, "duration must not be null");
+            if (requiredDuration.isNegative()) {
+                throw new IllegalArgumentException("duration must not be negative");
+            }
+            durationMillis.add(requiredDuration.toMillis());
+        }
+
+        private LocalPercentileRollup snapshot() {
+            if (durationMillis.isEmpty()) {
+                return new LocalPercentileRollup(0, 0, 0);
+            }
+            List<Long> sortedDurations = durationMillis.stream()
+                    .sorted()
+                    .toList();
+            return new LocalPercentileRollup(
+                    sortedDurations.size(),
+                    nearestRank(sortedDurations, 0.95d),
+                    nearestRank(sortedDurations, 0.99d));
+        }
+
+        private static long nearestRank(List<Long> sortedValues, double percentile) {
+            int rank = (int) Math.ceil(percentile * sortedValues.size());
+            int index = Math.max(0, Math.min(sortedValues.size() - 1, rank - 1));
+            return sortedValues.get(index);
+        }
+    }
 
     private static final class DurationHistogramAccumulator {
 

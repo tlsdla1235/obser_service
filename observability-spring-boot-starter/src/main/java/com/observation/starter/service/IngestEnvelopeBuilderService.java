@@ -9,6 +9,7 @@ import com.observation.starter.model.metric.DatasourcePoolMetricSample;
 import com.observation.starter.model.metric.EndpointMetricRollup;
 import com.observation.starter.model.metric.HistogramBucket;
 import com.observation.starter.model.metric.JvmMetricSample;
+import com.observation.starter.model.metric.LocalPercentileRollup;
 import com.observation.starter.model.time.MetricBucketInterval;
 
 import java.time.Duration;
@@ -56,19 +57,23 @@ public final class IngestEnvelopeBuilderService {
                         requiredBucket.interval().startUtc().toString(),
                         requiredBucket.interval().endUtc().toString(),
                         (int) MetricBucketInterval.DURATION.toSeconds()),
-                toSummary(requiredBucket.appSummary()),
+                toSummary(requiredBucket.interval(), requiredBucket.appSummary()),
                 toEndpoints(requiredBucket.endpointRollups()));
         return new IngestEnvelopeCandidate(payload, idempotencyKey(requiredBucket));
     }
 
-    private IngestEnvelope.Summary toSummary(AppMetricRollup appSummary) {
+    private IngestEnvelope.Summary toSummary(MetricBucketInterval interval, AppMetricRollup appSummary) {
+        MetricBucketInterval requiredInterval = Objects.requireNonNull(interval, "interval must not be null");
         AppMetricRollup requiredSummary = Objects.requireNonNull(appSummary, "appSummary must not be null");
         return new IngestEnvelope.Summary(
                 requiredSummary.requestCount(),
                 requiredSummary.errorCount(),
                 toDurationBuckets(requiredSummary.httpServerDurationBuckets()),
                 requiredSummary.jvm().map(this::toJvm).orElse(null),
-                requiredSummary.datasource().map(this::toDatasource).orElse(null));
+                requiredSummary.datasource().map(this::toDatasource).orElse(null),
+                requiredSummary.localPercentiles()
+                        .map(percentiles -> toLocalPercentiles(requiredInterval, percentiles))
+                        .orElse(null));
     }
 
     private IngestEnvelope.Jvm toJvm(JvmMetricSample sample) {
@@ -77,6 +82,23 @@ public final class IngestEnvelopeBuilderService {
 
     private IngestEnvelope.Datasource toDatasource(DatasourcePoolMetricSample sample) {
         return new IngestEnvelope.Datasource(sample.poolUsageRatio());
+    }
+
+    private IngestEnvelope.LocalPercentiles toLocalPercentiles(
+            MetricBucketInterval interval,
+            LocalPercentileRollup percentiles) {
+        LocalPercentileRollup requiredPercentiles = Objects.requireNonNull(
+                percentiles,
+                "percentiles must not be null");
+        return new IngestEnvelope.LocalPercentiles(
+                "instance_bucket",
+                "starter_local",
+                interval.startUtc().toString(),
+                interval.endUtc().toString(),
+                requiredPercentiles.requestCount(),
+                requiredPercentiles.p95Ms(),
+                requiredPercentiles.p99Ms(),
+                false);
     }
 
     private List<IngestEnvelope.Endpoint> toEndpoints(List<EndpointMetricRollup> endpointRollups) {

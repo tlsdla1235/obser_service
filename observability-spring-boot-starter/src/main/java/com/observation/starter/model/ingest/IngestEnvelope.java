@@ -13,7 +13,7 @@ import java.util.Objects;
  * starter가 포털 ingest API로 보낼 수 있는 schemaVersion 1.0 envelope payload 모델이다.
  *
  * <p>이 모델은 contract에 허용된 bounded metric만 표현하며 raw path, query string, arbitrary
- * tag map, custom metric payload, p95/state/rule 계산 결과를 담지 않는다.</p>
+ * tag map, custom metric payload, app/project/window percentile rollup, state/rule 계산 결과를 담지 않는다.</p>
  */
 public record IngestEnvelope(
         String schemaVersion,
@@ -35,6 +35,7 @@ public record IngestEnvelope(
         application = Objects.requireNonNull(application, "application must not be null");
         bucket = Objects.requireNonNull(bucket, "bucket must not be null");
         summary = Objects.requireNonNull(summary, "summary must not be null");
+        validateSummaryLocalPercentilesMatchBucket(summary.localPercentiles(), bucket);
         endpoints = List.copyOf(Objects.requireNonNull(endpoints, "endpoints must not be null"));
     }
 
@@ -84,11 +85,24 @@ public record IngestEnvelope(
             long errorCount,
             List<DurationBucket> httpServerDurationBuckets,
             Jvm jvm,
-            Datasource datasource
+            Datasource datasource,
+            LocalPercentiles localPercentiles
     ) {
 
         /**
-         * count와 histogram shape를 검증한다. JVM/datasource sample은 없으면 null로 둘 수 있다.
+         * 이전 story fixture가 local percentile 없이 summary를 만들 수 있게 유지한다.
+         */
+        public Summary(
+                long requestCount,
+                long errorCount,
+                List<DurationBucket> httpServerDurationBuckets,
+                Jvm jvm,
+                Datasource datasource) {
+            this(requestCount, errorCount, httpServerDurationBuckets, jvm, datasource, null);
+        }
+
+        /**
+         * count와 histogram/local percentile shape를 검증한다. JVM/datasource sample은 없으면 null로 둘 수 있다.
          */
         public Summary {
             validateCounts(requestCount, errorCount);
@@ -96,6 +110,62 @@ public record IngestEnvelope(
                     httpServerDurationBuckets,
                     "httpServerDurationBuckets must not be null"));
             validateHistogram("summary.httpServerDurationBuckets", httpServerDurationBuckets, requestCount);
+            if (localPercentiles != null && localPercentiles.requestCount() != requestCount) {
+                throw new IllegalArgumentException("summary.localPercentiles requestCount must match requestCount");
+            }
+        }
+    }
+
+    /**
+     * instance bucket scope에서 starter가 직접 관측해 보고하는 canonical p95/p99 point다.
+     */
+    public record LocalPercentiles(
+            String scope,
+            String source,
+            String bucketStartUtc,
+            String bucketEndUtc,
+            long requestCount,
+            long p95Ms,
+            long p99Ms,
+            boolean mergeable
+    ) {
+
+        /**
+         * contract의 fixed source/scope와 저장 가능한 primitive value를 검증한다.
+         */
+        public LocalPercentiles {
+            scope = requireText(scope, "summary.localPercentiles.scope");
+            source = requireText(source, "summary.localPercentiles.source");
+            bucketStartUtc = requireText(bucketStartUtc, "summary.localPercentiles.bucketStartUtc");
+            bucketEndUtc = requireText(bucketEndUtc, "summary.localPercentiles.bucketEndUtc");
+            if (!"instance_bucket".equals(scope)) {
+                throw new IllegalArgumentException("summary.localPercentiles.scope must be instance_bucket");
+            }
+            if (!"starter_local".equals(source)) {
+                throw new IllegalArgumentException("summary.localPercentiles.source must be starter_local");
+            }
+            Instant start = parseInstant(bucketStartUtc, "summary.localPercentiles.bucketStartUtc");
+            Instant end = parseInstant(bucketEndUtc, "summary.localPercentiles.bucketEndUtc");
+            if (!Duration.between(start, end).equals(MetricBucketInterval.DURATION)) {
+                throw new IllegalArgumentException("summary.localPercentiles interval must be exactly 30 seconds");
+            }
+            new MetricBucketInterval(start, end);
+            if (requestCount < 0) {
+                throw new IllegalArgumentException("summary.localPercentiles.requestCount must not be negative");
+            }
+            if (p95Ms < 0) {
+                throw new IllegalArgumentException("summary.localPercentiles.p95Ms must not be negative");
+            }
+            if (p99Ms < 0) {
+                throw new IllegalArgumentException("summary.localPercentiles.p99Ms must not be negative");
+            }
+            if (p99Ms < p95Ms) {
+                throw new IllegalArgumentException(
+                        "summary.localPercentiles.p99Ms must be greater than or equal to p95Ms");
+            }
+            if (mergeable) {
+                throw new IllegalArgumentException("summary.localPercentiles.mergeable must be false");
+            }
         }
     }
 
@@ -218,6 +288,30 @@ public record IngestEnvelope(
             }
             previousLeMs = bucket.leMs();
             previousCount = bucket.count();
+        }
+    }
+
+    private static void validateSummaryLocalPercentilesMatchBucket(
+            LocalPercentiles localPercentiles,
+            Bucket bucket) {
+        if (localPercentiles == null) {
+            return;
+        }
+        Instant bucketStart = parseInstant(bucket.startUtc(), "bucket.startUtc");
+        Instant bucketEnd = parseInstant(bucket.endUtc(), "bucket.endUtc");
+        Instant localStart = parseInstant(
+                localPercentiles.bucketStartUtc(),
+                "summary.localPercentiles.bucketStartUtc");
+        Instant localEnd = parseInstant(
+                localPercentiles.bucketEndUtc(),
+                "summary.localPercentiles.bucketEndUtc");
+        if (!bucketStart.equals(localStart)) {
+            throw new IllegalArgumentException(
+                    "summary.localPercentiles.bucketStartUtc must match bucket.startUtc");
+        }
+        if (!bucketEnd.equals(localEnd)) {
+            throw new IllegalArgumentException(
+                    "summary.localPercentiles.bucketEndUtc must match bucket.endUtc");
         }
     }
 }

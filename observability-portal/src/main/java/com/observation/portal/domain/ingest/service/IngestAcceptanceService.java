@@ -212,7 +212,7 @@ public class IngestAcceptanceService {
                     summary.requestCount());
             validateJvm(summary.jvm());
             validateDatasource(summary.datasource());
-            validateLocalPercentiles(summary.localPercentiles());
+            validateLocalPercentiles(summary.localPercentiles(), summary.requestCount());
         }
 
         private void validateJvm(IngestEnvelopeRequest.Jvm jvm) {
@@ -230,7 +230,9 @@ public class IngestAcceptanceService {
             validateRatio("summary.datasource.poolUsageRatio", datasource.poolUsageRatio());
         }
 
-        private void validateLocalPercentiles(IngestEnvelopeRequest.LocalPercentiles localPercentiles) {
+        private void validateLocalPercentiles(
+                IngestEnvelopeRequest.LocalPercentiles localPercentiles,
+                Long summaryRequestCount) {
             if (localPercentiles == null) {
                 return;
             }
@@ -273,6 +275,11 @@ public class IngestAcceptanceService {
                 add("invalid_local_percentiles",
                         "summary.localPercentiles.requestCount",
                         "localPercentiles requestCount must not be negative");
+            } else if (summaryRequestCount != null && summaryRequestCount >= 0
+                    && !summaryRequestCount.equals(localPercentiles.requestCount())) {
+                add("local_percentiles_request_count_mismatch",
+                        "summary.localPercentiles.requestCount",
+                        "localPercentiles requestCount must match summary requestCount");
             }
             if (localPercentiles.p95Ms() == null) {
                 add("required",

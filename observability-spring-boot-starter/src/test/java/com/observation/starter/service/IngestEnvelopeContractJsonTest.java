@@ -11,6 +11,7 @@ import com.observation.starter.model.metric.EndpointKey;
 import com.observation.starter.model.metric.EndpointMetricRollup;
 import com.observation.starter.model.metric.HistogramBucket;
 import com.observation.starter.model.metric.JvmMetricSample;
+import com.observation.starter.model.metric.LocalPercentileRollup;
 import com.observation.starter.model.route.NormalizedRoute;
 import com.observation.starter.model.time.MetricBucketInterval;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IngestEnvelopeContractJsonTest {
 
@@ -78,6 +80,16 @@ class IngestEnvelopeContractJsonTest {
                     },
                     "datasource" : {
                       "poolUsageRatio" : 0.82
+                    },
+                    "localPercentiles" : {
+                      "scope" : "instance_bucket",
+                      "source" : "starter_local",
+                      "bucketStartUtc" : "2026-05-08T01:00:00Z",
+                      "bucketEndUtc" : "2026-05-08T01:00:30Z",
+                      "requestCount" : 3,
+                      "p95Ms" : 250,
+                      "p99Ms" : 250,
+                      "mergeable" : false
                     }
                   },
                   "endpoints" : [ {
@@ -131,7 +143,7 @@ class IngestEnvelopeContractJsonTest {
         assertFalse(json.contains("query"));
         assertFalse(json.contains("tags"));
         assertFalse(json.contains("custom"));
-        assertFalse(json.contains("p95"));
+        assertTrue(json.contains("\"localPercentiles\""));
         assertFalse(json.contains("state"));
         assertFalse(json.contains("priority"));
     }
@@ -152,7 +164,8 @@ class IngestEnvelopeContractJsonTest {
                         Optional.of(new JvmMetricSample(Instant.parse("2026-05-08T01:00:20Z"), 0.64d, 0.71d)),
                         Optional.of(new DatasourcePoolMetricSample(
                                 Instant.parse("2026-05-08T01:00:25Z"),
-                                0.82d))),
+                                0.82d)),
+                        Optional.of(new LocalPercentileRollup(3, 250, 250))),
                 List.of(
                         new EndpointMetricRollup(
                                 new EndpointKey("POST", NormalizedRoute.of("/orders")),

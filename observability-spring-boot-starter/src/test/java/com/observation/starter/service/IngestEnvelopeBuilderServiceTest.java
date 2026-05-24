@@ -10,6 +10,7 @@ import com.observation.starter.model.metric.EndpointKey;
 import com.observation.starter.model.metric.EndpointMetricRollup;
 import com.observation.starter.model.metric.HistogramBucket;
 import com.observation.starter.model.metric.JvmMetricSample;
+import com.observation.starter.model.metric.LocalPercentileRollup;
 import com.observation.starter.model.route.NormalizedRoute;
 import com.observation.starter.model.time.MetricBucketInterval;
 import org.junit.jupiter.api.Test;
@@ -57,6 +58,14 @@ class IngestEnvelopeBuilderServiceTest {
         assertEquals(0.64d, payload.summary().jvm().cpuUsage());
         assertEquals(0.71d, payload.summary().jvm().heapUsedRatio());
         assertEquals(0.82d, payload.summary().datasource().poolUsageRatio());
+        assertEquals("instance_bucket", payload.summary().localPercentiles().scope());
+        assertEquals("starter_local", payload.summary().localPercentiles().source());
+        assertEquals("2026-05-08T01:00:00Z", payload.summary().localPercentiles().bucketStartUtc());
+        assertEquals("2026-05-08T01:00:30Z", payload.summary().localPercentiles().bucketEndUtc());
+        assertEquals(3, payload.summary().localPercentiles().requestCount());
+        assertEquals(250, payload.summary().localPercentiles().p95Ms());
+        assertEquals(250, payload.summary().localPercentiles().p99Ms());
+        assertFalse(payload.summary().localPercentiles().mergeable());
 
         assertEquals(2, payload.endpoints().size());
         assertEquals("GET", payload.endpoints().get(0).method());
@@ -202,10 +211,11 @@ class IngestEnvelopeBuilderServiceTest {
                 IngestEnvelope.Application.class,
                 IngestEnvelope.Bucket.class,
                 IngestEnvelope.Summary.class,
+                IngestEnvelope.LocalPercentiles.class,
                 IngestEnvelope.Endpoint.class,
                 IngestEnvelope.DurationBucket.class);
         List<String> forbiddenTokens = List.of(
-                "raw", "query", "tag", "custom", "path", "p95", "percentile", "state", "rule", "priority");
+                "raw", "query", "tag", "custom", "path", "state", "rule", "priority");
 
         for (Class<?> payloadClass : payloadClasses) {
             for (RecordComponent component : payloadClass.getRecordComponents()) {
@@ -266,7 +276,8 @@ class IngestEnvelopeBuilderServiceTest {
                         Optional.of(new JvmMetricSample(Instant.parse("2026-05-08T01:00:20Z"), 0.64d, 0.71d)),
                         Optional.of(new DatasourcePoolMetricSample(
                                 Instant.parse("2026-05-08T01:00:25Z"),
-                                0.82d))),
+                                0.82d)),
+                        Optional.of(new LocalPercentileRollup(3, 250, 250))),
                 List.of(
                         endpoint("POST", "/orders", 1, 1, List.of(
                                 new HistogramBucket(250, 1),

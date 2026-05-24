@@ -376,6 +376,7 @@ class IngestAcceptanceServiceTest {
             localPercentiles.put("scope", "application_window");
             localPercentiles.put("source", "histogram_bucket_distribution");
             localPercentiles.put("bucketStartUtc", "2026-05-08T01:00:30Z");
+            localPercentiles.put("requestCount", 2);
             localPercentiles.remove("p95Ms");
             localPercentiles.put("p99Ms", 100L);
             localPercentiles.put("mergeable", true);
@@ -388,6 +389,7 @@ class IngestAcceptanceServiceTest {
                         "summary.localPercentiles.scope",
                         "summary.localPercentiles.source",
                         "summary.localPercentiles.bucketStartUtc",
+                        "summary.localPercentiles.requestCount",
                         "summary.localPercentiles.p95Ms",
                         "summary.localPercentiles.mergeable");
     }
