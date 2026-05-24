@@ -36,6 +36,18 @@ public record IngestErrorResponse(String error, String message, List<ValidationE
     }
 
     /**
+     * heartbeat payload validation 실패 응답을 만든다.
+     */
+    public static IngestErrorResponse invalidHeartbeatRequest(List<IngestValidationError> errors) {
+        return new IngestErrorResponse(
+                "invalid_request",
+                "Heartbeat request did not satisfy the supported contract.",
+                errors.stream()
+                        .map(ValidationErrorResponse::from)
+                        .toList());
+    }
+
+    /**
      * project key 검증 실패 응답을 만든다.
      */
     public static IngestErrorResponse unauthorized() {

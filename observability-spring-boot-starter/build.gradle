@@ -10,6 +10,7 @@ dependencies {
 
     api 'io.micrometer:micrometer-observation'
     implementation 'org.springframework.boot:spring-boot-autoconfigure'
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
 
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
     testImplementation 'com.fasterxml.jackson.core:jackson-databind'
