@@ -70,6 +70,21 @@ class MvcLayerBoundaryTest {
     }
 
     @Test
+    void stateFeatureClassesStayInModelOrServicePackages() {
+        List<String> misplacedStateFeatureClasses = PORTAL_CLASSES.stream()
+                .filter(MvcLayerBoundaryTest::isStateFeaturePackage)
+                .filter(javaClass -> !javaClass.getSimpleName().equals("package-info"))
+                .filter(MvcLayerBoundaryTest::isOutsideServiceAndModelPackage)
+                .map(JavaClass::getName)
+                .sorted()
+                .toList();
+
+        assertThat(misplacedStateFeatureClasses)
+                .as("lifecycle state calculation and result classes must stay inside domain.state.model or domain.state.service")
+                .isEmpty();
+    }
+
+    @Test
     void hexagonalStylePackagesAreNotPresent() {
         List<String> hexagonalStylePackages = PORTAL_CLASSES.stream()
                 .map(JavaClass::getPackageName)
@@ -96,6 +111,12 @@ class MvcLayerBoundaryTest {
             }
         }
         return false;
+    }
+
+    private static boolean isStateFeaturePackage(JavaClass javaClass) {
+        String packageName = javaClass.getPackageName();
+        return packageName.equals("com.observation.portal.domain.state")
+                || packageName.startsWith("com.observation.portal.domain.state.");
     }
 
     private static boolean hasPackageSegment(String packageName, String expectedSegment) {
