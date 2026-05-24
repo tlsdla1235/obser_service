@@ -4,6 +4,8 @@ import com.observation.portal.domain.bucket.repository.MetricBucketRepository;
 import com.observation.portal.domain.catalog.entity.ApplicationEntity;
 import com.observation.portal.domain.catalog.repository.ApplicationRepository;
 import com.observation.portal.domain.ingest.model.IngestHeartbeatRequest;
+import com.observation.portal.domain.ingest.model.StarterHeartbeatTelemetryCommand;
+import com.observation.portal.domain.ingest.repository.StarterHeartbeatTelemetryRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,7 +22,7 @@ import java.util.regex.Pattern;
 /**
  * starter heartbeat를 project key와 metadata shape 기준으로 검증하는 service다.
  *
- * <p>heartbeat는 accepted bucket 저장, catalog upsert, state 계산을 수행하지 않고 accepted bucket timestamp만 분리 조회한다.</p>
+ * <p>heartbeat telemetry만 저장하고 accepted bucket 저장, catalog upsert, state 계산은 수행하지 않는다.</p>
  */
 @Service
 public class IngestHeartbeatService {
@@ -29,20 +31,30 @@ public class IngestHeartbeatService {
     private static final String STATUS_RECEIVED = "received";
     private static final String STATUS_VALID = "valid";
     private static final String STATUS_SOURCE_ACCEPTED_BUCKET = "accepted_bucket";
+    private static final int STARTER_VERSION_MAX_LENGTH = 80;
+    private static final int APPLICATION_NAME_MAX_LENGTH = 160;
+    private static final int ENVIRONMENT_MAX_LENGTH = 80;
+    private static final int INSTANCE_NAME_MAX_LENGTH = 200;
+    private static final Instant MIN_PERSISTABLE_HEARTBEAT_TIME =
+            OffsetDateTime.of(1, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant();
+    private static final Instant MAX_PERSISTABLE_HEARTBEAT_TIME =
+            OffsetDateTime.of(294276, 12, 31, 23, 59, 59, 0, ZoneOffset.UTC).toInstant();
     private static final Pattern ISO_CONTROL = Pattern.compile("\\p{Cntrl}");
 
     private final ProjectKeyVerificationService projectKeyVerificationService;
     private final ApplicationRepository applicationRepository;
     private final MetricBucketRepository metricBucketRepository;
+    private final StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository;
     private final Clock clock;
 
     /**
-     * project key 검증, catalog read-only lookup, bucket timestamp lookup, UTC clock을 연결한다.
+     * project key 검증, heartbeat telemetry 저장소, catalog read-only lookup, bucket timestamp lookup, UTC clock을 연결한다.
      */
     public IngestHeartbeatService(
             ProjectKeyVerificationService projectKeyVerificationService,
             ApplicationRepository applicationRepository,
             MetricBucketRepository metricBucketRepository,
+            StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository,
             Clock clock) {
         this.projectKeyVerificationService = Objects.requireNonNull(
                 projectKeyVerificationService,
@@ -53,13 +65,16 @@ public class IngestHeartbeatService {
         this.metricBucketRepository = Objects.requireNonNull(
                 metricBucketRepository,
                 "metricBucketRepository must not be null");
+        this.heartbeatTelemetryRepository = Objects.requireNonNull(
+                heartbeatTelemetryRepository,
+                "heartbeatTelemetryRepository must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
     /**
-     * heartbeat request를 검증하고 response contract로 변환한다.
+     * heartbeat request를 검증하고 latest telemetry 저장 후 response contract로 변환한다.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public IngestHeartbeatResult receive(String projectKeyHeader, IngestHeartbeatRequest request) {
         ProjectKeyVerificationResult projectKeyResult = projectKeyVerificationService.verify(projectKeyHeader);
         if (!projectKeyResult.isVerified()) {
@@ -74,11 +89,25 @@ public class IngestHeartbeatService {
 
         VerifiedProject project = projectKeyResult.verifiedProject().orElseThrow();
         IngestHeartbeatRequest.Application application = request.application();
+        IngestHeartbeatRequest.Heartbeat heartbeat = request.heartbeat();
+        OffsetDateTime receivedAtUtc = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
+        heartbeatTelemetryRepository.upsertLatest(new StarterHeartbeatTelemetryCommand(
+                project.projectId(),
+                application.name(),
+                application.environment(),
+                application.instance(),
+                request.starterVersion(),
+                toUtcOffsetDateTime(heartbeat.sentAtUtc()),
+                receivedAtUtc,
+                heartbeat.sequence(),
+                heartbeat.intervalSeconds(),
+                STATUS_VALID,
+                STATUS_RECEIVED));
         Optional<OffsetDateTime> lastAcceptedBucketAt = findLastAcceptedBucketAt(project, application);
         return IngestHeartbeatResult.received(new IngestHeartbeatReceipt(
                 STATUS_RECEIVED,
                 project.projectId(),
-                OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC),
+                receivedAtUtc,
                 List.of(SUPPORTED_SCHEMA_VERSION),
                 STATUS_VALID,
                 STATUS_RECEIVED,
@@ -86,6 +115,10 @@ public class IngestHeartbeatService {
                         lastAcceptedBucketAt.orElse(null),
                         STATUS_SOURCE_ACCEPTED_BUCKET),
                 message(lastAcceptedBucketAt)));
+    }
+
+    private static OffsetDateTime toUtcOffsetDateTime(String value) {
+        return OffsetDateTime.ofInstant(Instant.parse(value), ZoneOffset.UTC);
     }
 
     private Optional<OffsetDateTime> findLastAcceptedBucketAt(
@@ -121,7 +154,7 @@ public class IngestHeartbeatService {
                 return List.copyOf(errors);
             }
             validateSchemaVersion();
-            validateText(request.starterVersion(), "starterVersion");
+            validateText(request.starterVersion(), "starterVersion", STARTER_VERSION_MAX_LENGTH);
             validateHeartbeat(request.heartbeat());
             validateApplication(request.application());
             return List.copyOf(errors);
@@ -156,9 +189,9 @@ public class IngestHeartbeatService {
                 add("required", "application", "application is required");
                 return;
             }
-            validateText(application.name(), "application.name");
-            validateText(application.environment(), "application.environment");
-            validateText(application.instance(), "application.instance");
+            validateText(application.name(), "application.name", APPLICATION_NAME_MAX_LENGTH);
+            validateText(application.environment(), "application.environment", ENVIRONMENT_MAX_LENGTH);
+            validateText(application.instance(), "application.instance", INSTANCE_NAME_MAX_LENGTH);
         }
 
         private void validateUtcInstant(String value, String field) {
@@ -175,17 +208,23 @@ public class IngestHeartbeatService {
                 return;
             }
             try {
-                Instant.parse(value);
+                Instant parsed = Instant.parse(value);
+                if (parsed.isBefore(MIN_PERSISTABLE_HEARTBEAT_TIME)
+                        || parsed.isAfter(MAX_PERSISTABLE_HEARTBEAT_TIME)) {
+                    add("invalid_heartbeat", field, "timestamp is outside supported persistence range");
+                }
             } catch (RuntimeException ignored) {
                 add("invalid_heartbeat", field, "timestamp must be an ISO-8601 UTC instant");
             }
         }
 
-        private void validateText(String value, String field) {
+        private void validateText(String value, String field, int maxLength) {
             if (!hasText(value)) {
                 add("required", field, field + " is required");
             } else if (hasLeadingOrTrailingWhitespace(value) || containsControlCharacter(value)) {
                 add("invalid_metadata", field, field + " contains unsupported characters");
+            } else if (value.length() > maxLength) {
+                add("invalid_metadata", field, field + " exceeds supported length");
             }
         }
 

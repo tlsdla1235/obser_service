@@ -37,11 +37,12 @@ class CatalogSchemaMigrationIntegrationTest {
     void appliesMigrationsToCleanDatabase() throws SQLException {
         MigrateResult result = cleanAndMigrate();
 
-        assertThat(result.migrationsExecuted).isEqualTo(4);
+        assertThat(result.migrationsExecuted).isEqualTo(5);
         assertThat(tableExists("projects")).isTrue();
         assertThat(tableExists("applications")).isTrue();
         assertThat(tableExists("application_instances")).isTrue();
         assertThat(tableExists("accepted_metric_buckets")).isTrue();
+        assertThat(tableExists("starter_heartbeat_telemetry")).isTrue();
         assertThat(tableExists("dashboard_snapshots")).isFalse();
         assertThat(tableExists("operational_events")).isFalse();
     }
@@ -158,6 +159,60 @@ class CatalogSchemaMigrationIntegrationTest {
     }
 
     @Test
+    void enforcesStarterHeartbeatTelemetryConstraintsAndIndexes() throws SQLException {
+        cleanAndMigrate();
+
+        UUID projectId = UUID.fromString("00000000-0000-0000-0000-000000000801");
+        insertProject(projectId, "heartbeat-project", "heartbeat", "hash-heartbeat");
+
+        assertThat(constraintExists("starter_heartbeat_telemetry", "uk_starter_heartbeat_identity")).isTrue();
+        assertThat(constraintExists(
+                "starter_heartbeat_telemetry",
+                "ck_starter_heartbeat_sequence_non_negative")).isTrue();
+        assertThat(constraintExists(
+                "starter_heartbeat_telemetry",
+                "ck_starter_heartbeat_interval_positive")).isTrue();
+        assertThat(indexExists("idx_starter_heartbeat_project_received")).isTrue();
+
+        insertStarterHeartbeat(
+                UUID.fromString("00000000-0000-0000-0000-000000000802"),
+                projectId,
+                "orders-api",
+                "prod",
+                "pod-a",
+                1L,
+                30);
+
+        assertSqlState(UNIQUE_VIOLATION,
+                () -> insertStarterHeartbeat(
+                        UUID.fromString("00000000-0000-0000-0000-000000000803"),
+                        projectId,
+                        "orders-api",
+                        "prod",
+                        "pod-a",
+                        2L,
+                        30));
+        assertSqlState(CHECK_VIOLATION,
+                () -> insertStarterHeartbeat(
+                        UUID.fromString("00000000-0000-0000-0000-000000000804"),
+                        projectId,
+                        "orders-api",
+                        "prod",
+                        "pod-b",
+                        -1L,
+                        30));
+        assertSqlState(CHECK_VIOLATION,
+                () -> insertStarterHeartbeat(
+                        UUID.fromString("00000000-0000-0000-0000-000000000805"),
+                        projectId,
+                        "orders-api",
+                        "prod",
+                        "pod-c",
+                        3L,
+                        0));
+    }
+
+    @Test
     void keepsKoreanCommentsForEveryCatalogTableAndColumn() throws SQLException {
         cleanAndMigrate();
 
@@ -205,7 +260,23 @@ class CatalogSchemaMigrationIntegrationTest {
                         "datasource_pool_usage_ratio",
                         "local_percentiles_json",
                         "endpoints_json",
-                        "created_at"));
+                        "created_at"),
+                "starter_heartbeat_telemetry",
+                List.of(
+                        "id",
+                        "project_id",
+                        "application_name",
+                        "environment",
+                        "instance_name",
+                        "starter_version",
+                        "last_sent_at_utc",
+                        "last_received_at_utc",
+                        "last_sequence",
+                        "interval_seconds",
+                        "metadata_status",
+                        "heartbeat_status",
+                        "created_at",
+                        "updated_at"));
 
         for (Map.Entry<String, List<String>> table : expectedColumnsByTable.entrySet()) {
             assertKoreanComment(tableComment(table.getKey()), table.getKey() + " table comment");
@@ -425,6 +496,40 @@ class CatalogSchemaMigrationIntegrationTest {
             statement.setInt(9, durationSeconds);
             statement.setObject(10, OffsetDateTime.parse("2026-05-08T01:00:31Z"));
             statement.setObject(11, OffsetDateTime.parse("2026-05-08T01:00:31Z"));
+            statement.executeUpdate();
+        }
+    }
+
+    private static void insertStarterHeartbeat(
+            UUID id,
+            UUID projectId,
+            String applicationName,
+            String environment,
+            String instanceName,
+            long sequence,
+            int intervalSeconds) throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     """
+                     insert into starter_heartbeat_telemetry (
+                       id, project_id, application_name, environment, instance_name,
+                       starter_version, last_sent_at_utc, last_received_at_utc, last_sequence,
+                       interval_seconds, metadata_status, heartbeat_status, created_at, updated_at
+                     )
+                     values (?, ?, ?, ?, ?, '0.1.0', ?, ?, ?, ?, 'valid', 'received', ?, ?)
+                     """)) {
+            OffsetDateTime now = OffsetDateTime.parse("2026-05-24T08:31:00Z");
+            statement.setObject(1, id);
+            statement.setObject(2, projectId);
+            statement.setString(3, applicationName);
+            statement.setString(4, environment);
+            statement.setString(5, instanceName);
+            statement.setObject(6, OffsetDateTime.parse("2026-05-24T08:30:00Z"));
+            statement.setObject(7, now);
+            statement.setLong(8, sequence);
+            statement.setInt(9, intervalSeconds);
+            statement.setObject(10, now);
+            statement.setObject(11, now);
             statement.executeUpdate();
         }
     }

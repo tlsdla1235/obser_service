@@ -5,7 +5,10 @@ import com.observation.portal.domain.bucket.repository.MetricBucketRepository;
 import com.observation.portal.domain.catalog.entity.ApplicationEntity;
 import com.observation.portal.domain.catalog.repository.ApplicationRepository;
 import com.observation.portal.domain.ingest.model.IngestHeartbeatRequest;
+import com.observation.portal.domain.ingest.model.StarterHeartbeatTelemetryCommand;
+import com.observation.portal.domain.ingest.repository.StarterHeartbeatTelemetryRepository;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -33,6 +36,7 @@ class IngestHeartbeatServiceTest {
         ProjectKeyVerificationService projectKeyVerificationService = verifiedProjectKeyService();
         ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
         MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository = mock(StarterHeartbeatTelemetryRepository.class);
         when(applicationRepository.findByProjectIdAndNameAndEnvironment(
                 PortalIngestValidationFixture.VERIFIED_PROJECT.projectId(),
                 "orders-api",
@@ -43,7 +47,8 @@ class IngestHeartbeatServiceTest {
         IngestHeartbeatService service = newService(
                 projectKeyVerificationService,
                 applicationRepository,
-                metricBucketRepository);
+                metricBucketRepository,
+                heartbeatTelemetryRepository);
 
         IngestHeartbeatResult result = service.receive(PROJECT_KEY, validRequest());
 
@@ -60,6 +65,22 @@ class IngestHeartbeatServiceTest {
             assertThat(receipt.ingestBoundary().statusSource()).isEqualTo("accepted_bucket");
         });
         verify(projectKeyVerificationService).verify(PROJECT_KEY);
+        ArgumentCaptor<StarterHeartbeatTelemetryCommand> commandCaptor = ArgumentCaptor.forClass(
+                StarterHeartbeatTelemetryCommand.class);
+        verify(heartbeatTelemetryRepository).upsertLatest(commandCaptor.capture());
+        assertThat(commandCaptor.getValue()).satisfies(command -> {
+            assertThat(command.projectId()).isEqualTo(PortalIngestValidationFixture.VERIFIED_PROJECT.projectId());
+            assertThat(command.applicationName()).isEqualTo("orders-api");
+            assertThat(command.environment()).isEqualTo("prod");
+            assertThat(command.instanceName()).isEqualTo("instance-1");
+            assertThat(command.starterVersion()).isEqualTo("0.1.0-test");
+            assertThat(command.lastSentAtUtc()).isEqualTo(OffsetDateTime.parse("2026-05-24T08:30:00Z"));
+            assertThat(command.lastReceivedAtUtc()).isEqualTo(OffsetDateTime.parse("2026-05-24T08:31:00Z"));
+            assertThat(command.lastSequence()).isEqualTo(1L);
+            assertThat(command.intervalSeconds()).isEqualTo(30);
+            assertThat(command.metadataStatus()).isEqualTo("valid");
+            assertThat(command.heartbeatStatus()).isEqualTo("received");
+        });
         verify(metricBucketRepository, never()).insert(any(AcceptedMetricBucketWriteCommand.class));
     }
 
@@ -68,6 +89,7 @@ class IngestHeartbeatServiceTest {
         ProjectKeyVerificationService projectKeyVerificationService = verifiedProjectKeyService();
         ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
         MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository = mock(StarterHeartbeatTelemetryRepository.class);
         when(applicationRepository.findByProjectIdAndNameAndEnvironment(
                 PortalIngestValidationFixture.VERIFIED_PROJECT.projectId(),
                 "orders-api",
@@ -76,7 +98,8 @@ class IngestHeartbeatServiceTest {
         IngestHeartbeatService service = newService(
                 projectKeyVerificationService,
                 applicationRepository,
-                metricBucketRepository);
+                metricBucketRepository,
+                heartbeatTelemetryRepository);
 
         IngestHeartbeatResult result = service.receive(PROJECT_KEY, validRequest());
 
@@ -86,6 +109,7 @@ class IngestHeartbeatServiceTest {
             assertThat(receipt.ingestBoundary().statusSource()).isEqualTo("accepted_bucket");
             assertThat(receipt.message()).contains("No metric bucket has been accepted yet");
         });
+        verify(heartbeatTelemetryRepository).upsertLatest(any(StarterHeartbeatTelemetryCommand.class));
         verifyNoInteractions(metricBucketRepository);
     }
 
@@ -95,10 +119,12 @@ class IngestHeartbeatServiceTest {
         when(projectKeyVerificationService.verify(PROJECT_KEY)).thenReturn(ProjectKeyVerificationResult.unauthorized());
         ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
         MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository = mock(StarterHeartbeatTelemetryRepository.class);
         IngestHeartbeatService service = newService(
                 projectKeyVerificationService,
                 applicationRepository,
-                metricBucketRepository);
+                metricBucketRepository,
+                heartbeatTelemetryRepository);
 
         IngestHeartbeatResult result = service.receive(PROJECT_KEY, null);
 
@@ -106,7 +132,7 @@ class IngestHeartbeatServiceTest {
         assertThat(result.receipt()).isEmpty();
         assertThat(result.errors()).isEmpty();
         assertThat(result.toString()).doesNotContain(PROJECT_KEY);
-        verifyNoInteractions(applicationRepository, metricBucketRepository);
+        verifyNoInteractions(applicationRepository, metricBucketRepository, heartbeatTelemetryRepository);
     }
 
     @Test
@@ -114,10 +140,12 @@ class IngestHeartbeatServiceTest {
         ProjectKeyVerificationService projectKeyVerificationService = verifiedProjectKeyService();
         ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
         MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository = mock(StarterHeartbeatTelemetryRepository.class);
         IngestHeartbeatService service = newService(
                 projectKeyVerificationService,
                 applicationRepository,
-                metricBucketRepository);
+                metricBucketRepository,
+                heartbeatTelemetryRepository);
         IngestHeartbeatRequest request = new IngestHeartbeatRequest(
                 "1.1",
                 "0.1.0-test",
@@ -134,15 +162,49 @@ class IngestHeartbeatServiceTest {
                         "application.name",
                         "application.environment",
                         "application.instance");
-        verifyNoInteractions(applicationRepository, metricBucketRepository);
+        verifyNoInteractions(applicationRepository, metricBucketRepository, heartbeatTelemetryRepository);
+    }
+
+    @Test
+    void metadataExceedingPersistenceLengthReturns400AndSkipsTelemetryWrite() {
+        ProjectKeyVerificationService projectKeyVerificationService = verifiedProjectKeyService();
+        ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
+        MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository = mock(StarterHeartbeatTelemetryRepository.class);
+        IngestHeartbeatService service = newService(
+                projectKeyVerificationService,
+                applicationRepository,
+                metricBucketRepository,
+                heartbeatTelemetryRepository);
+        IngestHeartbeatRequest request = new IngestHeartbeatRequest(
+                "1.0",
+                "v".repeat(81),
+                new IngestHeartbeatRequest.Heartbeat("2026-05-24T08:30:00Z", 1L, 30),
+                new IngestHeartbeatRequest.Application("a".repeat(161), "e".repeat(81), "i".repeat(201)));
+
+        IngestHeartbeatResult result = service.receive(PROJECT_KEY, request);
+
+        assertThat(result.isInvalidRequest()).isTrue();
+        assertThat(result.errors())
+                .extracting(IngestValidationError::field)
+                .contains(
+                        "starterVersion",
+                        "application.name",
+                        "application.environment",
+                        "application.instance");
+        verifyNoInteractions(applicationRepository, metricBucketRepository, heartbeatTelemetryRepository);
     }
 
     @Test
     void invalidHeartbeatShapeReturns400() {
+        ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
+        MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository = mock(StarterHeartbeatTelemetryRepository.class);
         IngestHeartbeatService service = newService(
                 verifiedProjectKeyService(),
-                mock(ApplicationRepository.class),
-                mock(MetricBucketRepository.class));
+                applicationRepository,
+                metricBucketRepository,
+                heartbeatTelemetryRepository);
         IngestHeartbeatRequest request = new IngestHeartbeatRequest(
                 "1.0",
                 "0.1.0-test",
@@ -158,16 +220,44 @@ class IngestHeartbeatServiceTest {
                         "heartbeat.sentAtUtc",
                         "heartbeat.sequence",
                         "heartbeat.intervalSeconds");
+        verifyNoInteractions(applicationRepository, metricBucketRepository, heartbeatTelemetryRepository);
+    }
+
+    @Test
+    void outOfRangeHeartbeatTimestampReturns400AndSkipsTelemetryWrite() {
+        ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
+        MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository = mock(StarterHeartbeatTelemetryRepository.class);
+        IngestHeartbeatService service = newService(
+                verifiedProjectKeyService(),
+                applicationRepository,
+                metricBucketRepository,
+                heartbeatTelemetryRepository);
+        IngestHeartbeatRequest request = new IngestHeartbeatRequest(
+                "1.0",
+                "0.1.0-test",
+                new IngestHeartbeatRequest.Heartbeat("+999999999-12-31T23:59:59Z", 1L, 30),
+                new IngestHeartbeatRequest.Application("orders-api", "prod", "instance-1"));
+
+        IngestHeartbeatResult result = service.receive(PROJECT_KEY, request);
+
+        assertThat(result.isInvalidRequest()).isTrue();
+        assertThat(result.errors())
+                .extracting(IngestValidationError::field)
+                .contains("heartbeat.sentAtUtc");
+        verifyNoInteractions(applicationRepository, metricBucketRepository, heartbeatTelemetryRepository);
     }
 
     private static IngestHeartbeatService newService(
             ProjectKeyVerificationService projectKeyVerificationService,
             ApplicationRepository applicationRepository,
-            MetricBucketRepository metricBucketRepository) {
+            MetricBucketRepository metricBucketRepository,
+            StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository) {
         return new IngestHeartbeatService(
                 projectKeyVerificationService,
                 applicationRepository,
                 metricBucketRepository,
+                heartbeatTelemetryRepository,
                 CLOCK);
     }
 
