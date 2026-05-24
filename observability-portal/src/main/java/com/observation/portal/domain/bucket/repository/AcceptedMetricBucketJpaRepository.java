@@ -2,6 +2,8 @@ package com.observation.portal.domain.bucket.repository;
 
 import com.observation.portal.domain.bucket.entity.AcceptedMetricBucketEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
@@ -25,4 +27,11 @@ interface AcceptedMetricBucketJpaRepository extends JpaRepository<AcceptedMetric
     Optional<AcceptedMetricBucketEntity> findByApplicationInstanceIdAndBucketStartUtc(
             UUID applicationInstanceId,
             OffsetDateTime bucketStartUtc);
+
+    /**
+     * application scope freshness 입력으로 사용할 마지막 accepted bucket endUtc timestamp만 조회한다.
+     */
+    @Query("select max(bucket.bucketEndUtc) from AcceptedMetricBucketEntity bucket "
+            + "where bucket.applicationId = :applicationId")
+    Optional<OffsetDateTime> findLatestBucketEndUtcByApplicationId(@Param("applicationId") UUID applicationId);
 }

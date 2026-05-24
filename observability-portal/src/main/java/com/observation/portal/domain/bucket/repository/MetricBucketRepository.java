@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -92,6 +93,17 @@ public class MetricBucketRepository {
             String idempotencyKey) {
         return acceptedMetricBucketJpaRepository.findByProjectIdAndIdempotencyKey(projectId, idempotencyKey)
                 .map(AcceptedMetricBucketEntity::toReceipt);
+    }
+
+    /**
+     * application scope의 마지막 accepted bucket endUtc timestamp만 조회한다.
+     *
+     * <p>freshness나 lifecycle state 의미 판단은 service/model 계층에서 수행한다.</p>
+     */
+    @Transactional(readOnly = true)
+    public Optional<OffsetDateTime> findLatestBucketEndUtcByApplicationId(UUID applicationId) {
+        return acceptedMetricBucketJpaRepository.findLatestBucketEndUtcByApplicationId(
+                Objects.requireNonNull(applicationId, "applicationId must not be null"));
     }
 
     private String writeJson(Object value) {

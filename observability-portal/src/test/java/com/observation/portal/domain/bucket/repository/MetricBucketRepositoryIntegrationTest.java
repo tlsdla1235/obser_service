@@ -127,6 +127,42 @@ class MetricBucketRepositoryIntegrationTest {
     }
 
     @Test
+    void findsLatestAcceptedBucketEndUtcByApplicationOnlyAsTimestamp() {
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:20260508T010000Z",
+                "hash-1",
+                "2026-05-08T01:00:00Z",
+                FIXED_TIME,
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-b:20260508T010200Z",
+                "hash-2",
+                "2026-05-08T01:02:00Z",
+                OffsetDateTime.parse("2026-05-08T01:02:35Z"),
+                "orders-api",
+                "prod",
+                "pod-b"));
+        metricBucketRepository.insert(command(
+                "project-123:payments-api:prod:pod-a:20260508T020000Z",
+                "hash-3",
+                "2026-05-08T02:00:00Z",
+                OffsetDateTime.parse("2026-05-08T02:00:35Z"),
+                "payments-api",
+                "prod",
+                "pod-a"));
+
+        var ordersApplication = applicationRepository
+                .findByProjectIdAndNameAndEnvironment(PROJECT_ID, "orders-api", "prod")
+                .orElseThrow();
+
+        assertThat(metricBucketRepository.findLatestBucketEndUtcByApplicationId(ordersApplication.id()))
+                .contains(OffsetDateTime.parse("2026-05-08T01:02:30Z"));
+        assertThat(metricBucketRepository.findLatestBucketEndUtcByApplicationId(UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
     void databaseEnforcesIdempotencyAndInstanceBucketUniqueness() throws SQLException {
         AcceptedMetricBucketWriteCommand first = command(
                 "project-123:orders-api:prod:pod-a:20260508T010000Z",
@@ -157,13 +193,24 @@ class MetricBucketRepositoryIntegrationTest {
             String payloadHash,
             String bucketStartUtc,
             OffsetDateTime acceptedAt) {
+        return command(idempotencyKey, payloadHash, bucketStartUtc, acceptedAt, "orders-api", "prod", "pod-a");
+    }
+
+    private static AcceptedMetricBucketWriteCommand command(
+            String idempotencyKey,
+            String payloadHash,
+            String bucketStartUtc,
+            OffsetDateTime acceptedAt,
+            String applicationName,
+            String environment,
+            String instanceName) {
         OffsetDateTime start = OffsetDateTime.parse(bucketStartUtc);
         return new AcceptedMetricBucketWriteCommand(
                 PROJECT_ID,
                 "checkout",
-                "orders-api",
-                "prod",
-                "pod-a",
+                applicationName,
+                environment,
+                instanceName,
                 "1.0",
                 idempotencyKey,
                 payloadHash,

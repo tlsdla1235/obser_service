@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-05-24T13:02:09+0900
+# last_updated: 2026-05-24T17:47:07+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -44,7 +44,7 @@
 # - Epic 4 sprint planning 2026-05-24: Story 4.0은 done, Story 4.1~4.4는 story file/구현 흔적이 없어 backlog, Epic 4 retrospective는 optional이다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-05-24T13:02:09+0900
+last_updated: 2026-05-24T17:47:07+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -76,7 +76,7 @@ development_status:
 
   epic-4: in-progress
   4-0-starter-heartbeat-and-instance-level-ingest-contract-reassessment: done
-  4-1-time-bucket-contract-implementation: backlog
+  4-1-time-bucket-contract-implementation: done
   4-2-lifecycle-state-service: backlog
   4-3-recovery-guidance: backlog
   4-4-state-semantics-tests: backlog
