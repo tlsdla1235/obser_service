@@ -16,7 +16,7 @@ class AcceptedMetricBucketWriteCommandTest {
         ValidatedIngestCandidate candidate = new ValidatedIngestCandidate(
                 PortalIngestValidationFixture.VERIFIED_PROJECT,
                 PortalIngestValidationFixture.IDEMPOTENCY_KEY,
-                PortalIngestValidationFixture.goldenRequest());
+                PortalIngestValidationFixture.requestWithLocalPercentiles());
         OffsetDateTime acceptedAt = OffsetDateTime.parse("2026-05-08T01:00:31Z");
 
         AcceptedMetricBucketWriteCommand command = AcceptedMetricBucketWriteCommand.from(
@@ -35,6 +35,13 @@ class AcceptedMetricBucketWriteCommandTest {
         assertThat(command.errorCount()).isEqualTo(1L);
         assertThat(command.durationBuckets()).first()
                 .isEqualTo(new AcceptedMetricBucketWriteCommand.DurationBucket(50L, 1L));
+        assertThat(command.localPercentiles()).satisfies(localPercentiles -> {
+            assertThat(localPercentiles.scope()).isEqualTo("instance_bucket");
+            assertThat(localPercentiles.source()).isEqualTo("starter_local");
+            assertThat(localPercentiles.p95Ms()).isEqualTo(250L);
+            assertThat(localPercentiles.p99Ms()).isEqualTo(1000L);
+            assertThat(localPercentiles.mergeable()).isFalse();
+        });
         assertThat(command.endpoints()).hasSize(2);
         assertThat(command.endpoints()).first().satisfies(endpoint -> {
             assertThat(endpoint.method()).isEqualTo("GET");
@@ -67,6 +74,7 @@ class AcceptedMetricBucketWriteCommandTest {
                 0.1d,
                 0.2d,
                 0.3d,
+                null,
                 java.util.List.of()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("errorCount");

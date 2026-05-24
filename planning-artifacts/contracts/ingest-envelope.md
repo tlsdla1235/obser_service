@@ -101,7 +101,7 @@ UTC bucket start를 `yyyyMMdd'T'HHmmss'Z'` 형식으로 표현한다.
 - `p95Ms`와 `p99Ms`는 해당 30초 bucket 안의 starter-reported canonical value다.
 - `mergeable=false`는 여러 starter instance나 여러 bucket의 p95/p99 숫자를 평균/병합해 새로운 상위 scope p95/p99를 만들지 않는다는 뜻이다. 해당 `instance_bucket` scope에서는 그대로 canonical 값이다.
 
-Portal은 이 값을 동일 scope의 p95/p99 source로 저장/노출할 수 있다. 같은 화면/같은 scope에서 starter-reported p95/p99를 표시하면 histogram-derived p95/p99를 병렬 표시하지 않는다.
+Portal은 이 값을 `accepted_metric_buckets.local_percentiles_json`에 보존하고 동일 scope의 p95/p99 source로 노출할 수 있다. 같은 화면/같은 scope에서 starter-reported p95/p99를 표시하면 histogram-derived p95/p99를 병렬 표시하지 않는다.
 
 상위 scope에서 여러 starter instance의 p95/p99가 서로 다르면 portal은 임의 평균, 최댓값 선택, histogram-derived 재계산으로 새로운 p95/p99를 만들지 않는다. 이 경우 read model은 instance/source 단위로 starter-reported percentile을 분리해 보여주거나, 상위 scope에는 percentile scalar 대신 histogram bucket distribution을 표시한다.
 
@@ -169,6 +169,18 @@ Portal ingest는 forward compatibility를 위해 JSON unknown field를 거부하
 `localPercentiles`는 unknown field가 아니라 지원 후보 field다. 이 field가 유효하면 request는 accepted bucket 후보로 남고, field 자체가 잘못됐을 때만 payload validation 실패로 다룬다.
 
 Post-MVP runtime aggregate schema를 열 경우에는 각 ratio aggregate에 대해 `0 <= latest <= max <= 1`, `0 <= avg <= max`, `sampleCount > 0`을 검증한다. 특정 metric aggregate가 없을 수는 있지만, 한 metric을 보낼 때는 `latest`, `max`, `avg`, `sampleCount`가 함께 있어야 한다. 이 검증은 starter local builder와 portal `IngestAcceptanceService` 양쪽에 둔다.
+
+### 4.2 Story 4.0 Validation Review Scope
+
+Story 4.0 이후 리뷰/검토에서 portal ingest validation을 다시 열 때도, 기존 ingest envelope field들에 대해서는 추가 안정성 검증을 새로 요구하지 않는다.
+
+기존 field란 Story 3.x에서 이미 구현/수용된 `schemaVersion`, `application`, `bucket`, `summary.requestCount/errorCount`, `summary.httpServerDurationBuckets`, `summary.jvm`, `summary.datasource`, `endpoints`, `idempotencyKey` 계열을 말한다. 이 field들은 현재 MVP acceptance 수준을 baseline으로 삼고, edge-case review가 추가 hardening을 발견하더라도 Story 4.0 또는 다음 sprint planning의 blocker로 삼지 않는다.
+
+검증 검토 대상은 Story 4.0으로 의미가 바뀌거나 새로 추가되는 field/contract에 한정한다. 예시는 `summary.localPercentiles`, heartbeat request/response 후보, source/scope/display policy enum, read model shape다.
+
+수정/추가 field 검증도 저장 가능성, source/scope 의미 보존, 보안/권한, null/필수값, 기존 read model 오해 방지 수준으로 제한한다. 이 검증을 이유로 기존 histogram, endpoint, route, count, idempotency, runtime ratio에 대한 추가 검증을 재개하지 않는다.
+
+기존 ingest field의 더 강한 안정성 검증이 필요하다고 판단되면 Story 4.0 범위 밖의 deferred hardening item으로 기록하고, MVP 진행을 막지 않는다.
 
 ## 5. Idempotency
 

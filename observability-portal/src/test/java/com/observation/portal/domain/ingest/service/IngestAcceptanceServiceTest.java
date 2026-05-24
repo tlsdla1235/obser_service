@@ -337,6 +337,62 @@ class IngestAcceptanceServiceTest {
     }
 
     @Test
+    void acceptsAndPreservesStarterCanonicalLocalPercentiles() throws Exception {
+        ProjectKeyVerificationService projectKeyVerificationService = verifiedProjectKeyService();
+        MetricBucketRepository metricBucketRepository = acceptingRepository();
+        IngestAcceptanceService service = newService(projectKeyVerificationService, metricBucketRepository);
+        IngestEnvelopeRequest request = PortalIngestValidationFixture.requestWithLocalPercentiles();
+
+        IngestAcceptanceResult result = service.accept(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                request);
+
+        assertThat(result.isAccepted()).isTrue();
+        assertThat(result.acceptedCandidate()).hasValueSatisfying(candidate -> {
+            IngestEnvelopeRequest.LocalPercentiles localPercentiles =
+                    candidate.payload().summary().localPercentiles();
+            assertThat(localPercentiles.scope()).isEqualTo("instance_bucket");
+            assertThat(localPercentiles.source()).isEqualTo("starter_local");
+            assertThat(localPercentiles.mergeable()).isFalse();
+        });
+
+        ArgumentCaptor<AcceptedMetricBucketWriteCommand> commandCaptor =
+                ArgumentCaptor.forClass(AcceptedMetricBucketWriteCommand.class);
+        verify(metricBucketRepository).insert(commandCaptor.capture());
+        assertThat(commandCaptor.getValue().localPercentiles()).satisfies(localPercentiles -> {
+            assertThat(localPercentiles.scope()).isEqualTo("instance_bucket");
+            assertThat(localPercentiles.source()).isEqualTo("starter_local");
+            assertThat(localPercentiles.p95Ms()).isEqualTo(250L);
+            assertThat(localPercentiles.p99Ms()).isEqualTo(1000L);
+            assertThat(localPercentiles.mergeable()).isFalse();
+        });
+    }
+
+    @Test
+    void rejectsInvalidLocalPercentilesWithoutReopeningExistingEnvelopeFields() throws Exception {
+        IngestAcceptanceResult result = accept(root -> {
+            ObjectNode localPercentiles = PortalIngestValidationFixture.addValidLocalPercentiles(root);
+            localPercentiles.put("scope", "application_window");
+            localPercentiles.put("source", "histogram_bucket_distribution");
+            localPercentiles.put("bucketStartUtc", "2026-05-08T01:00:30Z");
+            localPercentiles.remove("p95Ms");
+            localPercentiles.put("p99Ms", 100L);
+            localPercentiles.put("mergeable", true);
+        });
+
+        assertThat(result.isInvalidRequest()).isTrue();
+        assertThat(result.errors())
+                .extracting(IngestValidationError::field)
+                .contains(
+                        "summary.localPercentiles.scope",
+                        "summary.localPercentiles.source",
+                        "summary.localPercentiles.bucketStartUtc",
+                        "summary.localPercentiles.p95Ms",
+                        "summary.localPercentiles.mergeable");
+    }
+
+    @Test
     void rejectsMalformedOrPayloadMismatchedIdempotencyKey() throws Exception {
         IngestEnvelopeRequest request = PortalIngestValidationFixture.goldenRequest();
 

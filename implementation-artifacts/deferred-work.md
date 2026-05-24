@@ -28,6 +28,10 @@ Source specification: `planning-artifacts/mvp-deferred-risk-spec.md`
 - Idempotency key length and payload hash strict format validation: MVP는 DB column/constraint를 저장 경계로 두며 API error polish나 third-party producer 허용 전 service-level validation으로 올린다.
 - Accepted bucket index/test hardening: 중복 가능 index 정리, check constraint/index column-order 회귀 테스트 보강은 query plan tuning 또는 retention cleanup 성능 테스트 전까지 deferred로 둔다.
 
+## Deferred from: Story 4.0 validation scope policy (2026-05-22)
+
+- Existing ingest envelope field hardening: Story 3.x에서 이미 구현/수용된 `schemaVersion`, `application`, `bucket`, `summary.requestCount/errorCount`, `summary.httpServerDurationBuckets`, `summary.jvm`, `summary.datasource`, `endpoints`, `idempotencyKey` 계열의 추가 안정성 검증은 Story 4.0과 다음 sprint planning의 blocker로 삼지 않는다. 더 강한 검증이 필요하면 별도 hardening story에서 다룬다.
+
 ## Deferred from: dashboard snapshot/history contract alignment (2026-05-21)
 
 - Resolved by planning alignment: suppression window는 같은 `application + endpointKey + ruleId` 기준 60분으로 확정했다.

@@ -32,6 +32,7 @@ public record AcceptedMetricBucketWriteCommand(
         Double cpuUsageRatio,
         Double heapUsedRatio,
         Double datasourcePoolUsageRatio,
+        LocalPercentiles localPercentiles,
         List<EndpointBucket> endpoints
 ) {
 
@@ -108,6 +109,7 @@ public record AcceptedMetricBucketWriteCommand(
                 jvm == null ? null : jvm.cpuUsage(),
                 jvm == null ? null : jvm.heapUsedRatio(),
                 datasource == null ? null : datasource.poolUsageRatio(),
+                summary.localPercentiles() == null ? null : LocalPercentiles.from(summary.localPercentiles()),
                 payload.endpoints().stream()
                         .map(EndpointBucket::from)
                         .toList());
@@ -177,6 +179,47 @@ public record AcceptedMetricBucketWriteCommand(
                     endpoint.durationBuckets().stream()
                             .map(DurationBucket::from)
                             .toList());
+        }
+    }
+
+    /**
+     * starter가 보낸 instance bucket scope의 canonical percentile point를 JSON 저장용으로 보존한다.
+     */
+    public record LocalPercentiles(
+            String scope,
+            String source,
+            String bucketStartUtc,
+            String bucketEndUtc,
+            Long requestCount,
+            Long p95Ms,
+            Long p99Ms,
+            Boolean mergeable
+    ) {
+
+        /**
+         * service validation 이후 저장 가능한 필수 field만 다시 확인한다.
+         */
+        public LocalPercentiles {
+            scope = requireText(scope, "localPercentiles.scope");
+            source = requireText(source, "localPercentiles.source");
+            bucketStartUtc = requireText(bucketStartUtc, "localPercentiles.bucketStartUtc");
+            bucketEndUtc = requireText(bucketEndUtc, "localPercentiles.bucketEndUtc");
+            Objects.requireNonNull(requestCount, "localPercentiles.requestCount must not be null");
+            Objects.requireNonNull(p95Ms, "localPercentiles.p95Ms must not be null");
+            Objects.requireNonNull(p99Ms, "localPercentiles.p99Ms must not be null");
+            Objects.requireNonNull(mergeable, "localPercentiles.mergeable must not be null");
+        }
+
+        private static LocalPercentiles from(IngestEnvelopeRequest.LocalPercentiles localPercentiles) {
+            return new LocalPercentiles(
+                    localPercentiles.scope(),
+                    localPercentiles.source(),
+                    localPercentiles.bucketStartUtc(),
+                    localPercentiles.bucketEndUtc(),
+                    localPercentiles.requestCount(),
+                    localPercentiles.p95Ms(),
+                    localPercentiles.p99Ms(),
+                    localPercentiles.mergeable());
         }
     }
 }

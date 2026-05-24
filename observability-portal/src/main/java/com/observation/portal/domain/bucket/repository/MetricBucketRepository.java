@@ -76,6 +76,7 @@ public class MetricBucketRepository {
                 toBigDecimal(requiredCommand.cpuUsageRatio()),
                 toBigDecimal(requiredCommand.heapUsedRatio()),
                 toBigDecimal(requiredCommand.datasourcePoolUsageRatio()),
+                writeNullableJson(requiredCommand.localPercentiles()),
                 writeJson(requiredCommand.endpoints()),
                 requiredCommand.acceptedAt());
 
@@ -99,6 +100,10 @@ public class MetricBucketRepository {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("accepted bucket JSON serialization failed", exception);
         }
+    }
+
+    private String writeNullableJson(Object value) {
+        return value == null ? null : writeJson(value);
     }
 
     private static BigDecimal toBigDecimal(Double value) {

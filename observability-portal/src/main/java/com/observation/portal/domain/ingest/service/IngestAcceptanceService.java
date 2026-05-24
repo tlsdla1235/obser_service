@@ -133,6 +133,7 @@ public class IngestAcceptanceService {
         private final String idempotencyKeyHeader;
         private final List<IngestValidationError> errors = new ArrayList<>();
         private Instant bucketStartUtc;
+        private Instant bucketEndUtc;
 
         private EnvelopeValidator(IngestEnvelopeRequest request, String idempotencyKeyHeader) {
             this.request = request;
@@ -182,6 +183,7 @@ public class IngestAcceptanceService {
             Optional<Instant> startUtc = parseUtcInstant(bucket.startUtc(), "bucket.startUtc");
             Optional<Instant> endUtc = parseUtcInstant(bucket.endUtc(), "bucket.endUtc");
             startUtc.ifPresent(start -> bucketStartUtc = start);
+            endUtc.ifPresent(end -> bucketEndUtc = end);
             startUtc.ifPresent(start -> validateBoundary(start, "bucket.startUtc"));
             endUtc.ifPresent(end -> validateBoundary(end, "bucket.endUtc"));
 
@@ -210,6 +212,7 @@ public class IngestAcceptanceService {
                     summary.requestCount());
             validateJvm(summary.jvm());
             validateDatasource(summary.datasource());
+            validateLocalPercentiles(summary.localPercentiles());
         }
 
         private void validateJvm(IngestEnvelopeRequest.Jvm jvm) {
@@ -225,6 +228,82 @@ public class IngestAcceptanceService {
                 return;
             }
             validateRatio("summary.datasource.poolUsageRatio", datasource.poolUsageRatio());
+        }
+
+        private void validateLocalPercentiles(IngestEnvelopeRequest.LocalPercentiles localPercentiles) {
+            if (localPercentiles == null) {
+                return;
+            }
+
+            if (!"instance_bucket".equals(localPercentiles.scope())) {
+                add("invalid_local_percentiles",
+                        "summary.localPercentiles.scope",
+                        "localPercentiles scope must be instance_bucket");
+            }
+            if (!"starter_local".equals(localPercentiles.source())) {
+                add("invalid_local_percentiles",
+                        "summary.localPercentiles.source",
+                        "localPercentiles source must be starter_local");
+            }
+
+            Optional<Instant> localStartUtc = parseUtcInstant(
+                    localPercentiles.bucketStartUtc(),
+                    "summary.localPercentiles.bucketStartUtc");
+            Optional<Instant> localEndUtc = parseUtcInstant(
+                    localPercentiles.bucketEndUtc(),
+                    "summary.localPercentiles.bucketEndUtc");
+            if (bucketStartUtc != null && localStartUtc.isPresent()
+                    && !bucketStartUtc.equals(localStartUtc.orElseThrow())) {
+                add("local_percentiles_bucket_mismatch",
+                        "summary.localPercentiles.bucketStartUtc",
+                        "localPercentiles bucketStartUtc must match bucket.startUtc");
+            }
+            if (bucketEndUtc != null && localEndUtc.isPresent()
+                    && !bucketEndUtc.equals(localEndUtc.orElseThrow())) {
+                add("local_percentiles_bucket_mismatch",
+                        "summary.localPercentiles.bucketEndUtc",
+                        "localPercentiles bucketEndUtc must match bucket.endUtc");
+            }
+
+            if (localPercentiles.requestCount() == null) {
+                add("required",
+                        "summary.localPercentiles.requestCount",
+                        "localPercentiles requestCount is required");
+            } else if (localPercentiles.requestCount() < 0) {
+                add("invalid_local_percentiles",
+                        "summary.localPercentiles.requestCount",
+                        "localPercentiles requestCount must not be negative");
+            }
+            if (localPercentiles.p95Ms() == null) {
+                add("required",
+                        "summary.localPercentiles.p95Ms",
+                        "localPercentiles p95Ms is required");
+            } else if (localPercentiles.p95Ms() < 0) {
+                add("invalid_local_percentiles",
+                        "summary.localPercentiles.p95Ms",
+                        "localPercentiles p95Ms must not be negative");
+            }
+            if (localPercentiles.p99Ms() == null) {
+                add("required",
+                        "summary.localPercentiles.p99Ms",
+                        "localPercentiles p99Ms is required");
+            } else if (localPercentiles.p99Ms() < 0) {
+                add("invalid_local_percentiles",
+                        "summary.localPercentiles.p99Ms",
+                        "localPercentiles p99Ms must not be negative");
+            }
+            if (localPercentiles.p95Ms() != null && localPercentiles.p99Ms() != null
+                    && localPercentiles.p95Ms() >= 0 && localPercentiles.p99Ms() >= 0
+                    && localPercentiles.p99Ms() < localPercentiles.p95Ms()) {
+                add("invalid_local_percentiles",
+                        "summary.localPercentiles.p99Ms",
+                        "localPercentiles p99Ms must be greater than or equal to p95Ms");
+            }
+            if (!Boolean.FALSE.equals(localPercentiles.mergeable())) {
+                add("invalid_local_percentiles",
+                        "summary.localPercentiles.mergeable",
+                        "localPercentiles mergeable must be false");
+            }
         }
 
         private void validateEndpoints() {

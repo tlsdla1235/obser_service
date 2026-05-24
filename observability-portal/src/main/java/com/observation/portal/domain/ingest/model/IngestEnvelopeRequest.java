@@ -41,7 +41,8 @@ public record IngestEnvelopeRequest(
     }
 
     /**
-     * application-level request/error count, cumulative histogram, latest runtime ratio block이다.
+     * application-level request/error count, cumulative histogram, latest runtime ratio,
+     * starter canonical percentile block이다.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Summary(
@@ -49,7 +50,8 @@ public record IngestEnvelopeRequest(
             Long errorCount,
             List<DurationBucket> httpServerDurationBuckets,
             Jvm jvm,
-            Datasource datasource
+            Datasource datasource,
+            LocalPercentiles localPercentiles
     ) {
 
         /**
@@ -74,6 +76,22 @@ public record IngestEnvelopeRequest(
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Datasource(Double poolUsageRatio) {
+    }
+
+    /**
+     * instance 30초 bucket scope에서 starter가 직접 산출한 canonical p95/p99 point다.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record LocalPercentiles(
+            String scope,
+            String source,
+            String bucketStartUtc,
+            String bucketEndUtc,
+            Long requestCount,
+            Long p95Ms,
+            Long p99Ms,
+            Boolean mergeable
+    ) {
     }
 
     /**

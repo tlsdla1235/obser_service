@@ -185,6 +185,7 @@ Indexes:
 | `cpu_usage_ratio` | `numeric(6,5)` | yes | nullable runtime sample |
 | `heap_used_ratio` | `numeric(6,5)` | yes | nullable runtime sample |
 | `datasource_pool_usage_ratio` | `numeric(6,5)` | yes | nullable runtime sample |
+| `local_percentiles_json` | `jsonb` | yes | instance bucket scope의 starter canonical percentile point |
 | `endpoints_json` | `jsonb` | no | bounded endpoint bucket 배열 |
 | `created_at` | `timestamptz` | no | row 생성 시각 |
 
@@ -210,9 +211,10 @@ Indexes:
 Notes:
 
 - `duration_buckets_json`과 `endpoints_json`의 histogram monotonicity, boundary set 일치 여부는 DB check가 아니라 `IngestAcceptanceService`에서 검증한다.
-- p95/p99는 이 테이블에서 SQL view로 계산하지 않는다. `localPercentiles`로 수용한 starter canonical percentile만 같은 scope의 p95/p99로 사용한다.
+- p95/p99는 이 테이블에서 SQL view로 계산하지 않는다. `local_percentiles_json`으로 보존한 starter canonical percentile만 같은 scope의 p95/p99로 사용한다.
 - `duration_buckets_json`과 endpoint `durationBuckets`는 distribution display와 진단용 bucket 원자료다. DB view, service, UI가 이 bucket에서 p95/p99 scalar를 만들지 않는다.
 - MVP의 `cpu_usage_ratio`, `heap_used_ratio`, `datasource_pool_usage_ratio`는 bucket 안의 latest valid sample을 저장한다.
+- `local_percentiles_json`은 optional이다. 존재할 때만 `summary.localPercentiles`의 source/scope/required field를 보존하며, histogram이나 endpoint field를 다시 검증하는 근거로 삼지 않는다.
 
 Post-MVP runtime aggregate migration 후보:
 
@@ -340,17 +342,19 @@ DB는 window bucket을 효율적으로 읽고 snapshot을 저장하는 repositor
    - project/application/instance unique constraint 추가
 3. `V003__create_accepted_metric_buckets.sql`
    - accepted bucket 테이블, idempotency unique constraint, bucket window index 추가
-4. `V004__create_dashboard_snapshots.sql`
+4. `V004__add_local_percentiles_to_accepted_metric_buckets.sql`
+   - Story 4.0의 `summary.localPercentiles` starter canonical percentile point를 optional JSON으로 보존
+5. `V005__create_dashboard_snapshots.sql`
    - snapshot 테이블, latest 조회 index, current window unique upsert key 추가
    - operational history 조회가 필요하면 bounded index/search helper column 후보를 같은 story 또는 보강 migration에서 추가
-5. `V005__seed_local_project.sql`
+6. `V006__seed_local_project.sql`
    - local/demo project key seed
    - raw key는 migration 파일에 평문으로 고정하지 않고 local profile 또는 dev-only seed script에서 주입
    - raw key 전체나 secret 성격의 project key material은 repository lookup surface에 남기지 않음
-6. `V006__retention_cleanup_support.sql`
+7. `V007__retention_cleanup_support.sql`
    - retention cleanup에 필요한 index 확인
    - 별도 stored procedure는 만들지 않고 scheduled cleanup service에서 사용
-7. Account/auth migration 후보
+8. Account/auth migration 후보
    - account auth story에서 별도 version으로 추가
    - `users/accounts`, `external_identities`, `refresh_token_families` 또는 동등한 token store metadata 후보
    - provider는 MVP에서 `github`만 허용
@@ -557,7 +561,21 @@ comment on column accepted_metric_buckets.endpoints_json is 'bounded endpoint별
 comment on column accepted_metric_buckets.created_at is 'accepted metric bucket row 생성 시각.';
 ```
 
-### 8.4 `V004__create_dashboard_snapshots.sql`
+### 8.4 `V004__add_local_percentiles_to_accepted_metric_buckets.sql`
+
+```sql
+alter table accepted_metric_buckets
+  add column local_percentiles_json jsonb;
+
+alter table accepted_metric_buckets
+  add constraint ck_buckets_local_percentiles_object
+    check (local_percentiles_json is null or jsonb_typeof(local_percentiles_json) = 'object');
+
+comment on column accepted_metric_buckets.local_percentiles_json is
+  'starter가 보낸 instance_bucket scope의 canonical p95/p99 point. 없으면 null.';
+```
+
+### 8.5 `V005__create_dashboard_snapshots.sql`
 
 ```sql
 create table dashboard_snapshots (
