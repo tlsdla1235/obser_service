@@ -5,13 +5,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.observation.portal.domain.bucket.entity.AcceptedMetricBucketEntity;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommand;
+import com.observation.portal.domain.bucket.model.WindowBucketAggregate;
 import com.observation.portal.domain.catalog.model.ApplicationCatalogEntry;
 import com.observation.portal.domain.catalog.repository.ApplicationCatalogRepository;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -106,6 +109,44 @@ public class MetricBucketRepository {
                 Objects.requireNonNull(applicationId, "applicationId must not be null"));
     }
 
+    /**
+     * evaluationAt 이후의 future bucket을 freshness source에서 제외하고 마지막 accepted endUtc만 조회한다.
+     *
+     * <p>dashboard current window boundary는 caller가 계산한 evaluationAt을 그대로 사용하며, 이 값은 freshness 입력으로만
+     * 사용한다.</p>
+     */
+    @Transactional(readOnly = true)
+    public Optional<OffsetDateTime> findLatestBucketEndUtcByApplicationIdAtOrBefore(
+            UUID applicationId,
+            Instant evaluationAtUtc) {
+        return acceptedMetricBucketJpaRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(
+                Objects.requireNonNull(applicationId, "applicationId must not be null"),
+                toUtcOffsetDateTime(Objects.requireNonNull(evaluationAtUtc, "evaluationAtUtc must not be null")));
+    }
+
+    /**
+     * dashboard current window의 request/error count 합계만 application scope로 조회한다.
+     *
+     * <p>window는 bucket endUtc 기준으로 `(start, end]`를 사용해 15분 window 끝 boundary bucket을 포함한다.</p>
+     */
+    @Transactional(readOnly = true)
+    public WindowBucketAggregate findWindowAggregateByApplicationId(
+            UUID applicationId,
+            Instant windowStartUtc,
+            Instant windowEndUtc) {
+        UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
+        Instant requiredWindowStartUtc = Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null");
+        Instant requiredWindowEndUtc = Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null");
+        if (!requiredWindowEndUtc.isAfter(requiredWindowStartUtc)) {
+            throw new IllegalArgumentException("windowEndUtc must be after windowStartUtc");
+        }
+        OffsetDateTime windowStart = toUtcOffsetDateTime(requiredWindowStartUtc);
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(requiredWindowEndUtc);
+        WindowBucketAggregate aggregate = acceptedMetricBucketJpaRepository
+                .sumWindowRequestAndErrorCountsByApplicationId(requiredApplicationId, windowStart, windowEnd);
+        return Objects.requireNonNullElse(aggregate, WindowBucketAggregate.zero());
+    }
+
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -120,5 +161,9 @@ public class MetricBucketRepository {
 
     private static BigDecimal toBigDecimal(Double value) {
         return value == null ? null : BigDecimal.valueOf(value);
+    }
+
+    private static OffsetDateTime toUtcOffsetDateTime(Instant instant) {
+        return OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
     }
 }

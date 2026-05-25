@@ -1,6 +1,7 @@
 package com.observation.portal.domain.bucket.repository;
 
 import com.observation.portal.domain.bucket.entity.AcceptedMetricBucketEntity;
+import com.observation.portal.domain.bucket.model.WindowBucketAggregate;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -34,4 +35,29 @@ interface AcceptedMetricBucketJpaRepository extends JpaRepository<AcceptedMetric
     @Query("select max(bucket.bucketEndUtc) from AcceptedMetricBucketEntity bucket "
             + "where bucket.applicationId = :applicationId")
     Optional<OffsetDateTime> findLatestBucketEndUtcByApplicationId(@Param("applicationId") UUID applicationId);
+
+    /**
+     * dashboard freshness 입력으로 evaluationAt 이후 future bucket을 제외한 마지막 endUtc만 조회한다.
+     */
+    @Query("select max(bucket.bucketEndUtc) from AcceptedMetricBucketEntity bucket "
+            + "where bucket.applicationId = :applicationId "
+            + "and bucket.bucketEndUtc <= :evaluationAtUtc")
+    Optional<OffsetDateTime> findLatestBucketEndUtcByApplicationIdAtOrBefore(
+            @Param("applicationId") UUID applicationId,
+            @Param("evaluationAtUtc") OffsetDateTime evaluationAtUtc);
+
+    /**
+     * dashboard current window에 포함되는 bucket request/error count 합계를 한 query snapshot으로 조회한다.
+     */
+    @Query("select new com.observation.portal.domain.bucket.model.WindowBucketAggregate("
+            + "coalesce(sum(bucket.requestCount), 0L), "
+            + "coalesce(sum(bucket.errorCount), 0L)) "
+            + "from AcceptedMetricBucketEntity bucket "
+            + "where bucket.applicationId = :applicationId "
+            + "and bucket.bucketEndUtc > :windowStartUtc "
+            + "and bucket.bucketEndUtc <= :windowEndUtc")
+    WindowBucketAggregate sumWindowRequestAndErrorCountsByApplicationId(
+            @Param("applicationId") UUID applicationId,
+            @Param("windowStartUtc") OffsetDateTime windowStartUtc,
+            @Param("windowEndUtc") OffsetDateTime windowEndUtc);
 }

@@ -20,6 +20,11 @@ public interface ApplicationRepository extends JpaRepository<ApplicationEntity, 
     Optional<ApplicationEntity> findByProjectIdAndNameAndEnvironment(UUID projectId, String name, String environment);
 
     /**
+     * Dashboard API의 project/application path scope가 같은 catalog row를 가리키는지 확인한다.
+     */
+    Optional<ApplicationEntity> findByIdAndProjectId(UUID id, UUID projectId);
+
+    /**
      * Project/Application navigation read model에서 사용할 project scope application 목록을 정렬해 조회한다.
      */
     List<ApplicationEntity> findByProjectIdOrderByNameAscEnvironmentAsc(UUID projectId);

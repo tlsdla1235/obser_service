@@ -2,6 +2,7 @@ package com.observation.portal.domain.bucket.repository;
 
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommand;
+import com.observation.portal.domain.bucket.model.WindowBucketAggregate;
 import com.observation.portal.domain.catalog.entity.ProjectEntity;
 import com.observation.portal.domain.catalog.repository.ApplicationInstanceRepository;
 import com.observation.portal.domain.catalog.repository.ApplicationRepository;
@@ -160,6 +161,99 @@ class MetricBucketRepositoryIntegrationTest {
         assertThat(metricBucketRepository.findLatestBucketEndUtcByApplicationId(ordersApplication.id()))
                 .contains(OffsetDateTime.parse("2026-05-08T01:02:30Z"));
         assertThat(metricBucketRepository.findLatestBucketEndUtcByApplicationId(UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
+    void findsLatestAcceptedBucketEndUtcAtOrBeforeEvaluationBoundary() {
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:20260508T010200Z",
+                "hash-past",
+                "2026-05-08T01:02:00Z",
+                OffsetDateTime.parse("2026-05-08T01:02:35Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-b:20260508T010230Z",
+                "hash-future",
+                "2026-05-08T01:02:30Z",
+                OffsetDateTime.parse("2026-05-08T01:03:05Z"),
+                "orders-api",
+                "prod",
+                "pod-b"));
+
+        var ordersApplication = applicationRepository
+                .findByProjectIdAndNameAndEnvironment(PROJECT_ID, "orders-api", "prod")
+                .orElseThrow();
+
+        assertThat(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(
+                ordersApplication.id(),
+                OffsetDateTime.parse("2026-05-08T01:02:30Z").toInstant()))
+                .contains(OffsetDateTime.parse("2026-05-08T01:02:30Z"));
+        assertThat(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(
+                ordersApplication.id(),
+                OffsetDateTime.parse("2026-05-08T01:01:59Z").toInstant()))
+                .isEmpty();
+    }
+
+    @Test
+    void aggregatesWindowRequestAndErrorCountsByApplicationScopeAndWindowBoundary() {
+        OffsetDateTime windowStart = OffsetDateTime.parse("2026-05-08T01:17:30Z");
+        OffsetDateTime windowEnd = OffsetDateTime.parse("2026-05-08T01:32:30Z");
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:20260508T011700Z",
+                "hash-before",
+                "2026-05-08T01:17:00Z",
+                OffsetDateTime.parse("2026-05-08T01:17:35Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:20260508T011730Z",
+                "hash-inside-1",
+                "2026-05-08T01:17:30Z",
+                OffsetDateTime.parse("2026-05-08T01:18:05Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-b:20260508T013200Z",
+                "hash-inside-2",
+                "2026-05-08T01:32:00Z",
+                OffsetDateTime.parse("2026-05-08T01:32:35Z"),
+                "orders-api",
+                "prod",
+                "pod-b"));
+        metricBucketRepository.insert(command(
+                "project-123:payments-api:prod:pod-a:20260508T011730Z",
+                "hash-other-app",
+                "2026-05-08T01:17:30Z",
+                OffsetDateTime.parse("2026-05-08T01:18:10Z"),
+                "payments-api",
+                "prod",
+                "pod-a"));
+
+        var ordersApplication = applicationRepository
+                .findByProjectIdAndNameAndEnvironment(PROJECT_ID, "orders-api", "prod")
+                .orElseThrow();
+        WindowBucketAggregate aggregate = metricBucketRepository.findWindowAggregateByApplicationId(
+                ordersApplication.id(),
+                windowStart.toInstant(),
+                windowEnd.toInstant());
+
+        assertThat(aggregate.requestCount()).isEqualTo(6L);
+        assertThat(aggregate.errorCount()).isEqualTo(2L);
+    }
+
+    @Test
+    void returnsZeroWindowAggregateWhenNoAcceptedBucketsMatch() {
+        WindowBucketAggregate aggregate = metricBucketRepository.findWindowAggregateByApplicationId(
+                UUID.randomUUID(),
+                OffsetDateTime.parse("2026-05-08T01:17:30Z").toInstant(),
+                OffsetDateTime.parse("2026-05-08T01:32:30Z").toInstant());
+
+        assertThat(aggregate.requestCount()).isZero();
+        assertThat(aggregate.errorCount()).isZero();
     }
 
     @Test
