@@ -9,8 +9,8 @@ import java.util.UUID;
 /**
  * Application Dashboard current API가 반환하는 read-model-contract skeleton이다.
  *
- * <p>Story 5.2에서는 source-scoped percentile, triage, endpoint priority, snapshot을 계산하지 않고 contract-safe
- * placeholder만 포함한다.</p>
+ * <p>Story 5.3에서는 starter가 보낸 instance bucket percentile point와 application-level histogram distribution
+ * evidence를 노출하되, percentile rollup이나 state/rule 판단은 만들지 않는다.</p>
  */
 public record ApplicationDashboardReadModel(
         OffsetDateTime generatedAt,
@@ -21,6 +21,7 @@ public record ApplicationDashboardReadModel(
         Recovery recovery,
         Metrics metrics,
         SourceScopedPercentiles sourceScopedPercentiles,
+        HistogramDistribution histogramDistribution,
         List<Object> triageCards,
         List<Object> endpointPriority,
         Object snapshot
@@ -38,6 +39,7 @@ public record ApplicationDashboardReadModel(
         Objects.requireNonNull(recovery, "recovery must not be null");
         Objects.requireNonNull(metrics, "metrics must not be null");
         Objects.requireNonNull(sourceScopedPercentiles, "sourceScopedPercentiles must not be null");
+        Objects.requireNonNull(histogramDistribution, "histogramDistribution must not be null");
         triageCards = List.copyOf(Objects.requireNonNull(triageCards, "triageCards must not be null"));
         endpointPriority = List.copyOf(Objects.requireNonNull(endpointPriority, "endpointPriority must not be null"));
     }
@@ -208,40 +210,225 @@ public record ApplicationDashboardReadModel(
     }
 
     /**
-     * Story 5.2에서 percentile 계산을 하지 않음을 명시하는 source-scoped placeholder다.
+     * starter가 보낸 instance bucket scope의 canonical p95/p99 point 목록과 표시 정책을 담는다.
+     *
+     * <p>items는 current window 안 instance별 latest point만 포함하며, 여러 point를 평균/최댓값/병합하지 않는다.</p>
      */
     public record SourceScopedPercentiles(
             String source,
             String scope,
             String displayPolicy,
             String aggregatePolicy,
-            List<Object> items,
-            String applicationScopeFallback
+            String status,
+            String reason,
+            List<PercentileItem> items
     ) {
 
         /**
-         * 후속 percentile story가 채울 위치와 현재 empty items contract를 보존한다.
+         * source/scope 정책과 item collection이 response에서 항상 명시되도록 검증한다.
          */
         public SourceScopedPercentiles {
             source = requireText(source, "source");
             scope = requireText(scope, "scope");
             displayPolicy = requireText(displayPolicy, "displayPolicy");
             aggregatePolicy = requireText(aggregatePolicy, "aggregatePolicy");
+            status = requireText(status, "status");
+            reason = trimNullable(reason);
             items = List.copyOf(Objects.requireNonNull(items, "items must not be null"));
-            applicationScopeFallback = requireText(applicationScopeFallback, "applicationScopeFallback");
         }
 
         /**
-         * Story 5.2에서 고정된 빈 source-scoped percentile placeholder를 만든다.
+         * current window에서 starter percentile point를 찾지 못했을 때의 명시적 missing response를 만든다.
          */
         public static SourceScopedPercentiles empty() {
             return new SourceScopedPercentiles(
-                    "starter_canonical_percentile",
+                    "starter_local",
                     "instance_bucket",
-                    "source_scoped_points",
+                    "latest_starter_point_per_instance_in_current_window",
                     "no_average_no_max_no_merge_no_histogram_recalculation",
-                    List.of(),
-                    "bucket_distribution_only_when_multiple_sources");
+                    "missing",
+                    "no_percentile_points_in_current_window",
+                    List.of());
+        }
+
+        /**
+         * valid starter percentile point가 있을 때 available 상태의 source-scoped response를 만든다.
+         */
+        public static SourceScopedPercentiles available(List<PercentileItem> items) {
+            return new SourceScopedPercentiles(
+                    "starter_local",
+                    "instance_bucket",
+                    "latest_starter_point_per_instance_in_current_window",
+                    "no_average_no_max_no_merge_no_histogram_recalculation",
+                    "available",
+                    null,
+                    items);
+        }
+
+        /**
+         * persisted row는 있었지만 표시 가능한 valid point가 없을 때 insufficient response를 만든다.
+         */
+        public static SourceScopedPercentiles insufficient(String reason) {
+            return new SourceScopedPercentiles(
+                    "starter_local",
+                    "instance_bucket",
+                    "latest_starter_point_per_instance_in_current_window",
+                    "no_average_no_max_no_merge_no_histogram_recalculation",
+                    "insufficient",
+                    reason,
+                    List.of());
+        }
+    }
+
+    /**
+     * persisted `local_percentiles_json` 값을 API item으로 옮긴 instance bucket percentile point다.
+     *
+     * <p>p95Ms/p99Ms는 starter가 해당 30초 instance bucket에서 직접 산출해 보낸 canonical value이며, dashboard service가
+     * 새로 계산한 값이 아니다.</p>
+     */
+    public record PercentileItem(
+            String source,
+            String application,
+            String environment,
+            String instance,
+            OffsetDateTime bucketStartUtc,
+            OffsetDateTime bucketEndUtc,
+            long requestCount,
+            long p95Ms,
+            long p99Ms
+    ) {
+
+        /**
+         * percentile point의 identity, source, bucket boundary와 numeric evidence를 검증한다.
+         */
+        public PercentileItem {
+            source = requireText(source, "source");
+            application = requireText(application, "application");
+            environment = requireText(environment, "environment");
+            instance = requireText(instance, "instance");
+            Objects.requireNonNull(bucketStartUtc, "bucketStartUtc must not be null");
+            Objects.requireNonNull(bucketEndUtc, "bucketEndUtc must not be null");
+            if (!bucketEndUtc.isAfter(bucketStartUtc)) {
+                throw new IllegalArgumentException("bucketEndUtc must be after bucketStartUtc");
+            }
+            if (requestCount <= 0) {
+                throw new IllegalArgumentException("requestCount must be positive");
+            }
+            if (p95Ms < 0) {
+                throw new IllegalArgumentException("p95Ms must not be negative");
+            }
+            if (p99Ms < p95Ms) {
+                throw new IllegalArgumentException("p99Ms must be greater than or equal to p95Ms");
+            }
+        }
+    }
+
+    /**
+     * application-level summary duration histogram distribution evidence를 current/baseline window별로 담는다.
+     *
+     * <p>이 block은 bucket distribution 표시 source이며 p95/p99, delta, regression, confidence, rule 판단을 포함하지 않는다.</p>
+     */
+    public record HistogramDistribution(
+            String source,
+            String scope,
+            String displayPolicy,
+            String aggregatePolicy,
+            HistogramWindow current,
+            HistogramWindow baseline
+    ) {
+
+        /**
+         * histogram distribution top-level object와 window evidence가 항상 존재하도록 검증한다.
+         */
+        public HistogramDistribution {
+            source = requireText(source, "source");
+            scope = requireText(scope, "scope");
+            displayPolicy = requireText(displayPolicy, "displayPolicy");
+            aggregatePolicy = requireText(aggregatePolicy, "aggregatePolicy");
+            Objects.requireNonNull(current, "current must not be null");
+            Objects.requireNonNull(baseline, "baseline must not be null");
+        }
+
+        /**
+         * current/baseline 모두 histogram evidence가 없는 기본 response를 만든다.
+         */
+        public static HistogramDistribution empty() {
+            return new HistogramDistribution(
+                    "histogram_bucket_distribution",
+                    "application",
+                    "bucket_distribution_evidence",
+                    "sum_cumulative_counts_only_when_boundary_set_matches",
+                    HistogramWindow.missing("no_histogram_buckets_in_current_window"),
+                    HistogramWindow.missing("no_histogram_buckets_in_baseline_window"));
+        }
+    }
+
+    /**
+     * 하나의 dashboard window에 대한 histogram bucket distribution evidence와 상태를 담는다.
+     */
+    public record HistogramWindow(
+            String status,
+            String reason,
+            long totalCount,
+            List<HistogramBucket> buckets
+    ) {
+
+        /**
+         * status/reason과 bucket collection이 null 없이 표현되고 count가 음수가 되지 않도록 검증한다.
+         */
+        public HistogramWindow {
+            status = requireText(status, "status");
+            reason = trimNullable(reason);
+            if (totalCount < 0) {
+                throw new IllegalArgumentException("totalCount must not be negative");
+            }
+            buckets = List.copyOf(Objects.requireNonNull(buckets, "buckets must not be null"));
+        }
+
+        /**
+         * histogram bucket row가 없을 때 window-specific missing reason을 담은 empty distribution을 만든다.
+         */
+        public static HistogramWindow missing(String reason) {
+            return new HistogramWindow("missing", reason, 0L, List.of());
+        }
+
+        /**
+         * boundary mismatch처럼 distribution을 안전하게 만들 수 없을 때 unavailable 상태를 반환한다.
+         */
+        public static HistogramWindow unavailable(String reason) {
+            return new HistogramWindow("unavailable", reason, 0L, List.of());
+        }
+
+        /**
+         * row는 있었지만 표시 가능한 bucket evidence가 부족할 때 insufficient 상태를 반환한다.
+         */
+        public static HistogramWindow insufficient(String reason) {
+            return new HistogramWindow("insufficient", reason, 0L, List.of());
+        }
+
+        /**
+         * boundary가 일치해 합산된 cumulative bucket distribution을 available 상태로 반환한다.
+         */
+        public static HistogramWindow available(long totalCount, List<HistogramBucket> buckets) {
+            return new HistogramWindow("available", null, totalCount, buckets);
+        }
+    }
+
+    /**
+     * cumulative histogram distribution의 한 boundary와 해당 boundary 이하 누적 count다.
+     */
+    public record HistogramBucket(long leMs, long count) {
+
+        /**
+         * histogram boundary와 cumulative count가 음수가 아닌 값인지 검증한다.
+         */
+        public HistogramBucket {
+            if (leMs < 0) {
+                throw new IllegalArgumentException("leMs must not be negative");
+            }
+            if (count < 0) {
+                throw new IllegalArgumentException("count must not be negative");
+            }
         }
     }
 
@@ -250,5 +437,13 @@ public record ApplicationDashboardReadModel(
             throw new IllegalArgumentException(fieldName + " must not be blank");
         }
         return value.trim();
+    }
+
+    private static String trimNullable(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

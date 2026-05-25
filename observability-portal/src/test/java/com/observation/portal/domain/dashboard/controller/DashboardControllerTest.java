@@ -60,7 +60,35 @@ class DashboardControllerTest {
                 .andExpect(jsonPath("$.metrics.errorRate").value(0.03))
                 .andExpect(jsonPath("$.metrics.p95").doesNotExist())
                 .andExpect(jsonPath("$.metrics.p99").doesNotExist())
-                .andExpect(jsonPath("$.sourceScopedPercentiles.items").isEmpty())
+                .andExpect(jsonPath("$.metrics.p95Ms").doesNotExist())
+                .andExpect(jsonPath("$.metrics.p99Ms").doesNotExist())
+                .andExpect(jsonPath("$.metrics.avgMs").doesNotExist())
+                .andExpect(jsonPath("$.metrics.maxMs").doesNotExist())
+                .andExpect(jsonPath("$.sourceScopedPercentiles.source").value("starter_local"))
+                .andExpect(jsonPath("$.sourceScopedPercentiles.scope").value("instance_bucket"))
+                .andExpect(jsonPath("$.sourceScopedPercentiles.status").value("available"))
+                .andExpect(jsonPath("$.sourceScopedPercentiles.reason").value(nullValue()))
+                .andExpect(jsonPath("$.sourceScopedPercentiles.applicationScopeFallback").doesNotExist())
+                .andExpect(jsonPath("$.sourceScopedPercentiles.items[0].source").value("starter_local"))
+                .andExpect(jsonPath("$.sourceScopedPercentiles.items[0].application").value("orders-api"))
+                .andExpect(jsonPath("$.sourceScopedPercentiles.items[0].environment").value("prod"))
+                .andExpect(jsonPath("$.sourceScopedPercentiles.items[0].instance").value("pod-a"))
+                .andExpect(jsonPath("$.sourceScopedPercentiles.items[0].p95Ms").value(480))
+                .andExpect(jsonPath("$.sourceScopedPercentiles.items[0].p99Ms").value(960))
+                .andExpect(jsonPath("$.histogramDistribution.source").value("histogram_bucket_distribution"))
+                .andExpect(jsonPath("$.histogramDistribution.scope").value("application"))
+                .andExpect(jsonPath("$.histogramDistribution.current.status").value("available"))
+                .andExpect(jsonPath("$.histogramDistribution.current.totalCount").value(42))
+                .andExpect(jsonPath("$.histogramDistribution.current.buckets[0].leMs").value(50))
+                .andExpect(jsonPath("$.histogramDistribution.current.buckets[0].count").value(22))
+                .andExpect(jsonPath("$.histogramDistribution.current.p95Ms").doesNotExist())
+                .andExpect(jsonPath("$.histogramDistribution.current.p99Ms").doesNotExist())
+                .andExpect(jsonPath("$.histogramDistribution.current.avgMs").doesNotExist())
+                .andExpect(jsonPath("$.histogramDistribution.current.maxMs").doesNotExist())
+                .andExpect(jsonPath("$.histogramDistribution.current.delta").doesNotExist())
+                .andExpect(jsonPath("$.histogramDistribution.current.regression").doesNotExist())
+                .andExpect(jsonPath("$.histogramDistribution.current.confidence").doesNotExist())
+                .andExpect(jsonPath("$.histogramDistribution.current.ruleId").doesNotExist())
                 .andExpect(jsonPath("$.triageCards").isEmpty())
                 .andExpect(jsonPath("$.endpointPriority").isEmpty())
                 .andExpect(jsonPath("$.snapshot").value(nullValue()));
@@ -135,7 +163,40 @@ class DashboardControllerTest {
                         "트래픽이 유지되는지 다음 bucket까지 관찰하세요."),
                 new ApplicationDashboardReadModel.Recovery(false, null, null, null),
                 new ApplicationDashboardReadModel.Metrics(100L, 3L, java.math.BigDecimal.valueOf(0.03)),
-                ApplicationDashboardReadModel.SourceScopedPercentiles.empty(),
+                new ApplicationDashboardReadModel.SourceScopedPercentiles(
+                        "starter_local",
+                        "instance_bucket",
+                        "latest_starter_point_per_instance_in_current_window",
+                        "no_average_no_max_no_merge_no_histogram_recalculation",
+                        "available",
+                        null,
+                        List.of(new ApplicationDashboardReadModel.PercentileItem(
+                                "starter_local",
+                                "orders-api",
+                                "prod",
+                                "pod-a",
+                                OffsetDateTime.parse("2026-05-25T10:31:30Z"),
+                                OffsetDateTime.parse("2026-05-25T10:32:00Z"),
+                                1200L,
+                                480L,
+                                960L))),
+                new ApplicationDashboardReadModel.HistogramDistribution(
+                        "histogram_bucket_distribution",
+                        "application",
+                        "bucket_distribution_evidence",
+                        "sum_cumulative_counts_only_when_boundary_set_matches",
+                        new ApplicationDashboardReadModel.HistogramWindow(
+                                "available",
+                                null,
+                                42L,
+                                List.of(
+                                        new ApplicationDashboardReadModel.HistogramBucket(50L, 22L),
+                                        new ApplicationDashboardReadModel.HistogramBucket(100L, 42L))),
+                        new ApplicationDashboardReadModel.HistogramWindow(
+                                "missing",
+                                "no_histogram_buckets_in_baseline_window",
+                                0L,
+                                List.of())),
                 List.of(),
                 List.of(),
                 null);

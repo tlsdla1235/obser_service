@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.observation.portal.domain.bucket.entity.AcceptedMetricBucketEntity;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommand;
+import com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow;
+import com.observation.portal.domain.bucket.model.LocalPercentileEvidenceRow;
 import com.observation.portal.domain.bucket.model.WindowBucketAggregate;
 import com.observation.portal.domain.catalog.model.ApplicationCatalogEntry;
 import com.observation.portal.domain.catalog.repository.ApplicationCatalogRepository;
@@ -15,6 +17,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -147,6 +150,51 @@ public class MetricBucketRepository {
         return Objects.requireNonNullElse(aggregate, WindowBucketAggregate.zero());
     }
 
+    /**
+     * dashboard current window에서 instance bucket scope local percentile JSON evidence row를 조회한다.
+     *
+     * <p>조회는 application scope와 `(start, end]` bucket end boundary, `local_percentiles_json is not null` 조건만 적용하고
+     * p95/p99 rollup이나 source 판단은 service에 남긴다.</p>
+     */
+    @Transactional(readOnly = true)
+    public List<LocalPercentileEvidenceRow> findLocalPercentileEvidenceRowsByApplicationId(
+            UUID applicationId,
+            Instant windowStartUtc,
+            Instant windowEndUtc) {
+        UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
+        OffsetDateTime windowStart = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null"));
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null"));
+        validateWindow(windowStart, windowEnd);
+        return acceptedMetricBucketJpaRepository.findLocalPercentileEvidenceRowsByApplicationId(
+                requiredApplicationId,
+                windowStart,
+                windowEnd);
+    }
+
+    /**
+     * dashboard histogram distribution용 application summary duration bucket JSON evidence row를 조회한다.
+     *
+     * <p>`endpoints_json`은 읽지 않으며, current/baseline 판단과 boundary mismatch guard는 service에서 수행한다.</p>
+     */
+    @Transactional(readOnly = true)
+    public List<HistogramBucketEvidenceRow> findSummaryDurationBucketEvidenceRowsByApplicationId(
+            UUID applicationId,
+            Instant windowStartUtc,
+            Instant windowEndUtc) {
+        UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
+        OffsetDateTime windowStart = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null"));
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null"));
+        validateWindow(windowStart, windowEnd);
+        return acceptedMetricBucketJpaRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
+                requiredApplicationId,
+                windowStart,
+                windowEnd);
+    }
+
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -161,6 +209,12 @@ public class MetricBucketRepository {
 
     private static BigDecimal toBigDecimal(Double value) {
         return value == null ? null : BigDecimal.valueOf(value);
+    }
+
+    private static void validateWindow(OffsetDateTime windowStartUtc, OffsetDateTime windowEndUtc) {
+        if (!windowEndUtc.isAfter(windowStartUtc)) {
+            throw new IllegalArgumentException("windowEndUtc must be after windowStartUtc");
+        }
     }
 
     private static OffsetDateTime toUtcOffsetDateTime(Instant instant) {

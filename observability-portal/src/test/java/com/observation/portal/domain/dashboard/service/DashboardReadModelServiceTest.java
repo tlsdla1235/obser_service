@@ -1,7 +1,10 @@
 package com.observation.portal.domain.dashboard.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.observation.portal.common.time.AcceptedBucketFreshnessEvaluator;
 import com.observation.portal.common.time.TimeBucketWindowCalculator;
+import com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow;
+import com.observation.portal.domain.bucket.model.LocalPercentileEvidenceRow;
 import com.observation.portal.domain.bucket.model.WindowBucketAggregate;
 import com.observation.portal.domain.bucket.repository.MetricBucketRepository;
 import com.observation.portal.domain.catalog.entity.ApplicationEntity;
@@ -10,6 +13,7 @@ import com.observation.portal.domain.dashboard.model.ApplicationDashboardReadMod
 import com.observation.portal.domain.ingest.model.StarterHeartbeatTelemetryRecord;
 import com.observation.portal.domain.ingest.repository.StarterHeartbeatTelemetryRepository;
 import com.observation.portal.domain.state.service.LifecycleStateService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.RecordComponent;
@@ -44,6 +48,7 @@ class DashboardReadModelServiceTest {
     private final MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
     private final StarterHeartbeatTelemetryRepository heartbeatRepository =
             mock(StarterHeartbeatTelemetryRepository.class);
+    private final ObjectMapper objectMapper = new ObjectMapper();
     private final DashboardReadModelService service = new DashboardReadModelService(
             applicationRepository,
             metricBucketRepository,
@@ -51,10 +56,30 @@ class DashboardReadModelServiceTest {
             new AcceptedBucketFreshnessEvaluator(CLOCK),
             new TimeBucketWindowCalculator(CLOCK),
             new LifecycleStateService(),
-            CLOCK);
+            CLOCK,
+            objectMapper);
+
+    @BeforeEach
+    void stubEmptyDashboardEvidenceRows() {
+        when(metricBucketRepository.findLocalPercentileEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(List.of());
+        when(metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(List.of());
+        when(metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                BASELINE_START,
+                CURRENT_START))
+                .thenReturn(List.of());
+    }
 
     @Test
-    void assemblesDashboardWithFlooredWindowMetricsAndPlaceholderFields() {
+    void assemblesDashboardWithFlooredWindowMetricsAndEvidenceFields() {
         ApplicationEntity application = application();
         when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
                 .thenReturn(Optional.of(application));
@@ -93,7 +118,26 @@ class DashboardReadModelServiceTest {
         assertThat(dashboard.metrics().requestCount()).isEqualTo(100L);
         assertThat(dashboard.metrics().errorCount()).isEqualTo(3L);
         assertThat(dashboard.metrics().errorRate()).isEqualByComparingTo("0.03");
+        assertThat(dashboard.sourceScopedPercentiles().source()).isEqualTo("starter_local");
+        assertThat(dashboard.sourceScopedPercentiles().scope()).isEqualTo("instance_bucket");
+        assertThat(dashboard.sourceScopedPercentiles().displayPolicy())
+                .isEqualTo("latest_starter_point_per_instance_in_current_window");
+        assertThat(dashboard.sourceScopedPercentiles().aggregatePolicy())
+                .isEqualTo("no_average_no_max_no_merge_no_histogram_recalculation");
+        assertThat(dashboard.sourceScopedPercentiles().status()).isEqualTo("missing");
+        assertThat(dashboard.sourceScopedPercentiles().reason())
+                .isEqualTo("no_percentile_points_in_current_window");
         assertThat(dashboard.sourceScopedPercentiles().items()).isEmpty();
+        assertThat(dashboard.histogramDistribution().source()).isEqualTo("histogram_bucket_distribution");
+        assertThat(dashboard.histogramDistribution().scope()).isEqualTo("application");
+        assertThat(dashboard.histogramDistribution().current().status()).isEqualTo("missing");
+        assertThat(dashboard.histogramDistribution().current().reason())
+                .isEqualTo("no_histogram_buckets_in_current_window");
+        assertThat(dashboard.histogramDistribution().current().buckets()).isEmpty();
+        assertThat(dashboard.histogramDistribution().baseline().status()).isEqualTo("missing");
+        assertThat(dashboard.histogramDistribution().baseline().reason())
+                .isEqualTo("no_histogram_buckets_in_baseline_window");
+        assertThat(dashboard.histogramDistribution().baseline().buckets()).isEmpty();
         assertThat(dashboard.triageCards()).isEmpty();
         assertThat(dashboard.endpointPriority()).isEmpty();
         assertThat(dashboard.snapshot()).isNull();
@@ -101,6 +145,239 @@ class DashboardReadModelServiceTest {
         verify(metricBucketRepository)
                 .findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT);
         verify(heartbeatRepository, never()).findLatestByProjectId(PROJECT_ID);
+    }
+
+    @Test
+    void exposesLatestValidStarterLocalPercentilePointPerInstanceOnly() {
+        when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
+                .thenReturn(Optional.of(application()));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-25T10:32:00Z")));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, CURRENT_START, EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(2400L, 0L));
+        when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("2026-05-25T10:32:20Z")));
+        when(metricBucketRepository.findLocalPercentileEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(List.of(
+                        percentileRow("00000000-0000-0000-0000-000000005221",
+                                "pod-a",
+                                "2026-05-25T10:20:00Z",
+                                700L,
+                                410L,
+                                900L),
+                        percentileRow("00000000-0000-0000-0000-000000005221",
+                                "pod-a",
+                                "2026-05-25T10:31:30Z",
+                                1200L,
+                                480L,
+                                960L),
+                        percentileRow("00000000-0000-0000-0000-000000005222",
+                                "pod-b",
+                                "2026-05-25T10:30:30Z",
+                                900L,
+                                520L,
+                                1100L),
+                        percentileRowWithJsonBoundary(
+                                "00000000-0000-0000-0000-000000005223",
+                                "pod-c",
+                                "2026-05-25T10:29:30Z",
+                                "2026-05-25T10:28:30Z",
+                                400L)));
+
+        ApplicationDashboardReadModel dashboard = service.getDashboard(PROJECT_ID, APPLICATION_ID).orElseThrow();
+
+        assertThat(dashboard.sourceScopedPercentiles().status()).isEqualTo("available");
+        assertThat(dashboard.sourceScopedPercentiles().reason()).isNull();
+        assertThat(dashboard.sourceScopedPercentiles().items())
+                .extracting(
+                        ApplicationDashboardReadModel.PercentileItem::instance,
+                        ApplicationDashboardReadModel.PercentileItem::bucketEndUtc,
+                        ApplicationDashboardReadModel.PercentileItem::requestCount,
+                        ApplicationDashboardReadModel.PercentileItem::p95Ms,
+                        ApplicationDashboardReadModel.PercentileItem::p99Ms)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(
+                                "pod-a",
+                                offset("2026-05-25T10:32:00Z"),
+                                1200L,
+                                480L,
+                                960L),
+                        org.assertj.core.groups.Tuple.tuple(
+                                "pod-b",
+                                offset("2026-05-25T10:31:00Z"),
+                                900L,
+                                520L,
+                                1100L));
+        assertThat(dashboard.sourceScopedPercentiles().items())
+                .allSatisfy(item -> {
+                    assertThat(item.source()).isEqualTo("starter_local");
+                    assertThat(item.application()).isEqualTo("orders-api");
+                    assertThat(item.environment()).isEqualTo("prod");
+                });
+        verify(metricBucketRepository).findLocalPercentileEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT);
+    }
+
+    @Test
+    void marksPercentileEvidenceInsufficientWhenRowsExistButNoValidPoint() {
+        when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
+                .thenReturn(Optional.of(application()));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-25T10:32:00Z")));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, CURRENT_START, EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(0L, 0L));
+        when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("2026-05-25T10:32:20Z")));
+        when(metricBucketRepository.findLocalPercentileEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(List.of(percentileRow(
+                        "00000000-0000-0000-0000-000000005221",
+                        "pod-a",
+                        "2026-05-25T10:31:30Z",
+                        0L,
+                        0L,
+                        0L)));
+
+        ApplicationDashboardReadModel dashboard = service.getDashboard(PROJECT_ID, APPLICATION_ID).orElseThrow();
+
+        assertThat(dashboard.sourceScopedPercentiles().items()).isEmpty();
+        assertThat(dashboard.sourceScopedPercentiles().status()).isEqualTo("insufficient");
+        assertThat(dashboard.sourceScopedPercentiles().reason())
+                .isEqualTo("no_valid_percentile_points_in_current_window");
+    }
+
+    @Test
+    void excludesPercentileRowsWithMissingBoundaryTimestampWithoutThrowing() {
+        when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
+                .thenReturn(Optional.of(application()));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-25T10:32:00Z")));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, CURRENT_START, EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(1200L, 0L));
+        when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("2026-05-25T10:32:20Z")));
+        when(metricBucketRepository.findLocalPercentileEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(List.of(
+                        percentileRowWithRawJson(
+                                "00000000-0000-0000-0000-000000005221",
+                                "pod-a",
+                                "2026-05-25T10:31:30Z",
+                                """
+                                {
+                                  "scope": "instance_bucket",
+                                  "source": "starter_local",
+                                  "bucketEndUtc": "2026-05-25T10:32:00Z",
+                                  "requestCount": 1200,
+                                  "p95Ms": 480,
+                                  "p99Ms": 960,
+                                  "mergeable": false
+                                }
+                                """),
+                        percentileRowWithRawJson(
+                                "00000000-0000-0000-0000-000000005222",
+                                "pod-b",
+                                "2026-05-25T10:30:30Z",
+                                """
+                                {
+                                  "scope": "instance_bucket",
+                                  "source": "starter_local",
+                                  "bucketStartUtc": "2026-05-25T10:30:30Z",
+                                  "bucketEndUtc": null,
+                                  "requestCount": 900,
+                                  "p95Ms": 520,
+                                  "p99Ms": 1100,
+                                  "mergeable": false
+                                }
+                                """)));
+
+        ApplicationDashboardReadModel dashboard = service.getDashboard(PROJECT_ID, APPLICATION_ID).orElseThrow();
+
+        assertThat(dashboard.sourceScopedPercentiles().items()).isEmpty();
+        assertThat(dashboard.sourceScopedPercentiles().status()).isEqualTo("insufficient");
+        assertThat(dashboard.sourceScopedPercentiles().reason())
+                .isEqualTo("no_valid_percentile_points_in_current_window");
+    }
+
+    @Test
+    void mergesCurrentAndBaselineHistogramDistributionWhenBoundarySetsMatch() {
+        when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
+                .thenReturn(Optional.of(application()));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-25T10:32:00Z")));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, CURRENT_START, EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(30L, 0L));
+        when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("2026-05-25T10:32:20Z")));
+        when(metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(List.of(
+                        histogramRow("2026-05-25T10:30:00Z", 50L, 10L, 100L, 18L),
+                        histogramRow("2026-05-25T10:31:30Z", 50L, 12L, 100L, 24L)));
+        when(metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                BASELINE_START,
+                CURRENT_START))
+                .thenReturn(List.of(histogramRow("2026-05-25T10:16:30Z", 50L, 5L, 100L, 9L)));
+
+        ApplicationDashboardReadModel dashboard = service.getDashboard(PROJECT_ID, APPLICATION_ID).orElseThrow();
+
+        assertThat(dashboard.histogramDistribution().current().status()).isEqualTo("available");
+        assertThat(dashboard.histogramDistribution().current().reason()).isNull();
+        assertThat(dashboard.histogramDistribution().current().totalCount()).isEqualTo(42L);
+        assertThat(dashboard.histogramDistribution().current().buckets())
+                .extracting(
+                        ApplicationDashboardReadModel.HistogramBucket::leMs,
+                        ApplicationDashboardReadModel.HistogramBucket::count)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(50L, 22L),
+                        org.assertj.core.groups.Tuple.tuple(100L, 42L));
+        assertThat(dashboard.histogramDistribution().baseline().status()).isEqualTo("available");
+        assertThat(dashboard.histogramDistribution().baseline().totalCount()).isEqualTo(9L);
+    }
+
+    @Test
+    void marksOnlyMismatchedHistogramWindowUnavailable() {
+        when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
+                .thenReturn(Optional.of(application()));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-25T10:32:00Z")));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, CURRENT_START, EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(30L, 0L));
+        when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("2026-05-25T10:32:20Z")));
+        when(metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(List.of(
+                        histogramRow("2026-05-25T10:30:00Z", 50L, 10L, 100L, 18L),
+                        histogramRow("2026-05-25T10:31:30Z", 50L, 12L, 250L, 24L)));
+        when(metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                BASELINE_START,
+                CURRENT_START))
+                .thenReturn(List.of(histogramRow("2026-05-25T10:16:30Z", 50L, 5L, 100L, 9L)));
+
+        ApplicationDashboardReadModel dashboard = service.getDashboard(PROJECT_ID, APPLICATION_ID).orElseThrow();
+
+        assertThat(dashboard.histogramDistribution().current().status()).isEqualTo("unavailable");
+        assertThat(dashboard.histogramDistribution().current().reason()).isEqualTo("histogram_boundary_mismatch");
+        assertThat(dashboard.histogramDistribution().current().totalCount()).isZero();
+        assertThat(dashboard.histogramDistribution().current().buckets()).isEmpty();
+        assertThat(dashboard.histogramDistribution().baseline().status()).isEqualTo("available");
+        assertThat(dashboard.histogramDistribution().baseline().buckets()).isNotEmpty();
     }
 
     @Test
@@ -262,6 +539,104 @@ class DashboardReadModelServiceTest {
         return Arrays.stream(ApplicationDashboardReadModel.Metrics.class.getRecordComponents())
                 .map(RecordComponent::getName)
                 .toList();
+    }
+
+    private static LocalPercentileEvidenceRow percentileRow(
+            String applicationInstanceId,
+            String instanceName,
+            String bucketStartUtc,
+            long requestCount,
+            long p95Ms,
+            long p99Ms) {
+        return percentileRowWithJsonBoundary(
+                applicationInstanceId,
+                instanceName,
+                bucketStartUtc,
+                bucketStartUtc,
+                requestCount,
+                p95Ms,
+                p99Ms);
+    }
+
+    private static LocalPercentileEvidenceRow percentileRowWithJsonBoundary(
+            String applicationInstanceId,
+            String instanceName,
+            String rowBucketStartUtc,
+            String jsonBucketStartUtc,
+            long requestCount) {
+        return percentileRowWithJsonBoundary(
+                applicationInstanceId,
+                instanceName,
+                rowBucketStartUtc,
+                jsonBucketStartUtc,
+                requestCount,
+                100L,
+                200L);
+    }
+
+    private static LocalPercentileEvidenceRow percentileRowWithJsonBoundary(
+            String applicationInstanceId,
+            String instanceName,
+            String rowBucketStartUtc,
+            String jsonBucketStartUtc,
+            long requestCount,
+            long p95Ms,
+            long p99Ms) {
+        OffsetDateTime rowStart = offset(rowBucketStartUtc);
+        OffsetDateTime jsonStart = offset(jsonBucketStartUtc);
+        OffsetDateTime jsonEnd = jsonStart.plusSeconds(30);
+        return new LocalPercentileEvidenceRow(
+                APPLICATION_ID,
+                UUID.fromString(applicationInstanceId),
+                instanceName,
+                rowStart,
+                rowStart.plusSeconds(30),
+                """
+                {
+                  "scope": "instance_bucket",
+                  "source": "starter_local",
+                  "bucketStartUtc": "%s",
+                  "bucketEndUtc": "%s",
+                  "requestCount": %d,
+                  "p95Ms": %d,
+                  "p99Ms": %d,
+                  "mergeable": false
+                }
+                """.formatted(jsonStart, jsonEnd, requestCount, p95Ms, p99Ms));
+    }
+
+    private static LocalPercentileEvidenceRow percentileRowWithRawJson(
+            String applicationInstanceId,
+            String instanceName,
+            String rowBucketStartUtc,
+            String localPercentilesJson) {
+        OffsetDateTime rowStart = offset(rowBucketStartUtc);
+        return new LocalPercentileEvidenceRow(
+                APPLICATION_ID,
+                UUID.fromString(applicationInstanceId),
+                instanceName,
+                rowStart,
+                rowStart.plusSeconds(30),
+                localPercentilesJson);
+    }
+
+    private static HistogramBucketEvidenceRow histogramRow(
+            String bucketStartUtc,
+            long firstLeMs,
+            long firstCount,
+            long secondLeMs,
+            long secondCount) {
+        OffsetDateTime start = offset(bucketStartUtc);
+        return new HistogramBucketEvidenceRow(
+                APPLICATION_ID,
+                start,
+                start.plusSeconds(30),
+                """
+                [
+                  {"leMs": %d, "count": %d},
+                  {"leMs": %d, "count": %d}
+                ]
+                """.formatted(firstLeMs, firstCount, secondLeMs, secondCount));
     }
 
     private static ApplicationEntity application() {
