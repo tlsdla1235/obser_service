@@ -258,7 +258,7 @@ Epic 5는 UI가 소비할 server-computed read model을 닫는다.
 1. Project/Application navigation read model
 2. Application dashboard read model skeleton
 3. Source-scoped percentile and histogram distribution read model
-4. Triage summary and zero-insight mapping
+4. Triage summary and zero-insight/recovery mapping
 5. Endpoint priority read model
 6. Instance evidence read model
 7. Instance snapshot trend projection
@@ -277,8 +277,8 @@ Epic 6은 사용자가 실제로 밟는 화면과 demo path를 닫는다.
 
 권장 story 흐름:
 
-1. GitHub OAuth account signup/login and token policy
-2. Project selection and minimal onboarding/setup guide
+1. Account/project entry and setup guide
+2. Project selection UI
 3. Application list UI
 4. Application dashboard UI integration
 5. Instance evidence UI

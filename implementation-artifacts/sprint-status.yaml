@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-05-24T22:48:04+0900
+# last_updated: 2026-05-25T18:29:40+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -42,11 +42,12 @@
 # - Heartbeat는 accepted bucket, host business health, snapshot/event, p95/p99/rule/metric read-model calculation source가 아니다.
 # - accepted bucket은 application metric freshness/state/read-model source-of-truth다.
 # - 최근 heartbeat와 없음/오래된 accepted bucket 조합은 no recent traffic/waiting for traffic/metric data idle 계열로 표현하고 host application down으로 단정하지 않는다.
-# - Snapshot marker와 bounded tail summary의 세부 shape는 Epic 5 Story 5-6에서 닫는다.
-# - Epic 4 sprint planning 2026-05-24: Story 4.0과 4.1은 done, Story 4.2~4.4는 backlog, Epic 4 retrospective는 optional이다.
+# - Epic 5/6 dashboard alignment 2026-05-25: Application Dashboard는 primary first-screen이며, Epic 5는 server-computed read model/API, Epic 6은 project -> application -> dashboard -> instance evidence -> instance trend -> snapshot/history UI/demo hardening 흐름을 닫는다.
+# - Snapshot marker와 bounded instance summary의 세부 shape는 Epic 5 Story 5.8에서 닫는다.
+# - Epic 4 sprint status 2026-05-25: Story 4.0 -> 4.4는 done, Epic 4 retrospective는 optional이며 epic-4 status는 기존 tracking 값을 유지한다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-05-24T22:48:04+0900
+last_updated: 2026-05-25T18:29:40+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -85,20 +86,25 @@ development_status:
   epic-4-retrospective: optional
 
   epic-5: backlog
-  5-1-histogram-bucket-distribution-service: backlog
-  5-2-insight-rule-service: backlog
-  5-3-app-triage-summary-read-model: backlog
-  5-4-endpoint-priority-read-model: backlog
-  5-5-dashboard-query-api: backlog
-  5-6-snapshot-marker-and-bounded-tail-summary-contract: backlog
-  5-7-operational-event-history-read-model-api-candidate: backlog
+  5-1-project-application-navigation-read-model: backlog
+  5-2-application-dashboard-read-model-skeleton: backlog
+  5-3-source-scoped-percentile-and-histogram-distribution-read-model: backlog
+  5-4-triage-summary-and-zero-insight-recovery-mapping: backlog
+  5-5-endpoint-priority-read-model: backlog
+  5-6-instance-evidence-read-model: backlog
+  5-7-instance-snapshot-trend-projection: backlog
+  5-8-dashboard-snapshot-persistence-and-marker-contract: backlog
+  5-9-operational-event-history-api: backlog
   epic-5-retrospective: optional
 
   epic-6: backlog
-  6-1-github-oauth-account-signup-login: backlog
-  6-2-minimal-onboarding-guide: backlog
-  6-3-demo-app-green-path: backlog
-  6-4-failure-path-demo: backlog
-  6-5-dashboard-ui-integration: backlog
-  6-6-recent-operational-history-ui-and-snapshot-deep-link-candidate: backlog
+  6-1-account-project-entry-and-setup-guide: backlog
+  6-2-project-selection-ui: backlog
+  6-3-application-list-ui: backlog
+  6-4-application-dashboard-ui-integration: backlog
+  6-5-instance-evidence-ui: backlog
+  6-6-instance-snapshot-trend-ui: backlog
+  6-7-snapshot-history-marker-ui-and-deep-link: backlog
+  6-8-demo-green-path: backlog
+  6-9-failure-recovery-path-demo-hardening: backlog
   epic-6-retrospective: optional

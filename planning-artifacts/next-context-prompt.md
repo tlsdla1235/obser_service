@@ -1,5 +1,7 @@
 # Next Context Prompt - Story 2.1 Dev
 
+> Superseded as active handoff: 이 prompt는 Epic 2 Story 2.1 구현용 historical next-context다. 2026-05-25 이후 Epic 5/6 dashboard planning은 `planning-artifacts/epic5-6-dashboard-alignment-context.md`, `planning-artifacts/current-product-source-of-truth.md`, 최신 `planning-artifacts/contracts/*`, `planning-artifacts/prototypes/epic5-6-dashboard-flow-prototype.html`, 재정렬된 `planning-artifacts/epics.md`, `implementation-artifacts/sprint-status.yaml`을 우선한다.
+
 아래 프롬프트를 새 컨텍스트에 붙여넣고 시작한다.
 
 ```text

@@ -1,8 +1,8 @@
 ---
 artifactType: acceptance-traceability
 architectureStyle: Traditional MVC
-status: mvc-version-generated
-date: 2026-05-09
+status: dashboard-alignment-updated
+date: 2026-05-25
 ---
 
 # Acceptance Traceability - MVC Version
@@ -35,7 +35,10 @@ date: 2026-05-09
 | `triageCards=[]`는 빈 화면이 아니라 zero-insight reason을 가진다 | Epic 5 | `read-model-contract.md` | `TriageSummaryService` | `ZeroInsightReadModelTest` |
 | stale/down/recovery는 사용자 행동으로 이어진다 | Epic 4, 5 | `state-semantics.md`, `read-model-contract.md` | `LifecycleStateService` | `RecoveryReadModelTest` |
 | endpoint priority는 rank, reason, evidence, confidence, freshness를 가진다 | Epic 5 | `read-model-contract.md`, `insight-rules.md` | `EndpointPriorityService` | `EndpointPriorityReadModelTest` |
+| Project Entry와 Application List는 scope 선택/light summary surface이며 Application Dashboard 판단을 대체하지 않는다 | Epic 5, 6 | `current-product-source-of-truth.md`, `api-surface.md` | `ProjectApplicationNavigationService` candidate | `DashboardNavigationReadModelTest` |
+| Instance Detail은 application 판단을 대체하지 않는 evidence drill-down이다 | Epic 5, 6 | `read-model-contract.md`, `api-surface.md` | `InstanceEvidenceReadModelService` candidate | `InstanceEvidenceReadModelTest` |
 | Operational event history는 raw snapshot explorer가 아니라 bounded recent event surface다 | Epic 5, 6 | `operational-event-history.md`, `time-buckets.md`, `database-schema.md` | `OperationalEventHistoryService` candidate + `DashboardSnapshotRepository` | `OperationalEventHistoryReadModelTest` |
+| Instance snapshot trend는 stored dashboard snapshot/read model projection이며 raw bucket explorer나 endpoint timeseries가 아니다 | Epic 5, 6 | `read-model-contract.md`, `operational-event-history.md`, `api-surface.md` | `InstanceSnapshotTrendService` candidate + `DashboardSnapshotRepository` | `InstanceSnapshotTrendProjectionTest` |
 | Recent history UI는 event를 표시하고 snapshot deep link를 열 뿐 판단을 재계산하지 않는다 | Epic 6 | `operational-event-history.md`, `read-model-contract.md`, `api-surface.md` | dashboard UI + history API read model | `RecentHistoryUiContractTest` |
 | 첫 화면은 alive / slow / error / where to look first를 답한다 | Epic 5, 6 | `read-model-contract.md` | dashboard read model | `FirstScreenContractE2ETest` |
 | portal physical schema는 catalog부터 구현 가능하고 DB comment를 포함한다 | Epic 1 | `database-schema.md` | `repository.catalog`, migration | `MigrationSchemaCommentTest` |
