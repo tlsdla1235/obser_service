@@ -1,0 +1,2774 @@
+<!doctype html>
+<!--
+  이 파일은 Epic 5/6 재편 전 dashboard UX flow를 판단하기 위한 standalone HTML 프로토타입이다.
+  외부 backend 없이 mock read model을 표시하며, production 구현 계약이 아니라 UX 결정 보조 산출물이다.
+-->
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Epic 5/6 Dashboard Flow Prototype</title>
+  <style>
+    :root {
+      --canvas: #f6f7f8;
+      --surface: #ffffff;
+      --surface-2: #f0f3f5;
+      --ink: #18212f;
+      --muted: #657080;
+      --quiet: #8792a1;
+      --border: #d8dee6;
+      --border-strong: #bdc7d3;
+      --blue: #245fd0;
+      --blue-soft: #eaf1ff;
+      --teal: #0f766e;
+      --teal-soft: #e6f5f2;
+      --green: #147447;
+      --green-soft: #e8f5ee;
+      --amber: #b55b15;
+      --amber-soft: #fff1df;
+      --red: #b42318;
+      --red-soft: #fdeceb;
+      --slate: #3d4a5c;
+      --slate-soft: #eef2f6;
+      --violet: #6d42b8;
+      --violet-soft: #f1ecfb;
+      --shadow: 0 10px 28px rgba(24, 33, 47, 0.08);
+      --radius: 8px;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: var(--sans);
+      line-height: 1.45;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+    }
+
+    button,
+    select {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(260px, 420px);
+      gap: 14px;
+      align-items: center;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(10px);
+    }
+
+    .brand {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .mark {
+      display: grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 7px;
+      background: var(--ink);
+      color: #fff;
+      font-weight: 800;
+      flex: 0 0 auto;
+    }
+
+    .brand-title {
+      min-width: 0;
+    }
+
+    .brand-title strong {
+      display: block;
+      overflow: hidden;
+      font-size: 15px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .brand-title span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .toolbar {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .scenario-select {
+      min-width: 240px;
+      max-width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--border-strong);
+      border-radius: 7px;
+      background: #fff;
+      color: var(--ink);
+    }
+
+    .nav-tabs {
+      display: flex;
+      gap: 6px;
+      padding: 10px 18px 0;
+      overflow-x: auto;
+      background: var(--canvas);
+    }
+
+    .nav-tab {
+      min-height: 34px;
+      padding: 7px 11px;
+      border: 1px solid transparent;
+      border-radius: 7px 7px 0 0;
+      background: transparent;
+      color: var(--slate);
+      white-space: nowrap;
+    }
+
+    .nav-tab[aria-selected="true"] {
+      border-color: var(--border);
+      border-bottom-color: #fff;
+      background: #fff;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 340px;
+      gap: 18px;
+      padding: 18px;
+      align-items: start;
+    }
+
+    .workspace {
+      min-width: 0;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .view-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .view-title {
+      min-width: 0;
+    }
+
+    .eyebrow {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.2;
+    }
+
+    h1 {
+      font-size: 22px;
+    }
+
+    h2 {
+      font-size: 16px;
+    }
+
+    h3 {
+      font-size: 14px;
+    }
+
+    p {
+      margin: 0;
+    }
+
+    .subtitle {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .content {
+      padding: 18px 20px 20px;
+    }
+
+    .breadcrumb {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .breadcrumb button {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--blue);
+      font-weight: 700;
+    }
+
+    .action-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .button {
+      min-height: 34px;
+      padding: 7px 11px;
+      border: 1px solid var(--border-strong);
+      border-radius: 7px;
+      background: #fff;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .button.primary {
+      border-color: var(--teal);
+      background: var(--teal);
+      color: #fff;
+    }
+
+    .button.quiet {
+      border-color: var(--border);
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .section {
+      padding: 18px 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .section:first-child {
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      align-items: flex-end;
+    }
+
+    .section-head p {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .grid.projects {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .grid.metrics {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .grid.two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .project-card,
+    .metric-card,
+    .triage-card,
+    .event-card,
+    .instance-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #fff;
+    }
+
+    .project-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 194px;
+      padding: 14px;
+      text-align: left;
+    }
+
+    .project-card:hover,
+    .row-button:hover,
+    .instance-card:hover,
+    .event-card:hover {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px var(--blue-soft);
+    }
+
+    .project-card h2 {
+      margin-bottom: 5px;
+    }
+
+    .project-meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .status-line {
+      display: grid;
+      gap: 6px;
+      margin-top: auto;
+    }
+
+    .summary-kv {
+      display: grid;
+      grid-template-columns: minmax(110px, 150px) minmax(0, 1fr);
+      gap: 4px 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .summary-kv strong {
+      color: var(--ink);
+      font-weight: 700;
+      min-width: 0;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      max-width: 100%;
+      gap: 6px;
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .badge::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      flex: 0 0 auto;
+    }
+
+    .badge.waiting,
+    .badge.unknown {
+      border-color: #bad0ff;
+      background: var(--blue-soft);
+      color: var(--blue);
+    }
+
+    .badge.sample,
+    .badge.idle {
+      border-color: #d5dce5;
+      background: var(--slate-soft);
+      color: var(--slate);
+    }
+
+    .badge.active {
+      border-color: #c7e8d8;
+      background: var(--green-soft);
+      color: var(--green);
+    }
+
+    .badge.degraded,
+    .badge.stale,
+    .badge.recovery {
+      border-color: #f4cf9e;
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .badge.down,
+    .badge.unreachable {
+      border-color: #f4b8b4;
+      background: var(--red-soft);
+      color: var(--red);
+    }
+
+    .badge.connection {
+      border-color: #c9e8e4;
+      background: var(--teal-soft);
+      color: var(--teal);
+    }
+
+    .table {
+      display: grid;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .table-row {
+      display: grid;
+      grid-template-columns: minmax(180px, 1.4fr) minmax(90px, 0.7fr) minmax(120px, 0.8fr) minmax(150px, 1fr) minmax(160px, 1.1fr);
+      gap: 12px;
+      align-items: center;
+      padding: 12px 14px;
+      border-top: 1px solid var(--border);
+      text-align: left;
+    }
+
+    .table-row:first-child {
+      border-top: 0;
+    }
+
+    .table-head {
+      background: var(--surface-2);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .row-button {
+      border: 0;
+      background: #fff;
+      color: var(--ink);
+    }
+
+    .cell-title {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .cell-title strong {
+      overflow-wrap: anywhere;
+    }
+
+    .cell-title span,
+    .muted {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .context-rail {
+      display: grid;
+      grid-template-columns: minmax(220px, 1.3fr) minmax(0, 2fr);
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .rail-panel {
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface-2);
+    }
+
+    .rail-panel h2 {
+      margin-bottom: 8px;
+    }
+
+    .strip {
+      display: grid;
+      grid-template-columns: minmax(190px, 0.7fr) minmax(0, 1.4fr) minmax(200px, 0.9fr);
+      gap: 12px;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-left: 5px solid var(--blue);
+      border-radius: var(--radius);
+      background: #fff;
+      align-items: center;
+    }
+
+    .strip.metric-state.degraded,
+    .strip.metric-state.stale,
+    .strip.metric-state.recovery {
+      border-left-color: var(--amber);
+    }
+
+    .strip.metric-state.down,
+    .strip.metric-state.unreachable {
+      border-left-color: var(--red);
+    }
+
+    .strip.metric-state.active {
+      border-left-color: var(--green);
+    }
+
+    .strip.metric-state.sample {
+      border-left-color: var(--slate);
+    }
+
+    .strip + .strip {
+      margin-top: 10px;
+    }
+
+    .strip-title {
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .strip-copy {
+      min-width: 0;
+      color: var(--ink);
+      font-size: 14px;
+    }
+
+    .strip-action {
+      color: var(--muted);
+      font-size: 12px;
+      min-width: 0;
+    }
+
+    .metric-card {
+      min-height: 118px;
+      padding: 13px;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .metric-value {
+      font-size: 24px;
+      font-weight: 800;
+      line-height: 1.1;
+      overflow-wrap: anywhere;
+    }
+
+    .metric-note {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .point-list {
+      display: grid;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .point-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      padding: 7px 8px;
+      border-radius: 7px;
+      background: var(--surface-2);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .point-row span {
+      overflow-wrap: anywhere;
+    }
+
+    .triage-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .triage-card {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      min-height: 178px;
+    }
+
+    .triage-card .rule {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .triage-card .recommendation {
+      padding: 10px;
+      border-radius: 7px;
+      background: var(--amber-soft);
+      color: #6d330b;
+      font-size: 13px;
+    }
+
+    .empty-state {
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr) minmax(220px, 0.5fr);
+      gap: 12px;
+      align-items: center;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface-2);
+    }
+
+    .empty-icon {
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 8px;
+      background: #fff;
+      border: 1px solid var(--border);
+      font-weight: 900;
+      color: var(--blue);
+    }
+
+    .endpoint-list,
+    .instance-list,
+    .event-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .endpoint-row {
+      display: grid;
+      grid-template-columns: 42px minmax(160px, 1fr) minmax(220px, 1.4fr) minmax(120px, 0.6fr);
+      gap: 12px;
+      align-items: center;
+      padding: 11px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #fff;
+    }
+
+    .rank {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: var(--ink);
+      color: #fff;
+      font-weight: 800;
+      font-size: 12px;
+    }
+
+    .route {
+      font-family: var(--mono);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .mini-bars {
+      display: grid;
+      gap: 5px;
+    }
+
+    .bar-line {
+      display: grid;
+      grid-template-columns: 54px minmax(0, 1fr) 48px;
+      gap: 8px;
+      align-items: center;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .bar-track {
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e6ebf0;
+    }
+
+    .bar-fill {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--blue);
+    }
+
+    .bar-fill.hot {
+      background: var(--amber);
+    }
+
+    .bar-fill.danger {
+      background: var(--red);
+    }
+
+    .instance-card {
+      display: grid;
+      grid-template-columns: minmax(190px, 1.1fr) minmax(180px, 1fr) minmax(160px, 0.8fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      text-align: left;
+      background: #fff;
+    }
+
+    .contribution {
+      padding: 8px 10px;
+      border-radius: 7px;
+      background: var(--violet-soft);
+      color: var(--violet);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 10px;
+      position: relative;
+    }
+
+    .event-card {
+      display: grid;
+      grid-template-columns: 12px minmax(0, 1fr) auto;
+      gap: 12px;
+      padding: 12px;
+      text-align: left;
+    }
+
+    .event-dot {
+      width: 10px;
+      height: 10px;
+      margin-top: 5px;
+      border-radius: 50%;
+      background: var(--blue);
+    }
+
+    .event-dot.warning {
+      background: var(--amber);
+    }
+
+    .event-dot.danger {
+      background: var(--red);
+    }
+
+    .event-dot.good {
+      background: var(--green);
+    }
+
+    .snapshot-detail {
+      display: grid;
+      gap: 14px;
+    }
+
+    .stored-banner {
+      padding: 12px;
+      border: 1px solid #d7c5f0;
+      border-radius: var(--radius);
+      background: var(--violet-soft);
+      color: #392166;
+      font-size: 13px;
+    }
+
+    .contract-note {
+      padding: 12px;
+      border: 1px solid #bcd9f7;
+      border-radius: var(--radius);
+      background: var(--blue-soft);
+      color: #153d85;
+      font-size: 13px;
+    }
+
+    .snapshot-chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 10px;
+    }
+
+    .snapshot-chip {
+      padding: 5px 8px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .instance-snapshot-row {
+      display: grid;
+      grid-template-columns: minmax(118px, 0.7fr) minmax(150px, 0.8fr) minmax(150px, 1fr) minmax(200px, 1.1fr) minmax(160px, 0.9fr);
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #fff;
+      text-align: left;
+    }
+
+    .instance-snapshot-row:hover,
+    .instance-snapshot-row.is-selected {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px var(--blue-soft);
+    }
+
+    .range-control {
+      display: inline-flex;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface-2);
+    }
+
+    .range-control button {
+      min-width: 50px;
+      padding: 5px 9px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .range-control button[aria-pressed="true"] {
+      background: #fff;
+      color: var(--ink);
+      box-shadow: 0 1px 3px rgba(24, 33, 47, 0.12);
+    }
+
+    .trend-lanes {
+      display: grid;
+      gap: 10px;
+    }
+
+    .trend-lane {
+      display: grid;
+      grid-template-columns: 140px minmax(0, 1fr) 120px;
+      gap: 12px;
+      align-items: center;
+      padding: 11px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #fff;
+    }
+
+    .lane-label strong,
+    .lane-label span {
+      display: block;
+    }
+
+    .lane-label span,
+    .lane-end {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .lane-track {
+      display: grid;
+      grid-template-columns: repeat(14, minmax(16px, 1fr));
+      gap: 4px;
+      align-items: center;
+      min-height: 24px;
+    }
+
+    .lane-point {
+      height: 14px;
+      border-radius: 3px;
+      background: var(--green);
+    }
+
+    .lane-point.waiting,
+    .lane-point.unknown {
+      background: var(--blue);
+    }
+
+    .lane-point.sample {
+      background: var(--slate);
+    }
+
+    .lane-point.degraded,
+    .lane-point.stale,
+    .lane-point.recovery {
+      background: var(--amber);
+    }
+
+    .lane-point.down,
+    .lane-point.unreachable {
+      background: var(--red);
+    }
+
+    .lane-point.quiet {
+      background: #d8dee6;
+    }
+
+    .trend-sparkline {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(10px, 1fr));
+      gap: 5px;
+      align-items: end;
+      min-height: 56px;
+      padding: 9px;
+      border-radius: 7px;
+      background: var(--surface-2);
+    }
+
+    .spark-bar {
+      min-height: 8px;
+      border-radius: 4px 4px 2px 2px;
+      background: var(--teal);
+    }
+
+    .spark-bar.hot {
+      background: var(--amber);
+    }
+
+    .spark-bar.danger {
+      background: var(--red);
+    }
+
+    .aside {
+      display: grid;
+      gap: 12px;
+      position: sticky;
+      top: 116px;
+    }
+
+    .annotation,
+    .decision-panel {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #fff;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .annotation header,
+    .decision-panel header {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-2);
+    }
+
+    .annotation-body,
+    .decision-body {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .annotation h3,
+    .decision-panel h3 {
+      font-size: 13px;
+    }
+
+    .mini-list {
+      display: grid;
+      gap: 7px;
+      padding: 0;
+      margin: 0;
+      list-style: none;
+    }
+
+    .mini-list li {
+      position: relative;
+      padding-left: 15px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .mini-list li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.6em;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--blue);
+    }
+
+    .decision-row {
+      display: grid;
+      gap: 7px;
+      padding: 10px 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .decision-row:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .decision-row strong {
+      font-size: 12px;
+    }
+
+    .choice-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .choice {
+      padding: 4px 7px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .choice.recommended {
+      border-color: var(--teal);
+      background: var(--teal-soft);
+      color: var(--teal);
+    }
+
+    .code {
+      font-family: var(--mono);
+    }
+
+    .divider-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .divider-label::after {
+      content: "";
+      height: 1px;
+      background: var(--border);
+      flex: 1;
+    }
+
+    .nowrap {
+      white-space: nowrap;
+    }
+
+    @media (max-width: 1180px) {
+      .shell {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .aside {
+        position: static;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 920px) {
+      .topbar {
+        grid-template-columns: 1fr;
+      }
+
+      .toolbar {
+        justify-content: flex-start;
+      }
+
+      .grid.projects,
+      .grid.metrics,
+      .grid.two,
+      .triage-grid,
+      .context-rail,
+      .aside {
+        grid-template-columns: 1fr;
+      }
+
+      .strip,
+      .empty-state,
+      .endpoint-row,
+      .instance-card,
+      .instance-snapshot-row,
+      .trend-lane,
+      .event-card {
+        grid-template-columns: 1fr;
+      }
+
+      .table {
+        border: 0;
+        gap: 10px;
+        background: transparent;
+      }
+
+      .table-head {
+        display: none;
+      }
+
+      .table-row {
+        grid-template-columns: 1fr;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+      }
+    }
+
+    @media (max-width: 560px) {
+      .topbar,
+      .shell {
+        padding-left: 12px;
+        padding-right: 12px;
+      }
+
+      .workspace {
+        border-radius: 0;
+        margin-left: -12px;
+        margin-right: -12px;
+        border-left: 0;
+        border-right: 0;
+      }
+
+      .view-header,
+      .content {
+        padding-left: 14px;
+        padding-right: 14px;
+      }
+
+      .view-header {
+        flex-direction: column;
+      }
+
+      .metric-value {
+        font-size: 21px;
+      }
+
+      .scenario-select {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark">O</div>
+      <div class="brand-title">
+        <strong>Epic 5/6 Dashboard Flow Prototype</strong>
+        <span>Project → Application → Instance UX 판단용 standalone prototype</span>
+      </div>
+    </div>
+    <div class="toolbar">
+      <select id="scenarioSelect" class="scenario-select" aria-label="상태 시나리오 선택"></select>
+    </div>
+  </header>
+
+  <nav class="nav-tabs" aria-label="Prototype views">
+    <button class="nav-tab" data-view="projects">Project Entry</button>
+    <button class="nav-tab" data-view="applications">Application List</button>
+    <button class="nav-tab" data-view="dashboard">Application Dashboard</button>
+    <button class="nav-tab" data-view="instance">Instance Detail</button>
+    <button class="nav-tab" data-view="instanceSnapshots">Instance Trend</button>
+    <button class="nav-tab" data-view="history">Snapshot / History</button>
+  </nav>
+
+  <div class="shell">
+    <main id="workspace" class="workspace" aria-live="polite"></main>
+    <aside class="aside">
+      <section class="annotation">
+        <header>
+          <h3>Epic 5 / Epic 6 Annotation</h3>
+        </header>
+        <div id="annotationBody" class="annotation-body"></div>
+      </section>
+      <section class="decision-panel">
+        <header>
+          <h3>Open Questions / Epic 5-6 Decisions</h3>
+        </header>
+        <div class="decision-body" id="decisionBody"></div>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    // 서버 계약을 재계산하지 않고 표시하는 UX를 검토하기 위한 mock read model이다.
+    const scenarioOrder = [
+      "waiting",
+      "insufficient",
+      "calm",
+      "degraded",
+      "stale",
+      "recovery",
+      "unreachable"
+    ];
+
+    const scenarios = {
+      waiting: {
+        label: "First data waiting",
+        stateCode: "waiting_first_data",
+        tone: "waiting",
+        stateLabel: "첫 데이터 대기",
+        stateRationale: "starter heartbeat는 최근 수신됐지만 아직 accepted bucket이 없습니다.",
+        stateAction: "앱을 실행한 뒤 몇 개의 요청을 발생시키고 첫 30초 bucket 수용을 기다리세요.",
+        accepted: "accepted bucket 없음",
+        acceptedAge: "없음",
+        heartbeat: "20초 전",
+        heartbeatMeaning: "starter_connected",
+        heartbeatStatus: "received",
+        connectionCopy: "Control-plane heartbeat는 수신됨. metric state에는 직접 영향 없음.",
+        zero: {
+          reason: "waiting_first_data",
+          title: "첫 데이터를 기다리는 중입니다.",
+          body: "연결 신호는 보이지만 application 판단의 source인 accepted bucket은 아직 없습니다.",
+          action: "traffic 또는 demo request를 발생시킨 뒤 다음 bucket을 확인하세요."
+        },
+        metrics: { requests: "—", errorRate: "—", resource: "판단 전", resourceNote: "accepted bucket 수용 전" },
+        percentilePoints: [],
+        triage: [],
+        endpoints: [],
+        instances: [
+          {
+            id: "orders-api-a",
+            accepted: "없음",
+            heartbeat: "20초 전",
+            contribution: "아직 없음",
+            status: "starter connected"
+          }
+        ],
+        history: [
+          {
+            type: "hourly_snapshot",
+            tone: "neutral",
+            time: "12:00",
+            title: "Scheduled snapshot 없음",
+            summary: "아직 저장할 dashboard read model이 없습니다.",
+            stateCode: "waiting_first_data",
+            confidence: "—"
+          }
+        ]
+      },
+      insufficient: {
+        label: "Insufficient sample",
+        stateCode: "unknown",
+        tone: "sample",
+        stateLabel: "표본 부족",
+        stateRationale: "accepted bucket은 들어왔지만 current window의 요청 수가 판단 guard를 통과하지 못했습니다.",
+        stateAction: "더 많은 요청을 모은 뒤 비교형 rule과 endpoint priority를 표시합니다.",
+        accepted: "18초 전",
+        acceptedAge: "current",
+        heartbeat: "12초 전",
+        heartbeatMeaning: "starter_connected",
+        heartbeatStatus: "received",
+        connectionCopy: "starter 연결은 양호. metric 판단은 sample guard 때문에 보류.",
+        zero: {
+          reason: "insufficient_sample",
+          title: "아직 판단 표본이 부족합니다.",
+          body: "bucket은 수용됐지만 slow/error concern을 노출할 만큼 요청 수가 충분하지 않습니다.",
+          action: "다음 bucket까지 기다리거나 짧은 demo traffic을 재생하세요."
+        },
+        metrics: { requests: "42", errorRate: "0.0%", resource: "낮은 표본", resourceNote: "resource hint도 참고 수준" },
+        percentilePoints: [
+          { instance: "orders-api-a", bucket: "12:05:00-12:05:30", requestCount: 42, p95: 118, p99: 160 }
+        ],
+        triage: [],
+        endpoints: [
+          {
+            rank: 1,
+            route: "GET /orders/{id}",
+            reason: "표본 부족",
+            evidence: "request 28, error 0",
+            confidence: "guard 미통과",
+            buckets: [[100, 20, "normal"], [250, 27, "normal"], [500, 28, "normal"]]
+          }
+        ],
+        instances: [
+          {
+            id: "orders-api-a",
+            accepted: "18초 전",
+            heartbeat: "12초 전",
+            contribution: "sample guard 미통과",
+            status: "metric current"
+          }
+        ],
+        history: [
+          {
+            type: "hourly_snapshot",
+            tone: "neutral",
+            time: "12:00",
+            title: "Hourly snapshot",
+            summary: "저장 당시 state=unknown, zeroInsight=insufficient_sample",
+            stateCode: "unknown",
+            confidence: "—"
+          }
+        ]
+      },
+      calm: {
+        label: "No triage worth surfacing",
+        stateCode: "active",
+        tone: "active",
+        stateLabel: "우선 조치 없음",
+        stateRationale: "freshness와 sample은 충분하지만 노출할 만한 high-priority concern이 없습니다.",
+        stateAction: "현재 상태를 기준선으로 두고 endpoint priority와 history marker만 가볍게 확인하세요.",
+        accepted: "9초 전",
+        acceptedAge: "current",
+        heartbeat: "8초 전",
+        heartbeatMeaning: "starter_connected",
+        heartbeatStatus: "received",
+        connectionCopy: "starter 연결과 metric freshness 모두 최근입니다. 두 축은 분리 표시됩니다.",
+        zero: {
+          reason: "no_action_needed",
+          title: "지금 우선 노출할 triage는 없습니다.",
+          body: "DashboardReadModelService가 rule guard와 ranking을 통과한 concern을 찾지 못했습니다.",
+          action: "endpoint priority 상위 항목을 기준선으로 확인하거나 이 상태를 정상 baseline으로 삼으세요."
+        },
+        metrics: { requests: "31,240", errorRate: "0.18%", resource: "CPU 41%", resourceNote: "saturation hint 없음" },
+        percentilePoints: [
+          { instance: "orders-api-a", bucket: "12:05:00-12:05:30", requestCount: 920, p95: 182, p99: 310 },
+          { instance: "orders-api-b", bucket: "12:05:00-12:05:30", requestCount: 860, p95: 194, p99: 330 }
+        ],
+        triage: [],
+        endpoints: [
+          {
+            rank: 1,
+            route: "GET /orders/{id}",
+            reason: "traffic leader",
+            evidence: "request 12,200, error 0.12%",
+            confidence: "0.41",
+            buckets: [[100, 5200, "normal"], [250, 10800, "normal"], [500, 12180, "normal"], [1000, 12200, "normal"]]
+          },
+          {
+            rank: 2,
+            route: "POST /orders",
+            reason: "watch baseline",
+            evidence: "request 8,180, error 0.28%",
+            confidence: "0.38",
+            buckets: [[100, 3100, "normal"], [250, 7600, "normal"], [500, 8150, "normal"], [1000, 8180, "normal"]]
+          }
+        ],
+        instances: [
+          { id: "orders-api-a", accepted: "9초 전", heartbeat: "8초 전", contribution: "아니오", status: "current" },
+          { id: "orders-api-b", accepted: "12초 전", heartbeat: "9초 전", contribution: "아니오", status: "current" }
+        ],
+        history: [
+          { type: "hourly_snapshot", tone: "good", time: "12:00", title: "Hourly snapshot", summary: "state=active, zeroInsight=no_action_needed", stateCode: "active", confidence: "—" },
+          { type: "degraded_resolved", tone: "good", time: "10:42", title: "Recovery to active", summary: "이전 degraded concern이 5 consecutive buckets 동안 해소됨", stateCode: "active", confidence: "0.34" }
+        ]
+      },
+      degraded: {
+        label: "Degraded / anomaly",
+        stateCode: "degraded",
+        tone: "degraded",
+        stateLabel: "확인이 필요합니다",
+        stateRationale: "오류율과 latency bucket 분포가 baseline보다 악화됐고 high-confidence guard를 통과했습니다.",
+        stateAction: "먼저 POST /orders endpoint와 DB pool pressure evidence를 확인하세요.",
+        accepted: "6초 전",
+        acceptedAge: "current",
+        heartbeat: "11초 전",
+        heartbeatMeaning: "starter_connected",
+        heartbeatStatus: "received",
+        connectionCopy: "starter heartbeat는 정상. degraded 판단은 accepted bucket read model에서만 왔습니다.",
+        zero: null,
+        metrics: { requests: "42,000", errorRate: "3.1%", resource: "DB pool 82%", resourceNote: "latency와 함께 상승" },
+        percentilePoints: [
+          { instance: "orders-api-a", bucket: "12:05:00-12:05:30", requestCount: 1200, p95: 480, p99: 960 },
+          { instance: "orders-api-b", bucket: "12:05:00-12:05:30", requestCount: 980, p95: 610, p99: 1420 }
+        ],
+        triage: [
+          {
+            rule: "endpoint_error_spike",
+            severity: "warning",
+            title: "POST /orders 오류율 증가",
+            summary: "baseline 대비 오류율이 증가했고 minimum sample guard를 통과했습니다.",
+            recommendation: "최근 배포와 외부 결제 의존성 오류를 먼저 확인하세요.",
+            confidence: "0.84"
+          },
+          {
+            rule: "db_pool_high_with_latency",
+            severity: "warning",
+            title: "DB pool pressure와 지연 증가",
+            summary: "datasource pool usage가 높고 duration bucket이 느린 구간으로 이동했습니다.",
+            recommendation: "DB connection 대기, slow query, pool size 변경 이력을 함께 보세요.",
+            confidence: "0.78"
+          }
+        ],
+        endpoints: [
+          {
+            rank: 1,
+            route: "POST /orders",
+            reason: "error_and_latency",
+            evidence: "request 12,000, error 6.4%",
+            confidence: "0.84",
+            buckets: [[250, 5200, "normal"], [500, 9800, "hot"], [1000, 11800, "hot"], [2000, 12000, "danger"]]
+          },
+          {
+            rank: 2,
+            route: "GET /orders/{id}",
+            reason: "latency_distribution",
+            evidence: "request 18,400, error 0.8%",
+            confidence: "0.72",
+            buckets: [[250, 9200, "normal"], [500, 15100, "hot"], [1000, 18100, "hot"], [2000, 18400, "hot"]]
+          }
+        ],
+        instances: [
+          { id: "orders-api-a", accepted: "6초 전", heartbeat: "11초 전", contribution: "예: error spike", status: "current" },
+          { id: "orders-api-b", accepted: "8초 전", heartbeat: "14초 전", contribution: "예: latency", status: "current" },
+          { id: "orders-api-c", accepted: "10초 전", heartbeat: "13초 전", contribution: "아니오", status: "current" }
+        ],
+        history: [
+          { type: "high_confidence_concern", tone: "warning", time: "12:05", title: "High-confidence concern", summary: "POST /orders endpoint_error_spike confidence 0.84", stateCode: "degraded", confidence: "0.84" },
+          { type: "state_changed", tone: "warning", time: "12:03", title: "State changed active → degraded", summary: "degraded enter hysteresis 통과", stateCode: "degraded", confidence: "0.79" },
+          { type: "hourly_snapshot", tone: "neutral", time: "12:00", title: "Hourly snapshot", summary: "state=active, bounded endpoint evidence 2개 저장", stateCode: "active", confidence: "—" }
+        ]
+      },
+      stale: {
+        label: "Stale / down candidate",
+        stateCode: "down",
+        tone: "stale",
+        stateLabel: "metric data-plane 중단 후보",
+        stateRationale: "last accepted bucket이 4분 20초 전입니다. host application down을 확정하지 않습니다.",
+        stateAction: "accepted bucket 수용 경로와 최근 traffic 여부를 먼저 확인하세요.",
+        accepted: "4분 20초 전",
+        acceptedAge: "down threshold 초과",
+        heartbeat: "23초 전",
+        heartbeatMeaning: "starter_connected",
+        heartbeatStatus: "received",
+        connectionCopy: "starter heartbeat는 최근입니다. metric data idle 또는 ingest path 문제 가능성을 분리해서 봅니다.",
+        zero: {
+          reason: "metric_data_idle",
+          title: "starter는 보이지만 metric data가 오래됐습니다.",
+          body: "최근 heartbeat가 있으므로 host down으로 단정하지 않고 accepted bucket freshness 문제로 표시합니다.",
+          action: "traffic 유무, bucket flush, portal ingest acceptance status를 확인하세요."
+        },
+        metrics: { requests: "마지막 15분 기준 보류", errorRate: "보류", resource: "stale", resourceNote: "current 판단 억제" },
+        percentilePoints: [
+          { instance: "orders-api-a", bucket: "12:00:30-12:01:00", requestCount: 740, p95: 220, p99: 410 }
+        ],
+        triage: [],
+        endpoints: [],
+        instances: [
+          { id: "orders-api-a", accepted: "4분 20초 전", heartbeat: "23초 전", contribution: "freshness state", status: "metric stale" },
+          { id: "orders-api-b", accepted: "4분 28초 전", heartbeat: "25초 전", contribution: "freshness state", status: "metric stale" }
+        ],
+        history: [
+          { type: "down_entered", tone: "danger", time: "12:04", title: "Down candidate entered", summary: "accepted bucket freshness가 down threshold를 초과. host down 확정 아님", stateCode: "down", confidence: "—" },
+          { type: "stale_entered", tone: "warning", time: "12:02", title: "Stale entered", summary: "last accepted bucket age가 stale threshold를 초과", stateCode: "stale", confidence: "—" },
+          { type: "hourly_snapshot", tone: "neutral", time: "12:00", title: "Hourly snapshot", summary: "state=active 저장", stateCode: "active", confidence: "—" }
+        ]
+      },
+      recovery: {
+        label: "Recovery observed",
+        stateCode: "unknown",
+        tone: "recovery",
+        stateLabel: "회복 관찰 중",
+        stateRationale: "stale/down 이후 새 accepted bucket이 들어왔지만 sample이 아직 부족합니다.",
+        stateAction: "다음 30초 bucket까지 기다린 뒤 sample 증가와 accepted bucket 연속성을 확인하세요.",
+        accepted: "14초 전",
+        acceptedAge: "current",
+        heartbeat: "8초 전",
+        heartbeatMeaning: "starter_connected",
+        heartbeatStatus: "received",
+        connectionCopy: "starter 연결은 정상. recovery는 metric state field와 zeroInsight로 별도 안내됩니다.",
+        zero: {
+          reason: "observing_recovery",
+          title: "새 bucket이 들어와 회복을 관찰 중입니다.",
+          body: "복구 완료가 아니라 sample guard를 다시 만족할 때까지 기다리는 상태입니다.",
+          action: "약 30초 뒤 accepted bucket과 request count가 이어지는지 확인하세요."
+        },
+        metrics: { requests: "63", errorRate: "0.0%", resource: "회복 관찰", resourceNote: "lastHealthyAt 11:52" },
+        percentilePoints: [
+          { instance: "orders-api-a", bucket: "12:05:00-12:05:30", requestCount: 63, p95: 210, p99: 300 }
+        ],
+        triage: [],
+        endpoints: [
+          {
+            rank: 1,
+            route: "GET /health-check",
+            reason: "recovery sample",
+            evidence: "request 38, error 0",
+            confidence: "guard 미통과",
+            buckets: [[100, 34, "normal"], [250, 38, "normal"], [500, 38, "normal"]]
+          }
+        ],
+        instances: [
+          { id: "orders-api-a", accepted: "14초 전", heartbeat: "8초 전", contribution: "recovery freshness", status: "recovering" }
+        ],
+        history: [
+          { type: "recovery_observed", tone: "good", time: "12:05", title: "Recovery observed", summary: "stale/down 이후 새 bucket 수용. sample 부족으로 state=unknown", stateCode: "unknown", confidence: "—" },
+          { type: "down_entered", tone: "danger", time: "12:01", title: "Down candidate entered", summary: "accepted bucket freshness threshold 초과", stateCode: "down", confidence: "—" }
+        ]
+      },
+      unreachable: {
+        label: "Telemetry unreachable",
+        stateCode: "unknown",
+        tone: "unreachable",
+        stateLabel: "telemetry unreachable",
+        stateRationale: "heartbeat도 오래됐고 accepted bucket도 오래됐습니다. 원인은 확정하지 않습니다.",
+        stateAction: "starter process, portal reachability, project key, network 경로를 순서대로 확인하세요.",
+        accepted: "9분 10초 전",
+        acceptedAge: "down threshold 초과",
+        heartbeat: "8분 40초 전",
+        heartbeatMeaning: "starter_disconnected_or_unknown",
+        heartbeatStatus: "missing",
+        connectionCopy: "두 축 모두 오래됐지만 host application down이라고 단정하지 않습니다.",
+        zero: {
+          reason: "telemetry_unreachable",
+          title: "telemetry 경로가 닿지 않는 상태입니다.",
+          body: "heartbeat와 accepted bucket 모두 오래됐습니다. 앱 down, network, key, portal 문제를 아직 구분할 수 없습니다.",
+          action: "starter 로그와 portal ingest/heartbeat 응답을 먼저 확인하세요."
+        },
+        metrics: { requests: "보류", errorRate: "보류", resource: "unknown", resourceNote: "telemetry source 오래됨" },
+        percentilePoints: [],
+        triage: [],
+        endpoints: [],
+        instances: [
+          { id: "orders-api-a", accepted: "9분 10초 전", heartbeat: "8분 40초 전", contribution: "telemetry unreachable", status: "unknown" }
+        ],
+        history: [
+          { type: "down_entered", tone: "danger", time: "11:58", title: "Telemetry unreachable candidate", summary: "accepted bucket과 heartbeat 모두 오래됨. host down 확정 아님", stateCode: "unknown", confidence: "—" },
+          { type: "hourly_snapshot", tone: "neutral", time: "11:00", title: "Hourly snapshot", summary: "state=active 저장", stateCode: "active", confidence: "—" }
+        ]
+      }
+    };
+
+    const appState = {
+      view: "projects",
+      scenarioKey: "degraded",
+      projectId: "spring-commerce",
+      applicationId: "orders-api",
+      instanceId: "orders-api-a",
+      snapshotIndex: 0,
+      instanceSnapshotIndex: 0,
+      trendRange: "7d"
+    };
+
+    const staticProjects = [
+      {
+        id: "spring-commerce",
+        name: "Spring Commerce",
+        owner: "Platform demo",
+        appCount: 5,
+        envs: "prod, staging",
+        setup: "1 setup/connection issue candidate"
+      },
+      {
+        id: "internal-tools",
+        name: "Internal Tools",
+        owner: "Back office",
+        appCount: 2,
+        envs: "prod",
+        setup: "0 setup issue"
+      },
+      {
+        id: "sandbox",
+        name: "Sandbox",
+        owner: "Local demo",
+        appCount: 1,
+        envs: "dev",
+        setup: "starter connected, first bucket waiting"
+      }
+    ];
+
+    const decisions = [
+      {
+        q: "Project 화면을 제품 범위에 얼마나 포함할까?",
+        choices: ["MVP minimal", "Demo only", "Post-MVP"],
+        recommended: 0
+      },
+      {
+        q: "Application list가 state summary를 어디까지 가져야 할까?",
+        choices: ["light summary", "dashboard preview", "catalog only"],
+        recommended: 0
+      },
+      {
+        q: "Snapshot/history를 MVP에 넣을까?",
+        choices: ["marker + detail", "demo only", "Post-MVP"],
+        recommended: 1
+      },
+      {
+        q: "p95/p99를 application headline에 어떻게 표현할까?",
+        choices: ["source-scoped points", "distribution only", "hide headline"],
+        recommended: 0
+      },
+      {
+        q: "Instance detail은 어디까지 drill-down할까?",
+        choices: ["evidence only", "mini dashboard", "raw explorer"],
+        recommended: 0
+      },
+      {
+        q: "1주일 instance snapshot page를 계약에 넣을까?",
+        choices: ["candidate contract", "demo only", "Post-MVP"],
+        recommended: 0
+      }
+    ];
+
+    const annotations = {
+      projects: {
+        backend: [
+          "Project navigation read model: application count, recent state summary, setup issue count, concern count",
+          "Project creation/onboarding이 public API인지 internal seed인지 결정 필요",
+          "Heartbeat와 accepted bucket 요약은 별도 source로 내려와야 함"
+        ],
+        ui: [
+          "Scope 선택 화면으로 보이게 하고 운영 판단을 과하게 만들지 않음",
+          "최근 concern은 0~1개 요약만 표시",
+          "Project 선택 후 Application List로 자연스럽게 이동"
+        ]
+      },
+      applications: {
+        backend: [
+          "Read-only application list API 후보: name, environment, state badge, last accepted bucket, starter connection summary",
+          "상세 triage/endpoint priority는 list가 아니라 dashboard API에서 제공",
+          "Top concern 0~1개를 list에 둘지 contract 결정 필요"
+        ],
+        ui: [
+          "Application 선택을 빠르게 하되 dashboard 판단을 대체하지 않음",
+          "state badge와 connection summary를 한 줄에 섞지 않음",
+          "행 전체 클릭으로 Application Dashboard 진입"
+        ]
+      },
+      dashboard: {
+        backend: [
+          "Dashboard read model: state, starterConnection, metrics, sourceScopedPercentiles, zeroInsight/recovery, triageCards, endpointPriority, instances, snapshot marker",
+          "UI 계산 금지: lifecycle state, rule, endpoint priority, p95/p99, history event",
+          "triageCards=[]이면 zeroInsight non-null"
+        ],
+        ui: [
+          "Application Dashboard가 primary first-screen",
+          "Metric state strip과 starter connection strip을 분리",
+          "headline metric은 app scalar와 source-scoped percentile point를 구분"
+        ]
+      },
+      instance: {
+        backend: [
+          "Instance evidence read model: identity, last accepted bucket, last heartbeat, source-scoped p95/p99 series, histogram distribution, endpoint/resource evidence",
+          "Application state 재판정 금지, contribution 여부는 server read model field로 제공",
+          "Endpoint p95/p99 rollup이나 application percentile 합성 금지"
+        ],
+        ui: [
+          "Application 판단을 대체하지 않는 drill-down으로 보이게 구성",
+          "accepted bucket freshness와 starter heartbeat를 나란히 분리 표시",
+          "Application Dashboard로 돌아가는 흐름을 항상 노출"
+        ]
+      },
+      instanceSnapshots: {
+        backend: [
+          "Instance trend는 application dashboard snapshot에서 특정 instance summary를 추출하는 projection",
+          "기본 horizon은 7일, 최대 14일 retention 안에서 clamp",
+          "raw bucket 재조회나 endpoint timeseries 저장으로 번지면 안 됨"
+        ],
+        ui: [
+          "Instance dashboard가 아니라 저장된 instance evidence trend 페이지로 표현",
+          "hourly snapshot과 문제 marker를 함께 보여주되 UI가 instance health를 재판정하지 않음",
+          "source/scope가 있는 p95/p99 point와 accepted bucket/heartbeat 축을 분리해서 표시"
+        ]
+      },
+      history: {
+        backend: [
+          "Operational event history API: snapshot/read model 기반 bounded event list",
+          "Snapshot detail은 저장 당시 read model 반환, current state 재판정 금지",
+          "허용 marker: hourly, state change, high-confidence concern, recovery/stale/down"
+        ],
+        ui: [
+          "Raw explorer처럼 보이지 않게 marker timeline 중심 구성",
+          "Snapshot detail에 stored-at/source boundary를 명확히 표시",
+          "MVP/Demo/Post-MVP 범위를 판단할 수 있게 최소 상호작용 제공"
+        ]
+      }
+    };
+
+    const scenarioSelect = document.getElementById("scenarioSelect");
+    const workspace = document.getElementById("workspace");
+    const annotationBody = document.getElementById("annotationBody");
+    const decisionBody = document.getElementById("decisionBody");
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function scenario() {
+      return scenarios[appState.scenarioKey];
+    }
+
+    function setView(view) {
+      appState.view = view;
+      render();
+    }
+
+    function setScenario(key) {
+      appState.scenarioKey = key;
+      appState.snapshotIndex = 0;
+      appState.instanceSnapshotIndex = 0;
+      render();
+    }
+
+    function selectProject(id) {
+      appState.projectId = id;
+      setView("applications");
+    }
+
+    function selectApplication(id) {
+      appState.applicationId = id;
+      setView("dashboard");
+    }
+
+    function selectInstance(id) {
+      appState.instanceId = id;
+      appState.instanceSnapshotIndex = 0;
+      setView("instance");
+    }
+
+    function selectSnapshot(index) {
+      appState.snapshotIndex = index;
+      setView("history");
+    }
+
+    function selectInstanceSnapshot(index) {
+      appState.instanceSnapshotIndex = index;
+      setView("instanceSnapshots");
+    }
+
+    function setTrendRange(range) {
+      appState.trendRange = range;
+      appState.instanceSnapshotIndex = 0;
+      render();
+    }
+
+    function badge(label, tone) {
+      return `<span class="badge ${escapeHtml(tone)}">${escapeHtml(label)}</span>`;
+    }
+
+    function headerTemplate(eyebrow, title, subtitle, actions = "") {
+      return `
+        <div class="view-header">
+          <div class="view-title">
+            <span class="eyebrow">${escapeHtml(eyebrow)}</span>
+            <h1>${escapeHtml(title)}</h1>
+            <p class="subtitle">${escapeHtml(subtitle)}</p>
+          </div>
+          <div class="action-row">${actions}</div>
+        </div>
+      `;
+    }
+
+    function breadcrumbTemplate() {
+      return `
+        <div class="breadcrumb">
+          <button onclick="setView('projects')">Spring Commerce</button>
+          <span>/</span>
+          <button onclick="setView('applications')">orders-api</button>
+          <span>/</span>
+          <span>prod</span>
+        </div>
+      `;
+    }
+
+    function formatPercentilePoints(points) {
+      if (!points.length) {
+        return `<p class="metric-note">accepted bucket 전이거나 source-scoped point가 없습니다.</p>`;
+      }
+      return `
+        <div class="point-list">
+          ${points.map((point) => `
+            <div class="point-row">
+              <span>${escapeHtml(point.instance)} · ${escapeHtml(point.bucket)}</span>
+              <strong>p95 ${point.p95}ms · p99 ${point.p99}ms</strong>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function bars(buckets) {
+      if (!buckets || !buckets.length) {
+        return `<span class="muted">distribution evidence 없음</span>`;
+      }
+      const max = Math.max(...buckets.map((b) => b[1]), 1);
+      return `
+        <div class="mini-bars">
+          ${buckets.map(([le, count, tone]) => `
+            <div class="bar-line">
+              <span>&lt;=${le}ms</span>
+              <span class="bar-track"><span class="bar-fill ${tone === "hot" ? "hot" : tone === "danger" ? "danger" : ""}" style="width:${Math.max(7, Math.round((count / max) * 100))}%"></span></span>
+              <span>${count}</span>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function renderProjects() {
+      const s = scenario();
+      const dynamicSummary = {
+        state: s.stateLabel,
+        issue: s.tone === "unreachable" ? "connection issue 1" : s.tone === "stale" ? "metric freshness issue 1" : "setup issue 0",
+        concern: s.triage.length ? s.triage[0].title : s.zero ? s.zero.title : "우선 concern 없음"
+      };
+      return `
+        ${headerTemplate(
+          "Project Entry",
+          "프로젝트를 고르고 운영 scope를 좁힙니다",
+          "Project 화면은 운영 판단을 대신하지 않고 application dashboard로 들어가기 위한 scope 선택 화면입니다."
+        )}
+        <div class="content">
+          <section class="section">
+            <div class="section-head">
+              <div>
+                <h2>Projects</h2>
+                <p>application count, setup issue, recent concern만 가볍게 노출합니다.</p>
+              </div>
+            </div>
+            <div class="grid projects">
+              ${staticProjects.map((project, index) => {
+                const isPrimary = project.id === "spring-commerce";
+                const status = isPrimary ? dynamicSummary.state : index === 1 ? "우선 조치 없음" : "첫 데이터 대기";
+                const tone = isPrimary ? s.tone : index === 1 ? "active" : "waiting";
+                return `
+                  <button class="project-card" onclick="selectProject('${project.id}')">
+                    <div>
+                      <h2>${escapeHtml(project.name)}</h2>
+                      <div class="project-meta">
+                        <span>${escapeHtml(project.owner)}</span>
+                        <span>${project.appCount} apps</span>
+                        <span>${escapeHtml(project.envs)}</span>
+                      </div>
+                    </div>
+                    ${badge(status, tone)}
+                    <div class="summary-kv">
+                      <span>Setup / connection</span>
+                      <strong>${escapeHtml(isPrimary ? dynamicSummary.issue : project.setup)}</strong>
+                      <span>Recent concern</span>
+                      <strong>${escapeHtml(isPrimary ? dynamicSummary.concern : index === 1 ? "없음" : "first bucket waiting")}</strong>
+                    </div>
+                  </button>
+                `;
+              }).join("")}
+            </div>
+          </section>
+        </div>
+      `;
+    }
+
+    function applicationRows() {
+      const s = scenario();
+      return [
+        {
+          id: "orders-api",
+          name: "orders-api",
+          env: "prod",
+          state: s.stateLabel,
+          tone: s.tone,
+          accepted: s.accepted,
+          heartbeat: s.heartbeat,
+          concern: s.triage[0]?.title || s.zero?.reason || "우선 concern 없음"
+        },
+        {
+          id: "checkout-api",
+          name: "checkout-api",
+          env: "prod",
+          state: "우선 조치 없음",
+          tone: "active",
+          accepted: "15초 전",
+          heartbeat: "10초 전",
+          concern: "없음"
+        },
+        {
+          id: "inventory-worker",
+          name: "inventory-worker",
+          env: "staging",
+          state: "표본 부족",
+          tone: "sample",
+          accepted: "22초 전",
+          heartbeat: "17초 전",
+          concern: "insufficient_sample"
+        },
+        {
+          id: "billing-api",
+          name: "billing-api",
+          env: "prod",
+          state: "metric data idle",
+          tone: "stale",
+          accepted: "3분 전",
+          heartbeat: "18초 전",
+          concern: "accepted bucket 오래됨"
+        }
+      ];
+    }
+
+    function instanceSnapshotRows() {
+      const s = scenario();
+      const selectedInstance = s.instances.find((inst) => inst.id === appState.instanceId) || s.instances[0];
+      const latestPoint = s.percentilePoints[0] || { p95: "—", p99: "—", requestCount: "—" };
+      const scenarioMarker = {
+        waiting: {
+          type: "hourly_snapshot",
+          tone: "waiting",
+          title: "Starter connected, first bucket waiting",
+          instanceSignal: "accepted bucket 없음",
+          contribution: "application 판단 전",
+          accepted: "없음",
+          heartbeat: "20초 전",
+          p95p99: "—"
+        },
+        insufficient: {
+          type: "hourly_snapshot",
+          tone: "sample",
+          title: "Sample guard not ready",
+          instanceSignal: "bucket current, sample 부족",
+          contribution: "triage 미기여",
+          accepted: "18초 전",
+          heartbeat: "12초 전",
+          p95p99: `p95 ${latestPoint.p95}ms · p99 ${latestPoint.p99}ms`
+        },
+        calm: {
+          type: "hourly_snapshot",
+          tone: "active",
+          title: "No instance concern",
+          instanceSignal: "current, no action",
+          contribution: "아니오",
+          accepted: "9초 전",
+          heartbeat: "8초 전",
+          p95p99: `p95 ${latestPoint.p95}ms · p99 ${latestPoint.p99}ms`
+        },
+        degraded: {
+          type: "high_confidence_concern",
+          tone: "degraded",
+          title: "Contributed to POST /orders triage",
+          instanceSignal: "error/latency evidence",
+          contribution: "예: endpoint_error_spike",
+          accepted: "6초 전",
+          heartbeat: "11초 전",
+          p95p99: `p95 ${latestPoint.p95}ms · p99 ${latestPoint.p99}ms`
+        },
+        stale: {
+          type: "down_entered",
+          tone: "stale",
+          title: "Metric freshness stale/down candidate",
+          instanceSignal: "accepted bucket 오래됨",
+          contribution: "freshness state",
+          accepted: "4분 20초 전",
+          heartbeat: "23초 전",
+          p95p99: `last point p95 ${latestPoint.p95}ms · p99 ${latestPoint.p99}ms`
+        },
+        recovery: {
+          type: "recovery_observed",
+          tone: "recovery",
+          title: "New bucket after stale/down",
+          instanceSignal: "recovery observed, sample 부족",
+          contribution: "recovery freshness",
+          accepted: "14초 전",
+          heartbeat: "8초 전",
+          p95p99: `p95 ${latestPoint.p95}ms · p99 ${latestPoint.p99}ms`
+        },
+        unreachable: {
+          type: "telemetry_unreachable",
+          tone: "unreachable",
+          title: "Accepted bucket and heartbeat both old",
+          instanceSignal: "원인 미확정",
+          contribution: "telemetry unreachable",
+          accepted: "9분 10초 전",
+          heartbeat: "8분 40초 전",
+          p95p99: "—"
+        }
+      }[appState.scenarioKey];
+
+      return [
+        {
+          day: "오늘 12:05",
+          snapshotId: "snap-inst-1205",
+          source: "candidate_instance_snapshot",
+          instance: selectedInstance.id,
+          ...scenarioMarker
+        },
+        {
+          day: "오늘 12:00",
+          snapshotId: "snap-hourly-1200",
+          source: "dashboard_snapshots.read_model_json",
+          type: "hourly_snapshot",
+          tone: s.tone === "degraded" ? "active" : s.tone,
+          title: "Hourly stored read model",
+          instance: selectedInstance.id,
+          instanceSignal: s.tone === "degraded" ? "previously active" : "stored current state",
+          contribution: s.tone === "degraded" ? "아니오" : selectedInstance.contribution,
+          accepted: s.tone === "waiting" ? "없음" : "1시간 cadence",
+          heartbeat: "stored connection field",
+          p95p99: s.percentilePoints.length ? "stored source-scoped point" : "—"
+        },
+        {
+          day: "어제 18:00",
+          snapshotId: "snap-yesterday-1800",
+          source: "dashboard_snapshots.read_model_json",
+          type: "state_period",
+          tone: "active",
+          title: "Stable period folded",
+          instance: selectedInstance.id,
+          instanceSignal: "current, no action",
+          contribution: "아니오",
+          accepted: "stored",
+          heartbeat: "stored",
+          p95p99: "source-scoped points only"
+        },
+        {
+          day: "3일 전 09:00",
+          snapshotId: "snap-d3-0900",
+          source: "dashboard_snapshots.read_model_json",
+          type: "stale_entered",
+          tone: "stale",
+          title: "Short metric freshness gap",
+          instance: selectedInstance.id,
+          instanceSignal: "accepted bucket stale",
+          contribution: "freshness marker",
+          accepted: "2분 04초 old at storage",
+          heartbeat: "recent at storage",
+          p95p99: "last source-scoped point"
+        },
+        {
+          day: "6일 전 15:00",
+          snapshotId: "snap-d6-1500",
+          source: "dashboard_snapshots.read_model_json",
+          type: "hourly_snapshot",
+          tone: "active",
+          title: "Baseline hourly snapshot",
+          instance: selectedInstance.id,
+          instanceSignal: "current, no action",
+          contribution: "아니오",
+          accepted: "stored",
+          heartbeat: "stored",
+          p95p99: "source-scoped points only"
+        }
+      ];
+    }
+
+    function trendRangeMeta() {
+      const meta = {
+        "24h": { label: "24시간", points: 24, note: "recent snapshot projection" },
+        "7d": { label: "7일", points: 168, note: "default bounded horizon" },
+        "14d": { label: "14일", points: 336, note: "retention max clamp" }
+      };
+      return meta[appState.trendRange] || meta["7d"];
+    }
+
+    function trendPattern(kind) {
+      const tone = scenario().tone;
+      const base = {
+        active: ["active", "active", "active", "active", "active", "active", "active", "active", "active", "active", "active", "active", "active", tone],
+        metric: ["active", "active", "active", "active", "active", "active", "active", "active", "active", "active", "active", "active", "active", tone],
+        connection: ["connection", "connection", "connection", "connection", "connection", "connection", "connection", "connection", "connection", "connection", "connection", "connection", "connection", tone === "unreachable" ? "unreachable" : "connection"],
+        markers: ["quiet", "quiet", "quiet", "quiet", "quiet", "quiet", "stale", "quiet", "quiet", "quiet", "quiet", "quiet", "quiet", tone]
+      };
+      if (tone === "degraded") {
+        base.active.splice(10, 4, "active", "degraded", "degraded", "degraded");
+        base.metric.splice(10, 4, "active", "degraded", "degraded", "degraded");
+        base.markers.splice(10, 4, "quiet", "quiet", "degraded", "degraded");
+      }
+      if (tone === "stale") {
+        base.metric.splice(10, 4, "active", "stale", "stale", "down");
+        base.markers.splice(10, 4, "quiet", "stale", "stale", "down");
+      }
+      if (tone === "recovery") {
+        base.metric.splice(9, 5, "stale", "down", "down", "recovery", "recovery");
+        base.markers.splice(9, 5, "stale", "down", "quiet", "recovery", "recovery");
+      }
+      if (tone === "waiting") {
+        base.active.fill("waiting");
+        base.metric.fill("waiting");
+        base.markers.fill("quiet");
+      }
+      if (tone === "sample") {
+        base.active.splice(9, 5, "active", "active", "sample", "sample", "sample");
+        base.metric.splice(9, 5, "active", "active", "sample", "sample", "sample");
+      }
+      if (tone === "unreachable") {
+        base.active.splice(9, 5, "active", "active", "unreachable", "unreachable", "unreachable");
+        base.metric.splice(9, 5, "active", "active", "unreachable", "unreachable", "unreachable");
+        base.connection.splice(9, 5, "connection", "connection", "unreachable", "unreachable", "unreachable");
+        base.markers.splice(9, 5, "quiet", "quiet", "unreachable", "unreachable", "unreachable");
+      }
+      return base[kind] || base.active;
+    }
+
+    function renderTrendLane(title, subtitle, kind, endText) {
+      return `
+        <div class="trend-lane">
+          <div class="lane-label">
+            <strong>${escapeHtml(title)}</strong>
+            <span>${escapeHtml(subtitle)}</span>
+          </div>
+          <div class="lane-track" aria-hidden="true">
+            ${trendPattern(kind).map((point) => `<span class="lane-point ${escapeHtml(point)}"></span>`).join("")}
+          </div>
+          <div class="lane-end">${escapeHtml(endText)}</div>
+        </div>
+      `;
+    }
+
+    function renderSparkline(values, hotAt = 999) {
+      return `
+        <div class="trend-sparkline" aria-hidden="true">
+          ${values.map((value, index) => `<span class="spark-bar ${index >= hotAt ? "hot" : ""}" style="height:${value}px"></span>`).join("")}
+        </div>
+      `;
+    }
+
+    function renderApplications() {
+      return `
+        ${headerTemplate(
+          "Application List",
+          "Spring Commerce applications",
+          "목록은 빠른 스캔용입니다. 상세 판단은 application dashboard read model에서 확인합니다.",
+          `<button class="button quiet" onclick="setView('projects')">Project로 돌아가기</button>`
+        )}
+        <div class="content">
+          <section class="section">
+            <div class="table" role="table" aria-label="Applications">
+              <div class="table-row table-head" role="row">
+                <div>Application</div>
+                <div>Environment</div>
+                <div>State</div>
+                <div>Last accepted / starter</div>
+                <div>Top concern</div>
+              </div>
+              ${applicationRows().map((app) => `
+                <button class="table-row row-button" role="row" onclick="selectApplication('${app.id}')">
+                  <div class="cell-title">
+                    <strong>${escapeHtml(app.name)}</strong>
+                    <span>click to dashboard</span>
+                  </div>
+                  <div>${escapeHtml(app.env)}</div>
+                  <div>${badge(app.state, app.tone)}</div>
+                  <div class="cell-title">
+                    <span>accepted: ${escapeHtml(app.accepted)}</span>
+                    <span>heartbeat: ${escapeHtml(app.heartbeat)}</span>
+                  </div>
+                  <div class="muted">${escapeHtml(app.concern)}</div>
+                </button>
+              `).join("")}
+            </div>
+          </section>
+        </div>
+      `;
+    }
+
+    function renderStateStrips() {
+      const s = scenario();
+      return `
+        <div class="strip metric-state ${s.tone}">
+          <div class="strip-title">
+            <span class="eyebrow">Metric state · accepted bucket axis</span>
+            ${badge(s.stateLabel, s.tone)}
+          </div>
+          <p class="strip-copy">${escapeHtml(s.stateRationale)}</p>
+          <p class="strip-action">${escapeHtml(s.stateAction)}</p>
+        </div>
+        <div class="strip">
+          <div class="strip-title">
+            <span class="eyebrow">Starter connection · heartbeat axis</span>
+            ${badge(s.heartbeatMeaning, "connection")}
+          </div>
+          <p class="strip-copy">Last heartbeat: ${escapeHtml(s.heartbeat)} · status: ${escapeHtml(s.heartbeatStatus)}</p>
+          <p class="strip-action">${escapeHtml(s.connectionCopy)} <span class="code">stateImpact=none</span></p>
+        </div>
+      `;
+    }
+
+    function renderTriageOrZero() {
+      const s = scenario();
+      if (s.triage.length) {
+        return `
+          <div class="triage-grid">
+            ${s.triage.slice(0, 3).map((item) => `
+              <article class="triage-card">
+                ${badge(item.severity, "degraded")}
+                <h3>${escapeHtml(item.title)}</h3>
+                <p class="muted">${escapeHtml(item.summary)}</p>
+                <p class="recommendation">${escapeHtml(item.recommendation)}</p>
+                <p class="rule">${escapeHtml(item.rule)} · confidence ${escapeHtml(item.confidence)}</p>
+              </article>
+            `).join("")}
+          </div>
+        `;
+      }
+      const z = s.zero;
+      return `
+        <div class="empty-state">
+          <div class="empty-icon">0</div>
+          <div>
+            <h3>${escapeHtml(z.title)}</h3>
+            <p class="muted">${escapeHtml(z.body)}</p>
+          </div>
+          <div>
+            <span class="eyebrow">zeroInsight.${escapeHtml(z.reason)}</span>
+            <p>${escapeHtml(z.action)}</p>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderEndpoints() {
+      const s = scenario();
+      if (!s.endpoints.length) {
+        return `<div class="empty-state"><div class="empty-icon">—</div><div><h3>Endpoint priority 없음</h3><p class="muted">현재 scenario에서는 endpoint ranking을 표시할 근거가 없거나 freshness rule이 일반 비교형 rule을 억제합니다.</p></div><div>${badge(s.zero?.reason || s.stateCode, s.tone)}</div></div>`;
+      }
+      return `
+        <div class="endpoint-list">
+          ${s.endpoints.map((endpoint) => `
+            <div class="endpoint-row">
+              <div class="rank">${endpoint.rank}</div>
+              <div>
+                <div class="route">${escapeHtml(endpoint.route)}</div>
+                <p class="muted">${escapeHtml(endpoint.reason)} · confidence ${escapeHtml(endpoint.confidence)}</p>
+              </div>
+              ${bars(endpoint.buckets)}
+              <div class="muted">${escapeHtml(endpoint.evidence)}</div>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function renderInstances(limit = 4) {
+      const s = scenario();
+      return `
+        <div class="instance-list">
+          ${s.instances.slice(0, limit).map((inst) => `
+            <button class="instance-card" onclick="selectInstance('${escapeHtml(inst.id)}')">
+              <div class="cell-title">
+                <strong>${escapeHtml(inst.id)}</strong>
+                <span>${escapeHtml(inst.status)}</span>
+              </div>
+              <div class="summary-kv">
+                <span>accepted</span><strong>${escapeHtml(inst.accepted)}</strong>
+                <span>heartbeat</span><strong>${escapeHtml(inst.heartbeat)}</strong>
+              </div>
+              <div class="contribution">${escapeHtml(inst.contribution)}</div>
+              <span class="button quiet">Evidence</span>
+            </button>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function renderHistoryMarkers(limit = 4) {
+      const s = scenario();
+      return `
+        <div class="timeline">
+          ${s.history.slice(0, limit).map((event, index) => `
+            <button class="event-card" onclick="selectSnapshot(${index})">
+              <span class="event-dot ${event.tone === "warning" ? "warning" : event.tone === "danger" ? "danger" : event.tone === "good" ? "good" : ""}"></span>
+              <div>
+                <div class="cell-title">
+                  <strong>${escapeHtml(event.title)}</strong>
+                  <span>${escapeHtml(event.type)} · ${escapeHtml(event.time)}</span>
+                </div>
+                <p class="muted">${escapeHtml(event.summary)}</p>
+              </div>
+              <div>${badge(event.stateCode, event.tone === "danger" ? "down" : event.tone === "warning" ? "degraded" : event.tone === "good" ? "active" : "sample")}</div>
+            </button>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function renderDashboard() {
+      const s = scenario();
+      return `
+        ${headerTemplate(
+          "Application Dashboard",
+          "orders-api · prod",
+          "Application 상태와 다음 행동을 먼저 보여주는 primary first-screen입니다.",
+          `<button class="button quiet" onclick="setView('applications')">Application List</button><button class="button" onclick="setView('history')">History markers</button>`
+        )}
+        <div class="content">
+          <section class="section">
+            <div class="context-rail">
+              <div class="rail-panel">
+                ${breadcrumbTemplate()}
+                <h2 style="margin-top:10px">orders-api</h2>
+                <div class="summary-kv" style="margin-top:10px">
+                  <span>Environment</span><strong>prod</strong>
+                  <span>Current window</span><strong>11:50:30-12:05:30</strong>
+                  <span>Baseline</span><strong>11:35:30-11:50:30</strong>
+                </div>
+              </div>
+              <div class="rail-panel">
+                <h2>Read model source</h2>
+                <p class="muted">generatedAt 12:05:35 · last accepted ${escapeHtml(s.accepted)} · snapshot link available when stored</p>
+                <p class="muted">UI는 state/rule/p95/p99/endpoint priority를 재계산하지 않고 이 read model을 표시합니다.</p>
+              </div>
+            </div>
+            ${renderStateStrips()}
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <div>
+                <h2>Headline metrics</h2>
+                <p>Application scalar와 source-scoped starter p95/p99 point를 섞지 않습니다.</p>
+              </div>
+            </div>
+            <div class="grid metrics">
+              <div class="metric-card">
+                <span class="metric-label">Request count</span>
+                <strong class="metric-value">${escapeHtml(s.metrics.requests)}</strong>
+                <span class="metric-note">current 15분 read model scalar</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Error rate</span>
+                <strong class="metric-value">${escapeHtml(s.metrics.errorRate)}</strong>
+                <span class="metric-note">server-computed scalar</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Starter p95 / p99</span>
+                <strong class="metric-value">${s.percentilePoints.length ? `${s.percentilePoints.length} pts` : "—"}</strong>
+                <span class="metric-note">instance 30초 bucket scope</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Resource hint</span>
+                <strong class="metric-value">${escapeHtml(s.metrics.resource)}</strong>
+                <span class="metric-note">${escapeHtml(s.metrics.resourceNote)}</span>
+              </div>
+            </div>
+            ${formatPercentilePoints(s.percentilePoints)}
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <div>
+                <h2>Triage / zero insight</h2>
+                <p>최대 0~3개 card. 없으면 zeroInsight reason과 next action을 반드시 보여줍니다.</p>
+              </div>
+            </div>
+            ${renderTriageOrZero()}
+          </section>
+
+          <section class="section">
+            <div class="grid two">
+              <div>
+                <div class="section-head">
+                  <div>
+                    <h2>Endpoint priority</h2>
+                    <p>slow/error/comparative evidence 기반 next-check surface</p>
+                  </div>
+                </div>
+                ${renderEndpoints()}
+              </div>
+              <div>
+                <div class="section-head">
+                  <div>
+                    <h2>Instance summary</h2>
+                    <p>application 판단을 구성한 evidence drill-down</p>
+                  </div>
+                </div>
+                ${renderInstances(3)}
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <div>
+                <h2>Snapshot / history markers</h2>
+                <p>raw explorer가 아니라 저장된 dashboard read model의 bounded marker입니다.</p>
+              </div>
+            </div>
+            ${renderHistoryMarkers(3)}
+          </section>
+        </div>
+      `;
+    }
+
+    function renderInstance() {
+      const s = scenario();
+      const current = s.instances.find((inst) => inst.id === appState.instanceId) || s.instances[0];
+      const histBuckets = s.endpoints[0]?.buckets || [[100, 22, "normal"], [250, 30, "normal"], [500, 32, "normal"], [1000, 33, "hot"]];
+      return `
+        ${headerTemplate(
+          "Instance Detail",
+          `${current.id} evidence`,
+          "Application dashboard 판단을 대체하지 않는 instance-level evidence drill-down입니다.",
+          `<button class="button primary" onclick="setView('dashboard')">Application Dashboard로 돌아가기</button><button class="button" onclick="setView('instanceSnapshots')">Instance Trend</button>`
+        )}
+        <div class="content">
+          <section class="section">
+            <div class="context-rail">
+              <div class="rail-panel">
+                <h2>Instance identity</h2>
+                <div class="summary-kv" style="margin-top:10px">
+                  <span>Application</span><strong>orders-api</strong>
+                  <span>Environment</span><strong>prod</strong>
+                  <span>Instance</span><strong>${escapeHtml(current.id)}</strong>
+                  <span>Contribution</span><strong>${escapeHtml(current.contribution)}</strong>
+                </div>
+              </div>
+              <div class="rail-panel">
+                <h2>Two-axis freshness</h2>
+                <div class="summary-kv" style="margin-top:10px">
+                  <span>Accepted bucket</span><strong>${escapeHtml(current.accepted)}</strong>
+                  <span>Starter heartbeat</span><strong>${escapeHtml(current.heartbeat)}</strong>
+                  <span>State source</span><strong>accepted bucket axis</strong>
+                  <span>Connection source</span><strong>starter heartbeat axis</strong>
+                </div>
+              </div>
+            </div>
+            ${renderStateStrips()}
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <div>
+                <h2>Source-scoped 30초 bucket p95/p99 series</h2>
+                <p>starter-reported canonical point series입니다. 평균/최댓값/병합으로 application p95/p99를 만들지 않습니다.</p>
+              </div>
+            </div>
+            ${formatPercentilePoints(s.percentilePoints.length ? s.percentilePoints : [{ instance: current.id, bucket: "마지막 저장 point 없음", requestCount: 0, p95: "—", p99: "—" }])}
+          </section>
+
+          <section class="section">
+            <div class="grid two">
+              <div>
+                <div class="section-head">
+                  <div>
+                    <h2>Histogram distribution</h2>
+                    <p>diagnostic evidence용 bucket distribution. percentile 계산 입력으로 보이지 않게 표시합니다.</p>
+                  </div>
+                </div>
+                ${bars(histBuckets)}
+              </div>
+              <div>
+                <div class="section-head">
+                  <div>
+                    <h2>Endpoint / resource evidence</h2>
+                    <p>서버 read model에서 내려온 bounded evidence subset</p>
+                  </div>
+                </div>
+                <div class="summary-kv">
+                  <span>Top endpoint</span><strong>${escapeHtml(s.endpoints[0]?.route || "없음")}</strong>
+                  <span>Reason</span><strong>${escapeHtml(s.endpoints[0]?.reason || "scenario가 endpoint priority를 억제")}</strong>
+                  <span>Resource hint</span><strong>${escapeHtml(s.metrics.resource)}</strong>
+                  <span>App triage contribution</span><strong>${escapeHtml(current.contribution)}</strong>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      `;
+    }
+
+    function renderInstanceSnapshots() {
+      const s = scenario();
+      const current = s.instances.find((inst) => inst.id === appState.instanceId) || s.instances[0];
+      const rows = instanceSnapshotRows();
+      const selected = rows[appState.instanceSnapshotIndex] || rows[0];
+      const range = trendRangeMeta();
+      const hasConcern = s.triage.length > 0 || ["stale", "recovery", "unreachable"].includes(s.tone);
+      return `
+        ${headerTemplate(
+          "Instance Snapshot Trend",
+          `${current.id} stored evidence history`,
+          "문제가 없어도 선택된 instance의 최근 흐름을 저장된 snapshot/read model point로 확인합니다.",
+          `<div class="range-control" aria-label="Trend range">
+            <button onclick="setTrendRange('24h')" aria-pressed="${appState.trendRange === "24h"}">24h</button>
+            <button onclick="setTrendRange('7d')" aria-pressed="${appState.trendRange === "7d"}">7d</button>
+            <button onclick="setTrendRange('14d')" aria-pressed="${appState.trendRange === "14d"}">14d</button>
+          </div><button class="button primary" onclick="setView('instance')">Instance Detail</button><button class="button quiet" onclick="setView('dashboard')">Application Dashboard</button>`
+        )}
+        <div class="content">
+          <section class="section">
+            <div class="contract-note">
+              <strong>계약 판단:</strong> 이 화면은 application dashboard snapshot의 bounded instance summary를 특정 instance 관점으로 projection합니다. 현재 선택은 ${escapeHtml(range.label)} · ${range.points} point cap이며, raw bucket explorer나 endpoint timeseries로 번지지 않습니다.
+              <div class="snapshot-chip-row">
+                <span class="snapshot-chip">${escapeHtml(range.note)}</span>
+                <span class="snapshot-chip">stored read model only</span>
+                <span class="snapshot-chip">no UI recomputation</span>
+                <span class="snapshot-chip">no raw 30s explorer</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="grid metrics">
+              <div class="metric-card">
+                <span class="metric-label">Horizon</span>
+                <strong class="metric-value">${escapeHtml(range.label)}</strong>
+                <span class="metric-note">server-clamped bounded query</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Observed concern</span>
+                <strong class="metric-value">${hasConcern ? "있음" : "없음"}</strong>
+                <span class="metric-note">${hasConcern ? "marker overlay 확인" : "no concern observed"}</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Cadence</span>
+                <strong class="metric-value">hourly+</strong>
+                <span class="metric-note">state/concern/recovery marker 추가</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Percentile</span>
+                <strong class="metric-value">scoped</strong>
+                <span class="metric-note">instance bucket point만 표시</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="grid two">
+              <div>
+                <div class="section-head">
+                  <div>
+                    <h2>Stored trend lanes</h2>
+                    <p>상태 판단이 아니라 저장된 snapshot point의 흐름입니다. heartbeat lane은 metric lane과 분리합니다.</p>
+                  </div>
+                </div>
+                <div class="trend-lanes">
+                  ${renderTrendLane("Application state", "stored stateCode", "active", s.stateCode)}
+                  ${renderTrendLane("Metric data", "accepted bucket axis", "metric", s.accepted)}
+                  ${renderTrendLane("Starter connection", "heartbeat axis", "connection", s.heartbeat)}
+                  ${renderTrendLane("Markers", "snapshot capture reason", "markers", rows[0].type)}
+                </div>
+              </div>
+              <div>
+                <div class="section-head">
+                  <div>
+                    <h2>Fixed evidence trends</h2>
+                    <p>외부 서비스의 entity trend처럼 보이되, metric picker 없이 고정 evidence만 보여줍니다.</p>
+                  </div>
+                </div>
+                <div class="grid two">
+                  <div class="metric-card">
+                    <span class="metric-label">Requests</span>
+                    <strong class="metric-value">${escapeHtml(s.metrics.requests)}</strong>
+                    ${renderSparkline([18, 22, 24, 25, 28, 31, 32, 30, 34, 36, 37, 40], s.tone === "degraded" ? 9 : 999)}
+                  </div>
+                  <div class="metric-card">
+                    <span class="metric-label">Error rate</span>
+                    <strong class="metric-value">${escapeHtml(s.metrics.errorRate)}</strong>
+                    ${renderSparkline(s.tone === "degraded" ? [8, 8, 9, 9, 10, 8, 11, 12, 20, 35, 44, 48] : [7, 8, 7, 8, 8, 9, 8, 9, 8, 8, 9, 8], s.tone === "degraded" ? 8 : 999)}
+                  </div>
+                  <div class="metric-card">
+                    <span class="metric-label">Starter p95/p99</span>
+                    <strong class="metric-value">${escapeHtml(rows[0].p95p99)}</strong>
+                    ${renderSparkline(s.tone === "degraded" ? [14, 16, 17, 18, 20, 19, 24, 30, 36, 42, 48, 52] : [14, 15, 16, 15, 16, 17, 16, 18, 17, 16, 18, 17], s.tone === "degraded" ? 8 : 999)}
+                  </div>
+                  <div class="metric-card">
+                    <span class="metric-label">Resource hint</span>
+                    <strong class="metric-value">${escapeHtml(s.metrics.resource)}</strong>
+                    ${renderSparkline([12, 14, 14, 15, 16, 17, 17, 18, 19, 20, 21, s.tone === "degraded" ? 40 : 22], s.tone === "degraded" ? 11 : 999)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="grid two">
+              <div>
+                <div class="section-head">
+                  <div>
+                    <h2>Snapshot point list</h2>
+                    <p>문제 없는 hourly snapshot도 같이 보여주며, 선택 시 저장 당시 evidence만 표시합니다.</p>
+                  </div>
+                </div>
+                <div class="endpoint-list">
+                  ${rows.map((row, index) => `
+                    <button class="instance-snapshot-row ${index === appState.instanceSnapshotIndex ? "is-selected" : ""}" onclick="selectInstanceSnapshot(${index})">
+                      <div class="cell-title">
+                        <strong>${escapeHtml(row.day)}</strong>
+                        <span>${escapeHtml(row.snapshotId)}</span>
+                      </div>
+                      <div>${badge(row.type, row.tone)}</div>
+                      <div class="cell-title">
+                        <strong>${escapeHtml(row.title)}</strong>
+                        <span>${escapeHtml(row.instanceSignal)}</span>
+                      </div>
+                      <div class="summary-kv">
+                        <span>accepted</span><strong>${escapeHtml(row.accepted)}</strong>
+                        <span>heartbeat</span><strong>${escapeHtml(row.heartbeat)}</strong>
+                      </div>
+                      <div class="muted">${escapeHtml(row.contribution)}</div>
+                    </button>
+                  `).join("")}
+                </div>
+              </div>
+              <div class="snapshot-detail">
+                <div class="stored-banner">
+                  <strong>Selected snapshot detail:</strong> 저장 당시 instance evidence를 보여주는 후보입니다. 여기서 current state나 instance health를 새로 판단하지 않습니다.
+                </div>
+                <div class="rail-panel">
+                  <h2>${escapeHtml(selected.title)}</h2>
+                  <div class="summary-kv" style="margin-top:10px">
+                    <span>Snapshot source</span><strong>${escapeHtml(selected.source)}</strong>
+                    <span>Instance</span><strong>${escapeHtml(selected.instance)}</strong>
+                    <span>Marker type</span><strong>${escapeHtml(selected.type)}</strong>
+                    <span>App contribution</span><strong>${escapeHtml(selected.contribution)}</strong>
+                  </div>
+                </div>
+                <div class="rail-panel">
+                  <h2>Bounded instance evidence</h2>
+                  <div class="summary-kv" style="margin-top:10px">
+                    <span>Metric axis</span><strong>${escapeHtml(selected.accepted)}</strong>
+                    <span>Connection axis</span><strong>${escapeHtml(selected.heartbeat)}</strong>
+                    <span>p95/p99 policy</span><strong>${escapeHtml(selected.p95p99)}</strong>
+                    <span>Histogram policy</span><strong>distribution display only</strong>
+                    <span>State ownership</span><strong>application read model</strong>
+                    <span>Raw explorer</span><strong>지원하지 않음</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      `;
+    }
+
+    function renderHistory() {
+      const s = scenario();
+      const selected = s.history[appState.snapshotIndex] || s.history[0];
+      return `
+        ${headerTemplate(
+          "Snapshot / History",
+          "Bounded operational markers",
+          "늦게 들어온 사용자가 최근 운영 흐름을 이해하도록 저장된 read model marker만 보여줍니다.",
+          `<button class="button primary" onclick="setView('dashboard')">Application Dashboard</button>`
+        )}
+        <div class="content">
+          <section class="section">
+            <div class="grid two">
+              <div>
+                <div class="section-head">
+                  <div>
+                    <h2>Recent markers</h2>
+                    <p>hourly snapshot, state change, high-confidence concern, recovery/stale/down marker</p>
+                  </div>
+                </div>
+                ${renderHistoryMarkers(6)}
+              </div>
+              <div class="snapshot-detail">
+                <div class="stored-banner">
+                  <strong>Snapshot detail boundary:</strong> 이 패널은 저장 당시 dashboard read model을 보여줍니다. current state, rule, p95/p99, endpoint priority를 다시 계산하지 않습니다.
+                </div>
+                <div class="rail-panel">
+                  <h2>${escapeHtml(selected.title)}</h2>
+                  <div class="summary-kv" style="margin-top:10px">
+                    <span>Marker type</span><strong>${escapeHtml(selected.type)}</strong>
+                    <span>Stored at</span><strong>${escapeHtml(selected.time)}</strong>
+                    <span>Stored state</span><strong>${escapeHtml(selected.stateCode)}</strong>
+                    <span>Confidence</span><strong>${escapeHtml(selected.confidence)}</strong>
+                  </div>
+                </div>
+                <div class="rail-panel">
+                  <h2>Bounded evidence snapshot</h2>
+                  <p class="muted">${escapeHtml(selected.summary)}</p>
+                  <div class="summary-kv" style="margin-top:10px">
+                    <span>Endpoint evidence cap</span><strong>최대 10개</strong>
+                    <span>Raw path/query</span><strong>포함하지 않음</strong>
+                    <span>Endpoint p95/p99</span><strong>계산하지 않음</strong>
+                    <span>Source</span><strong>dashboard_snapshots.read_model_json</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      `;
+    }
+
+    function renderAnnotation() {
+      const a = annotations[appState.view];
+      annotationBody.innerHTML = `
+        <div>
+          <div class="divider-label">Epic 5 backend read model</div>
+          <ul class="mini-list">${a.backend.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+        </div>
+        <div>
+          <div class="divider-label">Epic 6 UI flow/demo</div>
+          <ul class="mini-list">${a.ui.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+        </div>
+      `;
+    }
+
+    function renderDecisions() {
+      decisionBody.innerHTML = decisions.map((decision) => `
+        <div class="decision-row">
+          <strong>${escapeHtml(decision.q)}</strong>
+          <div class="choice-row">
+            ${decision.choices.map((choice, index) => `<span class="choice ${index === decision.recommended ? "recommended" : ""}">${escapeHtml(choice)}</span>`).join("")}
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function renderScenarioSelect() {
+      scenarioSelect.innerHTML = scenarioOrder.map((key) => `
+        <option value="${key}" ${key === appState.scenarioKey ? "selected" : ""}>${scenarios[key].label}</option>
+      `).join("");
+    }
+
+    function renderTabs() {
+      document.querySelectorAll(".nav-tab").forEach((tab) => {
+        tab.setAttribute("aria-selected", tab.dataset.view === appState.view ? "true" : "false");
+      });
+    }
+
+    function renderWorkspace() {
+      if (appState.view === "projects") workspace.innerHTML = renderProjects();
+      if (appState.view === "applications") workspace.innerHTML = renderApplications();
+      if (appState.view === "dashboard") workspace.innerHTML = renderDashboard();
+      if (appState.view === "instance") workspace.innerHTML = renderInstance();
+      if (appState.view === "instanceSnapshots") workspace.innerHTML = renderInstanceSnapshots();
+      if (appState.view === "history") workspace.innerHTML = renderHistory();
+    }
+
+    function render() {
+      renderScenarioSelect();
+      renderTabs();
+      renderWorkspace();
+      renderAnnotation();
+      renderDecisions();
+    }
+
+    scenarioSelect.addEventListener("change", (event) => setScenario(event.target.value));
+    document.querySelectorAll(".nav-tab").forEach((tab) => {
+      tab.addEventListener("click", () => setView(tab.dataset.view));
+    });
+
+    window.setView = setView;
+    window.setScenario = setScenario;
+    window.selectProject = selectProject;
+    window.selectApplication = selectApplication;
+    window.selectInstance = selectInstance;
+    window.selectSnapshot = selectSnapshot;
+    window.selectInstanceSnapshot = selectInstanceSnapshot;
+    window.setTrendRange = setTrendRange;
+
+    render();
+  </script>
+</body>
+</html>

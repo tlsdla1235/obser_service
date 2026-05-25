@@ -423,9 +423,97 @@ Snapshot marker와 bounded distribution summary의 세부 shape는 Epic 5의 별
 | `404` | snapshot이 없거나 retention으로 삭제됨 |
 | `500` | snapshot 조회 실패 |
 
-### 4.3 Candidate MVC Boundary
+### 4.3 Instance Snapshot Trend Endpoint
+
+```http
+GET /api/projects/{projectId}/applications/{applicationId}/instances/{instanceId}/snapshot-trend?since=7d&limit=168
+Accept: application/json
+```
+
+이 API는 특정 instance의 최근 관찰 흐름을 보여주는 bounded read model projection이다. 문제 상황에 한정하지 않고, stored dashboard snapshot에 남은 bounded instance summary를 시간 순서로 반환한다.
+
+기본값과 clamp:
+
+| Parameter | 기본값 | 최대값 | 의미 |
+|---|---:|---:|---|
+| `since` | `7d` | `14d` | `dashboard_snapshots` retention 안에서만 조회 |
+| `limit` | `168` | `336` | hourly snapshot 기준 point cap |
+
+Rough response:
+
+```json
+{
+  "generatedAt": "2026-05-25T12:05:35Z",
+  "applicationId": "5c942671-e251-4f7f-b610-18ae6ca4ef65",
+  "instanceId": "orders-api-7f9c9c8c9d-x2p4k",
+  "source": "dashboard_snapshots.read_model_json.instanceSummary",
+  "horizon": {
+    "since": "2026-05-18T12:05:35Z",
+    "until": "2026-05-25T12:05:35Z",
+    "limit": 168,
+    "order": "capturedAt_asc"
+  },
+  "points": [
+    {
+      "snapshotId": "018f6b9a-2e1a-7d2b-9b2f-4db69d92c241",
+      "capturedAt": "2026-05-25T12:00:00Z",
+      "captureReason": "hourly_scheduled",
+      "storedApplicationStateCode": "active",
+      "metricData": {
+        "lastAcceptedBucketAt": "2026-05-25T11:59:30Z",
+        "freshnessLabel": "current"
+      },
+      "starterConnection": {
+        "lastHeartbeatAt": "2026-05-25T11:59:45Z",
+        "connectionMeaning": "starter_connected",
+        "stateImpact": "none"
+      },
+      "starterPercentilePoint": {
+        "source": "starter_canonical_percentile",
+        "scope": "instance_bucket",
+        "bucketStartUtc": "2026-05-25T11:59:00Z",
+        "bucketEndUtc": "2026-05-25T11:59:30Z",
+        "requestCount": 820,
+        "p95Ms": 210,
+        "p99Ms": 360
+      },
+      "resourceHints": {
+        "cpuUsage": 0.41,
+        "heapUsedRatio": 0.62,
+        "datasourcePoolUsage": 0.37
+      },
+      "applicationTriageContribution": {
+        "contributed": false,
+        "ruleIds": [],
+        "reason": "no_action_needed"
+      },
+      "endpointEvidenceRefs": []
+    }
+  ]
+}
+```
+
+Boundary:
+
+- source는 stored dashboard snapshot/read model이다.
+- API는 accepted bucket, heartbeat telemetry, resource sample을 live join해서 current state를 만들지 않는다.
+- UI/API는 point를 조합해 lifecycle state, health score, insight rule, p95/p99, endpoint priority, operational event를 재계산하지 않는다.
+- `starterPercentilePoint`는 source-scoped starter canonical latest point만 담고, 없으면 `null`이다.
+- `endpointEvidenceRefs`는 stored snapshot detail의 bounded endpoint evidence 참조만 담는다.
+- raw 30초 bucket list, raw snapshot JSON list, endpoint timeseries, arbitrary query parameter는 제공하지 않는다.
+
+대표 status mapping:
+
+| Status | 조건 |
+|---|---|
+| `200` | bounded instance snapshot trend 반환. snapshot이 없으면 `points=[]` |
+| `404` | project, application, instance 식별 불가 |
+| `500` | snapshot 조회/projection 실패 |
+
+### 4.4 Candidate MVC Boundary
 
 - `OperationalEventHistoryService` 후보가 `DashboardSnapshotRepository`를 재사용해 bounded event read model을 만든다.
+- `InstanceSnapshotTrendService` 후보가 `DashboardSnapshotRepository`를 재사용해 특정 instance summary projection을 만든다.
 - 별도 `OperationalEventRepository`와 `operational_events` table은 MVP에서 만들지 않는다.
 - 별도 endpoint timeseries table, materialized view, Redis queue, PostgreSQL outbox는 MVP history source로 만들지 않는다.
 - UI는 event 목록과 snapshot deep link를 표시할 뿐 state/rule/p95/p99/endpoint priority를 재계산하지 않는다.

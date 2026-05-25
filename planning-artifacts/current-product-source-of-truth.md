@@ -1,9 +1,10 @@
 ---
 artifactType: product-source-of-truth
 projectName: Spring Boot 운영 첫 화면 포털
-status: draft
-date: 2026-05-24
+status: active-alignment-baseline
+date: 2026-05-25
 alignmentAuthority: latest-user-intent-wins
+uxBaselinePrototype: planning-artifacts/prototypes/epic5-6-dashboard-flow-prototype.html
 ---
 
 # Current Product Source of Truth
@@ -13,6 +14,14 @@ alignmentAuthority: latest-user-intent-wins
 이 문서는 최근 사용자 플로우 변경과 Story 4.x 이후의 계약 변경을 기준으로 Epic 5/6 문서 정렬의 기준점을 제공한다.
 
 과거 PRD/UX/epic 문서가 서로 충돌하면 이 문서의 제품 흐름과 원칙을 먼저 적용하고, 그 다음 최신 contract 문서로 구현 경계를 닫는다.
+
+### 1.1 Epic 5/6 UX Baseline
+
+Epic 5/6 dashboard flow 판단에서는 `planning-artifacts/prototypes/epic5-6-dashboard-flow-prototype.html`을 최신 사용자 의도가 반영된 UX baseline으로 본다.
+
+BMAD 또는 후속 문서 정렬에서 우선순위는 이 문서와 최신 contracts, 위 prototype, 재정렬된 Epic/sprint 문서, 과거 restart/context 문서 순서다.
+
+과거 UX 문서가 application-only first screen, alert-first surface, raw explorer 중심 화면, 또는 instance snapshot trend 부재를 전제하면 이 문서와 prototype이 우선한다.
 
 ## 2. 최신 사용자 의도
 
@@ -124,7 +133,33 @@ Instance detail은 application dashboard를 대체하지 않는다.
 - JVM/datasource/CPU resource hint
 - 이 instance가 application triage에 기여했는지 여부
 
-금지:
+### 5.4.1 Instance Snapshot Trend
+
+Instance detail 안에는 문제가 있는 순간의 evidence만이 아니라, 선택된 instance가 최근 며칠 동안 어떻게 관찰됐는지 보는 bounded trend 진입점이 있을 수 있다.
+
+이 화면은 외부 monitoring service의 host/resource detail처럼 특정 entity의 최근 변화를 보는 관찰 화면이다. 단, 이 제품에서는 raw metric explorer가 아니라 stored dashboard snapshot/read model에서 특정 instance summary만 projection하는 화면으로 제한한다.
+
+표시 후보:
+
+- 기본 horizon: 최근 7일
+- 선택 후보: 24시간 / 7일 / 14일 retention 안
+- hourly scheduled snapshot marker
+- state-change/high-confidence concern/recovery/stale/down/fallback capture marker
+- snapshot 시점의 instance identity
+- snapshot 시점의 accepted bucket freshness
+- snapshot 시점의 starter heartbeat/connection observation
+- snapshot 시점의 source-scoped starter p95/p99 latest point
+- snapshot 시점의 bounded resource hint
+- snapshot 시점의 application triage contribution 여부
+
+Instance trend 금지:
+
+- instance trend에서 application state를 새로 판정하지 않는다.
+- accepted bucket, heartbeat, resource hint를 조합해 UI/API가 instance health score를 만들지 않는다.
+- 30초 raw bucket explorer, arbitrary metric query, endpoint timeseries 화면으로 확장하지 않는다.
+- retention을 넘는 장기 instance analytics처럼 약속하지 않는다.
+
+Instance detail 전체 금지:
 
 - instance 화면에서 application state를 새로 판정하지 않는다.
 - 여러 instance p95/p99를 평균/최댓값/병합해 application p95/p99처럼 표시하지 않는다.
@@ -226,8 +261,9 @@ Epic 5는 UI가 소비할 server-computed read model을 닫는다.
 4. Triage summary and zero-insight mapping
 5. Endpoint priority read model
 6. Instance evidence read model
-7. Dashboard snapshot persistence and marker contract
-8. Operational event history API
+7. Instance snapshot trend projection
+8. Dashboard snapshot persistence and marker contract
+9. Operational event history API
 
 Epic 5의 definition of done:
 
@@ -246,9 +282,10 @@ Epic 6은 사용자가 실제로 밟는 화면과 demo path를 닫는다.
 3. Application list UI
 4. Application dashboard UI integration
 5. Instance evidence UI
-6. Snapshot/history marker UI and deep link
-7. Demo green path
-8. Failure/recovery path demo hardening
+6. Instance snapshot trend UI
+7. Snapshot/history marker UI and deep link
+8. Demo green path
+9. Failure/recovery path demo hardening
 
 Epic 6의 definition of done:
 
@@ -279,9 +316,10 @@ Epic 6의 definition of done:
 
 1. Project 생성은 MVP에서 public onboarding API로 열 것인가, local/internal admin seed로 유지할 것인가?
 2. Instance detail read model을 Epic 5에서 어느 깊이까지 닫을 것인가?
-3. Snapshot/history marker UI를 Epic 6 MVP에 포함할 것인가, demo-only로 둘 것인가?
-4. Alert/Discord surface는 Epic 6 MVP에 넣을 것인가, Post-MVP로 둘 것인가?
-5. Application list에서 state summary를 얼마나 계산해 보여줄 것인가?
+3. Instance snapshot trend를 Epic 6 MVP에 포함할 것인가, demo-only로 둘 것인가?
+4. Snapshot/history marker UI를 Epic 6 MVP에 포함할 것인가, demo-only로 둘 것인가?
+5. Alert/Discord surface는 Epic 6 MVP에 넣을 것인가, Post-MVP로 둘 것인가?
+6. Application list에서 state summary를 얼마나 계산해 보여줄 것인가?
 
 ## 11. 바로 적용할 정렬 대상
 

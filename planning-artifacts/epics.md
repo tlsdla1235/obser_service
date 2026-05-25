@@ -146,6 +146,13 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
    - `high_confidence_concern` event 승격 기준은 confidence `>= 0.82`로 둔다.
    - 짧지만 강한 spike는 confidence `>= 0.90` + 최근 5개 bucket 중 2개 이상 bad인 실험값으로만 둔다.
    - p95/p99를 표시해야 하면 starter canonical percentile만 사용하고, histogram-derived p99를 만들지 않는다.
+8. Instance snapshot trend read model/API 후보
+   - 특정 application instance의 최근 관찰 흐름을 stored dashboard snapshot 기반 projection으로 반환한다.
+   - 기본 조회는 `since=7d`, `limit=168`이고, `dashboard_snapshots` retention 안에서 최대 `since=14d`, `limit=336`으로 clamp한다.
+   - snapshot `read_model_json`에 bounded instance summary를 포함하되 기본 cap은 snapshot당 50개 instance summary로 둔다.
+   - API/UI는 lifecycle state, rule, p95/p99, endpoint priority, operational event를 재계산하지 않는다.
+   - raw 30초 bucket list, raw snapshot JSON list, endpoint timeseries, arbitrary metric query를 제공하지 않는다.
+   - 필요할 때만 후속 story에서 snapshot-derived helper table을 검토하며 raw metric store로 만들지 않는다.
 
 ## Epic 6. First-Screen Delivery and Demo Hardening
 
@@ -170,6 +177,12 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
    - UI는 bounded event 목록과 snapshot detail link를 표시한다.
    - UI는 state/rule/p95/p99/endpoint priority를 재계산하지 않는다.
    - raw snapshot explorer, arbitrary time-series query UI, alert delivery log 병합은 non-goal이다.
+7. Instance snapshot trend UI 후보
+   - Instance detail에서 selected instance의 최근 24h/7d/14d trend로 이동할 수 있게 한다.
+   - 기본 화면은 7일 horizon의 stored read model point와 marker overlay를 보여준다.
+   - 문제가 없는 기간도 "no concern observed"로 표시해 instance 안정성 확인을 지원한다.
+   - starter connection lane과 accepted bucket metric lane을 분리해 보여준다.
+   - UI는 state/rule/p95/p99/endpoint priority/history event를 재계산하지 않는다.
 
 ## Post-MVP Candidate Backlog
 
@@ -239,6 +252,9 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
 - degraded enter/resolve hysteresis는 `state-semantics.md`의 확정 기준을 따르며 30초 단발 blip을 degraded로 만들지 않는다.
 - Dashboard triage card 노출 기준(confidence `>= 0.65`)과 operational history event 승격 기준(confidence `>= 0.82`)을 분리한다.
 - Snapshot `read_model_json`의 endpoint evidence는 최대 10개까지 보존하고 raw path/query/trace/per-request sample은 포함하지 않는다.
+- Snapshot `read_model_json`의 bounded instance summary는 instance snapshot trend projection을 위해 snapshot당 최대 50개까지 보존할 수 있다.
+- Instance snapshot trend는 기본 `since=7d`, `limit=168`이며 최대 `since=14d`, `limit=336`으로 bounded 조회한다.
+- Instance snapshot trend는 stored dashboard snapshot/read model projection이며 raw bucket explorer, raw snapshot list, endpoint timeseries, arbitrary metric query가 아니다.
 - 30초 단위 dashboard snapshot 장기 보관, endpoint timeseries table, materialized view, Redis/outbox는 MVP 범위 밖이다.
 - Operational Event History는 Epic 5/6에서 dashboard snapshot/read model 기반 bounded surface로 다루며 Epic 2/3에는 포함하지 않는다.
 - Snapshot detail shape는 Epic 5의 `Snapshot Marker and Bounded Tail Summary Contract`에서 닫는다.

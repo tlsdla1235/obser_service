@@ -69,6 +69,8 @@ Bounded index/search helper column 후보는 `capture_reason`, `primary_rule_id`
 
 Snapshot `read_model_json`에 남기는 endpoint evidence는 최대 `10개`다. 우선순위는 top triage card에 연결된 endpoint, `endpointPriority` 상위 항목, high-confidence concern endpoint 순서다. Endpoint evidence에는 `method`, `route`, `endpointKey`, `rank`, `reason`, `ruleIds`, `confidence`, `requestCount`, `errorRate`, `durationBuckets`, `baselineDurationBuckets`, `bucketDistributionSource`, `freshness`, `recommendedAction`만 담는다. raw path, query string, query key/value, trace id, per-request sample, endpoint p95/p99는 담지 않는다.
 
+Snapshot `read_model_json`은 instance snapshot trend projection을 위해 bounded instance summary를 포함할 수 있다. 이 summary는 snapshot 시점의 instance identity, accepted bucket freshness observation, starter heartbeat observation, source-scoped starter percentile latest point, bounded resource hint, application triage contribution 여부를 담을 수 있다. 기본 cap은 snapshot당 `50개` instance summary다. 이 field는 raw instance timeseries가 아니며, operational event 후보 source를 대체하지 않는다.
+
 ## 5. Event Types
 
 허용 event type 후보는 아래로 제한한다.
@@ -96,6 +98,22 @@ history 조회 horizon은 current/baseline 판단 window와 다르다.
 - retention으로 snapshot이 삭제된 구간은 history가 비어 있을 수 있다.
 
 이 API는 arbitrary time-series query, raw bucket query, raw snapshot list를 제공하지 않는다.
+
+## 6.1 Instance Snapshot Trend Projection
+
+Instance snapshot trend는 operational event history와 별도의 bounded projection이다. 목적은 특정 instance가 최근 `24h/7d/14d` 동안 어떻게 관찰됐는지 보여주는 것이며, 문제 상황에 한정하지 않는다.
+
+이 projection은 `dashboard_snapshots.read_model_json`에 저장된 bounded instance summary에서 특정 `application + instance` point만 추출한다. 기본 조회는 `since=7d`, `limit=168`이고, retention 경계 안에서 최대 `since=14d`, `limit=336`으로 clamp한다. 반환 point는 `capturedAt` 기준 오름차순이다.
+
+Instance snapshot trend는 아래를 하지 않는다.
+
+- operational event를 새로 생성하거나 dedup/suppression을 다시 적용
+- current state, lifecycle state, insight rule, p95/p99, endpoint priority를 재계산
+- heartbeat missing/success를 operational event로 승격
+- raw dashboard snapshot JSON 전체를 노출
+- raw bucket query, arbitrary time-series query, endpoint timeseries query 제공
+
+Operational event marker와 instance trend point가 같은 snapshot을 가리킬 수는 있다. 이 경우 UI는 event marker를 trend 위에 overlay할 수 있지만, marker 의미는 stored read model에서 온 것이며 UI가 새로 판단하지 않는다.
 
 ## 7. Deduplication, Hysteresis, and Suppression Rules
 
