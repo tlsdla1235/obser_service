@@ -2,6 +2,8 @@ package com.observation.portal.domain.bucket.repository;
 
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommand;
+import com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow;
+import com.observation.portal.domain.bucket.model.LocalPercentileEvidenceRow;
 import com.observation.portal.domain.bucket.model.WindowBucketAggregate;
 import com.observation.portal.domain.catalog.entity.ProjectEntity;
 import com.observation.portal.domain.catalog.repository.ApplicationInstanceRepository;
@@ -257,6 +259,127 @@ class MetricBucketRepositoryIntegrationTest {
     }
 
     @Test
+    void findsLocalPercentileEvidenceRowsByApplicationScopeWindowAndInstanceName() {
+        OffsetDateTime windowStart = OffsetDateTime.parse("2026-05-08T01:17:30Z");
+        OffsetDateTime windowEnd = OffsetDateTime.parse("2026-05-08T01:32:30Z");
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:20260508T011700Z",
+                "hash-before",
+                "2026-05-08T01:17:00Z",
+                OffsetDateTime.parse("2026-05-08T01:17:35Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:20260508T011730Z",
+                "hash-inside-1",
+                "2026-05-08T01:17:30Z",
+                OffsetDateTime.parse("2026-05-08T01:18:05Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-b:20260508T013200Z",
+                "hash-inside-2",
+                "2026-05-08T01:32:00Z",
+                OffsetDateTime.parse("2026-05-08T01:32:35Z"),
+                "orders-api",
+                "prod",
+                "pod-b"));
+        metricBucketRepository.insert(command(
+                "project-123:payments-api:prod:pod-a:20260508T011730Z",
+                "hash-other-app",
+                "2026-05-08T01:17:30Z",
+                OffsetDateTime.parse("2026-05-08T01:18:10Z"),
+                "payments-api",
+                "prod",
+                "pod-a"));
+
+        var ordersApplication = applicationRepository
+                .findByProjectIdAndNameAndEnvironment(PROJECT_ID, "orders-api", "prod")
+                .orElseThrow();
+        List<LocalPercentileEvidenceRow> rows = metricBucketRepository.findLocalPercentileEvidenceRowsByApplicationId(
+                ordersApplication.id(),
+                windowStart.toInstant(),
+                windowEnd.toInstant());
+
+        assertThat(rows)
+                .extracting(
+                        LocalPercentileEvidenceRow::instanceName,
+                        LocalPercentileEvidenceRow::bucketStartUtc,
+                        LocalPercentileEvidenceRow::bucketEndUtc)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(
+                                "pod-a",
+                                OffsetDateTime.parse("2026-05-08T01:17:30Z"),
+                                OffsetDateTime.parse("2026-05-08T01:18:00Z")),
+                        org.assertj.core.groups.Tuple.tuple(
+                                "pod-b",
+                                OffsetDateTime.parse("2026-05-08T01:32:00Z"),
+                                OffsetDateTime.parse("2026-05-08T01:32:30Z")));
+        assertThat(rows)
+                .allSatisfy(row -> assertThat(row.localPercentilesJson())
+                        .contains("\"source\": \"starter_local\"", "\"scope\": \"instance_bucket\""));
+    }
+
+    @Test
+    void findsSummaryDurationBucketEvidenceRowsByApplicationScopeAndWindowOnly() {
+        OffsetDateTime windowStart = OffsetDateTime.parse("2026-05-08T01:17:30Z");
+        OffsetDateTime windowEnd = OffsetDateTime.parse("2026-05-08T01:32:30Z");
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:20260508T011730Z",
+                "hash-inside-1",
+                "2026-05-08T01:17:30Z",
+                OffsetDateTime.parse("2026-05-08T01:18:05Z"),
+                "orders-api",
+                "prod",
+                "pod-a",
+                List.of(
+                        new AcceptedMetricBucketWriteCommand.DurationBucket(50L, 4L),
+                        new AcceptedMetricBucketWriteCommand.DurationBucket(100L, 7L))));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-b:20260508T013200Z",
+                "hash-inside-2",
+                "2026-05-08T01:32:00Z",
+                OffsetDateTime.parse("2026-05-08T01:32:35Z"),
+                "orders-api",
+                "prod",
+                "pod-b",
+                List.of(
+                        new AcceptedMetricBucketWriteCommand.DurationBucket(50L, 6L),
+                        new AcceptedMetricBucketWriteCommand.DurationBucket(100L, 9L))));
+        metricBucketRepository.insert(command(
+                "project-123:payments-api:prod:pod-a:20260508T011730Z",
+                "hash-other-app",
+                "2026-05-08T01:17:30Z",
+                OffsetDateTime.parse("2026-05-08T01:18:10Z"),
+                "payments-api",
+                "prod",
+                "pod-a"));
+
+        var ordersApplication = applicationRepository
+                .findByProjectIdAndNameAndEnvironment(PROJECT_ID, "orders-api", "prod")
+                .orElseThrow();
+        List<HistogramBucketEvidenceRow> rows =
+                metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
+                        ordersApplication.id(),
+                        windowStart.toInstant(),
+                        windowEnd.toInstant());
+
+        assertThat(rows)
+                .extracting(HistogramBucketEvidenceRow::bucketStartUtc, HistogramBucketEvidenceRow::bucketEndUtc)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(
+                                OffsetDateTime.parse("2026-05-08T01:17:30Z"),
+                                OffsetDateTime.parse("2026-05-08T01:18:00Z")),
+                        org.assertj.core.groups.Tuple.tuple(
+                                OffsetDateTime.parse("2026-05-08T01:32:00Z"),
+                                OffsetDateTime.parse("2026-05-08T01:32:30Z")));
+        assertThat(rows)
+                .allSatisfy(row -> assertThat(row.durationBucketsJson()).contains("\"leMs\"", "\"count\""));
+    }
+
+    @Test
     void databaseEnforcesIdempotencyAndInstanceBucketUniqueness() throws SQLException {
         AcceptedMetricBucketWriteCommand first = command(
                 "project-123:orders-api:prod:pod-a:20260508T010000Z",
@@ -298,6 +421,29 @@ class MetricBucketRepositoryIntegrationTest {
             String applicationName,
             String environment,
             String instanceName) {
+        return command(
+                idempotencyKey,
+                payloadHash,
+                bucketStartUtc,
+                acceptedAt,
+                applicationName,
+                environment,
+                instanceName,
+                List.of(
+                        new AcceptedMetricBucketWriteCommand.DurationBucket(50L, 1L),
+                        new AcceptedMetricBucketWriteCommand.DurationBucket(100L, 2L),
+                        new AcceptedMetricBucketWriteCommand.DurationBucket(250L, 3L)));
+    }
+
+    private static AcceptedMetricBucketWriteCommand command(
+            String idempotencyKey,
+            String payloadHash,
+            String bucketStartUtc,
+            OffsetDateTime acceptedAt,
+            String applicationName,
+            String environment,
+            String instanceName,
+            List<AcceptedMetricBucketWriteCommand.DurationBucket> durationBuckets) {
         OffsetDateTime start = OffsetDateTime.parse(bucketStartUtc);
         return new AcceptedMetricBucketWriteCommand(
                 PROJECT_ID,
@@ -314,10 +460,7 @@ class MetricBucketRepositoryIntegrationTest {
                 acceptedAt,
                 3L,
                 1L,
-                List.of(
-                        new AcceptedMetricBucketWriteCommand.DurationBucket(50L, 1L),
-                        new AcceptedMetricBucketWriteCommand.DurationBucket(100L, 2L),
-                        new AcceptedMetricBucketWriteCommand.DurationBucket(250L, 3L)),
+                durationBuckets,
                 0.64d,
                 0.71d,
                 0.82d,

@@ -1,11 +1,16 @@
 package com.observation.portal.domain.dashboard.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.observation.portal.common.time.AcceptedBucketFreshness;
 import com.observation.portal.common.time.AcceptedBucketFreshnessEvaluator;
 import com.observation.portal.common.time.AcceptedBucketFreshnessStatus;
 import com.observation.portal.common.time.DashboardTimeWindow;
 import com.observation.portal.common.time.TimeBucketWindowCalculator;
 import com.observation.portal.common.time.UtcTimeInterval;
+import com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow;
+import com.observation.portal.domain.bucket.model.LocalPercentileEvidenceRow;
 import com.observation.portal.domain.bucket.model.WindowBucketAggregate;
 import com.observation.portal.domain.bucket.repository.MetricBucketRepository;
 import com.observation.portal.domain.catalog.entity.ApplicationEntity;
@@ -35,8 +40,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -53,6 +63,9 @@ public class DashboardReadModelService {
     private static final Duration STARTER_HEARTBEAT_RECENT_WINDOW = Duration.ofSeconds(90);
     private static final long MINIMUM_ACTIVE_SAMPLE_REQUEST_COUNT = 30L;
     private static final String APPLICATION_STATE_SCOPE = "application";
+    private static final String STARTER_LOCAL_SOURCE = "starter_local";
+    private static final String INSTANCE_BUCKET_SCOPE = "instance_bucket";
+    private static final String HISTOGRAM_BOUNDARY_MISMATCH_REASON = "histogram_boundary_mismatch";
 
     private final ApplicationRepository applicationRepository;
     private final MetricBucketRepository metricBucketRepository;
@@ -61,6 +74,7 @@ public class DashboardReadModelService {
     private final TimeBucketWindowCalculator timeBucketWindowCalculator;
     private final LifecycleStateService lifecycleStateService;
     private final Clock clock;
+    private final ObjectMapper objectMapper;
 
     /**
      * dashboard read model 조립에 필요한 read-only repository와 state/time component를 주입한다.
@@ -72,7 +86,8 @@ public class DashboardReadModelService {
             AcceptedBucketFreshnessEvaluator freshnessEvaluator,
             TimeBucketWindowCalculator timeBucketWindowCalculator,
             LifecycleStateService lifecycleStateService,
-            Clock clock) {
+            Clock clock,
+            ObjectMapper objectMapper) {
         this.applicationRepository = Objects.requireNonNull(
                 applicationRepository,
                 "applicationRepository must not be null");
@@ -90,6 +105,7 @@ public class DashboardReadModelService {
                 lifecycleStateService,
                 "lifecycleStateService must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null").withZone(ZoneOffset.UTC);
+        this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper must not be null");
     }
 
     /**
@@ -115,6 +131,21 @@ public class DashboardReadModelService {
                 application.id(),
                 dashboardWindow.current().startUtc(),
                 dashboardWindow.current().endUtc());
+        List<LocalPercentileEvidenceRow> currentPercentileRows =
+                metricBucketRepository.findLocalPercentileEvidenceRowsByApplicationId(
+                        application.id(),
+                        dashboardWindow.current().startUtc(),
+                        dashboardWindow.current().endUtc());
+        List<HistogramBucketEvidenceRow> currentHistogramRows =
+                metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
+                        application.id(),
+                        dashboardWindow.current().startUtc(),
+                        dashboardWindow.current().endUtc());
+        List<HistogramBucketEvidenceRow> baselineHistogramRows =
+                metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
+                        application.id(),
+                        dashboardWindow.baseline().startUtc(),
+                        dashboardWindow.baseline().endUtc());
         Optional<StarterHeartbeatTelemetryRecord> latestHeartbeat = heartbeatTelemetryRepository
                 .findLatestByApplicationScope(application.projectId(), application.name(), application.environment());
 
@@ -136,10 +167,238 @@ public class DashboardReadModelService {
                 zeroInsight(freshness.status(), starterConnectionInput.freshness(), sampleReadiness, trafficActivity),
                 recovery(stateDecision.recovery()),
                 metrics(aggregate),
-                ApplicationDashboardReadModel.SourceScopedPercentiles.empty(),
+                sourceScopedPercentiles(application, currentPercentileRows),
+                histogramDistribution(currentHistogramRows, baselineHistogramRows),
                 List.of(),
                 List.of(),
                 null);
+    }
+
+    /**
+     * persisted starter_local percentile point 중 current window의 instance별 latest valid item만 선택한다.
+     */
+    private ApplicationDashboardReadModel.SourceScopedPercentiles sourceScopedPercentiles(
+            ApplicationEntity application,
+            List<LocalPercentileEvidenceRow> rows) {
+        List<LocalPercentileEvidenceRow> evidenceRows = List.copyOf(Objects.requireNonNullElse(rows, List.of()));
+        if (evidenceRows.isEmpty()) {
+            return ApplicationDashboardReadModel.SourceScopedPercentiles.empty();
+        }
+
+        Map<UUID, ApplicationDashboardReadModel.PercentileItem> latestByInstance = new LinkedHashMap<>();
+        for (LocalPercentileEvidenceRow row : evidenceRows) {
+            toValidPercentileItem(application, row)
+                    .ifPresent(item -> latestByInstance.merge(
+                            row.applicationInstanceId(),
+                            item,
+                            DashboardReadModelService::latestPercentileItem));
+        }
+        if (latestByInstance.isEmpty()) {
+            return ApplicationDashboardReadModel.SourceScopedPercentiles.insufficient(
+                    "no_valid_percentile_points_in_current_window");
+        }
+
+        List<ApplicationDashboardReadModel.PercentileItem> items = latestByInstance.values().stream()
+                .sorted(Comparator.comparing(ApplicationDashboardReadModel.PercentileItem::instance)
+                        .thenComparing(ApplicationDashboardReadModel.PercentileItem::bucketEndUtc))
+                .toList();
+        return ApplicationDashboardReadModel.SourceScopedPercentiles.available(items);
+    }
+
+    /**
+     * local_percentiles_json의 source/scope와 persisted bucket boundary를 검증하고 API item으로 변환한다.
+     */
+    private Optional<ApplicationDashboardReadModel.PercentileItem> toValidPercentileItem(
+            ApplicationEntity application,
+            LocalPercentileEvidenceRow row) {
+        return parseLocalPercentiles(row.localPercentilesJson())
+                .filter(percentiles -> INSTANCE_BUCKET_SCOPE.equals(percentiles.scope()))
+                .filter(percentiles -> STARTER_LOCAL_SOURCE.equals(percentiles.source()))
+                .filter(percentiles -> Boolean.FALSE.equals(percentiles.mergeable()))
+                .filter(percentiles -> percentiles.requestCount() != null && percentiles.requestCount() > 0L)
+                .filter(percentiles -> percentiles.p95Ms() != null && percentiles.p95Ms() >= 0L)
+                .filter(percentiles -> percentiles.p99Ms() != null && percentiles.p99Ms() >= percentiles.p95Ms())
+                .filter(percentiles -> matchesBoundary(percentiles, row))
+                .map(percentiles -> new ApplicationDashboardReadModel.PercentileItem(
+                        percentiles.source(),
+                        application.name(),
+                        application.environment(),
+                        row.instanceName(),
+                        row.bucketStartUtc(),
+                        row.bucketEndUtc(),
+                        percentiles.requestCount(),
+                        percentiles.p95Ms(),
+                        percentiles.p99Ms()));
+    }
+
+    private static ApplicationDashboardReadModel.PercentileItem latestPercentileItem(
+            ApplicationDashboardReadModel.PercentileItem first,
+            ApplicationDashboardReadModel.PercentileItem second) {
+        return second.bucketEndUtc().isAfter(first.bucketEndUtc()) ? second : first;
+    }
+
+    /**
+     * current/baseline histogram evidence를 독립 window로 조립하고, window 간 비교 판단은 만들지 않는다.
+     */
+    private ApplicationDashboardReadModel.HistogramDistribution histogramDistribution(
+            List<HistogramBucketEvidenceRow> currentRows,
+            List<HistogramBucketEvidenceRow> baselineRows) {
+        return new ApplicationDashboardReadModel.HistogramDistribution(
+                "histogram_bucket_distribution",
+                "application",
+                "bucket_distribution_evidence",
+                "sum_cumulative_counts_only_when_boundary_set_matches",
+                histogramWindow(currentRows, "current"),
+                histogramWindow(baselineRows, "baseline"));
+    }
+
+    /**
+     * 하나의 15분 window 안에서 boundary set이 모두 일치할 때만 cumulative count를 boundary별로 합산한다.
+     */
+    private ApplicationDashboardReadModel.HistogramWindow histogramWindow(
+            List<HistogramBucketEvidenceRow> rows,
+            String windowName) {
+        List<HistogramBucketEvidenceRow> evidenceRows = List.copyOf(Objects.requireNonNullElse(rows, List.of()));
+        if (evidenceRows.isEmpty()) {
+            return ApplicationDashboardReadModel.HistogramWindow.missing(
+                    "no_histogram_buckets_in_" + windowName + "_window");
+        }
+
+        List<Long> expectedBoundarySet = null;
+        Map<Long, Long> mergedCounts = new LinkedHashMap<>();
+        for (HistogramBucketEvidenceRow row : evidenceRows) {
+            Optional<List<ParsedHistogramBucket>> parsedBuckets = parseDurationBuckets(row.durationBucketsJson());
+            if (parsedBuckets.isEmpty() || parsedBuckets.orElseThrow().isEmpty()) {
+                return ApplicationDashboardReadModel.HistogramWindow.insufficient(
+                        "invalid_histogram_bucket_evidence_in_" + windowName + "_window");
+            }
+            List<ParsedHistogramBucket> sortedBuckets = sortedUniqueBuckets(parsedBuckets.orElseThrow());
+            if (sortedBuckets.isEmpty()) {
+                return ApplicationDashboardReadModel.HistogramWindow.insufficient(
+                        "invalid_histogram_bucket_evidence_in_" + windowName + "_window");
+            }
+            List<Long> boundarySet = sortedBuckets.stream()
+                    .map(ParsedHistogramBucket::leMs)
+                    .toList();
+            if (expectedBoundarySet == null) {
+                expectedBoundarySet = boundarySet;
+                boundarySet.forEach(boundary -> mergedCounts.put(boundary, 0L));
+            } else if (!expectedBoundarySet.equals(boundarySet)) {
+                return ApplicationDashboardReadModel.HistogramWindow.unavailable(HISTOGRAM_BOUNDARY_MISMATCH_REASON);
+            }
+            for (ParsedHistogramBucket bucket : sortedBuckets) {
+                mergedCounts.compute(bucket.leMs(), (boundary, count) -> count + bucket.count());
+            }
+        }
+
+        if (mergedCounts.isEmpty()) {
+            return ApplicationDashboardReadModel.HistogramWindow.insufficient(
+                    "invalid_histogram_bucket_evidence_in_" + windowName + "_window");
+        }
+        List<ApplicationDashboardReadModel.HistogramBucket> buckets = mergedCounts.entrySet().stream()
+                .map(entry -> new ApplicationDashboardReadModel.HistogramBucket(entry.getKey(), entry.getValue()))
+                .toList();
+        long totalCount = buckets.get(buckets.size() - 1).count();
+        return ApplicationDashboardReadModel.HistogramWindow.available(totalCount, buckets);
+    }
+
+    /**
+     * persisted local_percentiles_json을 lenient하게 읽어 invalid evidence를 response item에서 제외할 수 있게 한다.
+     */
+    private Optional<ParsedLocalPercentiles> parseLocalPercentiles(String json) {
+        try {
+            JsonNode root = objectMapper.readTree(json);
+            if (root == null || !root.isObject()) {
+                return Optional.empty();
+            }
+            return Optional.of(new ParsedLocalPercentiles(
+                    textValue(root, "scope"),
+                    textValue(root, "source"),
+                    textValue(root, "bucketStartUtc"),
+                    textValue(root, "bucketEndUtc"),
+                    longValue(root, "requestCount"),
+                    longValue(root, "p95Ms"),
+                    longValue(root, "p99Ms"),
+                    booleanValue(root, "mergeable")));
+        } catch (JsonProcessingException exception) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * persisted duration_buckets_json 배열을 histogram merge 전 중립 bucket 목록으로 변환한다.
+     */
+    private Optional<List<ParsedHistogramBucket>> parseDurationBuckets(String json) {
+        try {
+            JsonNode root = objectMapper.readTree(json);
+            if (root == null || !root.isArray()) {
+                return Optional.empty();
+            }
+            List<ParsedHistogramBucket> buckets = new ArrayList<>();
+            for (JsonNode item : root) {
+                Long leMs = longValue(item, "leMs");
+                Long count = longValue(item, "count");
+                if (leMs == null || count == null || leMs < 0L || count < 0L) {
+                    return Optional.empty();
+                }
+                buckets.add(new ParsedHistogramBucket(leMs, count));
+            }
+            return Optional.of(buckets);
+        } catch (JsonProcessingException exception) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * 한 row 안의 histogram boundary를 정렬하고 중복 boundary가 있으면 invalid evidence로 취급한다.
+     */
+    private static List<ParsedHistogramBucket> sortedUniqueBuckets(List<ParsedHistogramBucket> buckets) {
+        List<ParsedHistogramBucket> sortedBuckets = buckets.stream()
+                .sorted(Comparator.comparingLong(ParsedHistogramBucket::leMs))
+                .toList();
+        Long previousBoundary = null;
+        for (ParsedHistogramBucket bucket : sortedBuckets) {
+            if (Objects.equals(previousBoundary, bucket.leMs())) {
+                return List.of();
+            }
+            previousBoundary = bucket.leMs();
+        }
+        return sortedBuckets;
+    }
+
+    /**
+     * local percentile JSON에 적힌 bucket boundary가 persisted bucket boundary와 같은 instant인지 확인한다.
+     */
+    private static boolean matchesBoundary(
+            ParsedLocalPercentiles percentiles,
+            LocalPercentileEvidenceRow row) {
+        if (percentiles.bucketStartUtc() == null || percentiles.bucketStartUtc().isBlank()
+                || percentiles.bucketEndUtc() == null || percentiles.bucketEndUtc().isBlank()) {
+            return false;
+        }
+        try {
+            OffsetDateTime percentileStart = OffsetDateTime.parse(percentiles.bucketStartUtc());
+            OffsetDateTime percentileEnd = OffsetDateTime.parse(percentiles.bucketEndUtc());
+            return percentileStart.toInstant().equals(row.bucketStartUtc().toInstant())
+                    && percentileEnd.toInstant().equals(row.bucketEndUtc().toInstant());
+        } catch (DateTimeParseException exception) {
+            return false;
+        }
+    }
+
+    private static String textValue(JsonNode root, String fieldName) {
+        JsonNode value = root.get(fieldName);
+        return value != null && value.isTextual() ? value.asText() : null;
+    }
+
+    private static Long longValue(JsonNode root, String fieldName) {
+        JsonNode value = root.get(fieldName);
+        return value != null && value.canConvertToLong() ? value.asLong() : null;
+    }
+
+    private static Boolean booleanValue(JsonNode root, String fieldName) {
+        JsonNode value = root.get(fieldName);
+        return value != null && value.isBoolean() ? value.asBoolean() : null;
     }
 
     private Instant floorToBucketBoundary(Instant queryAt) {
@@ -373,6 +632,21 @@ public class DashboardReadModelService {
         return BigDecimal.valueOf(errorCount)
                 .divide(BigDecimal.valueOf(requestCount), scale, RoundingMode.HALF_UP)
                 .stripTrailingZeros();
+    }
+
+    private record ParsedLocalPercentiles(
+            String scope,
+            String source,
+            String bucketStartUtc,
+            String bucketEndUtc,
+            Long requestCount,
+            Long p95Ms,
+            Long p99Ms,
+            Boolean mergeable
+    ) {
+    }
+
+    private record ParsedHistogramBucket(long leMs, long count) {
     }
 
     private static OffsetDateTime toUtcOffsetDateTime(Instant instant) {

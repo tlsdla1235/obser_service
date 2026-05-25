@@ -1,6 +1,8 @@
 package com.observation.portal.domain.bucket.repository;
 
 import com.observation.portal.domain.bucket.entity.AcceptedMetricBucketEntity;
+import com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow;
+import com.observation.portal.domain.bucket.model.LocalPercentileEvidenceRow;
 import com.observation.portal.domain.bucket.model.WindowBucketAggregate;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -8,6 +10,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -57,6 +60,47 @@ interface AcceptedMetricBucketJpaRepository extends JpaRepository<AcceptedMetric
             + "and bucket.bucketEndUtc > :windowStartUtc "
             + "and bucket.bucketEndUtc <= :windowEndUtc")
     WindowBucketAggregate sumWindowRequestAndErrorCountsByApplicationId(
+            @Param("applicationId") UUID applicationId,
+            @Param("windowStartUtc") OffsetDateTime windowStartUtc,
+            @Param("windowEndUtc") OffsetDateTime windowEndUtc);
+
+    /**
+     * source-scoped percentile read model을 위한 raw local percentile JSON과 instance identity를 조회한다.
+     */
+    @Query("select new com.observation.portal.domain.bucket.model.LocalPercentileEvidenceRow("
+            + "bucket.applicationId, "
+            + "bucket.applicationInstanceId, "
+            + "instance.instanceName, "
+            + "bucket.bucketStartUtc, "
+            + "bucket.bucketEndUtc, "
+            + "bucket.localPercentilesJson) "
+            + "from AcceptedMetricBucketEntity bucket, ApplicationInstanceEntity instance "
+            + "where instance.id = bucket.applicationInstanceId "
+            + "and bucket.applicationId = :applicationId "
+            + "and bucket.bucketEndUtc > :windowStartUtc "
+            + "and bucket.bucketEndUtc <= :windowEndUtc "
+            + "and bucket.localPercentilesJson is not null "
+            + "order by instance.instanceName asc, bucket.bucketEndUtc asc")
+    List<LocalPercentileEvidenceRow> findLocalPercentileEvidenceRowsByApplicationId(
+            @Param("applicationId") UUID applicationId,
+            @Param("windowStartUtc") OffsetDateTime windowStartUtc,
+            @Param("windowEndUtc") OffsetDateTime windowEndUtc);
+
+    /**
+     * histogram distribution read model을 위한 application summary duration bucket JSON row를 조회한다.
+     */
+    @Query("select new com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow("
+            + "bucket.applicationId, "
+            + "bucket.bucketStartUtc, "
+            + "bucket.bucketEndUtc, "
+            + "bucket.durationBucketsJson) "
+            + "from AcceptedMetricBucketEntity bucket "
+            + "where bucket.applicationId = :applicationId "
+            + "and bucket.bucketEndUtc > :windowStartUtc "
+            + "and bucket.bucketEndUtc <= :windowEndUtc "
+            + "and bucket.durationBucketsJson is not null "
+            + "order by bucket.bucketEndUtc asc")
+    List<HistogramBucketEvidenceRow> findSummaryDurationBucketEvidenceRowsByApplicationId(
             @Param("applicationId") UUID applicationId,
             @Param("windowStartUtc") OffsetDateTime windowStartUtc,
             @Param("windowEndUtc") OffsetDateTime windowEndUtc);
