@@ -1,9 +1,12 @@
 package com.observation.portal.domain.bucket.repository;
 
+import com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidence;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommand;
 import com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow;
 import com.observation.portal.domain.bucket.model.LocalPercentileEvidenceRow;
+import com.observation.portal.domain.bucket.model.RecentBucketEvidenceRow;
+import com.observation.portal.domain.bucket.model.RuntimeRatioEvidenceRow;
 import com.observation.portal.domain.bucket.model.WindowBucketAggregate;
 import com.observation.portal.domain.catalog.entity.ProjectEntity;
 import com.observation.portal.domain.catalog.repository.ApplicationInstanceRepository;
@@ -28,6 +31,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -377,6 +381,228 @@ class MetricBucketRepositoryIntegrationTest {
                                 OffsetDateTime.parse("2026-05-08T01:32:30Z")));
         assertThat(rows)
                 .allSatisfy(row -> assertThat(row.durationBucketsJson()).contains("\"leMs\"", "\"count\""));
+    }
+
+    @Test
+    void findsAcceptedBucketGapEvidenceAsNeutralDistinctBoundaryProjection() {
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:20260508T010000Z",
+                "hash-1",
+                "2026-05-08T01:00:00Z",
+                FIXED_TIME,
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:20260508T010300Z",
+                "hash-2",
+                "2026-05-08T01:03:00Z",
+                OffsetDateTime.parse("2026-05-08T01:03:35Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-b:20260508T010300Z",
+                "hash-2b",
+                "2026-05-08T01:03:00Z",
+                OffsetDateTime.parse("2026-05-08T01:03:36Z"),
+                "orders-api",
+                "prod",
+                "pod-b"));
+        metricBucketRepository.insert(command(
+                "project-123:payments-api:prod:pod-a:20260508T010330Z",
+                "hash-other",
+                "2026-05-08T01:03:30Z",
+                OffsetDateTime.parse("2026-05-08T01:04:05Z"),
+                "payments-api",
+                "prod",
+                "pod-a"));
+
+        var ordersApplication = applicationRepository
+                .findByProjectIdAndNameAndEnvironment(PROJECT_ID, "orders-api", "prod")
+                .orElseThrow();
+
+        Optional<AcceptedBucketGapEvidence> evidence =
+                metricBucketRepository.findAcceptedBucketGapEvidenceByApplicationIdAtOrBefore(
+                        ordersApplication.id(),
+                        OffsetDateTime.parse("2026-05-08T01:03:30Z").toInstant());
+
+        assertThat(evidence).isPresent();
+        assertThat(evidence.orElseThrow().latestBucketEndUtc())
+                .isEqualTo(OffsetDateTime.parse("2026-05-08T01:03:30Z"));
+        assertThat(evidence.orElseThrow().previousBucketEndUtc())
+                .contains(OffsetDateTime.parse("2026-05-08T01:00:30Z"));
+    }
+
+    @Test
+    void omitsPreviousGapWhenOnlyLatestDistinctBucketExists() {
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:20260508T010300Z",
+                "hash-only-latest-a",
+                "2026-05-08T01:03:00Z",
+                OffsetDateTime.parse("2026-05-08T01:03:35Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-b:20260508T010300Z",
+                "hash-only-latest-b",
+                "2026-05-08T01:03:00Z",
+                OffsetDateTime.parse("2026-05-08T01:03:36Z"),
+                "orders-api",
+                "prod",
+                "pod-b"));
+
+        var ordersApplication = applicationRepository
+                .findByProjectIdAndNameAndEnvironment(PROJECT_ID, "orders-api", "prod")
+                .orElseThrow();
+
+        Optional<AcceptedBucketGapEvidence> evidence =
+                metricBucketRepository.findAcceptedBucketGapEvidenceByApplicationIdAtOrBefore(
+                        ordersApplication.id(),
+                        OffsetDateTime.parse("2026-05-08T01:03:30Z").toInstant());
+
+        assertThat(evidence).isPresent();
+        assertThat(evidence.orElseThrow().latestBucketEndUtc())
+                .isEqualTo(OffsetDateTime.parse("2026-05-08T01:03:30Z"));
+        assertThat(evidence.orElseThrow().previousBucketEndUtc()).isEmpty();
+    }
+
+    @Test
+    void findsRecentFiveBucketEvidenceRowsWithoutRuleOrStateCalculation() {
+        for (int index = 0; index < 6; index++) {
+            OffsetDateTime start = OffsetDateTime.parse("2026-05-08T01:00:00Z").plusSeconds(index * 30L);
+            metricBucketRepository.insert(command(
+                    "project-123:orders-api:prod:pod-a:" + index,
+                    "hash-recent-" + index,
+                    start.toString(),
+                    start.plusSeconds(35),
+                    "orders-api",
+                    "prod",
+                    "pod-a"));
+        }
+        metricBucketRepository.insert(command(
+                "project-123:payments-api:prod:pod-a:recent",
+                "hash-recent-other",
+                "2026-05-08T01:02:30Z",
+                OffsetDateTime.parse("2026-05-08T01:03:10Z"),
+                "payments-api",
+                "prod",
+                "pod-a"));
+
+        var ordersApplication = applicationRepository
+                .findByProjectIdAndNameAndEnvironment(PROJECT_ID, "orders-api", "prod")
+                .orElseThrow();
+        List<RecentBucketEvidenceRow> rows =
+                metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBefore(
+                        ordersApplication.id(),
+                        OffsetDateTime.parse("2026-05-08T01:03:00Z").toInstant());
+
+        assertThat(rows).hasSize(5);
+        assertThat(rows)
+                .extracting(RecentBucketEvidenceRow::bucketEndUtc)
+                .containsExactly(
+                        OffsetDateTime.parse("2026-05-08T01:03:00Z"),
+                        OffsetDateTime.parse("2026-05-08T01:02:30Z"),
+                        OffsetDateTime.parse("2026-05-08T01:02:00Z"),
+                        OffsetDateTime.parse("2026-05-08T01:01:30Z"),
+                        OffsetDateTime.parse("2026-05-08T01:01:00Z"));
+        assertThat(rows)
+                .allSatisfy(row -> {
+                    assertThat(row.requestCount()).isEqualTo(3L);
+                    assertThat(row.durationBucketsJson()).contains("\"leMs\"", "\"count\"");
+                });
+    }
+
+    @Test
+    void groupsRecentBucketEvidenceRowsByApplicationLevelBoundaryOnly() {
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:20260508T010230Z",
+                "hash-boundary-a",
+                "2026-05-08T01:02:30Z",
+                OffsetDateTime.parse("2026-05-08T01:03:05Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-b:20260508T010230Z",
+                "hash-boundary-b",
+                "2026-05-08T01:02:30Z",
+                OffsetDateTime.parse("2026-05-08T01:03:06Z"),
+                "orders-api",
+                "prod",
+                "pod-b"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-c:20260508T010230Z",
+                "hash-boundary-c",
+                "2026-05-08T01:02:30Z",
+                OffsetDateTime.parse("2026-05-08T01:03:07Z"),
+                "orders-api",
+                "prod",
+                "pod-c"));
+
+        var ordersApplication = applicationRepository
+                .findByProjectIdAndNameAndEnvironment(PROJECT_ID, "orders-api", "prod")
+                .orElseThrow();
+        List<RecentBucketEvidenceRow> rows =
+                metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBefore(
+                        ordersApplication.id(),
+                        OffsetDateTime.parse("2026-05-08T01:03:00Z").toInstant());
+
+        assertThat(rows).singleElement().satisfies(row -> {
+            assertThat(row.bucketStartUtc()).isEqualTo(OffsetDateTime.parse("2026-05-08T01:02:30Z"));
+            assertThat(row.bucketEndUtc()).isEqualTo(OffsetDateTime.parse("2026-05-08T01:03:00Z"));
+            assertThat(row.requestCount()).isEqualTo(9L);
+            assertThat(row.errorCount()).isEqualTo(3L);
+            assertThat(row.durationBucketsJson()).contains(
+                    "\"leMs\":50",
+                    "\"count\":3",
+                    "\"leMs\":250",
+                    "\"count\":9");
+        });
+    }
+
+    @Test
+    void findsLatestRuntimeRatioEvidenceRowInWindowOnly() {
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:20260508T011700Z",
+                "hash-runtime-before",
+                "2026-05-08T01:17:00Z",
+                OffsetDateTime.parse("2026-05-08T01:17:35Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:20260508T011730Z",
+                "hash-runtime-inside",
+                "2026-05-08T01:17:30Z",
+                OffsetDateTime.parse("2026-05-08T01:18:05Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:20260508T013200Z",
+                "hash-runtime-latest",
+                "2026-05-08T01:32:00Z",
+                OffsetDateTime.parse("2026-05-08T01:32:35Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+
+        var ordersApplication = applicationRepository
+                .findByProjectIdAndNameAndEnvironment(PROJECT_ID, "orders-api", "prod")
+                .orElseThrow();
+        Optional<RuntimeRatioEvidenceRow> row =
+                metricBucketRepository.findLatestRuntimeRatioEvidenceRowByApplicationId(
+                        ordersApplication.id(),
+                        OffsetDateTime.parse("2026-05-08T01:17:30Z").toInstant(),
+                        OffsetDateTime.parse("2026-05-08T01:32:30Z").toInstant());
+
+        assertThat(row).isPresent();
+        assertThat(row.orElseThrow().bucketEndUtc()).isEqualTo(OffsetDateTime.parse("2026-05-08T01:32:30Z"));
+        assertThat(row.orElseThrow().cpuUsageRatio()).isEqualByComparingTo("0.64000");
+        assertThat(row.orElseThrow().heapUsedRatio()).isEqualByComparingTo("0.71000");
+        assertThat(row.orElseThrow().datasourcePoolUsageRatio()).isEqualByComparingTo("0.82000");
     }
 
     @Test

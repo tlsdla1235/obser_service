@@ -6,11 +6,13 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /**
  * Application Dashboard current API가 반환하는 read-model-contract skeleton이다.
  *
- * <p>Story 5.3에서는 starter가 보낸 instance bucket percentile point와 application-level histogram distribution
- * evidence를 노출하되, percentile rollup이나 state/rule 판단은 만들지 않는다.</p>
+ * <p>Story 5.4에서는 typed triage card와 zeroInsight/recovery mapping을 포함하되, endpoint priority와 p95/p99
+ * rollup은 만들지 않는다.</p>
  */
 public record ApplicationDashboardReadModel(
         OffsetDateTime generatedAt,
@@ -22,7 +24,7 @@ public record ApplicationDashboardReadModel(
         Metrics metrics,
         SourceScopedPercentiles sourceScopedPercentiles,
         HistogramDistribution histogramDistribution,
-        List<Object> triageCards,
+        List<TriageCard> triageCards,
         List<Object> endpointPriority,
         Object snapshot
 ) {
@@ -35,12 +37,14 @@ public record ApplicationDashboardReadModel(
         Objects.requireNonNull(application, "application must not be null");
         Objects.requireNonNull(state, "state must not be null");
         Objects.requireNonNull(starterConnection, "starterConnection must not be null");
-        Objects.requireNonNull(zeroInsight, "zeroInsight must not be null");
         Objects.requireNonNull(recovery, "recovery must not be null");
         Objects.requireNonNull(metrics, "metrics must not be null");
         Objects.requireNonNull(sourceScopedPercentiles, "sourceScopedPercentiles must not be null");
         Objects.requireNonNull(histogramDistribution, "histogramDistribution must not be null");
         triageCards = List.copyOf(Objects.requireNonNull(triageCards, "triageCards must not be null"));
+        if (triageCards.isEmpty()) {
+            Objects.requireNonNull(zeroInsight, "zeroInsight must not be null when triageCards is empty");
+        }
         endpointPriority = List.copyOf(Objects.requireNonNull(endpointPriority, "endpointPriority must not be null"));
     }
 
@@ -429,6 +433,170 @@ public record ApplicationDashboardReadModel(
             if (count < 0) {
                 throw new IllegalArgumentException("count must not be negative");
             }
+        }
+    }
+
+    /**
+     * server-computed application-level triage card다.
+     *
+     * <p>Story 5.4에서는 endpoint ranking을 만들지 않고, optional affectedEndpoint는 단일 확인 힌트로만 사용한다.</p>
+     */
+    public record TriageCard(
+            String ruleId,
+            TriageSeverity severity,
+            String title,
+            String summary,
+            String recommendation,
+            double confidence,
+            int score,
+            String affectedEndpoint,
+            TriageEvidence evidence
+    ) {
+
+        /**
+         * card copy와 bounded score/confidence/evidence를 검증해 UI가 그대로 렌더링할 수 있게 한다.
+         */
+        public TriageCard {
+            ruleId = requireText(ruleId, "ruleId");
+            Objects.requireNonNull(severity, "severity must not be null");
+            title = requireText(title, "title");
+            summary = requireText(summary, "summary");
+            recommendation = requireText(recommendation, "recommendation");
+            if (confidence < 0.0d || confidence > 1.0d) {
+                throw new IllegalArgumentException("confidence must be between 0.0 and 1.0");
+            }
+            if (score < 0 || score > 100) {
+                throw new IllegalArgumentException("score must be between 0 and 100");
+            }
+            affectedEndpoint = trimNullable(affectedEndpoint);
+            Objects.requireNonNull(evidence, "evidence must not be null");
+        }
+    }
+
+    /**
+     * MVP triage card severity를 제한된 JSON 문자열로 노출하는 enum이다.
+     */
+    public enum TriageSeverity {
+        INFO("info"),
+        WARNING("warning"),
+        CRITICAL("critical");
+
+        private final String value;
+
+        TriageSeverity(String value) {
+            this.value = value;
+        }
+
+        /**
+         * public API에는 enum 이름이 아니라 계약의 lower-case severity code를 반환한다.
+         */
+        @JsonValue
+        public String value() {
+            return value;
+        }
+    }
+
+    /**
+     * triage card가 나온 이유를 설명하는 bounded evidence object다.
+     *
+     * <p>raw path/query/trace/per-request sample, raw JSON string, endpoint p95/p99, histogram-derived percentile은 포함하지
+     * 않는다.</p>
+     */
+    public record TriageEvidence(
+            Long requestCount,
+            Long currentErrorCount,
+            BigDecimal currentErrorRate,
+            Long baselineRequestCount,
+            Long baselineErrorCount,
+            BigDecimal baselineErrorRate,
+            BigDecimal errorRateDelta,
+            BigDecimal currentSlowShare,
+            BigDecimal baselineSlowShare,
+            HistogramEvidenceSummary currentHistogram,
+            HistogramEvidenceSummary baselineHistogram,
+            RuntimeRatioEvidence runtimeRatio,
+            String freshnessStatusReason,
+            SourcePercentilePointSummary sourcePercentilePoint
+    ) {
+    }
+
+    /**
+     * histogram distribution window의 bounded summary만 card evidence에 복사한다.
+     */
+    public record HistogramEvidenceSummary(
+            String status,
+            long totalCount,
+            List<HistogramBucket> buckets
+    ) {
+
+        /**
+         * histogram evidence summary가 raw JSON string 없이 bounded bucket list만 갖도록 검증한다.
+         */
+        public HistogramEvidenceSummary {
+            status = requireText(status, "status");
+            if (totalCount < 0L) {
+                throw new IllegalArgumentException("totalCount must not be negative");
+            }
+            buckets = List.copyOf(Objects.requireNonNull(buckets, "buckets must not be null"));
+        }
+    }
+
+    /**
+     * saturation hint가 사용할 latest runtime ratio sample summary다.
+     */
+    public record RuntimeRatioEvidence(
+            BigDecimal cpuUsageRatio,
+            BigDecimal heapUsedRatio,
+            BigDecimal datasourcePoolUsageRatio
+    ) {
+
+        /**
+         * runtime ratio가 nullable이더라도 값이 있으면 0~1 범위 안에 있는지 검증한다.
+         */
+        public RuntimeRatioEvidence {
+            validateRatio(cpuUsageRatio, "cpuUsageRatio");
+            validateRatio(heapUsedRatio, "heapUsedRatio");
+            validateRatio(datasourcePoolUsageRatio, "datasourcePoolUsageRatio");
+        }
+    }
+
+    /**
+     * source-scoped starter percentile point를 평균/병합 없이 요약하는 optional evidence다.
+     */
+    public record SourcePercentilePointSummary(
+            String source,
+            String scope,
+            String instance,
+            OffsetDateTime bucketEndUtc,
+            long requestCount,
+            Long p95Ms,
+            Long p99Ms
+    ) {
+
+        /**
+         * percentile point summary의 source/scope와 bucket timestamp를 보존한다.
+         */
+        public SourcePercentilePointSummary {
+            source = requireText(source, "source");
+            scope = requireText(scope, "scope");
+            instance = requireText(instance, "instance");
+            Objects.requireNonNull(bucketEndUtc, "bucketEndUtc must not be null");
+            if (requestCount <= 0L) {
+                throw new IllegalArgumentException("requestCount must be positive");
+            }
+            if (p95Ms != null && p95Ms < 0L) {
+                throw new IllegalArgumentException("p95Ms must not be negative");
+            }
+            if (p99Ms != null && p99Ms < 0L) {
+                throw new IllegalArgumentException("p99Ms must not be negative");
+            }
+        }
+    }
+
+    private static void validateRatio(BigDecimal value, String fieldName) {
+        if (value != null
+                && (value.compareTo(BigDecimal.ZERO) < 0 || value.compareTo(BigDecimal.ONE) > 0)) {
+            throw new IllegalArgumentException(fieldName + " must be between 0.0 and 1.0");
         }
     }
 
