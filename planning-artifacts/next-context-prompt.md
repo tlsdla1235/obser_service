@@ -1,11 +1,9 @@
-# Next Context Prompt - Story 2.1 Dev
-
-> Superseded as active handoff: 이 prompt는 Epic 2 Story 2.1 구현용 historical next-context다. 2026-05-25 이후 Epic 5/6 dashboard planning은 `planning-artifacts/epic5-6-dashboard-alignment-context.md`, `planning-artifacts/current-product-source-of-truth.md`, 최신 `planning-artifacts/contracts/*`, `planning-artifacts/prototypes/epic5-6-dashboard-flow-prototype.html`, 재정렬된 `planning-artifacts/epics.md`, `implementation-artifacts/sprint-status.yaml`을 우선한다.
+# Next Context Prompt - Epic 4 Closure
 
 아래 프롬프트를 새 컨텍스트에 붙여넣고 시작한다.
 
 ```text
-BMAD dev-story를 MVC 버전 산출물 기준으로 진행해줘.
+BMAD retrospective 흐름으로 Epic 4를 완전히 닫아줘.
 
 프로젝트:
 - /Users/tlsdla1235/Desktop/study/observation
@@ -14,70 +12,91 @@ BMAD dev-story를 MVC 버전 산출물 기준으로 진행해줘.
 - archive/hexagonal-version/의 Hexagonal 산출물은 legacy 보관본이며 구현 기준으로 사용하지 않는다.
 - bmad-restart-context-pack/ 문서는 제품 문제와 UX 의도 참고용이다.
 
-이번에 구현할 Story:
-- planning-artifacts/stories/2-1-micrometer-observation-binding.md
-- Epic 2. Starter Direct Ingest Producer
-- Story 2.1. Micrometer Observation Binding
+이번 작업:
+- Epic 4. State Semantics and Time Windows 종료 회고를 작성한다.
+- `implementation-artifacts/epic-4-retro-2026-05-25.md`를 생성한다.
+- `implementation-artifacts/sprint-status.yaml`에서 `epic-4-retrospective: done`, `epic-4: done`으로 닫는다.
+- `sprint-status.yaml`의 `last_updated`와 workflow note를 Epic 4 종료 상태에 맞게 갱신한다.
 
 현재 상태:
-- Epic 1 portal foundation stories는 완료됨.
-- Story 1.1 Starter Package Skeleton은 review 상태이며 starter module/package skeleton은 구현되어 있음.
-- observability-spring-boot-starter module은 이미 존재한다.
-- Story 2.1은 starter bootstrap을 다시 포함하지 않는다.
-- implementation-artifacts/sprint-status.yaml 기준 Story 2.1은 ready-for-dev다.
-- Epic 2 targeted IR 기준 첫 dev target은 Story 2.1이며, Story 2.4/2.5의 worker-envelope handoff와 idempotency key no-portal-lookup guard가 문서에 보정되어 있다.
+- `implementation-artifacts/sprint-status.yaml` 기준 Story 4.0 -> 4.4는 모두 `done`이다.
+- sprint-status에는 없는 bridge story `4.0.1 Complete LocalPercentiles Ingest`, `4.0.2 Complete Starter Heartbeat`도 story 파일 기준 `done`이다.
+- 닫히지 않은 항목은 `epic-4: in-progress`, `epic-4-retrospective: optional`이다.
+- Epic 4 closure는 heartbeat/control-plane axis와 accepted bucket/data-plane axis 분리, UTC 30초 bucket/time window, lifecycle state semantics, recovery guidance, state semantics regression을 기준으로 판단한다.
 
 반드시 먼저 읽을 파일:
-- _bmad/custom/project-context.md
-- planning-artifacts/mvc-selection.md
-- planning-artifacts/sprint-plan.md
-- planning-artifacts/implementation-readiness-review-epic-2.md
-- implementation-artifacts/sprint-status.yaml
-- planning-artifacts/epics.md
-- planning-artifacts/project-structure.md
-- planning-artifacts/architecture.md
-- planning-artifacts/architecture-implementation-supplement.md
-- planning-artifacts/acceptance-traceability.md
-- planning-artifacts/contracts/metric-taxonomy.md
-- planning-artifacts/contracts/ingest-envelope.md
-- planning-artifacts/contracts/time-buckets.md
-- planning-artifacts/stories/1-1-starter-package-skeleton.md
-- planning-artifacts/stories/2-1-micrometer-observation-binding.md
+- `_bmad/custom/project-context.md`
+- `implementation-artifacts/sprint-status.yaml`
+- `implementation-artifacts/epic-3-retro-2026-05-21.md`
+- `implementation-artifacts/epic-4-context.md`
+- `implementation-artifacts/spec-story-4-3-recovery-guidance-contract-decisions.md`
+- `implementation-artifacts/spec-complete-local-percentiles-ingest.md`
+- `implementation-artifacts/spec-complete-starter-heartbeat.md`
+- `planning-artifacts/epics.md`
+- `planning-artifacts/sprint-plan.md`
+- `planning-artifacts/epic5-6-dashboard-alignment-context.md`
+- `planning-artifacts/current-product-source-of-truth.md`
+- `planning-artifacts/contracts/state-semantics.md`
+- `planning-artifacts/contracts/time-buckets.md`
+- `planning-artifacts/contracts/ingest-envelope.md`
+- `planning-artifacts/contracts/read-model-contract.md`
+- `planning-artifacts/contracts/starter-failure-semantics.md`
+- `planning-artifacts/stories/4-0-starter-heartbeat-and-instance-level-ingest-contract-reassessment.md`
+- `planning-artifacts/stories/4-0-1-complete-local-percentiles-ingest.md`
+- `planning-artifacts/stories/4-0-2-complete-starter-heartbeat.md`
+- `planning-artifacts/stories/4-1-time-bucket-contract-implementation.md`
+- `planning-artifacts/stories/4-2-lifecycle-state-service.md`
+- `planning-artifacts/stories/4-3-recovery-guidance.md`
+- `planning-artifacts/stories/4-4-state-semantics-tests.md`
+
+회고에서 반드시 정리할 closure 기준:
+- Story 4.0은 heartbeat와 local percentile 의미를 잠근 contract gate다.
+- Story 4.0.1은 `summary.localPercentiles`를 starter 전송, portal 수신/검증/저장 path까지 구현 완료한 bridge story다.
+- Story 4.0.2는 starter heartbeat sender/client와 portal heartbeat endpoint/response를 구현 완료한 bridge story다.
+- Story 4.1은 UTC 30초 bucket, current/baseline 15분 window, accepted bucket freshness helper, last accepted bucket timestamp repository method를 닫았다.
+- Story 4.2는 `LifecycleStateService`에서 metric state와 starter connection axis를 분리해 판정한다.
+- Story 4.3은 stale/down 이후 current freshness + insufficient sample 구간을 `state=unknown`, `recovery.isRecovering=true`로 표현한다.
+- Story 4.4는 freshness, minimum sample, baseline insufficient, two-axis interpretation, recovery semantics, scope guard를 regression test로 고정했다.
 
 중요한 전제:
-- 최종 아키텍처 선택은 Traditional MVC + Service/Repository Layering 하나로 고정되어 있다.
-- starter는 host Spring Boot app 안에 붙는 library/starter module이며 MVC web controller를 만들지 않는다.
-- starter에는 domain/application/port/adapter package 구조를 만들지 않는다.
-- Story 2.1은 Micrometer observation binding 자체에 집중한다.
-- Story 2.1에서는 route normalization policy 완성, bucket rollup, bounded queue, async flush worker, HTTP ingest client, retry/backoff, ingest envelope builder를 구현하지 않는다.
-- host request path에서 portal network call을 하지 않는다.
-- Prometheus/scrape/query UI/high-cardinality custom metric/logs/traces/large tenancy는 MVP 범위 밖이다.
+- Active architecture는 Traditional MVC + Service/Repository Layering이다.
+- `LifecycleStateService` 또는 동등한 service/model 계층만 lifecycle state를 계산한다.
+- UI, controller, repository는 lifecycle state, insight rule, p95/p99, endpoint priority를 재계산하지 않는다.
+- accepted bucket은 metric freshness/state/read-model source-of-truth다.
+- heartbeat는 starter/application process liveness, portal reachability, project key validity, metadata validity의 별도 control-plane source다.
+- heartbeat 성공/실패/미수신은 accepted bucket freshness, host business health, snapshot/event, p95/p99, rule/read-model calculation source가 아니다.
+- 최근 heartbeat와 없음/오래된 accepted bucket 조합을 host application down으로 단정하지 않는다.
+- recovery copy와 starter connection copy를 결합해 host application down, host process down, 앱 내려감 같은 확정 표현을 만들지 않는다.
+- localPercentiles는 source-scoped starter canonical percentile point다. 여러 instance/window의 p95/p99를 평균/병합해 application percentile scalar로 만들지 않는다.
+- endpoint histogram은 distribution/evidence 표시용이며 endpoint별 p95/p99 계산 source가 아니다.
 
-구현 목표:
-- existing observability-spring-boot-starter module에서 시작한다.
-- Micrometer/Spring observation binding에 필요한 최소 dependency를 추가한다.
-- HTTP server observation을 starter internal observation input으로 변환한다.
-- JVM CPU/heap과 datasource pool usage sample을 받을 수 있는 collection boundary를 만든다.
-- request path에서 portal network call을 하지 않는 구조를 유지한다.
-- synthetic observation 기반 binding test를 추가한다.
-- forbidden package(application/port/adapter)가 생기지 않았음을 확인한다.
+회고 문서 권장 구조:
+- front matter: `artifactType: retrospective`, `projectName`, `epic`, `retrospectiveType: review-closure`, `architectureStyle: Traditional MVC`, `date: 2026-05-25`, `status: done`
+- 1. 회고 범위
+- 2. 참여 관점
+- 3. Epic 4 목표 달성 여부
+- 4. Epic 3 회고 액션 Follow-through
+- 5. 잘 된 점
+- 6. 어려웠던 점과 시스템/프로세스 관점의 원인
+- 7. Deferred / Residual Risk 정리
+- 8. Epic 5/6 Action Items
+- 9. Next Epic Preparation
+- 10. Epic 4 Closure 판단
+- 11. sprint-status.yaml 종료 처리
+- 12. Team Agreements
+- 13. Closure
 
-이번 작업에서 하지 말 것:
-- starter module/package skeleton 재구현
-- route normalization final policy 구현
-- 30초 bucket rollup 구현
-- bounded queue/flush worker 구현
-- HTTP ingest client 구현
-- retry/backoff 구현
-- ingest envelope builder 구현
-- portal ingest API/controller/repository 구현
-- accepted_metric_buckets migration 구현
-- dashboard read model/p95/state/rule 계산 구현
-- Prometheus pull metric path나 query UI 구현
+Epic 5/6 준비에 남길 핵심 action item:
+- Epic 5 read model/API는 Epic 4의 state semantics를 소비하고 재계산하지 않는다.
+- dashboard current response는 accepted bucket axis와 starter connection axis를 별도 field/copy로 내려준다.
+- zeroInsight/recovery mapping은 `observing_recovery`, `metric_data_idle`, `telemetry_unreachable` 의미를 계약과 맞춘다.
+- percentile 표시는 source-scoped localPercentiles와 histogram distribution을 구분한다.
+- snapshot/history는 stored dashboard read model history이며 raw explorer나 per-ingest snapshot refresh로 만들지 않는다.
+- Epic 6 UI는 Application Dashboard를 primary first-screen으로 두고 server-computed read model을 렌더링한다.
 
 완료 조건:
-- Story 2.1 acceptance criteria가 충족된다.
-- Story 2.1 story file의 Tasks/Subtasks, Dev Agent Record, File List, Status가 구현 결과에 맞게 갱신된다.
-- implementation-artifacts/sprint-status.yaml에서 Story 2.1 상태가 review로 갱신된다.
-- 권장 검증 명령은 ./gradlew test 이며, 실행 불가 시 사유를 기록한다.
+- `implementation-artifacts/epic-4-retro-2026-05-25.md`가 저장된다.
+- `implementation-artifacts/sprint-status.yaml`에서 `epic-4: done`, `epic-4-retrospective: done`이 반영된다.
+- workflow note에서 Epic 4가 종료됐고 Story 4.0 -> 4.4 및 bridge story 4.0.1/4.0.2가 done임을 표현한다.
+- 문서만 수정했다면 Gradle 테스트는 필수 실행 대상이 아니다. 단, 코드 변경이 생기면 `./gradlew test` 또는 focused test를 실행하고 결과를 회고나 final에 남긴다.
 ```
