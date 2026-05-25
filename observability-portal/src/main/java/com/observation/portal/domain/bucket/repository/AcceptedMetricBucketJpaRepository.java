@@ -1,9 +1,14 @@
 package com.observation.portal.domain.bucket.repository;
 
 import com.observation.portal.domain.bucket.entity.AcceptedMetricBucketEntity;
+import com.observation.portal.domain.bucket.model.AcceptedBucketBoundaryEvidenceRow;
+import com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidenceRow;
 import com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow;
 import com.observation.portal.domain.bucket.model.LocalPercentileEvidenceRow;
+import com.observation.portal.domain.bucket.model.RecentBucketEvidenceRow;
+import com.observation.portal.domain.bucket.model.RuntimeRatioEvidenceRow;
 import com.observation.portal.domain.bucket.model.WindowBucketAggregate;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -104,4 +109,78 @@ interface AcceptedMetricBucketJpaRepository extends JpaRepository<AcceptedMetric
             @Param("applicationId") UUID applicationId,
             @Param("windowStartUtc") OffsetDateTime windowStartUtc,
             @Param("windowEndUtc") OffsetDateTime windowEndUtc);
+
+    /**
+     * accepted bucket gap 판단용 최신 distinct bucket boundary row를 최신순으로 조회한다.
+     */
+    @Query("select distinct new com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidenceRow("
+            + "bucket.applicationId, "
+            + "bucket.bucketStartUtc, "
+            + "bucket.bucketEndUtc) "
+            + "from AcceptedMetricBucketEntity bucket "
+            + "where bucket.applicationId = :applicationId "
+            + "and bucket.bucketEndUtc <= :evaluationAtUtc "
+            + "order by bucket.bucketEndUtc desc")
+    List<AcceptedBucketGapEvidenceRow> findAcceptedBucketGapEvidenceRowsByApplicationIdAtOrBefore(
+            @Param("applicationId") UUID applicationId,
+            @Param("evaluationAtUtc") OffsetDateTime evaluationAtUtc,
+            Pageable pageable);
+
+    /**
+     * recent evidence 범위를 정하기 위해 distinct application-level 30초 bucket boundary를 최신순으로 조회한다.
+     */
+    @Query("select distinct new com.observation.portal.domain.bucket.model.AcceptedBucketBoundaryEvidenceRow("
+            + "bucket.applicationId, "
+            + "bucket.bucketStartUtc, "
+            + "bucket.bucketEndUtc) "
+            + "from AcceptedMetricBucketEntity bucket "
+            + "where bucket.applicationId = :applicationId "
+            + "and bucket.bucketEndUtc <= :evaluationAtUtc "
+            + "order by bucket.bucketEndUtc desc")
+    List<AcceptedBucketBoundaryEvidenceRow> findRecentBucketBoundaryEvidenceRowsByApplicationIdAtOrBefore(
+            @Param("applicationId") UUID applicationId,
+            @Param("evaluationAtUtc") OffsetDateTime evaluationAtUtc,
+            Pageable pageable);
+
+    /**
+     * selected bucket boundary에 속한 bounded bucket evidence row를 최신순으로 조회한다.
+     */
+    @Query("select new com.observation.portal.domain.bucket.model.RecentBucketEvidenceRow("
+            + "bucket.applicationId, "
+            + "bucket.bucketStartUtc, "
+            + "bucket.bucketEndUtc, "
+            + "bucket.requestCount, "
+            + "bucket.errorCount, "
+            + "bucket.durationBucketsJson) "
+            + "from AcceptedMetricBucketEntity bucket "
+            + "where bucket.applicationId = :applicationId "
+            + "and bucket.bucketEndUtc in :bucketEndUtcValues "
+            + "order by bucket.bucketEndUtc desc")
+    List<RecentBucketEvidenceRow> findRecentBucketEvidenceRowsByApplicationIdAndBucketEndUtcIn(
+            @Param("applicationId") UUID applicationId,
+            @Param("bucketEndUtcValues") List<OffsetDateTime> bucketEndUtcValues);
+
+    /**
+     * saturation hint에 사용할 current window latest runtime ratio row를 최신순으로 조회한다.
+     */
+    @Query("select new com.observation.portal.domain.bucket.model.RuntimeRatioEvidenceRow("
+            + "bucket.applicationId, "
+            + "bucket.bucketStartUtc, "
+            + "bucket.bucketEndUtc, "
+            + "bucket.cpuUsageRatio, "
+            + "bucket.heapUsedRatio, "
+            + "bucket.datasourcePoolUsageRatio) "
+            + "from AcceptedMetricBucketEntity bucket "
+            + "where bucket.applicationId = :applicationId "
+            + "and bucket.bucketEndUtc > :windowStartUtc "
+            + "and bucket.bucketEndUtc <= :windowEndUtc "
+            + "and (bucket.cpuUsageRatio is not null "
+            + "or bucket.heapUsedRatio is not null "
+            + "or bucket.datasourcePoolUsageRatio is not null) "
+            + "order by bucket.bucketEndUtc desc")
+    List<RuntimeRatioEvidenceRow> findRuntimeRatioEvidenceRowsByApplicationId(
+            @Param("applicationId") UUID applicationId,
+            @Param("windowStartUtc") OffsetDateTime windowStartUtc,
+            @Param("windowEndUtc") OffsetDateTime windowEndUtc,
+            Pageable pageable);
 }

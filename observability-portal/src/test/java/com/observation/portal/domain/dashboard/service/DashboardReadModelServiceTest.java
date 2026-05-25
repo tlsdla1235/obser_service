@@ -3,8 +3,11 @@ package com.observation.portal.domain.dashboard.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.observation.portal.common.time.AcceptedBucketFreshnessEvaluator;
 import com.observation.portal.common.time.TimeBucketWindowCalculator;
+import com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidence;
 import com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow;
 import com.observation.portal.domain.bucket.model.LocalPercentileEvidenceRow;
+import com.observation.portal.domain.bucket.model.RecentBucketEvidenceRow;
+import com.observation.portal.domain.bucket.model.RuntimeRatioEvidenceRow;
 import com.observation.portal.domain.bucket.model.WindowBucketAggregate;
 import com.observation.portal.domain.bucket.repository.MetricBucketRepository;
 import com.observation.portal.domain.catalog.entity.ApplicationEntity;
@@ -56,6 +59,7 @@ class DashboardReadModelServiceTest {
             new AcceptedBucketFreshnessEvaluator(CLOCK),
             new TimeBucketWindowCalculator(CLOCK),
             new LifecycleStateService(),
+            new TriageSummaryService(objectMapper),
             CLOCK,
             objectMapper);
 
@@ -76,6 +80,21 @@ class DashboardReadModelServiceTest {
                 BASELINE_START,
                 CURRENT_START))
                 .thenReturn(List.of());
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, BASELINE_START, CURRENT_START))
+                .thenReturn(WindowBucketAggregate.zero());
+        when(metricBucketRepository.findAcceptedBucketGapEvidenceByApplicationIdAtOrBefore(
+                APPLICATION_ID,
+                EVALUATION_AT))
+                .thenReturn(Optional.empty());
+        when(metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBefore(
+                APPLICATION_ID,
+                EVALUATION_AT))
+                .thenReturn(List.of());
+        when(metricBucketRepository.findLatestRuntimeRatioEvidenceRowByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(Optional.empty());
     }
 
     @Test
@@ -482,6 +501,141 @@ class DashboardReadModelServiceTest {
     }
 
     @Test
+    void mapsPreviousDownGapAndCurrentInsufficientSampleToObservingRecovery() {
+        when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
+                .thenReturn(Optional.of(application()));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-25T10:32:00Z")));
+        when(metricBucketRepository.findAcceptedBucketGapEvidenceByApplicationIdAtOrBefore(
+                APPLICATION_ID,
+                EVALUATION_AT))
+                .thenReturn(Optional.of(new AcceptedBucketGapEvidence(
+                        offset("2026-05-25T10:32:00Z"),
+                        Optional.of(offset("2026-05-25T10:28:30Z")))));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, CURRENT_START, EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(3L, 0L));
+        when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.empty());
+
+        ApplicationDashboardReadModel dashboard = service.getDashboard(PROJECT_ID, APPLICATION_ID).orElseThrow();
+
+        assertThat(dashboard.state().code()).isEqualTo("unknown");
+        assertThat(dashboard.recovery().isRecovering()).isTrue();
+        assertThat(dashboard.recovery().lastHealthyAt()).isNull();
+        assertThat(dashboard.recovery().retryAfterSeconds()).isEqualTo(30);
+        assertThat(dashboard.zeroInsight()).isNotNull();
+        assertThat(dashboard.zeroInsight().reasonCode()).isEqualTo("observing_recovery");
+    }
+
+    @Test
+    void doesNotInferRecoveryFromCurrentBucketWithoutPreviousGapEvidence() {
+        when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
+                .thenReturn(Optional.of(application()));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-25T10:32:00Z")));
+        when(metricBucketRepository.findAcceptedBucketGapEvidenceByApplicationIdAtOrBefore(
+                APPLICATION_ID,
+                EVALUATION_AT))
+                .thenReturn(Optional.of(new AcceptedBucketGapEvidence(
+                        offset("2026-05-25T10:32:00Z"),
+                        Optional.empty())));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, CURRENT_START, EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(3L, 0L));
+        when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("2026-05-25T10:32:20Z")));
+
+        ApplicationDashboardReadModel dashboard = service.getDashboard(PROJECT_ID, APPLICATION_ID).orElseThrow();
+
+        assertThat(dashboard.recovery().isRecovering()).isFalse();
+        assertThat(dashboard.zeroInsight().reasonCode()).isEqualTo("insufficient_sample");
+    }
+
+    @Test
+    void exposesTriageCardWhileStateCanRemainActiveWhenConfidenceBelowDegradedEnter() {
+        when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
+                .thenReturn(Optional.of(application()));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-25T10:32:00Z")));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, CURRENT_START, EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(100L, 8L));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, BASELINE_START, CURRENT_START))
+                .thenReturn(new WindowBucketAggregate(100L, 2L));
+        when(metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBefore(
+                APPLICATION_ID,
+                EVALUATION_AT))
+                .thenReturn(List.of(
+                        recentBucket("2026-05-25T10:31:30Z", 10L, 1L),
+                        recentBucket("2026-05-25T10:31:00Z", 10L, 1L),
+                        recentBucket("2026-05-25T10:30:30Z", 10L, 1L)));
+        when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("2026-05-25T10:32:20Z")));
+
+        ApplicationDashboardReadModel dashboard = service.getDashboard(PROJECT_ID, APPLICATION_ID).orElseThrow();
+
+        assertThat(dashboard.triageCards())
+                .extracting(ApplicationDashboardReadModel.TriageCard::ruleId)
+                .contains("global_error_spike");
+        assertThat(dashboard.triageCards().get(0).confidence()).isLessThan(0.75d);
+        assertThat(dashboard.state().code()).isEqualTo("active");
+        assertThat(dashboard.zeroInsight()).isNull();
+        assertThat(dashboard.endpointPriority()).isEmpty();
+    }
+
+    @Test
+    void keepsStateActiveWhenHighConfidenceConcernHasOnlyTwoRecentBadBuckets() {
+        when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
+                .thenReturn(Optional.of(application()));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-25T10:32:00Z")));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, CURRENT_START, EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(100L, 9L));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, BASELINE_START, CURRENT_START))
+                .thenReturn(new WindowBucketAggregate(100L, 2L));
+        when(metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBefore(
+                APPLICATION_ID,
+                EVALUATION_AT))
+                .thenReturn(List.of(
+                        recentBucket("2026-05-25T10:31:30Z", 10L, 1L),
+                        recentBucket("2026-05-25T10:31:00Z", 10L, 1L),
+                        recentBucket("2026-05-25T10:30:30Z", 10L, 0L)));
+        when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("2026-05-25T10:32:20Z")));
+
+        ApplicationDashboardReadModel dashboard = service.getDashboard(PROJECT_ID, APPLICATION_ID).orElseThrow();
+
+        assertThat(dashboard.triageCards()).isNotEmpty();
+        assertThat(dashboard.triageCards().get(0).confidence()).isGreaterThanOrEqualTo(0.75d);
+        assertThat(dashboard.state().code()).isEqualTo("active");
+    }
+
+    @Test
+    void entersDegradedOnlyWhenConfidenceAndThreeRecentBadBucketsPass() {
+        when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
+                .thenReturn(Optional.of(application()));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-25T10:32:00Z")));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, CURRENT_START, EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(100L, 9L));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, BASELINE_START, CURRENT_START))
+                .thenReturn(new WindowBucketAggregate(100L, 2L));
+        when(metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBefore(
+                APPLICATION_ID,
+                EVALUATION_AT))
+                .thenReturn(List.of(
+                        recentBucket("2026-05-25T10:31:30Z", 10L, 1L),
+                        recentBucket("2026-05-25T10:31:00Z", 10L, 1L),
+                        recentBucket("2026-05-25T10:30:30Z", 10L, 1L)));
+        when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("2026-05-25T10:32:20Z")));
+
+        ApplicationDashboardReadModel dashboard = service.getDashboard(PROJECT_ID, APPLICATION_ID).orElseThrow();
+
+        assertThat(dashboard.triageCards()).isNotEmpty();
+        assertThat(dashboard.state().code()).isEqualTo("degraded");
+        assertThat(dashboard.zeroInsight()).isNull();
+    }
+
+    @Test
     void currentMetricDataAndStaleHeartbeatRemainSeparateAxes() {
         ApplicationDashboardReadModel dashboard = dashboard(
                 "2026-05-25T10:32:00Z",
@@ -637,6 +791,22 @@ class DashboardReadModelServiceTest {
                   {"leMs": %d, "count": %d}
                 ]
                 """.formatted(firstLeMs, firstCount, secondLeMs, secondCount));
+    }
+
+    private static RecentBucketEvidenceRow recentBucket(String bucketStartUtc, long requestCount, long errorCount) {
+        OffsetDateTime start = offset(bucketStartUtc);
+        return new RecentBucketEvidenceRow(
+                APPLICATION_ID,
+                start,
+                start.plusSeconds(30),
+                requestCount,
+                errorCount,
+                """
+                [
+                  {"leMs": 500, "count": %d},
+                  {"leMs": 1000, "count": %d}
+                ]
+                """.formatted(Math.max(0L, requestCount - 1L), requestCount));
     }
 
     private static ApplicationEntity application() {

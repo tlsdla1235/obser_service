@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -53,7 +54,7 @@ class DashboardControllerTest {
                 .andExpect(jsonPath("$.starterConnection.statusSource").value("starter_heartbeat"))
                 .andExpect(jsonPath("$.starterConnection.connectionMeaning").value("starter_connected"))
                 .andExpect(jsonPath("$.starterConnection.stateImpact").value("none"))
-                .andExpect(jsonPath("$.zeroInsight.reasonCode").value("no_action_needed"))
+                .andExpect(jsonPath("$.zeroInsight").value(nullValue()))
                 .andExpect(jsonPath("$.recovery.isRecovering").value(false))
                 .andExpect(jsonPath("$.metrics.requestCount").value(100))
                 .andExpect(jsonPath("$.metrics.errorCount").value(3))
@@ -89,7 +90,17 @@ class DashboardControllerTest {
                 .andExpect(jsonPath("$.histogramDistribution.current.regression").doesNotExist())
                 .andExpect(jsonPath("$.histogramDistribution.current.confidence").doesNotExist())
                 .andExpect(jsonPath("$.histogramDistribution.current.ruleId").doesNotExist())
-                .andExpect(jsonPath("$.triageCards").isEmpty())
+                .andExpect(jsonPath("$.triageCards[0].ruleId").value("global_error_spike"))
+                .andExpect(jsonPath("$.triageCards[0].severity").value("warning"))
+                .andExpect(jsonPath("$.triageCards[0].confidence").value(0.74))
+                .andExpect(jsonPath("$.triageCards[0].score").value(74))
+                .andExpect(jsonPath("$.triageCards[0].affectedEndpoint").value(nullValue()))
+                .andExpect(jsonPath("$.triageCards[0].evidence.requestCount").value(100))
+                .andExpect(jsonPath("$.triageCards[0].evidence.currentErrorRate").value(0.08))
+                .andExpect(jsonPath("$.triageCards[0].evidence.rawPath").doesNotExist())
+                .andExpect(jsonPath("$.triageCards[0].evidence.queryString").doesNotExist())
+                .andExpect(jsonPath("$.triageCards[0].evidence.traceId").doesNotExist())
+                .andExpect(jsonPath("$.triageCards[0].evidence.endpointP95Ms").doesNotExist())
                 .andExpect(jsonPath("$.endpointPriority").isEmpty())
                 .andExpect(jsonPath("$.snapshot").value(nullValue()));
         verify(service).getDashboard(PROJECT_ID, APPLICATION_ID);
@@ -157,10 +168,7 @@ class DashboardControllerTest {
                         "received",
                         "starter_connected",
                         "none"),
-                new ApplicationDashboardReadModel.ZeroInsight(
-                        "no_action_needed",
-                        "현재 우선 조치가 필요한 신호는 없습니다.",
-                        "트래픽이 유지되는지 다음 bucket까지 관찰하세요."),
+                null,
                 new ApplicationDashboardReadModel.Recovery(false, null, null, null),
                 new ApplicationDashboardReadModel.Metrics(100L, 3L, java.math.BigDecimal.valueOf(0.03)),
                 new ApplicationDashboardReadModel.SourceScopedPercentiles(
@@ -197,7 +205,30 @@ class DashboardControllerTest {
                                 "no_histogram_buckets_in_baseline_window",
                                 0L,
                                 List.of())),
-                List.of(),
+                List.of(new ApplicationDashboardReadModel.TriageCard(
+                        "global_error_spike",
+                        ApplicationDashboardReadModel.TriageSeverity.WARNING,
+                        "Application 오류율 증가",
+                        "current window의 오류율이 baseline보다 의미 있게 증가했습니다.",
+                        "최근 배포와 외부 의존성 오류 로그를 먼저 확인해보세요.",
+                        0.74d,
+                        74,
+                        null,
+                        new ApplicationDashboardReadModel.TriageEvidence(
+                                100L,
+                                8L,
+                                BigDecimal.valueOf(0.08d),
+                                100L,
+                                2L,
+                                BigDecimal.valueOf(0.02d),
+                                BigDecimal.valueOf(0.06d),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                "current",
+                                null))),
                 List.of(),
                 null);
     }

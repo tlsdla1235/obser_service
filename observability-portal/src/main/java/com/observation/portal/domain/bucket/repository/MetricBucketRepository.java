@@ -3,13 +3,20 @@ package com.observation.portal.domain.bucket.repository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.observation.portal.domain.bucket.entity.AcceptedMetricBucketEntity;
+import com.observation.portal.domain.bucket.model.AcceptedBucketBoundaryEvidenceRow;
+import com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidence;
+import com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidenceRow;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommand;
 import com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow;
 import com.observation.portal.domain.bucket.model.LocalPercentileEvidenceRow;
+import com.observation.portal.domain.bucket.model.RecentBucketEvidenceRow;
+import com.observation.portal.domain.bucket.model.RecentBucketEvidenceRows;
+import com.observation.portal.domain.bucket.model.RuntimeRatioEvidenceRow;
 import com.observation.portal.domain.bucket.model.WindowBucketAggregate;
 import com.observation.portal.domain.catalog.model.ApplicationCatalogEntry;
 import com.observation.portal.domain.catalog.repository.ApplicationCatalogRepository;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +36,8 @@ import java.util.UUID;
  */
 @Repository
 public class MetricBucketRepository {
+
+    private static final int RECENT_BUCKET_EVIDENCE_LIMIT = 5;
 
     private final AcceptedMetricBucketJpaRepository acceptedMetricBucketJpaRepository;
     private final ApplicationCatalogRepository applicationCatalogRepository;
@@ -193,6 +202,91 @@ public class MetricBucketRepository {
                 requiredApplicationId,
                 windowStart,
                 windowEnd);
+    }
+
+    /**
+     * latest accepted bucket과 직전 bucket boundary를 최신순 projection으로 읽어 lightweight gap 근거를 만든다.
+     *
+     * <p>이 method는 state/recovery/p95/p99/endpoint priority를 계산하지 않고, timestamp projection만 service에
+     * 전달한다.</p>
+     */
+    @Transactional(readOnly = true)
+    public Optional<AcceptedBucketGapEvidence> findAcceptedBucketGapEvidenceByApplicationIdAtOrBefore(
+            UUID applicationId,
+            Instant evaluationAtUtc) {
+        UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
+        OffsetDateTime evaluationAt = toUtcOffsetDateTime(
+                Objects.requireNonNull(evaluationAtUtc, "evaluationAtUtc must not be null"));
+        List<AcceptedBucketGapEvidenceRow> rows =
+                acceptedMetricBucketJpaRepository.findAcceptedBucketGapEvidenceRowsByApplicationIdAtOrBefore(
+                        requiredApplicationId,
+                        evaluationAt,
+                        PageRequest.of(0, 2));
+        if (rows.isEmpty()) {
+            return Optional.empty();
+        }
+        AcceptedBucketGapEvidenceRow latest = rows.get(0);
+        Optional<OffsetDateTime> previous = rows.size() > 1
+                ? Optional.of(rows.get(1).bucketEndUtc())
+                : Optional.empty();
+        return Optional.of(new AcceptedBucketGapEvidence(latest.bucketEndUtc(), previous));
+    }
+
+    /**
+     * degraded enter guard가 사용할 최근 5개 distinct 30초 bucket의 bounded evidence를 최신순으로 조회한다.
+     *
+     * <p>같은 boundary의 여러 instance row는 application-level bucket evidence로 합치되, repository는 bad bucket, rule,
+     * state, confidence, endpoint priority 판단은 하지 않는다.</p>
+     */
+    @Transactional(readOnly = true)
+    public List<RecentBucketEvidenceRow> findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBefore(
+            UUID applicationId,
+            Instant evaluationAtUtc) {
+        UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
+        OffsetDateTime evaluationAt = toUtcOffsetDateTime(
+                Objects.requireNonNull(evaluationAtUtc, "evaluationAtUtc must not be null"));
+        List<AcceptedBucketBoundaryEvidenceRow> boundaries =
+                acceptedMetricBucketJpaRepository.findRecentBucketBoundaryEvidenceRowsByApplicationIdAtOrBefore(
+                        requiredApplicationId,
+                        evaluationAt,
+                        PageRequest.of(0, RECENT_BUCKET_EVIDENCE_LIMIT));
+        if (boundaries.isEmpty()) {
+            return List.of();
+        }
+        List<OffsetDateTime> bucketEndUtcValues = boundaries.stream()
+                .map(AcceptedBucketBoundaryEvidenceRow::bucketEndUtc)
+                .toList();
+        List<RecentBucketEvidenceRow> rows =
+                acceptedMetricBucketJpaRepository.findRecentBucketEvidenceRowsByApplicationIdAndBucketEndUtcIn(
+                        requiredApplicationId,
+                        bucketEndUtcValues);
+        return RecentBucketEvidenceRows.applicationLevelBuckets(rows, RECENT_BUCKET_EVIDENCE_LIMIT, objectMapper);
+    }
+
+    /**
+     * current window 안 latest runtime ratio sample projection을 조회한다.
+     *
+     * <p>ratio latest sample은 saturation hint evidence일 뿐이며 repository는 state/rule/recovery/root cause나
+     * endpoint priority를 계산하지 않는다.</p>
+     */
+    @Transactional(readOnly = true)
+    public Optional<RuntimeRatioEvidenceRow> findLatestRuntimeRatioEvidenceRowByApplicationId(
+            UUID applicationId,
+            Instant windowStartUtc,
+            Instant windowEndUtc) {
+        UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
+        OffsetDateTime windowStart = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null"));
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null"));
+        validateWindow(windowStart, windowEnd);
+        return acceptedMetricBucketJpaRepository.findRuntimeRatioEvidenceRowsByApplicationId(
+                        requiredApplicationId,
+                        windowStart,
+                        windowEnd,
+                        PageRequest.of(0, 1))
+                .stream()
+                .findFirst();
     }
 
     private String writeJson(Object value) {

@@ -9,17 +9,23 @@ import com.observation.portal.common.time.AcceptedBucketFreshnessStatus;
 import com.observation.portal.common.time.DashboardTimeWindow;
 import com.observation.portal.common.time.TimeBucketWindowCalculator;
 import com.observation.portal.common.time.UtcTimeInterval;
+import com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidence;
 import com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow;
 import com.observation.portal.domain.bucket.model.LocalPercentileEvidenceRow;
+import com.observation.portal.domain.bucket.model.RecentBucketEvidenceRow;
+import com.observation.portal.domain.bucket.model.RuntimeRatioEvidenceRow;
 import com.observation.portal.domain.bucket.model.WindowBucketAggregate;
 import com.observation.portal.domain.bucket.repository.MetricBucketRepository;
 import com.observation.portal.domain.catalog.entity.ApplicationEntity;
 import com.observation.portal.domain.catalog.repository.ApplicationRepository;
 import com.observation.portal.domain.dashboard.model.ApplicationDashboardReadModel;
+import com.observation.portal.domain.dashboard.service.TriageSummaryService.TriageSummary;
+import com.observation.portal.domain.dashboard.service.TriageSummaryService.TriageSummaryInput;
 import com.observation.portal.domain.ingest.model.StarterHeartbeatTelemetryRecord;
 import com.observation.portal.domain.ingest.repository.StarterHeartbeatTelemetryRepository;
 import com.observation.portal.domain.state.model.DegradedHysteresisInput;
 import com.observation.portal.domain.state.model.LifecycleStateDecision;
+import com.observation.portal.domain.state.model.LifecycleStateCode;
 import com.observation.portal.domain.state.model.MetricLifecycleInput;
 import com.observation.portal.domain.state.model.MetricSampleReadiness;
 import com.observation.portal.domain.state.model.MetricTrafficActivity;
@@ -73,6 +79,7 @@ public class DashboardReadModelService {
     private final AcceptedBucketFreshnessEvaluator freshnessEvaluator;
     private final TimeBucketWindowCalculator timeBucketWindowCalculator;
     private final LifecycleStateService lifecycleStateService;
+    private final TriageSummaryService triageSummaryService;
     private final Clock clock;
     private final ObjectMapper objectMapper;
 
@@ -86,6 +93,7 @@ public class DashboardReadModelService {
             AcceptedBucketFreshnessEvaluator freshnessEvaluator,
             TimeBucketWindowCalculator timeBucketWindowCalculator,
             LifecycleStateService lifecycleStateService,
+            TriageSummaryService triageSummaryService,
             Clock clock,
             ObjectMapper objectMapper) {
         this.applicationRepository = Objects.requireNonNull(
@@ -104,6 +112,9 @@ public class DashboardReadModelService {
         this.lifecycleStateService = Objects.requireNonNull(
                 lifecycleStateService,
                 "lifecycleStateService must not be null");
+        this.triageSummaryService = Objects.requireNonNull(
+                triageSummaryService,
+                "triageSummaryService must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null").withZone(ZoneOffset.UTC);
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper must not be null");
     }
@@ -131,6 +142,10 @@ public class DashboardReadModelService {
                 application.id(),
                 dashboardWindow.current().startUtc(),
                 dashboardWindow.current().endUtc());
+        WindowBucketAggregate baselineAggregate = metricBucketRepository.findWindowAggregateByApplicationId(
+                application.id(),
+                dashboardWindow.baseline().startUtc(),
+                dashboardWindow.baseline().endUtc());
         List<LocalPercentileEvidenceRow> currentPercentileRows =
                 metricBucketRepository.findLocalPercentileEvidenceRowsByApplicationId(
                         application.id(),
@@ -146,6 +161,19 @@ public class DashboardReadModelService {
                         application.id(),
                         dashboardWindow.baseline().startUtc(),
                         dashboardWindow.baseline().endUtc());
+        Optional<AcceptedBucketGapEvidence> bucketGapEvidence =
+                metricBucketRepository.findAcceptedBucketGapEvidenceByApplicationIdAtOrBefore(
+                        application.id(),
+                        evaluationAt);
+        List<RecentBucketEvidenceRow> recentBuckets =
+                metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBefore(
+                        application.id(),
+                        evaluationAt);
+        Optional<RuntimeRatioEvidenceRow> runtimeRatio =
+                metricBucketRepository.findLatestRuntimeRatioEvidenceRowByApplicationId(
+                        application.id(),
+                        dashboardWindow.current().startUtc(),
+                        dashboardWindow.current().endUtc());
         Optional<StarterHeartbeatTelemetryRecord> latestHeartbeat = heartbeatTelemetryRepository
                 .findLatestByApplicationScope(application.projectId(), application.name(), application.environment());
 
@@ -155,8 +183,25 @@ public class DashboardReadModelService {
         MetricSampleReadiness sampleReadiness = sampleReadiness(aggregate);
         MetricTrafficActivity trafficActivity = trafficActivity(aggregate);
         StarterConnectionInput starterConnectionInput = starterConnectionInput(latestHeartbeat, queryAt);
+        ApplicationDashboardReadModel.SourceScopedPercentiles sourceScopedPercentiles =
+                sourceScopedPercentiles(application, currentPercentileRows);
+        ApplicationDashboardReadModel.HistogramDistribution histogramDistribution =
+                histogramDistribution(currentHistogramRows, baselineHistogramRows);
+        TriageSummary triageSummary = triageSummaryService.summarize(new TriageSummaryInput(
+                aggregate,
+                baselineAggregate,
+                histogramDistribution,
+                sourceScopedPercentiles,
+                recentBuckets,
+                runtimeRatio,
+                freshness.status()));
         LifecycleStateDecision stateDecision = lifecycleStateService.decide(
-                metricLifecycleInput(freshness, sampleReadiness, trafficActivity),
+                metricLifecycleInput(
+                        freshness,
+                        sampleReadiness,
+                        trafficActivity,
+                        triageSummary.degradedInput(),
+                        previousStateCandidate(freshness, bucketGapEvidence)),
                 starterConnectionInput);
 
         return new ApplicationDashboardReadModel(
@@ -164,12 +209,18 @@ public class DashboardReadModelService {
                 application(application, latestBucketEndUtc, dashboardWindow),
                 state(stateDecision),
                 starterConnection(stateDecision.starterConnection()),
-                zeroInsight(freshness.status(), starterConnectionInput.freshness(), sampleReadiness, trafficActivity),
+                zeroInsight(
+                        triageSummary.triageCards(),
+                        stateDecision.recovery(),
+                        freshness.status(),
+                        starterConnectionInput.freshness(),
+                        sampleReadiness,
+                        trafficActivity),
                 recovery(stateDecision.recovery()),
                 metrics(aggregate),
-                sourceScopedPercentiles(application, currentPercentileRows),
-                histogramDistribution(currentHistogramRows, baselineHistogramRows),
-                List.of(),
+                sourceScopedPercentiles,
+                histogramDistribution,
+                triageSummary.triageCards(),
                 List.of(),
                 null);
     }
@@ -406,19 +457,49 @@ public class DashboardReadModelService {
     }
 
     /**
-     * Story 5.2에서는 degraded 진입/해소와 recovery source를 새로 판단하지 않고 current aggregate 축만 전달한다.
+     * triage summary가 계산한 degraded 입력과 accepted bucket gap 기반 previous state 후보를 lifecycle 판단에 연결한다.
      */
     private MetricLifecycleInput metricLifecycleInput(
             AcceptedBucketFreshness freshness,
             MetricSampleReadiness sampleReadiness,
-            MetricTrafficActivity trafficActivity) {
+            MetricTrafficActivity trafficActivity,
+            DegradedHysteresisInput degradedInput,
+            Optional<LifecycleStateCode> previousState) {
         return new MetricLifecycleInput(
                 freshness,
                 sampleReadiness,
                 trafficActivity,
-                DegradedHysteresisInput.noConcern(),
-                Optional.empty(),
+                degradedInput,
+                previousState,
                 Optional.empty());
+    }
+
+    /**
+     * Story 5.4의 lightweight recovery source인 latest/current bucket 직전 gap으로 previous stale/down 후보를 만든다.
+     *
+     * <p>snapshot/previous read model source가 없는 동안 lastHealthyAt은 만들지 않으며, Story 5.8에서 이 fallback과
+     * snapshot source 우선순위를 다시 닫는다.</p>
+     */
+    private static Optional<LifecycleStateCode> previousStateCandidate(
+            AcceptedBucketFreshness freshness,
+            Optional<AcceptedBucketGapEvidence> bucketGapEvidence) {
+        if (freshness.status() != AcceptedBucketFreshnessStatus.CURRENT || bucketGapEvidence.isEmpty()) {
+            return Optional.empty();
+        }
+        AcceptedBucketGapEvidence evidence = bucketGapEvidence.orElseThrow();
+        if (evidence.previousBucketEndUtc().isEmpty()) {
+            return Optional.empty();
+        }
+        Duration gap = Duration.between(
+                evidence.previousBucketEndUtc().orElseThrow().toInstant(),
+                evidence.latestBucketEndUtc().toInstant());
+        if (gap.compareTo(AcceptedBucketFreshnessEvaluator.DOWN_AFTER) >= 0) {
+            return Optional.of(LifecycleStateCode.DOWN);
+        }
+        if (gap.compareTo(AcceptedBucketFreshnessEvaluator.STALE_AFTER) >= 0) {
+            return Optional.of(LifecycleStateCode.STALE);
+        }
+        return Optional.empty();
     }
 
     /**
@@ -545,11 +626,17 @@ public class DashboardReadModelService {
     }
 
     private static ApplicationDashboardReadModel.ZeroInsight zeroInsight(
+            List<ApplicationDashboardReadModel.TriageCard> triageCards,
+            RecoveryGuidance recovery,
             AcceptedBucketFreshnessStatus freshnessStatus,
             StarterConnectionFreshness starterFreshness,
             MetricSampleReadiness sampleReadiness,
             MetricTrafficActivity trafficActivity) {
+        if (!triageCards.isEmpty()) {
+            return null;
+        }
         String reasonCode = zeroInsightReasonCode(
+                recovery,
                 freshnessStatus,
                 starterFreshness,
                 sampleReadiness,
@@ -559,6 +646,10 @@ public class DashboardReadModelService {
                     reasonCode,
                     "아직 accepted metric bucket이 없어 첫 데이터를 기다리고 있습니다.",
                     "Starter heartbeat가 최근 수신됐으므로 요청 traffic 발생 후 bucket 수용 여부를 확인하세요.");
+            case "observing_recovery" -> new ApplicationDashboardReadModel.ZeroInsight(
+                    reasonCode,
+                    "새 accepted bucket이 들어왔지만 회복 여부를 판단할 sample은 아직 부족합니다.",
+                    "복구 완료로 단정하지 말고 다음 bucket까지 accepted bucket 수용과 sample 증가를 관찰하세요.");
             case "telemetry_unreachable" -> new ApplicationDashboardReadModel.ZeroInsight(
                     reasonCode,
                     "Starter heartbeat와 metric data freshness가 모두 최근 상태가 아닙니다.",
@@ -580,14 +671,18 @@ public class DashboardReadModelService {
     }
 
     /**
-     * Story 5.2에서 triageCards가 비어 있을 때만 사용하는 zeroInsight reason mapping이다.
+     * Story 5.4에서 triageCards가 비어 있을 때만 사용하는 zeroInsight precedence mapping이다.
      */
     private static String zeroInsightReasonCode(
+            RecoveryGuidance recovery,
             AcceptedBucketFreshnessStatus freshnessStatus,
             StarterConnectionFreshness starterFreshness,
             MetricSampleReadiness sampleReadiness,
             MetricTrafficActivity trafficActivity) {
         boolean recentHeartbeat = starterFreshness == StarterConnectionFreshness.RECENT;
+        if (recovery.isRecovering()) {
+            return "observing_recovery";
+        }
         if (freshnessStatus == AcceptedBucketFreshnessStatus.WAITING_FIRST_DATA) {
             return recentHeartbeat ? "waiting_first_data" : "telemetry_unreachable";
         }
