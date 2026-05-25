@@ -94,6 +94,27 @@ public class ApplicationEntity {
         return id;
     }
 
+    /**
+     * navigation read model과 catalog 조회가 속한 project id를 반환한다.
+     */
+    public UUID projectId() {
+        return projectId;
+    }
+
+    /**
+     * application/environment identity 중 application name을 반환한다.
+     */
+    public String name() {
+        return name;
+    }
+
+    /**
+     * application/environment identity 중 environment 값을 반환한다.
+     */
+    public String environment() {
+        return environment;
+    }
+
     public OffsetDateTime firstSeenAt() {
         return firstSeenAt;
     }

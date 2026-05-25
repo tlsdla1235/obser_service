@@ -4,7 +4,7 @@ storyId: "5.1"
 epic: "Epic 5. Dashboard Read Model and API"
 title: "Project/Application Navigation Read Model"
 architectureStyle: Traditional MVC
-status: ready-for-dev
+status: done
 date: 2026-05-25
 ---
 
@@ -61,33 +61,33 @@ portal 구현자로서, Project Entry와 Application List가 사용할 read-only
 
 ## Tasks/Subtasks
 
-- [ ] Navigation read model shape 확정 (AC: 1~8, 12)
-  - [ ] Project Entry response DTO/model에 `generatedAt`, `projects[]`, project identity, application count, light setup/connection issue summary, optional recent concern 0~1개를 정의한다.
-  - [ ] Application List response DTO/model에 `generatedAt`, `project`, `applications[]`, application identity/environment, dashboard link, metric freshness summary, starter connection summary, optional top concern 0~1개를 정의한다.
-  - [ ] response shape에서 accepted bucket source와 starter heartbeat source를 field 이름과 `statusSource`로 분리한다.
-  - [ ] Project creation public API 여부는 open decision note로 남기고 endpoint를 추가하지 않는다.
-- [ ] Service/repository read path 구현 (AC: 5~11)
-  - [ ] `domain.catalog.service` 또는 `domain.dashboard.service`에 `ProjectApplicationNavigationService` 후보를 추가한다.
-  - [ ] 기존 `ProjectRepository`, `ApplicationRepository`, `ApplicationInstanceRepository`, `MetricBucketRepository`, `StarterHeartbeatTelemetryRepository`, `AcceptedBucketFreshnessEvaluator`, `LifecycleStateService` 재사용을 우선한다.
-  - [ ] 필요한 repository query는 read-only 조회로만 추가한다. Schema 변경이나 write path 변경은 하지 않는다.
-  - [ ] latest accepted bucket timestamp와 heartbeat latest row를 별도 typed input으로 service에 전달한다.
-  - [ ] sample/readiness나 triage source가 부족하면 active/degraded/top concern을 새로 꾸며내지 않고 unknown/null/empty light summary로 둔다.
-- [ ] Controller/API boundary 구현 (AC: 1, 4, 9, 10)
-  - [ ] Project list controller 후보는 `GET /api/projects`를 service에 위임한다.
-  - [ ] Application list controller 후보는 `GET /api/projects/{projectId}/applications`를 service에 위임한다.
-  - [ ] 404/empty result/error mapping은 기존 controller test 스타일을 따른다.
-  - [ ] controller는 repository, lifecycle state service, heartbeat repository를 직접 호출하지 않는다.
-- [ ] Architecture guard와 scope guard 확인 (AC: 7~13)
-  - [ ] `application`, `port`, `adapter` package를 만들지 않는다.
-  - [ ] JPA entity를 response DTO나 service external return model로 노출하지 않는다.
-  - [ ] public onboarding project creation API, admin write API, migration, dashboard snapshot/history/event API를 추가하지 않는다.
-  - [ ] 새 공개 production class/method에 한국어 Javadoc을 작성한다.
-- [ ] Focused tests와 regression 실행 (AC: 14, 15)
-  - [ ] service unit test 또는 slice test로 Project/Application navigation shape와 field separation을 검증한다.
-  - [ ] controller test로 endpoint serialization과 service delegation을 검증한다.
-  - [ ] repository integration test가 필요하면 read-only query만 검증한다.
-  - [ ] `MvcLayerBoundaryTest`와 no hexagonal package guard를 유지한다.
-  - [ ] `./gradlew :observability-portal:test`와 `git diff --check`를 실행한다.
+- [x] Navigation read model shape 확정 (AC: 1~8, 12)
+  - [x] Project Entry response DTO/model에 `generatedAt`, `projects[]`, project identity, application count, light setup/connection issue summary, optional recent concern 0~1개를 정의한다.
+  - [x] Application List response DTO/model에 `generatedAt`, `project`, `applications[]`, application identity/environment, dashboard link, metric freshness summary, starter connection summary, optional top concern 0~1개를 정의한다.
+  - [x] response shape에서 accepted bucket source와 starter heartbeat source를 field 이름과 `statusSource`로 분리한다.
+  - [x] Project creation public API 여부는 open decision note로 남기고 endpoint를 추가하지 않는다.
+- [x] Service/repository read path 구현 (AC: 5~11)
+  - [x] `domain.catalog.service`에 `ProjectApplicationNavigationService` 후보를 추가한다.
+  - [x] 기존 `ProjectRepository`, `ApplicationRepository`, `ApplicationInstanceRepository`, `MetricBucketRepository`, `StarterHeartbeatTelemetryRepository`, `AcceptedBucketFreshnessEvaluator`, `LifecycleStateService` 재사용을 우선한다.
+  - [x] 필요한 repository query는 read-only 조회로만 추가한다. Schema 변경이나 write path 변경은 하지 않는다.
+  - [x] latest accepted bucket timestamp와 heartbeat latest row를 별도 typed input으로 service에 전달한다.
+  - [x] sample/readiness나 triage source가 부족하면 active/degraded/top concern을 새로 꾸며내지 않고 unknown/null/empty light summary로 둔다.
+- [x] Controller/API boundary 구현 (AC: 1, 4, 9, 10)
+  - [x] Project list controller 후보는 `GET /api/projects`를 service에 위임한다.
+  - [x] Application list controller 후보는 `GET /api/projects/{projectId}/applications`를 service에 위임한다.
+  - [x] 404/empty result/error mapping은 기존 controller test 스타일을 따른다.
+  - [x] controller는 repository, lifecycle state service, heartbeat repository를 직접 호출하지 않는다.
+- [x] Architecture guard와 scope guard 확인 (AC: 7~13)
+  - [x] `application`, `port`, `adapter` package를 만들지 않는다.
+  - [x] JPA entity를 response DTO나 service external return model로 노출하지 않는다.
+  - [x] public onboarding project creation API, admin write API, migration, dashboard snapshot/history/event API를 추가하지 않는다.
+  - [x] 새 공개 production class/method에 한국어 Javadoc을 작성한다.
+- [x] Focused tests와 regression 실행 (AC: 14, 15)
+  - [x] service unit test 또는 slice test로 Project/Application navigation shape와 field separation을 검증한다.
+  - [x] controller test로 endpoint serialization과 service delegation을 검증한다.
+  - [x] repository integration test가 필요하면 read-only query만 검증한다.
+  - [x] `MvcLayerBoundaryTest`와 no hexagonal package guard를 유지한다.
+  - [x] `./gradlew :observability-portal:test`와 `git diff --check`를 실행한다.
 
 ## Dev Notes
 
@@ -101,6 +101,15 @@ portal 구현자로서, Project Entry와 Application List가 사용할 read-only
 - accepted bucket은 metric freshness/state/read-model의 data-plane source-of-truth다.
 - starter heartbeat는 accepted bucket과 분리된 control-plane/liveness source다.
 - heartbeat 성공/미수신은 accepted bucket freshness, host application health, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 생성하거나 암시하지 않는다.
+
+### Pre-Dev Contract Locks
+
+- Service/controller 위치는 `domain.catalog`로 고정한다. `ProjectApplicationNavigationService`는 catalog scope 선택 read model을 만들고, Application Dashboard 판단은 후속 dashboard service로 남긴다.
+- Application List의 lifecycle badge는 sample/readiness와 triage source가 부족하면 `active` 또는 `degraded`를 새로 단정하지 않는다. Story 5.1에서는 latest accepted bucket freshness와 heartbeat summary를 분리해 보여주고, 충분한 판단 source가 없으면 `unknown` light badge를 반환한다.
+- Starter heartbeat recency는 service adapter 기준으로 `90초 이내 recent`, `90초 초과 stale`, telemetry row 없음은 `missing/unknown`으로 둔다. 이 값은 starter connection summary에만 사용하며 accepted bucket freshness를 current로 바꾸지 않는다.
+- Application List에서 heartbeat latest row는 project-wide latest가 아니라 `projectId + applicationName + environment` 범위의 instance heartbeat 중 가장 최근 row를 사용한다. 필요한 repository query는 read-only 조회로만 추가한다.
+- `setupConnectionIssueCount`는 catalog application 기준의 light candidate count다. accepted bucket 없음/오래됨 또는 starter heartbeat 없음/오래됨을 세되, host application down 원인을 확정하지 않는다.
+- `recentConcern`과 `topConcern`은 Story 5.4 triage source가 없으면 `null`로 둔다. 임시 rule engine, endpoint priority, p95/p99 판단을 만들지 않는다.
 
 ### Suggested API Shape
 
@@ -161,8 +170,8 @@ Accept: application/json
       },
       "lifecycleBadge": {
         "source": "server_light_navigation_read_model",
-        "code": "active",
-        "label": "Metric data active"
+        "code": "unknown",
+        "label": "Metric data unknown"
       },
       "topConcern": null,
       "links": {
@@ -293,31 +302,53 @@ GPT-5 Codex
 
 ### Implementation Plan
 
-- BMAD create-story workflow로 Story 5.1 문서를 생성한다.
-- Epic 5 첫 story 착수 상태에 맞춰 sprint status에서 `epic-5`를 `in-progress`, `5-1-project-application-navigation-read-model`을 `ready-for-dev`로 전환한다.
-- 이번 작업에서는 production code, test code, migration, build 설정을 수정하지 않는다.
+- `domain.catalog.model`에 Project Entry/Application List navigation response model을 추가한다.
+- `domain.catalog.service.ProjectApplicationNavigationService`에서 catalog, latest accepted bucket endUtc, application/environment scoped latest heartbeat row를 조합한다.
+- `domain.catalog.controller.ProjectNavigationController`에서 `GET /api/projects`, `GET /api/projects/{projectId}/applications`를 service 위임으로 노출한다.
+- Story 5.1 범위 밖인 public project creation API, migration/schema 변경, dashboard snapshot/history/event API, endpoint priority, p95/p99, 임시 triage/rule engine은 추가하지 않는다.
 
 ### Debug Log References
 
 - 2026-05-25T19:32:38+0900: 지정된 precedence 문서, sprint status, 최근 Epic 4 story 형식, 관련 portal code/package 구조를 확인했다.
 - 2026-05-25T19:32:38+0900: Story 5.1 create-story 산출물을 `planning-artifacts/stories/5-1-project-application-navigation-read-model.md`에 생성했다.
+- 2026-05-25T20:00:10+0900: RED 단계로 `ProjectApplicationNavigationServiceTest`, `ProjectNavigationControllerTest`를 추가했고, 미구현 class/query 컴파일 실패를 확인했다.
+- 2026-05-25T20:00:10+0900: `domain.catalog` read model/service/controller와 application scope latest heartbeat read-only query를 구현했다.
+- 2026-05-25T20:00:10+0900: Focused test, repository integration test, `MvcLayerBoundaryTest`, 전체 `:observability-portal:test`, `git diff --check`를 실행해 통과를 확인했다.
+- 2026-05-25T20:13:29+0900: Review finding 반영으로 controller test를 MockMvc HTTP/JSON 검증으로 보강하고 public `POST /api/projects` route scan을 추가했다.
 
 ### Completion Notes
 
-- Ultimate context engine analysis completed - comprehensive developer guide created.
-- Story 5.1은 Project/Application navigation read model/API를 구현할 dev agent용 문서다.
-- Story 5.1 문서는 heartbeat와 accepted bucket source 분리, Application Dashboard 판단 대체 금지, MVC/package guardrail을 우선한다.
-- production code, test code, migration, build 설정은 변경하지 않았다.
+- Project Entry용 `ProjectNavigationReadModel`과 Application List용 `ProjectApplicationNavigationReadModel`을 추가했다.
+- `ProjectApplicationNavigationService`는 latest accepted bucket freshness와 starter heartbeat summary를 `statusSource` 기준으로 분리하고, lifecycle badge는 source 부족 시 `unknown`, `recentConcern`/`topConcern`은 `null`로 둔다.
+- Starter heartbeat latest row는 project-wide latest가 아니라 `projectId + applicationName + environment` 범위에서 조회한다.
+- `setupConnectionIssueCount`는 accepted bucket 없음/오래됨 또는 starter heartbeat 없음/오래됨의 light candidate count로만 계산하며 host application down을 확정하지 않는다.
+- Public project creation API, migration/schema 변경, dashboard snapshot/history/event API, p95/p99, endpoint priority, 임시 triage/rule engine은 추가하지 않았다.
+- Review finding 반영 후 controller HTTP serialization contract와 public project creation route 부재를 테스트로 고정했다.
+- `./gradlew :observability-portal:test`와 `git diff --check`가 통과했다.
 
 ### File List
 
 - `planning-artifacts/stories/5-1-project-application-navigation-read-model.md`
 - `implementation-artifacts/sprint-status.yaml`
+- `observability-portal/src/main/java/com/observation/portal/domain/catalog/controller/ProjectNavigationController.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/catalog/controller/package-info.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/catalog/entity/ApplicationEntity.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/catalog/model/ProjectApplicationNavigationReadModel.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/catalog/model/ProjectNavigationReadModel.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/catalog/repository/ApplicationRepository.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/catalog/service/ProjectApplicationNavigationService.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/ingest/repository/StarterHeartbeatTelemetryJpaRepository.java`
+- `observability-portal/src/main/java/com/observation/portal/domain/ingest/repository/StarterHeartbeatTelemetryRepository.java`
+- `observability-portal/src/test/java/com/observation/portal/domain/catalog/controller/ProjectNavigationControllerTest.java`
+- `observability-portal/src/test/java/com/observation/portal/domain/catalog/service/ProjectApplicationNavigationServiceTest.java`
+- `observability-portal/src/test/java/com/observation/portal/domain/ingest/repository/StarterHeartbeatTelemetryRepositoryIntegrationTest.java`
 
 ### Change Log
 
 - 2026-05-25: Story 5.1 create-story 산출물을 생성하고 ready-for-dev 상태로 전환했다.
+- 2026-05-25: Project/Application navigation read model, catalog controller/service, scoped heartbeat latest query, focused tests를 구현했다.
+- 2026-05-25: Review finding을 반영해 controller HTTP boundary 테스트와 한국어 package Javadoc을 보강하고 done 상태로 전환했다.
 
 ## Status
 
-ready-for-dev
+done

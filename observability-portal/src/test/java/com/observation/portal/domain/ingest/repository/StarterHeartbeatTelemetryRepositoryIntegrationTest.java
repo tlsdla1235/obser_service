@@ -138,6 +138,18 @@ class StarterHeartbeatTelemetryRepositoryIntegrationTest {
                     assertThat(record.instanceName()).isEqualTo("pod-b");
                     assertThat(record.lastReceivedAtUtc()).isEqualTo(OffsetDateTime.parse("2026-05-24T08:31:20Z"));
                 });
+        assertThat(heartbeatTelemetryRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .hasValueSatisfying(record -> {
+                    assertThat(record.environment()).isEqualTo("prod");
+                    assertThat(record.instanceName()).isEqualTo("pod-b");
+                    assertThat(record.lastReceivedAtUtc()).isEqualTo(OffsetDateTime.parse("2026-05-24T08:31:20Z"));
+                });
+        assertThat(heartbeatTelemetryRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "stage"))
+                .hasValueSatisfying(record -> {
+                    assertThat(record.environment()).isEqualTo("stage");
+                    assertThat(record.instanceName()).isEqualTo("pod-a");
+                    assertThat(record.lastReceivedAtUtc()).isEqualTo(OffsetDateTime.parse("2026-05-24T08:31:10Z"));
+                });
     }
 
     @Test

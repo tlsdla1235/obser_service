@@ -83,6 +83,24 @@ public class StarterHeartbeatTelemetryRepository {
                 .map(entity -> entity.toRecord());
     }
 
+    /**
+     * Application List navigation에서 사용할 application/environment scope latest heartbeat row를 조회한다.
+     *
+     * <p>project-wide latest가 아니라 같은 project/application/environment에 속한 instance row 중 최신 수신 시각만 반환한다.</p>
+     */
+    @Transactional(readOnly = true)
+    public Optional<StarterHeartbeatTelemetryRecord> findLatestByApplicationScope(
+            UUID projectId,
+            String applicationName,
+            String environment) {
+        return jpaRepository
+                .findTopByProjectIdAndApplicationNameAndEnvironmentOrderByLastReceivedAtUtcDesc(
+                        Objects.requireNonNull(projectId, "projectId must not be null"),
+                        requireText(applicationName, "applicationName"),
+                        requireText(environment, "environment"))
+                .map(entity -> entity.toRecord());
+    }
+
     private static String requireText(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + " must not be blank");
