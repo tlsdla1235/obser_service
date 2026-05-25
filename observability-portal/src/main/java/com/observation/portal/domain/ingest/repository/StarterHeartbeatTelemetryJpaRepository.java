@@ -32,6 +32,14 @@ interface StarterHeartbeatTelemetryJpaRepository extends JpaRepository<StarterHe
     Optional<StarterHeartbeatTelemetryEntity> findTopByProjectIdOrderByLastReceivedAtUtcDesc(UUID projectId);
 
     /**
+     * project/application/environment scope에서 instance heartbeat 중 가장 최근 row를 조회한다.
+     */
+    Optional<StarterHeartbeatTelemetryEntity> findTopByProjectIdAndApplicationNameAndEnvironmentOrderByLastReceivedAtUtcDesc(
+            UUID projectId,
+            String applicationName,
+            String environment);
+
+    /**
      * PostgreSQL unique key를 기준으로 latest heartbeat row를 원자적으로 insert/update한다.
      */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
