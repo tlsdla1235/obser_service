@@ -11,8 +11,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
 /**
  * Application Dashboard current API가 반환하는 read-model-contract skeleton이다.
  *
- * <p>Story 5.4에서는 typed triage card와 zeroInsight/recovery mapping을 포함하되, endpoint priority와 p95/p99
- * rollup은 만들지 않는다.</p>
+ * <p>Story 5.5에서는 typed endpoint priority를 포함하되, endpoint p95/p99나 raw endpoint detail은 만들지 않는다.</p>
  */
 public record ApplicationDashboardReadModel(
         OffsetDateTime generatedAt,
@@ -25,7 +24,7 @@ public record ApplicationDashboardReadModel(
         SourceScopedPercentiles sourceScopedPercentiles,
         HistogramDistribution histogramDistribution,
         List<TriageCard> triageCards,
-        List<Object> endpointPriority,
+        List<EndpointPriorityItem> endpointPriority,
         Object snapshot
 ) {
 
@@ -593,11 +592,226 @@ public record ApplicationDashboardReadModel(
         }
     }
 
+    /**
+     * server-computed endpoint priority item이다.
+     *
+     * <p>endpoint ranking의 canonical response source이며, controller/UI/repository가 rank, rule, confidence, action을 다시
+     * 계산하지 않도록 필요한 bounded evidence만 함께 담는다.</p>
+     */
+    public record EndpointPriorityItem(
+            int rank,
+            String method,
+            String route,
+            String endpointKey,
+            EndpointPriorityReason reason,
+            List<String> ruleIds,
+            double confidence,
+            int score,
+            EndpointPriorityFreshness freshness,
+            EndpointPriorityEvidence evidence,
+            String recommendedAction
+    ) {
+
+        /**
+         * priority item의 public API shape와 bounded numeric 값을 검증한다.
+         */
+        public EndpointPriorityItem {
+            if (rank < 1) {
+                throw new IllegalArgumentException("rank must be greater than or equal to 1");
+            }
+            method = requireText(method, "method");
+            route = requireText(route, "route");
+            endpointKey = requireText(endpointKey, "endpointKey");
+            if (!endpointKey.equals(method + " " + route)) {
+                throw new IllegalArgumentException("endpointKey must match method + ' ' + route");
+            }
+            if ("UNKNOWN".equalsIgnoreCase(route)) {
+                throw new IllegalArgumentException("UNKNOWN route must not be exposed as endpoint priority");
+            }
+            Objects.requireNonNull(reason, "reason must not be null");
+            ruleIds = List.copyOf(Objects.requireNonNull(ruleIds, "ruleIds must not be null"));
+            if (ruleIds.isEmpty() || ruleIds.stream().anyMatch(ruleId -> ruleId == null || ruleId.isBlank())) {
+                throw new IllegalArgumentException("ruleIds must contain non-blank values");
+            }
+            if (!Double.isFinite(confidence) || confidence < 0.0d || confidence > 1.0d) {
+                throw new IllegalArgumentException("confidence must be finite and between 0.0 and 1.0");
+            }
+            if (score < 0 || score > 100) {
+                throw new IllegalArgumentException("score must be between 0 and 100");
+            }
+            Objects.requireNonNull(freshness, "freshness must not be null");
+            Objects.requireNonNull(evidence, "evidence must not be null");
+            recommendedAction = requireText(recommendedAction, "recommendedAction");
+        }
+    }
+
+    /**
+     * Story 5.5 MVP endpoint priority reason을 닫힌 JSON 문자열로 제한한다.
+     */
+    public enum EndpointPriorityReason {
+        ERROR_SPIKE("error_spike"),
+        LATENCY_SPIKE("latency_spike"),
+        ERROR_AND_LATENCY("error_and_latency"),
+        COMPARATIVE_REGRESSION("comparative_regression");
+
+        private final String value;
+
+        EndpointPriorityReason(String value) {
+            this.value = value;
+        }
+
+        /**
+         * public API에는 enum 이름 대신 계약의 lower-case reason code를 반환한다.
+         */
+        @JsonValue
+        public String value() {
+            return value;
+        }
+    }
+
+    /**
+     * endpoint evidence availability를 bounded status code로 표현한다.
+     */
+    public enum EndpointEvidenceStatus {
+        AVAILABLE("available"),
+        MISSING("missing"),
+        INSUFFICIENT("insufficient"),
+        INSUFFICIENT_BASELINE("insufficient_baseline"),
+        UNAVAILABLE("unavailable");
+
+        private final String value;
+
+        EndpointEvidenceStatus(String value) {
+            this.value = value;
+        }
+
+        /**
+         * public API에는 enum 이름 대신 계약의 lower-case status code를 반환한다.
+         */
+        @JsonValue
+        public String value() {
+            return value;
+        }
+    }
+
+    /**
+     * current endpoint priority item의 metric freshness provenance를 담는다.
+     */
+    public record EndpointPriorityFreshness(
+            String status,
+            OffsetDateTime lastObservedAt,
+            String sourceWindow,
+            String reason
+    ) {
+
+        /**
+         * freshness status와 current endpoint evidence timestamp가 response에서 누락되지 않도록 검증한다.
+         */
+        public EndpointPriorityFreshness {
+            status = requireText(status, "status");
+            Objects.requireNonNull(lastObservedAt, "lastObservedAt must not be null");
+            sourceWindow = requireText(sourceWindow, "sourceWindow");
+            reason = trimNullable(reason);
+        }
+    }
+
+    /**
+     * endpoint priority 판단에 사용한 bounded evidence object다.
+     *
+     * <p>raw endpoint JSON, raw path/query/trace/per-request sample, endpoint percentile scalar는 포함하지 않는다.</p>
+     */
+    public record EndpointPriorityEvidence(
+            long requestCount,
+            long errorCount,
+            BigDecimal errorRate,
+            Long baselineRequestCount,
+            Long baselineErrorCount,
+            BigDecimal baselineErrorRate,
+            BigDecimal errorRateDelta,
+            List<HistogramBucket> durationBuckets,
+            List<HistogramBucket> baselineDurationBuckets,
+            BigDecimal slowShare,
+            BigDecimal baselineSlowShare,
+            BigDecimal slowShareDelta,
+            String bucketDistributionSource,
+            EndpointEvidenceStatus errorEvidenceStatus,
+            EndpointEvidenceStatus latencyEvidenceStatus
+    ) {
+
+        /**
+         * evidence field가 bounded count/rate/bucket list만 갖도록 검증하고 bucket list를 방어적으로 복사한다.
+         */
+        public EndpointPriorityEvidence {
+            validateCount(requestCount, "requestCount");
+            validateCount(errorCount, "errorCount");
+            if (errorCount > requestCount) {
+                throw new IllegalArgumentException("errorCount must not exceed requestCount");
+            }
+            validateFraction(Objects.requireNonNull(errorRate, "errorRate must not be null"), "errorRate");
+            validateNullableCount(baselineRequestCount, "baselineRequestCount");
+            validateNullableCount(baselineErrorCount, "baselineErrorCount");
+            if (baselineRequestCount != null && baselineErrorCount != null
+                    && baselineErrorCount > baselineRequestCount) {
+                throw new IllegalArgumentException("baselineErrorCount must not exceed baselineRequestCount");
+            }
+            validateNullableFraction(baselineErrorRate, "baselineErrorRate");
+            validateNullableDelta(errorRateDelta, "errorRateDelta");
+            durationBuckets = copyNullableBuckets(durationBuckets);
+            baselineDurationBuckets = copyNullableBuckets(baselineDurationBuckets);
+            validateNullableFraction(slowShare, "slowShare");
+            validateNullableFraction(baselineSlowShare, "baselineSlowShare");
+            validateNullableDelta(slowShareDelta, "slowShareDelta");
+            bucketDistributionSource = requireText(bucketDistributionSource, "bucketDistributionSource");
+            if (!"histogram_bucket_distribution".equals(bucketDistributionSource)) {
+                throw new IllegalArgumentException(
+                        "bucketDistributionSource must be histogram_bucket_distribution");
+            }
+            Objects.requireNonNull(errorEvidenceStatus, "errorEvidenceStatus must not be null");
+            Objects.requireNonNull(latencyEvidenceStatus, "latencyEvidenceStatus must not be null");
+        }
+    }
+
     private static void validateRatio(BigDecimal value, String fieldName) {
         if (value != null
                 && (value.compareTo(BigDecimal.ZERO) < 0 || value.compareTo(BigDecimal.ONE) > 0)) {
             throw new IllegalArgumentException(fieldName + " must be between 0.0 and 1.0");
         }
+    }
+
+    private static void validateFraction(BigDecimal value, String fieldName) {
+        if (value.compareTo(BigDecimal.ZERO) < 0 || value.compareTo(BigDecimal.ONE) > 0) {
+            throw new IllegalArgumentException(fieldName + " must be between 0.0 and 1.0");
+        }
+    }
+
+    private static void validateNullableFraction(BigDecimal value, String fieldName) {
+        if (value != null) {
+            validateFraction(value, fieldName);
+        }
+    }
+
+    private static void validateNullableDelta(BigDecimal value, String fieldName) {
+        if (value != null
+                && (value.compareTo(BigDecimal.ONE.negate()) < 0
+                || value.compareTo(BigDecimal.ONE) > 0)) {
+            throw new IllegalArgumentException(fieldName + " must be between -1.0 and 1.0");
+        }
+    }
+
+    private static void validateCount(long value, String fieldName) {
+        if (value < 0L) {
+            throw new IllegalArgumentException(fieldName + " must not be negative");
+        }
+    }
+
+    private static void validateNullableCount(Long value, String fieldName) {
+        if (value != null) {
+            validateCount(value, fieldName);
+        }
+    }
+
+    private static List<HistogramBucket> copyNullableBuckets(List<HistogramBucket> buckets) {
+        return buckets == null ? null : List.copyOf(buckets);
     }
 
     private static String requireText(String value, String fieldName) {

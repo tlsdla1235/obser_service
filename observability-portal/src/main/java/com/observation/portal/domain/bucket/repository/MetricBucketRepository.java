@@ -8,6 +8,7 @@ import com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidence;
 import com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidenceRow;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommand;
+import com.observation.portal.domain.bucket.model.EndpointEvidenceRow;
 import com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow;
 import com.observation.portal.domain.bucket.model.LocalPercentileEvidenceRow;
 import com.observation.portal.domain.bucket.model.RecentBucketEvidenceRow;
@@ -199,6 +200,30 @@ public class MetricBucketRepository {
                 Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null"));
         validateWindow(windowStart, windowEnd);
         return acceptedMetricBucketJpaRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
+                requiredApplicationId,
+                windowStart,
+                windowEnd);
+    }
+
+    /**
+     * endpoint priority read model용 accepted bucket endpoint JSON evidence row를 조회한다.
+     *
+     * <p>조회는 application scope와 `(start, end]` bucket end boundary, `endpoints_json is not null` 조건만 적용한다.
+     * repository는 endpoint rule, confidence, rank, recommended action을 계산하지 않으며, endpoint p95/p99나 endpoint
+     * percentile rollup은 repository/service 어디에서도 계산하지 않는다.</p>
+     */
+    @Transactional(readOnly = true)
+    public List<EndpointEvidenceRow> findEndpointEvidenceRowsByApplicationId(
+            UUID applicationId,
+            Instant windowStartUtc,
+            Instant windowEndUtc) {
+        UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
+        OffsetDateTime windowStart = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null"));
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null"));
+        validateWindow(windowStart, windowEnd);
+        return acceptedMetricBucketJpaRepository.findEndpointEvidenceRowsByApplicationId(
                 requiredApplicationId,
                 windowStart,
                 windowEnd);

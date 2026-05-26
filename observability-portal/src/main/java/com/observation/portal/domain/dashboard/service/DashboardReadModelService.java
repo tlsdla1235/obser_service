@@ -10,6 +10,7 @@ import com.observation.portal.common.time.DashboardTimeWindow;
 import com.observation.portal.common.time.TimeBucketWindowCalculator;
 import com.observation.portal.common.time.UtcTimeInterval;
 import com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidence;
+import com.observation.portal.domain.bucket.model.EndpointEvidenceRow;
 import com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow;
 import com.observation.portal.domain.bucket.model.LocalPercentileEvidenceRow;
 import com.observation.portal.domain.bucket.model.RecentBucketEvidenceRow;
@@ -80,6 +81,7 @@ public class DashboardReadModelService {
     private final TimeBucketWindowCalculator timeBucketWindowCalculator;
     private final LifecycleStateService lifecycleStateService;
     private final TriageSummaryService triageSummaryService;
+    private final EndpointPriorityService endpointPriorityService;
     private final Clock clock;
     private final ObjectMapper objectMapper;
 
@@ -94,6 +96,7 @@ public class DashboardReadModelService {
             TimeBucketWindowCalculator timeBucketWindowCalculator,
             LifecycleStateService lifecycleStateService,
             TriageSummaryService triageSummaryService,
+            EndpointPriorityService endpointPriorityService,
             Clock clock,
             ObjectMapper objectMapper) {
         this.applicationRepository = Objects.requireNonNull(
@@ -115,6 +118,9 @@ public class DashboardReadModelService {
         this.triageSummaryService = Objects.requireNonNull(
                 triageSummaryService,
                 "triageSummaryService must not be null");
+        this.endpointPriorityService = Objects.requireNonNull(
+                endpointPriorityService,
+                "endpointPriorityService must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null").withZone(ZoneOffset.UTC);
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper must not be null");
     }
@@ -161,6 +167,16 @@ public class DashboardReadModelService {
                         application.id(),
                         dashboardWindow.baseline().startUtc(),
                         dashboardWindow.baseline().endUtc());
+        List<EndpointEvidenceRow> currentEndpointRows =
+                metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
+                        application.id(),
+                        dashboardWindow.current().startUtc(),
+                        dashboardWindow.current().endUtc());
+        List<EndpointEvidenceRow> baselineEndpointRows =
+                metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
+                        application.id(),
+                        dashboardWindow.baseline().startUtc(),
+                        dashboardWindow.baseline().endUtc());
         Optional<AcceptedBucketGapEvidence> bucketGapEvidence =
                 metricBucketRepository.findAcceptedBucketGapEvidenceByApplicationIdAtOrBefore(
                         application.id(),
@@ -203,6 +219,9 @@ public class DashboardReadModelService {
                         triageSummary.degradedInput(),
                         previousStateCandidate(freshness, bucketGapEvidence)),
                 starterConnectionInput);
+        List<ApplicationDashboardReadModel.EndpointPriorityItem> endpointPriority =
+                endpointPriority(freshness.status(), sampleReadiness, currentEndpointRows, baselineEndpointRows,
+                        latestBucketEndUtc);
 
         return new ApplicationDashboardReadModel(
                 toUtcOffsetDateTime(clock.instant()),
@@ -221,8 +240,27 @@ public class DashboardReadModelService {
                 sourceScopedPercentiles,
                 histogramDistribution,
                 triageSummary.triageCards(),
-                List.of(),
+                endpointPriority,
                 null);
+    }
+
+    /**
+     * application aggregate sample이 부족한 current response에서는 endpoint 후보를 현재 우선순위로 승격하지 않는다.
+     */
+    private List<ApplicationDashboardReadModel.EndpointPriorityItem> endpointPriority(
+            AcceptedBucketFreshnessStatus freshnessStatus,
+            MetricSampleReadiness sampleReadiness,
+            List<EndpointEvidenceRow> currentEndpointRows,
+            List<EndpointEvidenceRow> baselineEndpointRows,
+            Optional<OffsetDateTime> latestBucketEndUtc) {
+        if (sampleReadiness == MetricSampleReadiness.INSUFFICIENT) {
+            return List.of();
+        }
+        return endpointPriorityService.endpointPriority(new EndpointPriorityService.EndpointPriorityInput(
+                freshnessStatus,
+                currentEndpointRows,
+                baselineEndpointRows,
+                latestBucketEndUtc));
     }
 
     /**
