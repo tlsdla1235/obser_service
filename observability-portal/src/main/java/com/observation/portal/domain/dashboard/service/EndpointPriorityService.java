@@ -1,11 +1,10 @@
 package com.observation.portal.domain.dashboard.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.observation.portal.common.time.AcceptedBucketFreshnessStatus;
 import com.observation.portal.domain.bucket.model.EndpointEvidenceRow;
 import com.observation.portal.domain.dashboard.model.ApplicationDashboardReadModel;
+import com.observation.portal.domain.dashboard.service.EndpointEvidenceAggregationService.EndpointAggregate;
+import com.observation.portal.domain.dashboard.service.EndpointEvidenceAggregationService.WindowEndpointEvidence;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -13,14 +12,9 @@ import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
-import java.util.regex.Pattern;
 
 /**
  * accepted bucket endpoint evidence에서 Dashboard endpoint priority read model을 계산한다.
@@ -43,22 +37,16 @@ public class EndpointPriorityService {
     private static final BigDecimal COMPARATIVE_SLOW_SHARE_DELTA_THRESHOLD = BigDecimal.valueOf(0.08d);
     private static final double COMPARATIVE_CONFIDENCE_CAP = 0.64d;
     private static final int MAX_ENDPOINT_PRIORITY_ITEMS = 5;
-    private static final Pattern UUID_SEGMENT = Pattern.compile(
-            "(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
-    private static final Pattern ULID_SEGMENT = Pattern.compile("(?i)[0-7][0-9a-hjkmnp-tv-z]{25}");
-    private static final Pattern LONG_HEX_SEGMENT = Pattern.compile("(?i)[0-9a-f]{8,}");
-    private static final Pattern VERSION_SEGMENT = Pattern.compile("(?i)v[0-9]{1,2}");
-    private static final Pattern LITERAL_ROUTE_SEGMENT = Pattern.compile("[A-Za-z0-9._~-]+");
-    private static final Set<String> ALLOWED_METHODS = Set.of(
-            "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE", "UNKNOWN");
 
-    private final ObjectMapper objectMapper;
+    private final EndpointEvidenceAggregationService endpointEvidenceAggregationService;
 
     /**
-     * persisted endpoints_json을 lenient하게 읽기 위해 ObjectMapper를 주입받는다.
+     * endpoint JSON parsing/merge helper를 주입받아 priority 계산과 evidence parsing 규칙을 분리한다.
      */
-    public EndpointPriorityService(ObjectMapper objectMapper) {
-        this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper must not be null");
+    public EndpointPriorityService(EndpointEvidenceAggregationService endpointEvidenceAggregationService) {
+        this.endpointEvidenceAggregationService = Objects.requireNonNull(
+                endpointEvidenceAggregationService,
+                "endpointEvidenceAggregationService must not be null");
     }
 
     /**
@@ -70,8 +58,10 @@ public class EndpointPriorityService {
             return List.of();
         }
 
-        WindowEndpointEvidence currentEvidence = mergeWindow(requiredInput.currentRows());
-        WindowEndpointEvidence baselineEvidence = mergeWindow(requiredInput.baselineRows());
+        WindowEndpointEvidence currentEvidence = endpointEvidenceAggregationService.mergeWindow(
+                requiredInput.currentRows());
+        WindowEndpointEvidence baselineEvidence = endpointEvidenceAggregationService.mergeWindow(
+                requiredInput.baselineRows());
 
         OffsetDateTime lastObservedAt = latestObservedAt(requiredInput.currentRows())
                 .or(() -> requiredInput.lastObservedAt())
@@ -233,132 +223,6 @@ public class EndpointPriorityService {
         return errorRegression || latencyRegression;
     }
 
-    private WindowEndpointEvidence mergeWindow(List<EndpointEvidenceRow> rows) {
-        List<EndpointEvidenceRow> evidenceRows = List.copyOf(Objects.requireNonNullElse(rows, List.of()));
-        Map<String, EndpointAggregateBuilder> builders = new LinkedHashMap<>();
-        for (EndpointEvidenceRow row : evidenceRows) {
-            for (ParsedEndpoint endpoint : parseEndpoints(row.endpointsJson())) {
-                EndpointAggregateBuilder builder = builders.computeIfAbsent(
-                        endpoint.endpointKey(),
-                        key -> new EndpointAggregateBuilder(endpoint.method(), endpoint.route(), endpoint.endpointKey()));
-                builder.add(endpoint);
-            }
-        }
-
-        Map<String, EndpointAggregate> endpoints = new LinkedHashMap<>();
-        builders.forEach((key, builder) -> endpoints.put(key, builder.build()));
-        return new WindowEndpointEvidence(endpoints);
-    }
-
-    private List<ParsedEndpoint> parseEndpoints(String json) {
-        try {
-            JsonNode root = objectMapper.readTree(json);
-            if (root == null || !root.isArray()) {
-                return List.of();
-            }
-            List<ParsedEndpoint> endpoints = new ArrayList<>();
-            for (JsonNode item : root) {
-                parseEndpoint(item).ifPresent(endpoints::add);
-            }
-            return endpoints;
-        } catch (JsonProcessingException exception) {
-            return List.of();
-        }
-    }
-
-    private Optional<ParsedEndpoint> parseEndpoint(JsonNode item) {
-        String method = textValue(item, "method")
-                .map(value -> value.toUpperCase(Locale.ROOT))
-                .orElse(null);
-        String route = textValue(item, "route").orElse(null);
-        Long requestCount = longValue(item, "requestCount").orElse(null);
-        Long errorCount = longValue(item, "errorCount").orElse(null);
-        if (method == null || !isAllowedMethod(method) || route == null || !isSafeRoute(route)
-                || requestCount == null || errorCount == null
-                || requestCount < 0L || errorCount < 0L || errorCount > requestCount) {
-            return Optional.empty();
-        }
-        ParsedDurationBuckets durationBuckets = parseDurationBuckets(item.get("durationBuckets"), requestCount);
-        if (durationBuckets.malformed()) {
-            return Optional.empty();
-        }
-        return Optional.of(new ParsedEndpoint(
-                method,
-                route,
-                method + " " + route,
-                requestCount,
-                errorCount,
-                durationBuckets.buckets()));
-    }
-
-    private static Optional<String> textValue(JsonNode root, String fieldName) {
-        JsonNode value = root == null ? null : root.get(fieldName);
-        if (value == null || !value.isTextual()) {
-            return Optional.empty();
-        }
-        String text = value.asText();
-        return text.isEmpty() ? Optional.empty() : Optional.of(text);
-    }
-
-    private static Optional<Long> longValue(JsonNode root, String fieldName) {
-        JsonNode value = root == null ? null : root.get(fieldName);
-        return value != null && value.isIntegralNumber() && value.canConvertToLong()
-                ? Optional.of(value.asLong())
-                : Optional.empty();
-    }
-
-    private ParsedDurationBuckets parseDurationBuckets(JsonNode root, long requestCount) {
-        if (root == null || !root.isArray()) {
-            return ParsedDurationBuckets.unavailable();
-        }
-        List<ApplicationDashboardReadModel.HistogramBucket> buckets = new ArrayList<>();
-        for (JsonNode item : root) {
-            if (hasNonIntegralNumeric(item, "leMs") || hasNonIntegralNumeric(item, "count")) {
-                return ParsedDurationBuckets.malformedItem();
-            }
-            Optional<Long> leMs = longValue(item, "leMs");
-            Optional<Long> count = longValue(item, "count");
-            if (leMs.isEmpty() || count.isEmpty() || leMs.orElseThrow() < 0L || count.orElseThrow() < 0L) {
-                return ParsedDurationBuckets.unavailable();
-            }
-            buckets.add(new ApplicationDashboardReadModel.HistogramBucket(leMs.orElseThrow(), count.orElseThrow()));
-        }
-        List<ApplicationDashboardReadModel.HistogramBucket> sortedBuckets =
-                validCumulativeBuckets(buckets, requestCount);
-        return sortedBuckets.isEmpty()
-                ? ParsedDurationBuckets.unavailable()
-                : ParsedDurationBuckets.available(sortedBuckets);
-    }
-
-    private static boolean hasNonIntegralNumeric(JsonNode root, String fieldName) {
-        JsonNode value = root == null ? null : root.get(fieldName);
-        return value != null && value.isNumber() && !value.isIntegralNumber();
-    }
-
-    private static List<ApplicationDashboardReadModel.HistogramBucket> validCumulativeBuckets(
-            List<ApplicationDashboardReadModel.HistogramBucket> buckets,
-            long requestCount) {
-        List<ApplicationDashboardReadModel.HistogramBucket> sortedBuckets = buckets.stream()
-                .sorted(Comparator.comparingLong(ApplicationDashboardReadModel.HistogramBucket::leMs))
-                .toList();
-        Long previousBoundary = null;
-        Long previousCount = null;
-        for (ApplicationDashboardReadModel.HistogramBucket bucket : sortedBuckets) {
-            if (Objects.equals(previousBoundary, bucket.leMs())) {
-                return List.of();
-            }
-            if (previousCount != null && bucket.count() < previousCount) {
-                return List.of();
-            }
-            if (bucket.count() > requestCount) {
-                return List.of();
-            }
-            previousBoundary = bucket.leMs();
-            previousCount = bucket.count();
-        }
-        return sortedBuckets;
-    }
-
     private static Optional<SlowSharePair> slowSharePair(EndpointAggregate current, EndpointAggregate baseline) {
         if (current.durationBuckets() == null
                 || baseline.durationBuckets() == null
@@ -406,138 +270,6 @@ public class EndpointPriorityService {
 
     private static boolean isUnknownRoute(String route) {
         return "UNKNOWN".equalsIgnoreCase(route == null ? "" : route.trim());
-    }
-
-    /**
-     * persisted endpoint method를 API endpointKey에 올리기 전 bounded HTTP method인지 다시 확인한다.
-     */
-    private static boolean isAllowedMethod(String method) {
-        return ALLOWED_METHODS.contains(method);
-    }
-
-    /**
-     * read-side에서도 route attribution 최종 payload 계약을 재검증해 raw path/query/detail 노출을 차단한다.
-     */
-    private static boolean isSafeRoute(String route) {
-        if (route == null || route.isBlank()) {
-            return false;
-        }
-        if (hasLeadingOrTrailingWhitespace(route) || containsControlCharacter(route)) {
-            return false;
-        }
-        if ("UNKNOWN".equals(route)) {
-            return true;
-        }
-        String lowerCaseRoute = route.toLowerCase(Locale.ROOT);
-        if (route.contains("?") || lowerCaseRoute.startsWith("http://") || lowerCaseRoute.startsWith("https://")) {
-            return false;
-        }
-        if (!route.startsWith("/") || route.startsWith("//") || route.contains("//")) {
-            return false;
-        }
-        if (route.length() > 1 && route.endsWith("/")) {
-            return false;
-        }
-        if (!hasValidPercentEncoding(route)) {
-            return false;
-        }
-
-        for (String segment : route.split("/")) {
-            if (segment.isBlank()) {
-                continue;
-            }
-            if (isTemplateVariable(segment)) {
-                continue;
-            }
-            if (segment.contains("{") || segment.contains("}") || segment.contains("*")
-                    || !LITERAL_ROUTE_SEGMENT.matcher(segment).matches()) {
-                return false;
-            }
-            if (looksLikeConcreteIdentifier(segment)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static boolean containsControlCharacter(String value) {
-        for (int index = 0; index < value.length(); index++) {
-            if (Character.isISOControl(value.charAt(index))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean hasLeadingOrTrailingWhitespace(String value) {
-        return !value.isEmpty()
-                && (isWhitespace(value.charAt(0)) || isWhitespace(value.charAt(value.length() - 1)));
-    }
-
-    private static boolean isWhitespace(char value) {
-        return Character.isWhitespace(value) || Character.isSpaceChar(value);
-    }
-
-    private static boolean isTemplateVariable(String segment) {
-        return segment.startsWith("{")
-                && segment.endsWith("}")
-                && segment.length() > 2
-                && segment.substring(1, segment.length() - 1).matches("[A-Za-z][A-Za-z0-9_]*");
-    }
-
-    private static boolean looksLikeConcreteIdentifier(String segment) {
-        return segment.matches("[0-9]+")
-                || UUID_SEGMENT.matcher(segment).matches()
-                || ULID_SEGMENT.matcher(segment).matches()
-                || LONG_HEX_SEGMENT.matcher(segment).matches()
-                || segment.contains(".")
-                || segment.contains("@")
-                || (!VERSION_SEGMENT.matcher(segment).matches()
-                && hasLetterAndDigit(segment)
-                && (isLongAlphaNumericToken(segment) || isDigitLetterSlug(segment)));
-    }
-
-    private static boolean isLongAlphaNumericToken(String segment) {
-        return segment.length() >= 12 && segment.matches("[A-Za-z0-9]+");
-    }
-
-    private static boolean isDigitLetterSlug(String segment) {
-        boolean hasSeparator = segment.indexOf('-') >= 0 || segment.indexOf('_') >= 0 || segment.indexOf('~') >= 0;
-        long digitCount = segment.chars().filter(Character::isDigit).count();
-        return (hasSeparator && digitCount > 0L)
-                || (segment.length() >= 8 && digitCount >= 2L && segment.matches("[A-Za-z0-9]+"));
-    }
-
-    private static boolean hasLetterAndDigit(String value) {
-        boolean hasLetter = false;
-        boolean hasDigit = false;
-        for (int index = 0; index < value.length(); index++) {
-            char character = value.charAt(index);
-            hasLetter = hasLetter || Character.isLetter(character);
-            hasDigit = hasDigit || Character.isDigit(character);
-        }
-        return hasLetter && hasDigit;
-    }
-
-    private static boolean hasValidPercentEncoding(String value) {
-        for (int index = 0; index < value.length(); index++) {
-            if (value.charAt(index) != '%') {
-                continue;
-            }
-            if (index + 2 >= value.length()
-                    || !isHex(value.charAt(index + 1))
-                    || !isHex(value.charAt(index + 2))) {
-                return false;
-            }
-            index += 2;
-        }
-        return true;
-    }
-
-    private static boolean isHex(char value) {
-        return value >= '0' && value <= '9'
-                || value >= 'a' && value <= 'f'
-                || value >= 'A' && value <= 'F';
     }
 
     private static BigDecimal decimal(long numerator, long denominator) {
@@ -649,74 +381,6 @@ public class EndpointPriorityService {
         }
     }
 
-    private static final class EndpointAggregateBuilder {
-
-        private final String method;
-        private final String route;
-        private final String endpointKey;
-        private long requestCount;
-        private long errorCount;
-        private List<Long> expectedBoundarySet;
-        private final Map<Long, Long> mergedDurationCounts = new LinkedHashMap<>();
-        private boolean latencyUnavailable;
-
-        private EndpointAggregateBuilder(String method, String route, String endpointKey) {
-            this.method = method;
-            this.route = route;
-            this.endpointKey = endpointKey;
-        }
-
-        private void add(ParsedEndpoint endpoint) {
-            requestCount += endpoint.requestCount();
-            errorCount += endpoint.errorCount();
-            if (endpoint.durationBuckets().isEmpty()) {
-                latencyUnavailable = true;
-                return;
-            }
-            List<ApplicationDashboardReadModel.HistogramBucket> buckets = endpoint.durationBuckets().orElseThrow();
-            List<Long> boundarySet = buckets.stream()
-                    .map(ApplicationDashboardReadModel.HistogramBucket::leMs)
-                    .toList();
-            if (expectedBoundarySet == null) {
-                expectedBoundarySet = boundarySet;
-                boundarySet.forEach(boundary -> mergedDurationCounts.put(boundary, 0L));
-            } else if (!expectedBoundarySet.equals(boundarySet)) {
-                latencyUnavailable = true;
-                return;
-            }
-            if (!latencyUnavailable) {
-                for (ApplicationDashboardReadModel.HistogramBucket bucket : buckets) {
-                    mergedDurationCounts.compute(bucket.leMs(), (boundary, count) -> count + bucket.count());
-                }
-            }
-        }
-
-        private EndpointAggregate build() {
-            List<ApplicationDashboardReadModel.HistogramBucket> durationBuckets = null;
-            if (!latencyUnavailable && !mergedDurationCounts.isEmpty()) {
-                durationBuckets = mergedDurationCounts.entrySet().stream()
-                        .map(entry -> new ApplicationDashboardReadModel.HistogramBucket(
-                                entry.getKey(),
-                                entry.getValue()))
-                        .toList();
-            }
-            return new EndpointAggregate(method, route, endpointKey, requestCount, errorCount, durationBuckets);
-        }
-    }
-
-    private record WindowEndpointEvidence(Map<String, EndpointAggregate> endpoints) {
-    }
-
-    private record EndpointAggregate(
-            String method,
-            String route,
-            String endpointKey,
-            long requestCount,
-            long errorCount,
-            List<ApplicationDashboardReadModel.HistogramBucket> durationBuckets
-    ) {
-    }
-
     private record EndpointPriorityCandidate(
             String method,
             String route,
@@ -729,34 +393,6 @@ public class EndpointPriorityService {
             ApplicationDashboardReadModel.EndpointPriorityEvidence evidence,
             String recommendedAction
     ) {
-    }
-
-    private record ParsedEndpoint(
-            String method,
-            String route,
-            String endpointKey,
-            long requestCount,
-            long errorCount,
-            Optional<List<ApplicationDashboardReadModel.HistogramBucket>> durationBuckets
-    ) {
-    }
-
-    private record ParsedDurationBuckets(
-            Optional<List<ApplicationDashboardReadModel.HistogramBucket>> buckets,
-            boolean malformed
-    ) {
-
-        private static ParsedDurationBuckets available(List<ApplicationDashboardReadModel.HistogramBucket> buckets) {
-            return new ParsedDurationBuckets(Optional.of(List.copyOf(buckets)), false);
-        }
-
-        private static ParsedDurationBuckets unavailable() {
-            return new ParsedDurationBuckets(Optional.empty(), false);
-        }
-
-        private static ParsedDurationBuckets malformedItem() {
-            return new ParsedDurationBuckets(Optional.empty(), true);
-        }
     }
 
     private record SlowSharePair(BigDecimal currentShare, BigDecimal baselineShare) {

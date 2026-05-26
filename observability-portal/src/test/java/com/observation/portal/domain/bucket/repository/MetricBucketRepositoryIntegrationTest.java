@@ -204,6 +204,61 @@ class MetricBucketRepositoryIntegrationTest {
     }
 
     @Test
+    void findsSelectedInstanceLatestBucketAndAggregateWithWindowBoundarySemantics() {
+        OffsetDateTime windowStart = OffsetDateTime.parse("2026-05-08T01:17:30Z");
+        OffsetDateTime windowEnd = OffsetDateTime.parse("2026-05-08T01:32:30Z");
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:instance-before-window",
+                "hash-instance-before",
+                "2026-05-08T01:17:00Z",
+                OffsetDateTime.parse("2026-05-08T01:17:35Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:instance-inside-start",
+                "hash-instance-inside-start",
+                "2026-05-08T01:17:30Z",
+                OffsetDateTime.parse("2026-05-08T01:18:05Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:instance-inside-end",
+                "hash-instance-inside-end",
+                "2026-05-08T01:32:00Z",
+                OffsetDateTime.parse("2026-05-08T01:32:35Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-b:instance-other",
+                "hash-instance-other",
+                "2026-05-08T01:32:00Z",
+                OffsetDateTime.parse("2026-05-08T01:32:36Z"),
+                "orders-api",
+                "prod",
+                "pod-b"));
+
+        var ordersApplication = applicationRepository
+                .findByProjectIdAndNameAndEnvironment(PROJECT_ID, "orders-api", "prod")
+                .orElseThrow();
+        var podA = applicationInstanceRepository.findByApplicationIdAndInstanceName(ordersApplication.id(), "pod-a")
+                .orElseThrow();
+        WindowBucketAggregate aggregate = metricBucketRepository.findWindowAggregateByApplicationInstanceId(
+                podA.id(),
+                windowStart.toInstant(),
+                windowEnd.toInstant());
+
+        assertThat(metricBucketRepository.findLatestBucketEndUtcByApplicationInstanceIdAtOrBefore(
+                podA.id(),
+                windowEnd.toInstant()))
+                .contains(windowEnd);
+        assertThat(aggregate.requestCount()).isEqualTo(6L);
+        assertThat(aggregate.errorCount()).isEqualTo(2L);
+    }
+
+    @Test
     void aggregatesWindowRequestAndErrorCountsByApplicationScopeAndWindowBoundary() {
         OffsetDateTime windowStart = OffsetDateTime.parse("2026-05-08T01:17:30Z");
         OffsetDateTime windowEnd = OffsetDateTime.parse("2026-05-08T01:32:30Z");
@@ -261,6 +316,89 @@ class MetricBucketRepositoryIntegrationTest {
 
         assertThat(aggregate.requestCount()).isZero();
         assertThat(aggregate.errorCount()).isZero();
+    }
+
+    @Test
+    void findsSelectedInstancePercentileHistogramAndRuntimeRowsOnly() {
+        OffsetDateTime windowStart = OffsetDateTime.parse("2026-05-08T01:17:30Z");
+        OffsetDateTime windowEnd = OffsetDateTime.parse("2026-05-08T01:32:30Z");
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:selected-before",
+                "hash-selected-before",
+                "2026-05-08T01:17:00Z",
+                OffsetDateTime.parse("2026-05-08T01:17:35Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:selected-inside",
+                "hash-selected-inside",
+                "2026-05-08T01:17:30Z",
+                OffsetDateTime.parse("2026-05-08T01:18:05Z"),
+                "orders-api",
+                "prod",
+                "pod-a",
+                List.of(
+                        new AcceptedMetricBucketWriteCommand.DurationBucket(50L, 4L),
+                        new AcceptedMetricBucketWriteCommand.DurationBucket(100L, 7L))));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:selected-latest",
+                "hash-selected-latest",
+                "2026-05-08T01:32:00Z",
+                OffsetDateTime.parse("2026-05-08T01:32:35Z"),
+                "orders-api",
+                "prod",
+                "pod-a",
+                List.of(
+                        new AcceptedMetricBucketWriteCommand.DurationBucket(50L, 5L),
+                        new AcceptedMetricBucketWriteCommand.DurationBucket(100L, 8L))));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-b:selected-other-instance",
+                "hash-selected-other-instance",
+                "2026-05-08T01:32:00Z",
+                OffsetDateTime.parse("2026-05-08T01:32:36Z"),
+                "orders-api",
+                "prod",
+                "pod-b"));
+
+        var ordersApplication = applicationRepository
+                .findByProjectIdAndNameAndEnvironment(PROJECT_ID, "orders-api", "prod")
+                .orElseThrow();
+        var podA = applicationInstanceRepository.findByApplicationIdAndInstanceName(ordersApplication.id(), "pod-a")
+                .orElseThrow();
+
+        List<LocalPercentileEvidenceRow> percentileRows =
+                metricBucketRepository.findLocalPercentileEvidenceRowsByApplicationInstanceId(
+                        podA.id(),
+                        windowStart.toInstant(),
+                        windowEnd.toInstant());
+        List<HistogramBucketEvidenceRow> histogramRows =
+                metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationInstanceId(
+                        podA.id(),
+                        windowStart.toInstant(),
+                        windowEnd.toInstant());
+        Optional<RuntimeRatioEvidenceRow> runtimeRow =
+                metricBucketRepository.findLatestRuntimeRatioEvidenceRowByApplicationInstanceId(
+                        podA.id(),
+                        windowStart.toInstant(),
+                        windowEnd.toInstant());
+
+        assertThat(percentileRows)
+                .extracting(LocalPercentileEvidenceRow::applicationInstanceId)
+                .containsExactly(podA.id(), podA.id());
+        assertThat(percentileRows)
+                .extracting(LocalPercentileEvidenceRow::bucketEndUtc)
+                .containsExactly(
+                        OffsetDateTime.parse("2026-05-08T01:18:00Z"),
+                        OffsetDateTime.parse("2026-05-08T01:32:30Z"));
+        assertThat(histogramRows)
+                .extracting(HistogramBucketEvidenceRow::bucketEndUtc)
+                .containsExactly(
+                        OffsetDateTime.parse("2026-05-08T01:18:00Z"),
+                        OffsetDateTime.parse("2026-05-08T01:32:30Z"));
+        assertThat(runtimeRow).isPresent();
+        assertThat(runtimeRow.orElseThrow().bucketEndUtc()).isEqualTo(OffsetDateTime.parse("2026-05-08T01:32:30Z"));
+        assertThat(runtimeRow.orElseThrow().cpuUsageRatio()).isEqualByComparingTo("0.64000");
     }
 
     @Test
@@ -426,6 +564,68 @@ class MetricBucketRepositoryIntegrationTest {
                 .orElseThrow();
         List<EndpointEvidenceRow> rows = metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
                 ordersApplication.id(),
+                windowStart.toInstant(),
+                windowEnd.toInstant());
+
+        assertThat(rows)
+                .extracting(EndpointEvidenceRow::bucketStartUtc, EndpointEvidenceRow::bucketEndUtc)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(
+                                OffsetDateTime.parse("2026-05-08T01:17:30Z"),
+                                OffsetDateTime.parse("2026-05-08T01:18:00Z")),
+                        org.assertj.core.groups.Tuple.tuple(
+                                OffsetDateTime.parse("2026-05-08T01:32:00Z"),
+                                OffsetDateTime.parse("2026-05-08T01:32:30Z")));
+        assertThat(rows)
+                .allSatisfy(row -> assertThat(row.endpointsJson())
+                        .contains("\"method\": \"GET\"", "\"route\": \"/orders/{orderId}\"")
+                        .doesNotContain("rank", "confidence", "recommendedAction", "p95", "p99"));
+    }
+
+    @Test
+    void findsEndpointEvidenceRowsBySelectedInstanceScopeAndWindowOnly() {
+        OffsetDateTime windowStart = OffsetDateTime.parse("2026-05-08T01:17:30Z");
+        OffsetDateTime windowEnd = OffsetDateTime.parse("2026-05-08T01:32:30Z");
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:selected-endpoint-before",
+                "hash-selected-endpoint-before",
+                "2026-05-08T01:17:00Z",
+                OffsetDateTime.parse("2026-05-08T01:17:35Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:selected-endpoint-inside",
+                "hash-selected-endpoint-inside",
+                "2026-05-08T01:17:30Z",
+                OffsetDateTime.parse("2026-05-08T01:18:05Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:selected-endpoint-end",
+                "hash-selected-endpoint-end",
+                "2026-05-08T01:32:00Z",
+                OffsetDateTime.parse("2026-05-08T01:32:35Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-b:selected-endpoint-other-instance",
+                "hash-selected-endpoint-other-instance",
+                "2026-05-08T01:32:00Z",
+                OffsetDateTime.parse("2026-05-08T01:32:36Z"),
+                "orders-api",
+                "prod",
+                "pod-b"));
+
+        var ordersApplication = applicationRepository
+                .findByProjectIdAndNameAndEnvironment(PROJECT_ID, "orders-api", "prod")
+                .orElseThrow();
+        var podA = applicationInstanceRepository.findByApplicationIdAndInstanceName(ordersApplication.id(), "pod-a")
+                .orElseThrow();
+        List<EndpointEvidenceRow> rows = metricBucketRepository.findEndpointEvidenceRowsByApplicationInstanceId(
+                podA.id(),
                 windowStart.toInstant(),
                 windowEnd.toInstant());
 

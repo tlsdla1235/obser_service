@@ -18,12 +18,15 @@ import com.observation.portal.domain.bucket.model.RuntimeRatioEvidenceRow;
 import com.observation.portal.domain.bucket.model.WindowBucketAggregate;
 import com.observation.portal.domain.bucket.repository.MetricBucketRepository;
 import com.observation.portal.domain.catalog.entity.ApplicationEntity;
+import com.observation.portal.domain.catalog.entity.ApplicationInstanceEntity;
+import com.observation.portal.domain.catalog.repository.ApplicationInstanceRepository;
 import com.observation.portal.domain.catalog.repository.ApplicationRepository;
 import com.observation.portal.domain.dashboard.model.ApplicationDashboardReadModel;
 import com.observation.portal.domain.dashboard.service.TriageSummaryService.TriageSummary;
 import com.observation.portal.domain.dashboard.service.TriageSummaryService.TriageSummaryInput;
 import com.observation.portal.domain.ingest.model.StarterHeartbeatTelemetryRecord;
 import com.observation.portal.domain.ingest.repository.StarterHeartbeatTelemetryRepository;
+import com.observation.portal.domain.instance.service.InstanceEvidenceReadModelService;
 import com.observation.portal.domain.state.model.DegradedHysteresisInput;
 import com.observation.portal.domain.state.model.LifecycleStateDecision;
 import com.observation.portal.domain.state.model.LifecycleStateCode;
@@ -37,6 +40,7 @@ import com.observation.portal.domain.state.model.StarterConnectionMeaning;
 import com.observation.portal.domain.state.model.StarterConnectionSummary;
 import com.observation.portal.domain.state.model.StarterHeartbeatStatus;
 import com.observation.portal.domain.state.service.LifecycleStateService;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -68,6 +72,7 @@ import java.util.UUID;
 public class DashboardReadModelService {
 
     private static final Duration STARTER_HEARTBEAT_RECENT_WINDOW = Duration.ofSeconds(90);
+    private static final int INSTANCE_ENTRY_LIMIT = 50;
     private static final long MINIMUM_ACTIVE_SAMPLE_REQUEST_COUNT = 30L;
     private static final String APPLICATION_STATE_SCOPE = "application";
     private static final String STARTER_LOCAL_SOURCE = "starter_local";
@@ -75,6 +80,7 @@ public class DashboardReadModelService {
     private static final String HISTOGRAM_BOUNDARY_MISMATCH_REASON = "histogram_boundary_mismatch";
 
     private final ApplicationRepository applicationRepository;
+    private final ApplicationInstanceRepository applicationInstanceRepository;
     private final MetricBucketRepository metricBucketRepository;
     private final StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository;
     private final AcceptedBucketFreshnessEvaluator freshnessEvaluator;
@@ -90,6 +96,7 @@ public class DashboardReadModelService {
      */
     public DashboardReadModelService(
             ApplicationRepository applicationRepository,
+            ApplicationInstanceRepository applicationInstanceRepository,
             MetricBucketRepository metricBucketRepository,
             StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository,
             AcceptedBucketFreshnessEvaluator freshnessEvaluator,
@@ -102,6 +109,9 @@ public class DashboardReadModelService {
         this.applicationRepository = Objects.requireNonNull(
                 applicationRepository,
                 "applicationRepository must not be null");
+        this.applicationInstanceRepository = Objects.requireNonNull(
+                applicationInstanceRepository,
+                "applicationInstanceRepository must not be null");
         this.metricBucketRepository = Objects.requireNonNull(
                 metricBucketRepository,
                 "metricBucketRepository must not be null");
@@ -241,7 +251,34 @@ public class DashboardReadModelService {
                 histogramDistribution,
                 triageSummary.triageCards(),
                 endpointPriority,
+                instanceEntries(application),
                 null);
+    }
+
+    /**
+     * Application Dashboard에서 selected instance evidence API로 이동할 수 있는 최대 50개 entry를 만든다.
+     *
+     * <p>이 block은 navigation hint만 제공하며 instance state, health, endpoint evidence, percentile summary를 계산하지
+     * 않는다.</p>
+     */
+    private List<ApplicationDashboardReadModel.InstanceEntry> instanceEntries(ApplicationEntity application) {
+        List<ApplicationInstanceEntity> instances = Objects.requireNonNullElse(
+                applicationInstanceRepository.findByApplicationIdOrderByLastSeenAtDescInstanceNameAsc(
+                        application.id(),
+                        PageRequest.of(0, INSTANCE_ENTRY_LIMIT)),
+                List.of());
+        return instances.stream()
+                .limit(INSTANCE_ENTRY_LIMIT)
+                .map(instance -> new ApplicationDashboardReadModel.InstanceEntry(
+                        instance.id(),
+                        instance.instanceName(),
+                        instance.lastSeenAt(),
+                        new ApplicationDashboardReadModel.InstanceEntryLinks(
+                                InstanceEvidenceReadModelService.evidenceLink(
+                                        application.projectId(),
+                                        application.id(),
+                                        instance.id()))))
+                .toList();
     }
 
     /**

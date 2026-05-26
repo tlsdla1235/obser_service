@@ -56,6 +56,16 @@ interface AcceptedMetricBucketJpaRepository extends JpaRepository<AcceptedMetric
             @Param("evaluationAtUtc") OffsetDateTime evaluationAtUtc);
 
     /**
+     * instance evidence freshness 입력으로 evaluationAt 이후 future bucket을 제외한 selected instance 마지막 endUtc를 조회한다.
+     */
+    @Query("select max(bucket.bucketEndUtc) from AcceptedMetricBucketEntity bucket "
+            + "where bucket.applicationInstanceId = :applicationInstanceId "
+            + "and bucket.bucketEndUtc <= :evaluationAtUtc")
+    Optional<OffsetDateTime> findLatestBucketEndUtcByApplicationInstanceIdAtOrBefore(
+            @Param("applicationInstanceId") UUID applicationInstanceId,
+            @Param("evaluationAtUtc") OffsetDateTime evaluationAtUtc);
+
+    /**
      * dashboard current window에 포함되는 bucket request/error count 합계를 한 query snapshot으로 조회한다.
      */
     @Query("select new com.observation.portal.domain.bucket.model.WindowBucketAggregate("
@@ -67,6 +77,21 @@ interface AcceptedMetricBucketJpaRepository extends JpaRepository<AcceptedMetric
             + "and bucket.bucketEndUtc <= :windowEndUtc")
     WindowBucketAggregate sumWindowRequestAndErrorCountsByApplicationId(
             @Param("applicationId") UUID applicationId,
+            @Param("windowStartUtc") OffsetDateTime windowStartUtc,
+            @Param("windowEndUtc") OffsetDateTime windowEndUtc);
+
+    /**
+     * instance evidence current window에 포함되는 selected instance bucket request/error count 합계만 조회한다.
+     */
+    @Query("select new com.observation.portal.domain.bucket.model.WindowBucketAggregate("
+            + "coalesce(sum(bucket.requestCount), 0L), "
+            + "coalesce(sum(bucket.errorCount), 0L)) "
+            + "from AcceptedMetricBucketEntity bucket "
+            + "where bucket.applicationInstanceId = :applicationInstanceId "
+            + "and bucket.bucketEndUtc > :windowStartUtc "
+            + "and bucket.bucketEndUtc <= :windowEndUtc")
+    WindowBucketAggregate sumWindowRequestAndErrorCountsByApplicationInstanceId(
+            @Param("applicationInstanceId") UUID applicationInstanceId,
             @Param("windowStartUtc") OffsetDateTime windowStartUtc,
             @Param("windowEndUtc") OffsetDateTime windowEndUtc);
 
@@ -93,6 +118,28 @@ interface AcceptedMetricBucketJpaRepository extends JpaRepository<AcceptedMetric
             @Param("windowEndUtc") OffsetDateTime windowEndUtc);
 
     /**
+     * instance evidence percentile series를 위한 selected instance local percentile JSON과 boundary를 조회한다.
+     */
+    @Query("select new com.observation.portal.domain.bucket.model.LocalPercentileEvidenceRow("
+            + "bucket.applicationId, "
+            + "bucket.applicationInstanceId, "
+            + "instance.instanceName, "
+            + "bucket.bucketStartUtc, "
+            + "bucket.bucketEndUtc, "
+            + "bucket.localPercentilesJson) "
+            + "from AcceptedMetricBucketEntity bucket, ApplicationInstanceEntity instance "
+            + "where instance.id = bucket.applicationInstanceId "
+            + "and bucket.applicationInstanceId = :applicationInstanceId "
+            + "and bucket.bucketEndUtc > :windowStartUtc "
+            + "and bucket.bucketEndUtc <= :windowEndUtc "
+            + "and bucket.localPercentilesJson is not null "
+            + "order by bucket.bucketEndUtc asc")
+    List<LocalPercentileEvidenceRow> findLocalPercentileEvidenceRowsByApplicationInstanceId(
+            @Param("applicationInstanceId") UUID applicationInstanceId,
+            @Param("windowStartUtc") OffsetDateTime windowStartUtc,
+            @Param("windowEndUtc") OffsetDateTime windowEndUtc);
+
+    /**
      * histogram distribution read model을 위한 application summary duration bucket JSON row를 조회한다.
      */
     @Query("select new com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow("
@@ -108,6 +155,25 @@ interface AcceptedMetricBucketJpaRepository extends JpaRepository<AcceptedMetric
             + "order by bucket.bucketEndUtc asc")
     List<HistogramBucketEvidenceRow> findSummaryDurationBucketEvidenceRowsByApplicationId(
             @Param("applicationId") UUID applicationId,
+            @Param("windowStartUtc") OffsetDateTime windowStartUtc,
+            @Param("windowEndUtc") OffsetDateTime windowEndUtc);
+
+    /**
+     * instance evidence histogram distribution을 위한 selected instance summary duration bucket JSON row를 조회한다.
+     */
+    @Query("select new com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow("
+            + "bucket.applicationId, "
+            + "bucket.bucketStartUtc, "
+            + "bucket.bucketEndUtc, "
+            + "bucket.durationBucketsJson) "
+            + "from AcceptedMetricBucketEntity bucket "
+            + "where bucket.applicationInstanceId = :applicationInstanceId "
+            + "and bucket.bucketEndUtc > :windowStartUtc "
+            + "and bucket.bucketEndUtc <= :windowEndUtc "
+            + "and bucket.durationBucketsJson is not null "
+            + "order by bucket.bucketEndUtc asc")
+    List<HistogramBucketEvidenceRow> findSummaryDurationBucketEvidenceRowsByApplicationInstanceId(
+            @Param("applicationInstanceId") UUID applicationInstanceId,
             @Param("windowStartUtc") OffsetDateTime windowStartUtc,
             @Param("windowEndUtc") OffsetDateTime windowEndUtc);
 
@@ -131,6 +197,28 @@ interface AcceptedMetricBucketJpaRepository extends JpaRepository<AcceptedMetric
             + "order by bucket.bucketEndUtc asc")
     List<EndpointEvidenceRow> findEndpointEvidenceRowsByApplicationId(
             @Param("applicationId") UUID applicationId,
+            @Param("windowStartUtc") OffsetDateTime windowStartUtc,
+            @Param("windowEndUtc") OffsetDateTime windowEndUtc);
+
+    /**
+     * instance evidence endpoint subset을 위한 selected instance endpoints_json row를 조회한다.
+     *
+     * <p>projection은 bucket boundary와 JSON source만 전달하고, endpoint presence/share/display order나
+     * rule/rank/confidence/recommended action, endpoint p95/p99는 계산하지 않는다.</p>
+     */
+    @Query("select new com.observation.portal.domain.bucket.model.EndpointEvidenceRow("
+            + "bucket.applicationId, "
+            + "bucket.bucketStartUtc, "
+            + "bucket.bucketEndUtc, "
+            + "bucket.endpointsJson) "
+            + "from AcceptedMetricBucketEntity bucket "
+            + "where bucket.applicationInstanceId = :applicationInstanceId "
+            + "and bucket.bucketEndUtc > :windowStartUtc "
+            + "and bucket.bucketEndUtc <= :windowEndUtc "
+            + "and bucket.endpointsJson is not null "
+            + "order by bucket.bucketEndUtc asc")
+    List<EndpointEvidenceRow> findEndpointEvidenceRowsByApplicationInstanceId(
+            @Param("applicationInstanceId") UUID applicationInstanceId,
             @Param("windowStartUtc") OffsetDateTime windowStartUtc,
             @Param("windowEndUtc") OffsetDateTime windowEndUtc);
 
@@ -204,6 +292,30 @@ interface AcceptedMetricBucketJpaRepository extends JpaRepository<AcceptedMetric
             + "order by bucket.bucketEndUtc desc")
     List<RuntimeRatioEvidenceRow> findRuntimeRatioEvidenceRowsByApplicationId(
             @Param("applicationId") UUID applicationId,
+            @Param("windowStartUtc") OffsetDateTime windowStartUtc,
+            @Param("windowEndUtc") OffsetDateTime windowEndUtc,
+            Pageable pageable);
+
+    /**
+     * instance evidence resource hints에 사용할 selected instance current window latest runtime ratio row를 최신순 조회한다.
+     */
+    @Query("select new com.observation.portal.domain.bucket.model.RuntimeRatioEvidenceRow("
+            + "bucket.applicationId, "
+            + "bucket.bucketStartUtc, "
+            + "bucket.bucketEndUtc, "
+            + "bucket.cpuUsageRatio, "
+            + "bucket.heapUsedRatio, "
+            + "bucket.datasourcePoolUsageRatio) "
+            + "from AcceptedMetricBucketEntity bucket "
+            + "where bucket.applicationInstanceId = :applicationInstanceId "
+            + "and bucket.bucketEndUtc > :windowStartUtc "
+            + "and bucket.bucketEndUtc <= :windowEndUtc "
+            + "and (bucket.cpuUsageRatio is not null "
+            + "or bucket.heapUsedRatio is not null "
+            + "or bucket.datasourcePoolUsageRatio is not null) "
+            + "order by bucket.bucketEndUtc desc")
+    List<RuntimeRatioEvidenceRow> findRuntimeRatioEvidenceRowsByApplicationInstanceId(
+            @Param("applicationInstanceId") UUID applicationInstanceId,
             @Param("windowStartUtc") OffsetDateTime windowStartUtc,
             @Param("windowEndUtc") OffsetDateTime windowEndUtc,
             Pageable pageable);

@@ -25,6 +25,7 @@ public record ApplicationDashboardReadModel(
         HistogramDistribution histogramDistribution,
         List<TriageCard> triageCards,
         List<EndpointPriorityItem> endpointPriority,
+        List<InstanceEntry> instances,
         Object snapshot
 ) {
 
@@ -45,6 +46,10 @@ public record ApplicationDashboardReadModel(
             Objects.requireNonNull(zeroInsight, "zeroInsight must not be null when triageCards is empty");
         }
         endpointPriority = List.copyOf(Objects.requireNonNull(endpointPriority, "endpointPriority must not be null"));
+        instances = List.copyOf(Objects.requireNonNull(instances, "instances must not be null"));
+        if (instances.size() > 50) {
+            throw new IllegalArgumentException("instances must not exceed 50");
+        }
     }
 
     /**
@@ -691,6 +696,41 @@ public record ApplicationDashboardReadModel(
         @JsonValue
         public String value() {
             return value;
+        }
+    }
+
+    /**
+     * Application Dashboard에서 Instance Detail로 진입할 때 사용하는 bounded instance entry다.
+     *
+     * <p>instance health/state/priority를 계산하지 않고 catalog UUID, 표시 이름, latest seen 시각, evidence link만 담는다.</p>
+     */
+    public record InstanceEntry(
+            UUID instanceId,
+            String instanceName,
+            OffsetDateTime lastSeenAt,
+            InstanceEntryLinks links
+    ) {
+
+        /**
+         * instance UUID path identity와 evidence navigation link가 비어 있지 않도록 검증한다.
+         */
+        public InstanceEntry {
+            Objects.requireNonNull(instanceId, "instanceId must not be null");
+            instanceName = requireText(instanceName, "instanceName");
+            Objects.requireNonNull(links, "links must not be null");
+        }
+    }
+
+    /**
+     * Instance Detail evidence API로 이동하기 위한 link block이다.
+     */
+    public record InstanceEntryLinks(String evidence) {
+
+        /**
+         * evidence link가 UUID 기반 path로 채워졌는지 확인한다.
+         */
+        public InstanceEntryLinks {
+            evidence = requireText(evidence, "evidence");
         }
     }
 

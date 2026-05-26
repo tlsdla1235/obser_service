@@ -12,6 +12,8 @@ import com.observation.portal.domain.bucket.model.RuntimeRatioEvidenceRow;
 import com.observation.portal.domain.bucket.model.WindowBucketAggregate;
 import com.observation.portal.domain.bucket.repository.MetricBucketRepository;
 import com.observation.portal.domain.catalog.entity.ApplicationEntity;
+import com.observation.portal.domain.catalog.entity.ApplicationInstanceEntity;
+import com.observation.portal.domain.catalog.repository.ApplicationInstanceRepository;
 import com.observation.portal.domain.catalog.repository.ApplicationRepository;
 import com.observation.portal.domain.dashboard.model.ApplicationDashboardReadModel;
 import com.observation.portal.domain.ingest.model.StarterHeartbeatTelemetryRecord;
@@ -19,6 +21,7 @@ import com.observation.portal.domain.ingest.repository.StarterHeartbeatTelemetry
 import com.observation.portal.domain.state.service.LifecycleStateService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.PageRequest;
 
 import java.lang.reflect.RecordComponent;
 import java.math.BigDecimal;
@@ -42,6 +45,7 @@ class DashboardReadModelServiceTest {
 
     private static final UUID PROJECT_ID = UUID.fromString("00000000-0000-0000-0000-000000005201");
     private static final UUID APPLICATION_ID = UUID.fromString("00000000-0000-0000-0000-000000005211");
+    private static final UUID INSTANCE_ID = UUID.fromString("00000000-0000-0000-0000-000000005221");
     private static final Instant QUERY_AT = Instant.parse("2026-05-25T10:32:38.421Z");
     private static final Instant EVALUATION_AT = Instant.parse("2026-05-25T10:32:30Z");
     private static final Instant CURRENT_START = Instant.parse("2026-05-25T10:17:30Z");
@@ -49,19 +53,23 @@ class DashboardReadModelServiceTest {
     private static final Clock CLOCK = Clock.fixed(QUERY_AT, ZoneOffset.UTC);
 
     private final ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
+    private final ApplicationInstanceRepository applicationInstanceRepository = mock(ApplicationInstanceRepository.class);
     private final MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
     private final StarterHeartbeatTelemetryRepository heartbeatRepository =
             mock(StarterHeartbeatTelemetryRepository.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final EndpointEvidenceAggregationService endpointEvidenceAggregationService =
+            new EndpointEvidenceAggregationService(objectMapper);
     private final DashboardReadModelService service = new DashboardReadModelService(
             applicationRepository,
+            applicationInstanceRepository,
             metricBucketRepository,
             heartbeatRepository,
             new AcceptedBucketFreshnessEvaluator(CLOCK),
             new TimeBucketWindowCalculator(CLOCK),
             new LifecycleStateService(),
             new TriageSummaryService(objectMapper),
-            new EndpointPriorityService(objectMapper),
+            new EndpointPriorityService(endpointEvidenceAggregationService),
             CLOCK,
             objectMapper);
 
@@ -171,6 +179,7 @@ class DashboardReadModelServiceTest {
         assertThat(dashboard.histogramDistribution().baseline().buckets()).isEmpty();
         assertThat(dashboard.triageCards()).isEmpty();
         assertThat(dashboard.endpointPriority()).isEmpty();
+        assertThat(dashboard.instances()).isEmpty();
         assertThat(dashboard.snapshot()).isNull();
         assertThat(metricRecordComponentNames()).containsExactly("requestCount", "errorCount", "errorRate");
         verify(metricBucketRepository)
@@ -474,7 +483,38 @@ class DashboardReadModelServiceTest {
 
         assertThat(service.getDashboard(PROJECT_ID, APPLICATION_ID)).isEmpty();
 
-        verifyNoInteractions(metricBucketRepository, heartbeatRepository);
+        verifyNoInteractions(applicationInstanceRepository, metricBucketRepository, heartbeatRepository);
+    }
+
+    @Test
+    void exposesBoundedInstanceEvidenceEntriesWithUuidLinks() {
+        when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
+                .thenReturn(Optional.of(application()));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-25T10:32:00Z")));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, CURRENT_START, EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(100L, 0L));
+        when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("2026-05-25T10:32:20Z")));
+        when(applicationInstanceRepository.findByApplicationIdOrderByLastSeenAtDescInstanceNameAsc(
+                APPLICATION_ID,
+                PageRequest.of(0, 50)))
+                .thenReturn(instanceRows(51));
+
+        ApplicationDashboardReadModel dashboard = service.getDashboard(PROJECT_ID, APPLICATION_ID).orElseThrow();
+
+        assertThat(dashboard.instances()).hasSize(50);
+        assertThat(dashboard.instances().get(0)).satisfies(entry -> {
+            assertThat(entry.instanceId()).isEqualTo(INSTANCE_ID);
+            assertThat(entry.instanceName()).isEqualTo("pod-a");
+            assertThat(entry.lastSeenAt()).isEqualTo(offset("2026-05-25T10:31:30Z"));
+            assertThat(entry.links().evidence())
+                    .isEqualTo("/api/projects/%s/applications/%s/instances/%s/evidence"
+                            .formatted(PROJECT_ID, APPLICATION_ID, INSTANCE_ID));
+        });
+        verify(applicationInstanceRepository).findByApplicationIdOrderByLastSeenAtDescInstanceNameAsc(
+                APPLICATION_ID,
+                PageRequest.of(0, 50));
     }
 
     @Test
@@ -976,6 +1016,23 @@ class DashboardReadModelServiceTest {
                 offset("2026-05-25T10:31:30Z"),
                 offset("2026-05-25T10:00:00Z"),
                 offset("2026-05-25T10:31:30Z"));
+    }
+
+    private static List<ApplicationInstanceEntity> instanceRows(int count) {
+        return java.util.stream.IntStream.range(0, count)
+                .mapToObj(index -> new ApplicationInstanceEntity(
+                        index == 0
+                                ? INSTANCE_ID
+                                : UUID.fromString("00000000-0000-0000-0000-%012d".formatted(5221 + index)),
+                        APPLICATION_ID,
+                        index == 0 ? "pod-a" : "pod-%02d".formatted(index),
+                        offset("2026-05-25T10:00:00Z"),
+                        index == 0
+                                ? offset("2026-05-25T10:31:30Z")
+                                : offset("2026-05-25T10:30:00Z"),
+                        offset("2026-05-25T10:00:00Z"),
+                        offset("2026-05-25T10:31:30Z")))
+                .toList();
     }
 
     private static StarterHeartbeatTelemetryRecord heartbeat(String lastReceivedAtUtc) {
