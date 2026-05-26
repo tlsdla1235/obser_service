@@ -223,6 +223,7 @@ public class InstanceEvidenceReadModelService {
                 evaluationAt);
         String dashboardLink = dashboardLink(application.projectId(), application.id());
         String selfLink = evidenceLink(application.projectId(), application.id(), instance.id());
+        String snapshotTrendLink = snapshotTrendLink(application.projectId(), application.id(), instance.id());
 
         return new InstanceEvidenceReadModel(
                 toUtcOffsetDateTime(queryAt),
@@ -252,7 +253,7 @@ public class InstanceEvidenceReadModelService {
                 new InstanceEvidenceReadModel.Links(
                         selfLink,
                         dashboardLink,
-                        null));
+                        snapshotTrendLink));
     }
 
     private InstanceEvidenceReadModel.MetricData metricData(
@@ -1176,6 +1177,19 @@ public class InstanceEvidenceReadModelService {
      */
     public static String evidenceLink(UUID projectId, UUID applicationId, UUID instanceId) {
         return "/api/projects/%s/applications/%s/instances/%s/evidence".formatted(
+                projectId,
+                applicationId,
+                instanceId);
+    }
+
+    /**
+     * Story 5.7 instance snapshot trend endpoint로 이동하는 UUID 기반 link를 만든다.
+     *
+     * <p>이 link는 current evidence 계산 의미를 바꾸지 않고, `instanceName` fallback 없이 catalog instance UUID path만
+     * 사용한다.</p>
+     */
+    public static String snapshotTrendLink(UUID projectId, UUID applicationId, UUID instanceId) {
+        return "/api/projects/%s/applications/%s/instances/%s/snapshot-trend".formatted(
                 projectId,
                 applicationId,
                 instanceId);

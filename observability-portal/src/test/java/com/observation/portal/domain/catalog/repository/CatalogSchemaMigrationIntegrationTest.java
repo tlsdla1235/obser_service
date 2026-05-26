@@ -37,13 +37,13 @@ class CatalogSchemaMigrationIntegrationTest {
     void appliesMigrationsToCleanDatabase() throws SQLException {
         MigrateResult result = cleanAndMigrate();
 
-        assertThat(result.migrationsExecuted).isEqualTo(5);
+        assertThat(result.migrationsExecuted).isEqualTo(6);
         assertThat(tableExists("projects")).isTrue();
         assertThat(tableExists("applications")).isTrue();
         assertThat(tableExists("application_instances")).isTrue();
         assertThat(tableExists("accepted_metric_buckets")).isTrue();
         assertThat(tableExists("starter_heartbeat_telemetry")).isTrue();
-        assertThat(tableExists("dashboard_snapshots")).isFalse();
+        assertThat(tableExists("dashboard_snapshots")).isTrue();
         assertThat(tableExists("operational_events")).isFalse();
     }
 
@@ -209,7 +209,65 @@ class CatalogSchemaMigrationIntegrationTest {
                         "prod",
                         "pod-c",
                         3L,
-                        0));
+                0));
+    }
+
+    @Test
+    void enforcesDashboardSnapshotConstraintsAndIndexes() throws SQLException {
+        cleanAndMigrate();
+
+        UUID projectId = UUID.fromString("00000000-0000-0000-0000-000000000901");
+        UUID applicationId = UUID.fromString("00000000-0000-0000-0000-000000000902");
+        insertProject(projectId, "snapshot-project", "snapshot", "hash-snapshot");
+        insertApplication(applicationId, projectId, "orders-api", "prod");
+
+        assertThat(constraintExists("dashboard_snapshots", "pk_dashboard_snapshots")).isTrue();
+        assertThat(constraintExists("dashboard_snapshots", "fk_dashboard_snapshots_project_id")).isTrue();
+        assertThat(constraintExists("dashboard_snapshots", "fk_dashboard_snapshots_application_id")).isTrue();
+        assertThat(constraintExists("dashboard_snapshots", "ck_dashboard_snapshots_read_model_object")).isTrue();
+        assertThat(constraintExists("dashboard_snapshots", "ck_dashboard_snapshots_state_code")).isTrue();
+        assertThat(constraintExists("dashboard_snapshots", "ck_dashboard_snapshots_capture_reason")).isFalse();
+        assertThat(indexExists("idx_dashboard_snapshots_project_app_generated_desc")).isTrue();
+        assertThat(indexExists("idx_dashboard_snapshots_created_at")).isTrue();
+
+        insertDashboardSnapshot(
+                UUID.fromString("00000000-0000-0000-0000-000000000903"),
+                projectId,
+                applicationId,
+                "active",
+                "hourly_scheduled",
+                "{\"instanceSummary\":{\"schemaVersion\":\"1.0\",\"items\":[]}}");
+        insertDashboardSnapshot(
+                UUID.fromString("00000000-0000-0000-0000-000000000904"),
+                projectId,
+                applicationId,
+                "degraded",
+                null,
+                "{\"instanceSummary\":{\"schemaVersion\":\"1.0\",\"items\":[]}}");
+        insertDashboardSnapshot(
+                UUID.fromString("00000000-0000-0000-0000-000000000905"),
+                projectId,
+                applicationId,
+                "active",
+                "unknown_future_reason",
+                "{\"instanceSummary\":{\"schemaVersion\":\"1.0\",\"items\":[]}}");
+
+        assertSqlState(CHECK_VIOLATION,
+                () -> insertDashboardSnapshot(
+                        UUID.fromString("00000000-0000-0000-0000-000000000906"),
+                        projectId,
+                        applicationId,
+                        "active",
+                        null,
+                        "[]"));
+        assertSqlState(CHECK_VIOLATION,
+                () -> insertDashboardSnapshot(
+                        UUID.fromString("00000000-0000-0000-0000-000000000907"),
+                        projectId,
+                        applicationId,
+                        "healthy",
+                        null,
+                        "{}"));
     }
 
     @Test
@@ -276,7 +334,23 @@ class CatalogSchemaMigrationIntegrationTest {
                         "metadata_status",
                         "heartbeat_status",
                         "created_at",
-                        "updated_at"));
+                        "updated_at"),
+                "dashboard_snapshots",
+                List.of(
+                        "id",
+                        "project_id",
+                        "application_id",
+                        "generated_at",
+                        "current_window_start_utc",
+                        "current_window_end_utc",
+                        "baseline_window_start_utc",
+                        "baseline_window_end_utc",
+                        "last_accepted_ingest_at",
+                        "last_observed_at",
+                        "state_code",
+                        "capture_reason",
+                        "read_model_json",
+                        "created_at"));
 
         for (Map.Entry<String, List<String>> table : expectedColumnsByTable.entrySet()) {
             assertKoreanComment(tableComment(table.getKey()), table.getKey() + " table comment");
@@ -530,6 +604,44 @@ class CatalogSchemaMigrationIntegrationTest {
             statement.setInt(9, intervalSeconds);
             statement.setObject(10, now);
             statement.setObject(11, now);
+            statement.executeUpdate();
+        }
+    }
+
+    private static void insertDashboardSnapshot(
+            UUID id,
+            UUID projectId,
+            UUID applicationId,
+            String stateCode,
+            String captureReason,
+            String readModelJson) throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     """
+                     insert into dashboard_snapshots (
+                       id, project_id, application_id, generated_at,
+                       current_window_start_utc, current_window_end_utc,
+                       baseline_window_start_utc, baseline_window_end_utc,
+                       last_accepted_ingest_at, last_observed_at,
+                       state_code, capture_reason, read_model_json, created_at
+                     )
+                     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)
+                     """)) {
+            OffsetDateTime generatedAt = OffsetDateTime.parse("2026-05-26T08:00:00Z");
+            statement.setObject(1, id);
+            statement.setObject(2, projectId);
+            statement.setObject(3, applicationId);
+            statement.setObject(4, generatedAt);
+            statement.setObject(5, generatedAt.minusMinutes(15));
+            statement.setObject(6, generatedAt);
+            statement.setObject(7, generatedAt.minusMinutes(30));
+            statement.setObject(8, generatedAt.minusMinutes(15));
+            statement.setObject(9, generatedAt.minusSeconds(30));
+            statement.setObject(10, generatedAt.minusSeconds(30));
+            statement.setString(11, stateCode);
+            statement.setString(12, captureReason);
+            statement.setString(13, readModelJson);
+            statement.setObject(14, generatedAt);
             statement.executeUpdate();
         }
     }

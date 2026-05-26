@@ -117,7 +117,9 @@ class InstanceEvidenceReadModelServiceTest {
         assertThat(evidence.links().self())
                 .isEqualTo("/api/projects/%s/applications/%s/instances/%s/evidence"
                         .formatted(PROJECT_ID, APPLICATION_ID, INSTANCE_ID));
-        assertThat(evidence.links().snapshotTrend()).isNull();
+        assertThat(evidence.links().snapshotTrend())
+                .isEqualTo("/api/projects/%s/applications/%s/instances/%s/snapshot-trend"
+                        .formatted(PROJECT_ID, APPLICATION_ID, INSTANCE_ID));
         verify(applicationRepository).findByIdAndProjectId(APPLICATION_ID, PROJECT_ID);
         verify(applicationInstanceRepository).findByIdAndApplicationId(INSTANCE_ID, APPLICATION_ID);
         verify(applicationInstanceRepository, never()).findByApplicationIdAndInstanceName(APPLICATION_ID, "pod-a");
