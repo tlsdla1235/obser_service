@@ -94,14 +94,44 @@ class DashboardControllerTest {
                 .andExpect(jsonPath("$.triageCards[0].severity").value("warning"))
                 .andExpect(jsonPath("$.triageCards[0].confidence").value(0.74))
                 .andExpect(jsonPath("$.triageCards[0].score").value(74))
-                .andExpect(jsonPath("$.triageCards[0].affectedEndpoint").value(nullValue()))
+                .andExpect(jsonPath("$.triageCards[0].affectedEndpoint").value("GET /different"))
                 .andExpect(jsonPath("$.triageCards[0].evidence.requestCount").value(100))
                 .andExpect(jsonPath("$.triageCards[0].evidence.currentErrorRate").value(0.08))
                 .andExpect(jsonPath("$.triageCards[0].evidence.rawPath").doesNotExist())
                 .andExpect(jsonPath("$.triageCards[0].evidence.queryString").doesNotExist())
                 .andExpect(jsonPath("$.triageCards[0].evidence.traceId").doesNotExist())
                 .andExpect(jsonPath("$.triageCards[0].evidence.endpointP95Ms").doesNotExist())
-                .andExpect(jsonPath("$.endpointPriority").isEmpty())
+                .andExpect(jsonPath("$.endpointPriority[0].rank").value(1))
+                .andExpect(jsonPath("$.endpointPriority[0].method").value("POST"))
+                .andExpect(jsonPath("$.endpointPriority[0].route").value("/orders"))
+                .andExpect(jsonPath("$.endpointPriority[0].endpointKey").value("POST /orders"))
+                .andExpect(jsonPath("$.endpointPriority[0].reason").value("error_and_latency"))
+                .andExpect(jsonPath("$.endpointPriority[0].ruleIds[0]").value("endpoint_error_spike"))
+                .andExpect(jsonPath("$.endpointPriority[0].ruleIds[1]").value("endpoint_latency_spike"))
+                .andExpect(jsonPath("$.endpointPriority[0].confidence").value(0.84))
+                .andExpect(jsonPath("$.endpointPriority[0].score").value(84))
+                .andExpect(jsonPath("$.endpointPriority[0].freshness.status").value("current"))
+                .andExpect(jsonPath("$.endpointPriority[0].freshness.lastObservedAt")
+                        .value("2026-05-25T10:32:00Z"))
+                .andExpect(jsonPath("$.endpointPriority[0].freshness.sourceWindow").value("current"))
+                .andExpect(jsonPath("$.endpointPriority[0].freshness.reason").value(nullValue()))
+                .andExpect(jsonPath("$.endpointPriority[0].evidence.requestCount").value(120))
+                .andExpect(jsonPath("$.endpointPriority[0].evidence.errorCount").value(12))
+                .andExpect(jsonPath("$.endpointPriority[0].evidence.errorRate").value(0.1))
+                .andExpect(jsonPath("$.endpointPriority[0].evidence.baselineRequestCount").value(100))
+                .andExpect(jsonPath("$.endpointPriority[0].evidence.baselineErrorCount").value(1))
+                .andExpect(jsonPath("$.endpointPriority[0].evidence.bucketDistributionSource")
+                        .value("histogram_bucket_distribution"))
+                .andExpect(jsonPath("$.endpointPriority[0].evidence.errorEvidenceStatus").value("available"))
+                .andExpect(jsonPath("$.endpointPriority[0].evidence.latencyEvidenceStatus").value("available"))
+                .andExpect(jsonPath("$.endpointPriority[0].evidence.durationBuckets[0].leMs").value(500))
+                .andExpect(jsonPath("$.endpointPriority[0].recommendedAction").isNotEmpty())
+                .andExpect(jsonPath("$.endpointPriority[0].evidence.rawJson").doesNotExist())
+                .andExpect(jsonPath("$.endpointPriority[0].evidence.rawPath").doesNotExist())
+                .andExpect(jsonPath("$.endpointPriority[0].evidence.queryString").doesNotExist())
+                .andExpect(jsonPath("$.endpointPriority[0].evidence.traceId").doesNotExist())
+                .andExpect(jsonPath("$.endpointPriority[0].evidence.endpointP95Ms").doesNotExist())
+                .andExpect(jsonPath("$.endpointPriority[0].evidence.endpointP99Ms").doesNotExist())
                 .andExpect(jsonPath("$.snapshot").value(nullValue()));
         verify(service).getDashboard(PROJECT_ID, APPLICATION_ID);
     }
@@ -213,7 +243,7 @@ class DashboardControllerTest {
                         "최근 배포와 외부 의존성 오류 로그를 먼저 확인해보세요.",
                         0.74d,
                         74,
-                        null,
+                        "GET /different",
                         new ApplicationDashboardReadModel.TriageEvidence(
                                 100L,
                                 8L,
@@ -229,7 +259,41 @@ class DashboardControllerTest {
                                 null,
                                 "current",
                                 null))),
-                List.of(),
+                List.of(new ApplicationDashboardReadModel.EndpointPriorityItem(
+                        1,
+                        "POST",
+                        "/orders",
+                        "POST /orders",
+                        ApplicationDashboardReadModel.EndpointPriorityReason.ERROR_AND_LATENCY,
+                        List.of("endpoint_error_spike", "endpoint_latency_spike"),
+                        0.84d,
+                        84,
+                        new ApplicationDashboardReadModel.EndpointPriorityFreshness(
+                                "current",
+                                OffsetDateTime.parse("2026-05-25T10:32:00Z"),
+                                "current",
+                                null),
+                        new ApplicationDashboardReadModel.EndpointPriorityEvidence(
+                                120L,
+                                12L,
+                                BigDecimal.valueOf(0.10d),
+                                100L,
+                                1L,
+                                BigDecimal.valueOf(0.01d),
+                                BigDecimal.valueOf(0.09d),
+                                List.of(
+                                        new ApplicationDashboardReadModel.HistogramBucket(500L, 70L),
+                                        new ApplicationDashboardReadModel.HistogramBucket(1000L, 120L)),
+                                List.of(
+                                        new ApplicationDashboardReadModel.HistogramBucket(500L, 95L),
+                                        new ApplicationDashboardReadModel.HistogramBucket(1000L, 100L)),
+                                BigDecimal.valueOf(0.416667d),
+                                BigDecimal.valueOf(0.05d),
+                                BigDecimal.valueOf(0.366667d),
+                                "histogram_bucket_distribution",
+                                ApplicationDashboardReadModel.EndpointEvidenceStatus.AVAILABLE,
+                                ApplicationDashboardReadModel.EndpointEvidenceStatus.AVAILABLE),
+                        "이 endpoint의 오류 로그와 외부 의존성 지연 가능성을 먼저 확인해보세요.")),
                 null);
     }
 }

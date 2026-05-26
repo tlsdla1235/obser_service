@@ -3,6 +3,7 @@ package com.observation.portal.domain.bucket.repository;
 import com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidence;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommand;
+import com.observation.portal.domain.bucket.model.EndpointEvidenceRow;
 import com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow;
 import com.observation.portal.domain.bucket.model.LocalPercentileEvidenceRow;
 import com.observation.portal.domain.bucket.model.RecentBucketEvidenceRow;
@@ -381,6 +382,66 @@ class MetricBucketRepositoryIntegrationTest {
                                 OffsetDateTime.parse("2026-05-08T01:32:30Z")));
         assertThat(rows)
                 .allSatisfy(row -> assertThat(row.durationBucketsJson()).contains("\"leMs\"", "\"count\""));
+    }
+
+    @Test
+    void findsEndpointEvidenceRowsByApplicationScopeAndWindowOnly() {
+        OffsetDateTime windowStart = OffsetDateTime.parse("2026-05-08T01:17:30Z");
+        OffsetDateTime windowEnd = OffsetDateTime.parse("2026-05-08T01:32:30Z");
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:20260508T011700Z",
+                "hash-endpoint-before",
+                "2026-05-08T01:17:00Z",
+                OffsetDateTime.parse("2026-05-08T01:17:35Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:20260508T011730Z",
+                "hash-endpoint-inside-1",
+                "2026-05-08T01:17:30Z",
+                OffsetDateTime.parse("2026-05-08T01:18:05Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-b:20260508T013200Z",
+                "hash-endpoint-inside-2",
+                "2026-05-08T01:32:00Z",
+                OffsetDateTime.parse("2026-05-08T01:32:35Z"),
+                "orders-api",
+                "prod",
+                "pod-b"));
+        metricBucketRepository.insert(command(
+                "project-123:payments-api:prod:pod-a:20260508T011730Z",
+                "hash-endpoint-other-app",
+                "2026-05-08T01:17:30Z",
+                OffsetDateTime.parse("2026-05-08T01:18:10Z"),
+                "payments-api",
+                "prod",
+                "pod-a"));
+
+        var ordersApplication = applicationRepository
+                .findByProjectIdAndNameAndEnvironment(PROJECT_ID, "orders-api", "prod")
+                .orElseThrow();
+        List<EndpointEvidenceRow> rows = metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
+                ordersApplication.id(),
+                windowStart.toInstant(),
+                windowEnd.toInstant());
+
+        assertThat(rows)
+                .extracting(EndpointEvidenceRow::bucketStartUtc, EndpointEvidenceRow::bucketEndUtc)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(
+                                OffsetDateTime.parse("2026-05-08T01:17:30Z"),
+                                OffsetDateTime.parse("2026-05-08T01:18:00Z")),
+                        org.assertj.core.groups.Tuple.tuple(
+                                OffsetDateTime.parse("2026-05-08T01:32:00Z"),
+                                OffsetDateTime.parse("2026-05-08T01:32:30Z")));
+        assertThat(rows)
+                .allSatisfy(row -> assertThat(row.endpointsJson())
+                        .contains("\"method\": \"GET\"", "\"route\": \"/orders/{orderId}\"")
+                        .doesNotContain("rank", "confidence", "recommendedAction", "p95", "p99"));
     }
 
     @Test

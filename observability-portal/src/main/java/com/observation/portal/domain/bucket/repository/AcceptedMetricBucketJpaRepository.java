@@ -3,6 +3,7 @@ package com.observation.portal.domain.bucket.repository;
 import com.observation.portal.domain.bucket.entity.AcceptedMetricBucketEntity;
 import com.observation.portal.domain.bucket.model.AcceptedBucketBoundaryEvidenceRow;
 import com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidenceRow;
+import com.observation.portal.domain.bucket.model.EndpointEvidenceRow;
 import com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow;
 import com.observation.portal.domain.bucket.model.LocalPercentileEvidenceRow;
 import com.observation.portal.domain.bucket.model.RecentBucketEvidenceRow;
@@ -106,6 +107,29 @@ interface AcceptedMetricBucketJpaRepository extends JpaRepository<AcceptedMetric
             + "and bucket.durationBucketsJson is not null "
             + "order by bucket.bucketEndUtc asc")
     List<HistogramBucketEvidenceRow> findSummaryDurationBucketEvidenceRowsByApplicationId(
+            @Param("applicationId") UUID applicationId,
+            @Param("windowStartUtc") OffsetDateTime windowStartUtc,
+            @Param("windowEndUtc") OffsetDateTime windowEndUtc);
+
+    /**
+     * endpoint priority read model을 위한 accepted bucket endpoints_json row를 조회한다.
+     *
+     * <p>projection은 bucket boundary와 raw JSON source만 전달하며, rule/rank/confidence/recommended action은
+     * service layer에서 계산한다. endpoint p95/p99나 endpoint percentile rollup은 repository/service 어디에서도
+     * 계산하지 않는다.</p>
+     */
+    @Query("select new com.observation.portal.domain.bucket.model.EndpointEvidenceRow("
+            + "bucket.applicationId, "
+            + "bucket.bucketStartUtc, "
+            + "bucket.bucketEndUtc, "
+            + "bucket.endpointsJson) "
+            + "from AcceptedMetricBucketEntity bucket "
+            + "where bucket.applicationId = :applicationId "
+            + "and bucket.bucketEndUtc > :windowStartUtc "
+            + "and bucket.bucketEndUtc <= :windowEndUtc "
+            + "and bucket.endpointsJson is not null "
+            + "order by bucket.bucketEndUtc asc")
+    List<EndpointEvidenceRow> findEndpointEvidenceRowsByApplicationId(
             @Param("applicationId") UUID applicationId,
             @Param("windowStartUtc") OffsetDateTime windowStartUtc,
             @Param("windowEndUtc") OffsetDateTime windowEndUtc);

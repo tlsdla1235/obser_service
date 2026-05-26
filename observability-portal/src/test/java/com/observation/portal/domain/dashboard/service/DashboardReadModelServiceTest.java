@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.observation.portal.common.time.AcceptedBucketFreshnessEvaluator;
 import com.observation.portal.common.time.TimeBucketWindowCalculator;
 import com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidence;
+import com.observation.portal.domain.bucket.model.EndpointEvidenceRow;
 import com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow;
 import com.observation.portal.domain.bucket.model.LocalPercentileEvidenceRow;
 import com.observation.portal.domain.bucket.model.RecentBucketEvidenceRow;
@@ -60,6 +61,7 @@ class DashboardReadModelServiceTest {
             new TimeBucketWindowCalculator(CLOCK),
             new LifecycleStateService(),
             new TriageSummaryService(objectMapper),
+            new EndpointPriorityService(objectMapper),
             CLOCK,
             objectMapper);
 
@@ -76,6 +78,16 @@ class DashboardReadModelServiceTest {
                 EVALUATION_AT))
                 .thenReturn(List.of());
         when(metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                BASELINE_START,
+                CURRENT_START))
+                .thenReturn(List.of());
+        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(List.of());
+        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
                 APPLICATION_ID,
                 BASELINE_START,
                 CURRENT_START))
@@ -582,6 +594,124 @@ class DashboardReadModelServiceTest {
     }
 
     @Test
+    void assemblesEndpointPriorityFromCurrentAndBaselineEndpointEvidence() {
+        when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
+                .thenReturn(Optional.of(application()));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-25T10:32:00Z")));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, CURRENT_START, EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(200L, 0L));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, BASELINE_START, CURRENT_START))
+                .thenReturn(new WindowBucketAggregate(200L, 0L));
+        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(List.of(endpointEvidenceRow(
+                        "2026-05-25T10:31:30Z",
+                        endpointJson("POST", "/orders", 120L, 12L, 70L, 120L))));
+        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                BASELINE_START,
+                CURRENT_START))
+                .thenReturn(List.of(endpointEvidenceRow(
+                        "2026-05-25T10:16:30Z",
+                        endpointJson("POST", "/orders", 120L, 1L, 114L, 120L))));
+        when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("2026-05-25T10:32:20Z")));
+
+        ApplicationDashboardReadModel dashboard = service.getDashboard(PROJECT_ID, APPLICATION_ID).orElseThrow();
+
+        assertThat(dashboard.endpointPriority()).singleElement().satisfies(item -> {
+            assertThat(item.rank()).isEqualTo(1);
+            assertThat(item.endpointKey()).isEqualTo("POST /orders");
+            assertThat(item.reason())
+                    .isEqualTo(ApplicationDashboardReadModel.EndpointPriorityReason.ERROR_AND_LATENCY);
+            assertThat(item.ruleIds()).containsExactly("endpoint_error_spike", "endpoint_latency_spike");
+            assertThat(item.freshness().lastObservedAt()).isEqualTo(offset("2026-05-25T10:32:00Z"));
+            assertThat(item.evidence().requestCount()).isEqualTo(120L);
+            assertThat(item.evidence().baselineRequestCount()).isEqualTo(120L);
+            assertThat(item.evidence().bucketDistributionSource()).isEqualTo("histogram_bucket_distribution");
+            assertThat(item.recommendedAction()).contains("먼저 확인");
+        });
+        verify(metricBucketRepository).findEndpointEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT);
+        verify(metricBucketRepository).findEndpointEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                BASELINE_START,
+                CURRENT_START);
+    }
+
+    @Test
+    void suppressesEndpointPriorityWhenCurrentAggregateSampleIsInsufficient() {
+        when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
+                .thenReturn(Optional.of(application()));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-25T10:32:00Z")));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, CURRENT_START, EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(3L, 0L));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, BASELINE_START, CURRENT_START))
+                .thenReturn(new WindowBucketAggregate(200L, 0L));
+        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(List.of(endpointEvidenceRow(
+                        "2026-05-25T10:31:30Z",
+                        endpointJson("POST", "/orders", 120L, 12L, 70L, 120L))));
+        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                BASELINE_START,
+                CURRENT_START))
+                .thenReturn(List.of(endpointEvidenceRow(
+                        "2026-05-25T10:16:30Z",
+                        endpointJson("POST", "/orders", 120L, 1L, 114L, 120L))));
+        when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("2026-05-25T10:32:20Z")));
+
+        ApplicationDashboardReadModel dashboard = service.getDashboard(PROJECT_ID, APPLICATION_ID).orElseThrow();
+
+        assertThat(dashboard.application().lastAcceptedBucketAt()).isEqualTo(offset("2026-05-25T10:32:00Z"));
+        assertThat(dashboard.zeroInsight().reasonCode()).isEqualTo("insufficient_sample");
+        assertThat(dashboard.endpointPriority()).isEmpty();
+    }
+
+    @Test
+    void suppressesEndpointPriorityWhenApplicationFreshnessIsStaleEvenWithEndpointEvidence() {
+        when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
+                .thenReturn(Optional.of(application()));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-25T10:30:30Z")));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, CURRENT_START, EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(200L, 0L));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, BASELINE_START, CURRENT_START))
+                .thenReturn(new WindowBucketAggregate(200L, 0L));
+        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(List.of(endpointEvidenceRow(
+                        "2026-05-25T10:30:00Z",
+                        endpointJson("POST", "/orders", 120L, 12L, 70L, 120L))));
+        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                BASELINE_START,
+                CURRENT_START))
+                .thenReturn(List.of(endpointEvidenceRow(
+                        "2026-05-25T10:16:30Z",
+                        endpointJson("POST", "/orders", 120L, 1L, 114L, 120L))));
+        when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("2026-05-25T10:32:20Z")));
+
+        ApplicationDashboardReadModel dashboard = service.getDashboard(PROJECT_ID, APPLICATION_ID).orElseThrow();
+
+        assertThat(dashboard.application().lastAcceptedBucketAt()).isEqualTo(offset("2026-05-25T10:30:30Z"));
+        assertThat(dashboard.endpointPriority()).isEmpty();
+    }
+
+    @Test
     void keepsStateActiveWhenHighConfidenceConcernHasOnlyTwoRecentBadBuckets() {
         when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
                 .thenReturn(Optional.of(application()));
@@ -807,6 +937,32 @@ class DashboardReadModelServiceTest {
                   {"leMs": 1000, "count": %d}
                 ]
                 """.formatted(Math.max(0L, requestCount - 1L), requestCount));
+    }
+
+    private static EndpointEvidenceRow endpointEvidenceRow(String bucketStartUtc, String endpointJson) {
+        OffsetDateTime start = offset(bucketStartUtc);
+        return new EndpointEvidenceRow(APPLICATION_ID, start, start.plusSeconds(30), "[" + endpointJson + "]");
+    }
+
+    private static String endpointJson(
+            String method,
+            String route,
+            long requestCount,
+            long errorCount,
+            long countAt500,
+            long totalCount) {
+        return """
+                {
+                  "method": "%s",
+                  "route": "%s",
+                  "requestCount": %d,
+                  "errorCount": %d,
+                  "durationBuckets": [
+                    {"leMs": 500, "count": %d},
+                    {"leMs": 1000, "count": %d}
+                  ]
+                }
+                """.formatted(method, route, requestCount, errorCount, countAt500, totalCount);
     }
 
     private static ApplicationEntity application() {
