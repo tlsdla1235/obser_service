@@ -29,6 +29,7 @@ class DashboardControllerTest {
 
     private static final UUID PROJECT_ID = UUID.fromString("00000000-0000-0000-0000-000000005201");
     private static final UUID APPLICATION_ID = UUID.fromString("00000000-0000-0000-0000-000000005211");
+    private static final UUID INSTANCE_ID = UUID.fromString("00000000-0000-0000-0000-000000005221");
     private static final OffsetDateTime GENERATED_AT = OffsetDateTime.parse("2026-05-25T10:32:38.421Z");
     private static final OffsetDateTime CURRENT_END = OffsetDateTime.parse("2026-05-25T10:32:30Z");
 
@@ -132,6 +133,17 @@ class DashboardControllerTest {
                 .andExpect(jsonPath("$.endpointPriority[0].evidence.traceId").doesNotExist())
                 .andExpect(jsonPath("$.endpointPriority[0].evidence.endpointP95Ms").doesNotExist())
                 .andExpect(jsonPath("$.endpointPriority[0].evidence.endpointP99Ms").doesNotExist())
+                .andExpect(jsonPath("$.instances[0].instanceId").value(INSTANCE_ID.toString()))
+                .andExpect(jsonPath("$.instances[0].instanceName").value("pod-a"))
+                .andExpect(jsonPath("$.instances[0].lastSeenAt").value("2026-05-25T10:31:30Z"))
+                .andExpect(jsonPath("$.instances[0].links.evidence")
+                        .value("/api/projects/%s/applications/%s/instances/%s/evidence"
+                                .formatted(PROJECT_ID, APPLICATION_ID, INSTANCE_ID)))
+                .andExpect(jsonPath("$.instances[0].state").doesNotExist())
+                .andExpect(jsonPath("$.instances[0].healthScore").doesNotExist())
+                .andExpect(jsonPath("$.instances[0].endpointEvidence").doesNotExist())
+                .andExpect(jsonPath("$.instances[0].p95Ms").doesNotExist())
+                .andExpect(jsonPath("$.instances[0].p99Ms").doesNotExist())
                 .andExpect(jsonPath("$.snapshot").value(nullValue()));
         verify(service).getDashboard(PROJECT_ID, APPLICATION_ID);
     }
@@ -294,6 +306,13 @@ class DashboardControllerTest {
                                 ApplicationDashboardReadModel.EndpointEvidenceStatus.AVAILABLE,
                                 ApplicationDashboardReadModel.EndpointEvidenceStatus.AVAILABLE),
                         "이 endpoint의 오류 로그와 외부 의존성 지연 가능성을 먼저 확인해보세요.")),
+                List.of(new ApplicationDashboardReadModel.InstanceEntry(
+                        INSTANCE_ID,
+                        "pod-a",
+                        OffsetDateTime.parse("2026-05-25T10:31:30Z"),
+                        new ApplicationDashboardReadModel.InstanceEntryLinks(
+                                "/api/projects/%s/applications/%s/instances/%s/evidence"
+                                        .formatted(PROJECT_ID, APPLICATION_ID, INSTANCE_ID)))),
                 null);
     }
 }

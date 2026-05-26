@@ -18,8 +18,9 @@ class EndpointPriorityServiceTest {
 
     private static final UUID APPLICATION_ID = UUID.fromString("00000000-0000-0000-0000-000000005511");
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
-    private final EndpointPriorityService service = new EndpointPriorityService(objectMapper);
+    private final EndpointEvidenceAggregationService endpointEvidenceAggregationService =
+            new EndpointEvidenceAggregationService(new ObjectMapper());
+    private final EndpointPriorityService service = new EndpointPriorityService(endpointEvidenceAggregationService);
 
     @Test
     void ranksByReasonPriorityTieBreakersAndCapsAtFiveItems() {

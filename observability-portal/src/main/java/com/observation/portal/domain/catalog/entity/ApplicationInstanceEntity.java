@@ -84,6 +84,20 @@ public class ApplicationInstanceEntity {
         return id;
     }
 
+    /**
+     * instance membership 검증과 evidence link 생성을 위해 부모 application id를 반환한다.
+     */
+    public UUID applicationId() {
+        return applicationId;
+    }
+
+    /**
+     * 화면 표시와 starter heartbeat identity lookup에 사용하는 instance name을 반환한다.
+     */
+    public String instanceName() {
+        return instanceName;
+    }
+
     public OffsetDateTime firstSeenAt() {
         return firstSeenAt;
     }

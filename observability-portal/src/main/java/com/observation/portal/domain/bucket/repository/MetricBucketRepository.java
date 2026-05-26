@@ -138,6 +138,20 @@ public class MetricBucketRepository {
     }
 
     /**
+     * selected application instance scope의 마지막 accepted bucket endUtc timestamp만 조회한다.
+     *
+     * <p>이 값은 freshness source로만 사용하며, current window end boundary를 대체하지 않는다.</p>
+     */
+    @Transactional(readOnly = true)
+    public Optional<OffsetDateTime> findLatestBucketEndUtcByApplicationInstanceIdAtOrBefore(
+            UUID applicationInstanceId,
+            Instant evaluationAtUtc) {
+        return acceptedMetricBucketJpaRepository.findLatestBucketEndUtcByApplicationInstanceIdAtOrBefore(
+                Objects.requireNonNull(applicationInstanceId, "applicationInstanceId must not be null"),
+                toUtcOffsetDateTime(Objects.requireNonNull(evaluationAtUtc, "evaluationAtUtc must not be null")));
+    }
+
+    /**
      * dashboard current window의 request/error count 합계만 application scope로 조회한다.
      *
      * <p>window는 bucket endUtc 기준으로 `(start, end]`를 사용해 15분 window 끝 boundary bucket을 포함한다.</p>
@@ -157,6 +171,35 @@ public class MetricBucketRepository {
         OffsetDateTime windowEnd = toUtcOffsetDateTime(requiredWindowEndUtc);
         WindowBucketAggregate aggregate = acceptedMetricBucketJpaRepository
                 .sumWindowRequestAndErrorCountsByApplicationId(requiredApplicationId, windowStart, windowEnd);
+        return Objects.requireNonNullElse(aggregate, WindowBucketAggregate.zero());
+    }
+
+    /**
+     * selected application instance current window의 request/error count 합계만 조회한다.
+     *
+     * <p>repository는 sample readiness, lifecycle state, health score, p95/p99, rule을 계산하지 않고 `(start, end]`
+     * bucket membership과 count 합계만 service에 전달한다.</p>
+     */
+    @Transactional(readOnly = true)
+    public WindowBucketAggregate findWindowAggregateByApplicationInstanceId(
+            UUID applicationInstanceId,
+            Instant windowStartUtc,
+            Instant windowEndUtc) {
+        UUID requiredApplicationInstanceId = Objects.requireNonNull(
+                applicationInstanceId,
+                "applicationInstanceId must not be null");
+        Instant requiredWindowStartUtc = Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null");
+        Instant requiredWindowEndUtc = Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null");
+        if (!requiredWindowEndUtc.isAfter(requiredWindowStartUtc)) {
+            throw new IllegalArgumentException("windowEndUtc must be after windowStartUtc");
+        }
+        OffsetDateTime windowStart = toUtcOffsetDateTime(requiredWindowStartUtc);
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(requiredWindowEndUtc);
+        WindowBucketAggregate aggregate = acceptedMetricBucketJpaRepository
+                .sumWindowRequestAndErrorCountsByApplicationInstanceId(
+                        requiredApplicationInstanceId,
+                        windowStart,
+                        windowEnd);
         return Objects.requireNonNullElse(aggregate, WindowBucketAggregate.zero());
     }
 
@@ -184,6 +227,31 @@ public class MetricBucketRepository {
     }
 
     /**
+     * selected application instance current window의 local percentile JSON evidence row를 조회한다.
+     *
+     * <p>repository는 persisted JSON과 bucket boundary만 전달하며, source/scope 검증과 p95/p99 노출 여부는 service가
+     * 판단한다. p95/p99 평균, 병합, histogram 재계산은 하지 않는다.</p>
+     */
+    @Transactional(readOnly = true)
+    public List<LocalPercentileEvidenceRow> findLocalPercentileEvidenceRowsByApplicationInstanceId(
+            UUID applicationInstanceId,
+            Instant windowStartUtc,
+            Instant windowEndUtc) {
+        UUID requiredApplicationInstanceId = Objects.requireNonNull(
+                applicationInstanceId,
+                "applicationInstanceId must not be null");
+        OffsetDateTime windowStart = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null"));
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null"));
+        validateWindow(windowStart, windowEnd);
+        return acceptedMetricBucketJpaRepository.findLocalPercentileEvidenceRowsByApplicationInstanceId(
+                requiredApplicationInstanceId,
+                windowStart,
+                windowEnd);
+    }
+
+    /**
      * dashboard histogram distribution용 application summary duration bucket JSON evidence row를 조회한다.
      *
      * <p>`endpoints_json`은 읽지 않으며, current/baseline 판단과 boundary mismatch guard는 service에서 수행한다.</p>
@@ -201,6 +269,31 @@ public class MetricBucketRepository {
         validateWindow(windowStart, windowEnd);
         return acceptedMetricBucketJpaRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
                 requiredApplicationId,
+                windowStart,
+                windowEnd);
+    }
+
+    /**
+     * selected application instance current window의 summary duration bucket JSON evidence row를 조회한다.
+     *
+     * <p>repository는 duration bucket JSON과 boundary만 전달하며, boundary mismatch, count validation, p95/p99 금지는
+     * service read model 조립 단계에서 처리한다.</p>
+     */
+    @Transactional(readOnly = true)
+    public List<HistogramBucketEvidenceRow> findSummaryDurationBucketEvidenceRowsByApplicationInstanceId(
+            UUID applicationInstanceId,
+            Instant windowStartUtc,
+            Instant windowEndUtc) {
+        UUID requiredApplicationInstanceId = Objects.requireNonNull(
+                applicationInstanceId,
+                "applicationInstanceId must not be null");
+        OffsetDateTime windowStart = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null"));
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null"));
+        validateWindow(windowStart, windowEnd);
+        return acceptedMetricBucketJpaRepository.findSummaryDurationBucketEvidenceRowsByApplicationInstanceId(
+                requiredApplicationInstanceId,
                 windowStart,
                 windowEnd);
     }
@@ -225,6 +318,32 @@ public class MetricBucketRepository {
         validateWindow(windowStart, windowEnd);
         return acceptedMetricBucketJpaRepository.findEndpointEvidenceRowsByApplicationId(
                 requiredApplicationId,
+                windowStart,
+                windowEnd);
+    }
+
+    /**
+     * instance evidence read model용 selected instance endpoint JSON evidence row를 조회한다.
+     *
+     * <p>조회는 selected `application_instance_id`와 `(start, end]` bucket end boundary, `endpoints_json is not null`
+     * 조건만 적용한다. repository는 presence, share, display order, rule/rank/confidence/action, endpoint p95/p99를
+     * 계산하지 않는다.</p>
+     */
+    @Transactional(readOnly = true)
+    public List<EndpointEvidenceRow> findEndpointEvidenceRowsByApplicationInstanceId(
+            UUID applicationInstanceId,
+            Instant windowStartUtc,
+            Instant windowEndUtc) {
+        UUID requiredApplicationInstanceId = Objects.requireNonNull(
+                applicationInstanceId,
+                "applicationInstanceId must not be null");
+        OffsetDateTime windowStart = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null"));
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null"));
+        validateWindow(windowStart, windowEnd);
+        return acceptedMetricBucketJpaRepository.findEndpointEvidenceRowsByApplicationInstanceId(
+                requiredApplicationInstanceId,
                 windowStart,
                 windowEnd);
     }
@@ -307,6 +426,34 @@ public class MetricBucketRepository {
         validateWindow(windowStart, windowEnd);
         return acceptedMetricBucketJpaRepository.findRuntimeRatioEvidenceRowsByApplicationId(
                         requiredApplicationId,
+                        windowStart,
+                        windowEnd,
+                        PageRequest.of(0, 1))
+                .stream()
+                .findFirst();
+    }
+
+    /**
+     * selected application instance current window 안의 최신 runtime ratio sample 한 건만 조회한다.
+     *
+     * <p>latest sample은 instance evidence의 hint이며 repository는 max/avg/sustained pressure, degraded/down, root cause를
+     * 계산하지 않는다.</p>
+     */
+    @Transactional(readOnly = true)
+    public Optional<RuntimeRatioEvidenceRow> findLatestRuntimeRatioEvidenceRowByApplicationInstanceId(
+            UUID applicationInstanceId,
+            Instant windowStartUtc,
+            Instant windowEndUtc) {
+        UUID requiredApplicationInstanceId = Objects.requireNonNull(
+                applicationInstanceId,
+                "applicationInstanceId must not be null");
+        OffsetDateTime windowStart = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null"));
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null"));
+        validateWindow(windowStart, windowEnd);
+        return acceptedMetricBucketJpaRepository.findRuntimeRatioEvidenceRowsByApplicationInstanceId(
+                        requiredApplicationInstanceId,
                         windowStart,
                         windowEnd,
                         PageRequest.of(0, 1))
