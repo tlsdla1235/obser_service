@@ -53,7 +53,11 @@ class InstanceEvidenceReadModelShapeTest {
         assertThat(readModel.endpointEvidence().source()).isEqualTo("accepted_metric_buckets.endpoints_json");
         assertThat(readModel.endpointEvidence().reason()).isNull();
         assertThat(readModel.endpointEvidence().items()).isEmpty();
-        assertThat(readModel.links().snapshotTrend()).isNull();
+        assertThat(readModel.links().snapshotTrend())
+                .isEqualTo("/api/projects/%s/applications/%s/instances/%s/snapshot-trend"
+                        .formatted(readModel.application().projectId(),
+                                readModel.application().applicationId(),
+                                readModel.instance().instanceId()));
     }
 
     @Test
@@ -263,6 +267,8 @@ class InstanceEvidenceReadModelShapeTest {
         String dashboard = "/api/projects/%s/applications/%s/dashboard".formatted(projectId, applicationId);
         String self = "/api/projects/%s/applications/%s/instances/%s/evidence"
                 .formatted(projectId, applicationId, instanceId);
+        String snapshotTrend = "/api/projects/%s/applications/%s/instances/%s/snapshot-trend"
+                .formatted(projectId, applicationId, instanceId);
         return new InstanceEvidenceReadModel(
                 OffsetDateTime.parse("2026-05-26T06:10:35Z"),
                 new InstanceEvidenceReadModel.Application(
@@ -283,7 +289,7 @@ class InstanceEvidenceReadModelShapeTest {
                 InstanceEvidenceReadModel.ResourceHints.missing(),
                 InstanceEvidenceReadModel.ApplicationTriageContribution.missing(),
                 InstanceEvidenceReadModel.EndpointEvidence.missing(),
-                new InstanceEvidenceReadModel.Links(self, dashboard, null));
+                new InstanceEvidenceReadModel.Links(self, dashboard, snapshotTrend));
     }
 
     private static InstanceEvidenceReadModel.MetricWindow metricWindow() {

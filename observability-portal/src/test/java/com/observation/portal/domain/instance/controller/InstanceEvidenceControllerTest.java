@@ -78,7 +78,9 @@ class InstanceEvidenceControllerTest {
                 .andExpect(jsonPath("$.links.dashboard")
                         .value("/api/projects/%s/applications/%s/dashboard"
                                 .formatted(PROJECT_ID, APPLICATION_ID)))
-                .andExpect(jsonPath("$.links.snapshotTrend").value(nullValue()));
+                .andExpect(jsonPath("$.links.snapshotTrend")
+                        .value("/api/projects/%s/applications/%s/instances/%s/snapshot-trend"
+                                .formatted(PROJECT_ID, APPLICATION_ID, INSTANCE_ID)));
         verify(service).getEvidence(PROJECT_ID, APPLICATION_ID, INSTANCE_ID);
     }
 
@@ -143,6 +145,8 @@ class InstanceEvidenceControllerTest {
         String dashboard = "/api/projects/%s/applications/%s/dashboard".formatted(PROJECT_ID, APPLICATION_ID);
         String self = "/api/projects/%s/applications/%s/instances/%s/evidence"
                 .formatted(PROJECT_ID, APPLICATION_ID, INSTANCE_ID);
+        String snapshotTrend = "/api/projects/%s/applications/%s/instances/%s/snapshot-trend"
+                .formatted(PROJECT_ID, APPLICATION_ID, INSTANCE_ID);
         return new InstanceEvidenceReadModel(
                 OffsetDateTime.parse("2026-05-26T06:10:35Z"),
                 new InstanceEvidenceReadModel.Application(
@@ -167,6 +171,6 @@ class InstanceEvidenceControllerTest {
                 InstanceEvidenceReadModel.ResourceHints.missing(),
                 InstanceEvidenceReadModel.ApplicationTriageContribution.missing(),
                 InstanceEvidenceReadModel.EndpointEvidence.missing(),
-                new InstanceEvidenceReadModel.Links(self, dashboard, null));
+                new InstanceEvidenceReadModel.Links(self, dashboard, snapshotTrend));
     }
 }
