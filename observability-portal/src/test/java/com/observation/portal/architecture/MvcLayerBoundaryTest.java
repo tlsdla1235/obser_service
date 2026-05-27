@@ -4,11 +4,18 @@ import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
+import com.observation.portal.domain.snapshot.service.DashboardSnapshotDetailService;
+import com.observation.portal.domain.snapshot.service.DashboardSnapshotMarkerService;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.lang.reflect.Constructor;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -98,6 +105,59 @@ class MvcLayerBoundaryTest {
                 .isEmpty();
     }
 
+    @Test
+    void story58aNonGoalSurfacesAreNotPresent() {
+        List<String> forbiddenClasses = PORTAL_CLASSES.stream()
+                .map(JavaClass::getName)
+                .filter(MvcLayerBoundaryTest::matchesStory58aForbiddenSurface)
+                .sorted()
+                .toList();
+
+        assertThat(forbiddenClasses)
+                .as("Story 5.8-a must not add raw explorers, endpoint timeseries, operational events, or job infrastructure")
+                .isEmpty();
+    }
+
+    @Test
+    void story58bSnapshotDetailAndMarkerServicesDoNotUseCurrentRecalculationDependencies() {
+        List<String> constructorParameterTypeNames = Stream.of(
+                        DashboardSnapshotDetailService.class,
+                        DashboardSnapshotMarkerService.class)
+                .map(Class::getConstructors)
+                .flatMap(Stream::of)
+                .map(Constructor::getParameterTypes)
+                .flatMap(Stream::of)
+                .map(Class::getSimpleName)
+                .toList();
+
+        assertThat(constructorParameterTypeNames)
+                .as("snapshot detail/marker services must project stored snapshots without current recalculation sources")
+                .doesNotContain(
+                        "MetricBucketRepository",
+                        "StarterHeartbeatTelemetryRepository",
+                        "LifecycleStateService",
+                        "TriageSummaryService",
+                        "EndpointPriorityService",
+                        "DashboardReadModelService",
+                        "InstanceEvidenceReadModelService");
+    }
+
+    @Test
+    void story58bNonGoalDatabaseSurfacesAreNotPresent() throws IOException {
+        try (Stream<Path> migrationFiles = Files.walk(Path.of("src/main/resources/db/migration"))) {
+            List<String> forbiddenMigrationSnippets = migrationFiles
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().endsWith(".sql"))
+                    .flatMap(MvcLayerBoundaryTest::forbiddenMigrationSnippets)
+                    .sorted()
+                    .toList();
+
+            assertThat(forbiddenMigrationSnippets)
+                    .as("Story 5.8-b must not introduce operational_events or endpoint timeseries tables")
+                    .isEmpty();
+        }
+    }
+
     private static boolean isOutsideServiceAndModelPackage(JavaClass javaClass) {
         String packageName = javaClass.getPackageName();
         return !hasPackageSegment(packageName, "service") && !hasPackageSegment(packageName, "model");
@@ -117,6 +177,32 @@ class MvcLayerBoundaryTest {
         String packageName = javaClass.getPackageName();
         return packageName.equals("com.observation.portal.domain.state")
                 || packageName.startsWith("com.observation.portal.domain.state.");
+    }
+
+    private static boolean matchesStory58aForbiddenSurface(String className) {
+        String normalized = className.toLowerCase();
+        return normalized.contains("rawsnapshot")
+                || normalized.contains("rawbucket")
+                || normalized.contains("endpointtimeseries")
+                || normalized.contains("operationalevent")
+                || normalized.contains("springbatch")
+                || normalized.contains(".batch.")
+                || normalized.contains("outbox")
+                || normalized.contains("redis")
+                || normalized.contains("sqs")
+                || normalized.contains("lambda")
+                || normalized.contains("jobmetadata");
+    }
+
+    private static Stream<String> forbiddenMigrationSnippets(Path path) {
+        try {
+            String content = Files.readString(path).toLowerCase();
+            return Stream.of("operational_events", "endpoint_timeseries")
+                    .filter(content::contains)
+                    .map(snippet -> path + ":" + snippet);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Cannot read migration file: " + path, exception);
+        }
     }
 
     private static boolean hasPackageSegment(String packageName, String expectedSegment) {

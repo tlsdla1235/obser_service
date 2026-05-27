@@ -7,7 +7,11 @@ import jakarta.persistence.Table;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import com.observation.portal.domain.snapshot.model.DashboardSnapshotWriteValues;
+
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -57,6 +61,15 @@ public class DashboardSnapshotEntity {
     @Column(name = "capture_reason", length = 64)
     private String captureReason;
 
+    @Column(name = "primary_rule_id", length = 80)
+    private String primaryRuleId;
+
+    @Column(name = "primary_endpoint_key", length = 240)
+    private String primaryEndpointKey;
+
+    @Column(name = "max_confidence", precision = 4, scale = 3)
+    private BigDecimal maxConfidence;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "read_model_json", nullable = false, columnDefinition = "jsonb")
     private String readModelJson;
@@ -68,5 +81,59 @@ public class DashboardSnapshotEntity {
      * Hibernate가 entity를 materialize할 때 사용하는 기본 생성자다.
      */
     protected DashboardSnapshotEntity() {
+    }
+
+    /**
+     * snapshot writer가 insert할 새 persistence entity를 만든다.
+     */
+    public DashboardSnapshotEntity(DashboardSnapshotWriteValues values) {
+        applyNewValues(Objects.requireNonNull(values, "values must not be null"));
+    }
+
+    /**
+     * higher-priority incoming read model을 대표 row 값으로 반영한다.
+     *
+     * <p>id와 createdAt은 최초 insert 값을 유지하고, generatedAt/state/capture reason/read model/helper column만 새
+     * 대표 read model 기준으로 교체한다.</p>
+     */
+    public void updateRepresentative(DashboardSnapshotWriteValues values) {
+        DashboardSnapshotWriteValues requiredValues = Objects.requireNonNull(values, "values must not be null");
+        this.projectId = requiredValues.projectId();
+        this.applicationId = requiredValues.applicationId();
+        this.generatedAt = requiredValues.generatedAt();
+        this.currentWindowStartUtc = requiredValues.currentWindowStartUtc();
+        this.currentWindowEndUtc = requiredValues.currentWindowEndUtc();
+        this.baselineWindowStartUtc = requiredValues.baselineWindowStartUtc();
+        this.baselineWindowEndUtc = requiredValues.baselineWindowEndUtc();
+        this.lastAcceptedIngestAt = requiredValues.lastAcceptedIngestAt();
+        this.lastObservedAt = requiredValues.lastObservedAt();
+        this.stateCode = requiredValues.stateCode();
+        this.captureReason = requiredValues.captureReason();
+        this.primaryRuleId = requiredValues.primaryRuleId();
+        this.primaryEndpointKey = requiredValues.primaryEndpointKey();
+        this.maxConfidence = requiredValues.maxConfidence();
+        this.readModelJson = requiredValues.readModelJson();
+    }
+
+    private void applyNewValues(DashboardSnapshotWriteValues values) {
+        this.id = values.snapshotId();
+        this.createdAt = values.createdAt();
+        updateRepresentative(values);
+    }
+
+    public UUID id() {
+        return id;
+    }
+
+    public OffsetDateTime generatedAt() {
+        return generatedAt;
+    }
+
+    public OffsetDateTime currentWindowEndUtc() {
+        return currentWindowEndUtc;
+    }
+
+    public String captureReason() {
+        return captureReason;
     }
 }

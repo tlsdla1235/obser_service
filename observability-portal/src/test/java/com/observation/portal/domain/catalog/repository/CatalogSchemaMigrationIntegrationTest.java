@@ -37,7 +37,7 @@ class CatalogSchemaMigrationIntegrationTest {
     void appliesMigrationsToCleanDatabase() throws SQLException {
         MigrateResult result = cleanAndMigrate();
 
-        assertThat(result.migrationsExecuted).isEqualTo(6);
+        assertThat(result.migrationsExecuted).isEqualTo(7);
         assertThat(tableExists("projects")).isTrue();
         assertThat(tableExists("applications")).isTrue();
         assertThat(tableExists("application_instances")).isTrue();
@@ -45,6 +45,9 @@ class CatalogSchemaMigrationIntegrationTest {
         assertThat(tableExists("starter_heartbeat_telemetry")).isTrue();
         assertThat(tableExists("dashboard_snapshots")).isTrue();
         assertThat(tableExists("operational_events")).isFalse();
+        assertThat(tableExists("endpoint_timeseries")).isFalse();
+        assertThat(tableExists("raw_snapshots")).isFalse();
+        assertThat(tableExists("raw_metric_buckets")).isFalse();
     }
 
     @Test
@@ -227,8 +230,15 @@ class CatalogSchemaMigrationIntegrationTest {
         assertThat(constraintExists("dashboard_snapshots", "ck_dashboard_snapshots_read_model_object")).isTrue();
         assertThat(constraintExists("dashboard_snapshots", "ck_dashboard_snapshots_state_code")).isTrue();
         assertThat(constraintExists("dashboard_snapshots", "ck_dashboard_snapshots_capture_reason")).isFalse();
+        assertThat(constraintExists(
+                "dashboard_snapshots",
+                "uk_dashboard_snapshots_application_current_window_end")).isTrue();
         assertThat(indexExists("idx_dashboard_snapshots_project_app_generated_desc")).isTrue();
         assertThat(indexExists("idx_dashboard_snapshots_created_at")).isTrue();
+        assertThat(indexExists("idx_dashboard_snapshots_app_capture_generated")).isTrue();
+        assertThat(indexExists("idx_dashboard_snapshots_app_rule_generated")).isFalse();
+        assertThat(indexExists("idx_dashboard_snapshots_app_endpoint_generated")).isFalse();
+        assertThat(indexExists("idx_dashboard_snapshots_app_confidence_generated")).isFalse();
 
         insertDashboardSnapshot(
                 UUID.fromString("00000000-0000-0000-0000-000000000903"),
@@ -241,6 +251,7 @@ class CatalogSchemaMigrationIntegrationTest {
                 UUID.fromString("00000000-0000-0000-0000-000000000904"),
                 projectId,
                 applicationId,
+                "2026-05-26T09:00:00Z",
                 "degraded",
                 null,
                 "{\"instanceSummary\":{\"schemaVersion\":\"1.0\",\"items\":[]}}");
@@ -248,9 +259,18 @@ class CatalogSchemaMigrationIntegrationTest {
                 UUID.fromString("00000000-0000-0000-0000-000000000905"),
                 projectId,
                 applicationId,
+                "2026-05-26T10:00:00Z",
                 "active",
                 "unknown_future_reason",
                 "{\"instanceSummary\":{\"schemaVersion\":\"1.0\",\"items\":[]}}");
+        assertSqlState(UNIQUE_VIOLATION,
+                () -> insertDashboardSnapshot(
+                        UUID.fromString("00000000-0000-0000-0000-000000000908"),
+                        projectId,
+                        applicationId,
+                        "active",
+                        "query_fallback",
+                        "{\"instanceSummary\":{\"schemaVersion\":\"1.0\",\"items\":[]}}"));
 
         assertSqlState(CHECK_VIOLATION,
                 () -> insertDashboardSnapshot(
@@ -267,7 +287,90 @@ class CatalogSchemaMigrationIntegrationTest {
                         applicationId,
                         "healthy",
                         null,
-                        "{}"));
+                "{}"));
+    }
+
+    @Test
+    void v007CleansDuplicateDashboardSnapshotsDeterministicallyBeforeAddingUniqueConstraint() throws SQLException {
+        cleanAndMigrateTo("6");
+
+        UUID projectId = UUID.fromString("00000000-0000-0000-0000-000000000911");
+        UUID applicationId = UUID.fromString("00000000-0000-0000-0000-000000000912");
+        UUID stateChangeId = UUID.fromString("00000000-0000-0000-0000-000000000913");
+        insertProject(projectId, "snapshot-duplicate-project", "snapdup", "hash-snapshot-duplicate");
+        insertApplication(applicationId, projectId, "orders-api", "prod");
+        insertDashboardSnapshotBeforeV007(
+                UUID.fromString("00000000-0000-0000-0000-000000000914"),
+                projectId,
+                applicationId,
+                "2026-05-26T08:08:00Z",
+                "2026-05-26T08:00:00Z",
+                "active",
+                "hourly_scheduled",
+                "2026-05-26T08:01:00Z");
+        insertDashboardSnapshotBeforeV007(
+                UUID.fromString("00000000-0000-0000-0000-000000000915"),
+                projectId,
+                applicationId,
+                "2026-05-26T08:04:00Z",
+                "2026-05-26T08:00:00Z",
+                "degraded",
+                "high_confidence_concern",
+                "2026-05-26T08:02:00Z");
+        insertDashboardSnapshotBeforeV007(
+                UUID.fromString("00000000-0000-0000-0000-000000000916"),
+                projectId,
+                applicationId,
+                "2026-05-26T08:06:00Z",
+                "2026-05-26T08:00:00Z",
+                "degraded",
+                "short_strong_spike",
+                "2026-05-26T08:03:00Z");
+        insertDashboardSnapshotBeforeV007(
+                UUID.fromString("00000000-0000-0000-0000-000000000917"),
+                projectId,
+                applicationId,
+                "2026-05-26T08:07:00Z",
+                "2026-05-26T08:00:00Z",
+                "active",
+                "query_fallback",
+                "2026-05-26T08:04:00Z");
+        insertDashboardSnapshotBeforeV007(
+                UUID.fromString("00000000-0000-0000-0000-000000000918"),
+                projectId,
+                applicationId,
+                "2026-05-26T08:09:00Z",
+                "2026-05-26T08:00:00Z",
+                "active",
+                "unknown_future_reason",
+                "2026-05-26T08:05:00Z");
+        insertDashboardSnapshotBeforeV007(
+                UUID.fromString("00000000-0000-0000-0000-000000000919"),
+                projectId,
+                applicationId,
+                "2026-05-26T08:10:00Z",
+                "2026-05-26T08:00:00Z",
+                "active",
+                null,
+                "2026-05-26T08:06:00Z");
+        insertDashboardSnapshotBeforeV007(
+                stateChangeId,
+                projectId,
+                applicationId,
+                "2026-05-26T08:01:00Z",
+                "2026-05-26T08:00:00Z",
+                "degraded",
+                "state_change",
+                "2026-05-26T08:07:00Z");
+
+        MigrateResult result = migrateRemaining();
+
+        assertThat(result.migrationsExecuted).isEqualTo(1);
+        assertThat(dashboardSnapshotCount(applicationId)).isEqualTo(1);
+        assertThat(dashboardSnapshotExists(stateChangeId)).isTrue();
+        assertThat(constraintExists(
+                "dashboard_snapshots",
+                "uk_dashboard_snapshots_application_current_window_end")).isTrue();
     }
 
     @Test
@@ -349,6 +452,9 @@ class CatalogSchemaMigrationIntegrationTest {
                         "last_observed_at",
                         "state_code",
                         "capture_reason",
+                        "primary_rule_id",
+                        "primary_endpoint_key",
+                        "max_confidence",
                         "read_model_json",
                         "created_at"));
 
@@ -369,6 +475,27 @@ class CatalogSchemaMigrationIntegrationTest {
 
         flyway.clean();
         return flyway.migrate();
+    }
+
+    private static MigrateResult cleanAndMigrateTo(String target) {
+        Flyway flyway = Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration")
+                .target(target)
+                .cleanDisabled(false)
+                .load();
+
+        flyway.clean();
+        return flyway.migrate();
+    }
+
+    private static MigrateResult migrateRemaining() {
+        return Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration")
+                .cleanDisabled(false)
+                .load()
+                .migrate();
     }
 
     private static boolean tableExists(String tableName) throws SQLException {
@@ -615,6 +742,24 @@ class CatalogSchemaMigrationIntegrationTest {
             String stateCode,
             String captureReason,
             String readModelJson) throws SQLException {
+        insertDashboardSnapshot(
+                id,
+                projectId,
+                applicationId,
+                "2026-05-26T08:00:00Z",
+                stateCode,
+                captureReason,
+                readModelJson);
+    }
+
+    private static void insertDashboardSnapshot(
+            UUID id,
+            UUID projectId,
+            UUID applicationId,
+            String generatedAtText,
+            String stateCode,
+            String captureReason,
+            String readModelJson) throws SQLException {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
                      """
@@ -627,7 +772,7 @@ class CatalogSchemaMigrationIntegrationTest {
                      )
                      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)
                      """)) {
-            OffsetDateTime generatedAt = OffsetDateTime.parse("2026-05-26T08:00:00Z");
+            OffsetDateTime generatedAt = OffsetDateTime.parse(generatedAtText);
             statement.setObject(1, id);
             statement.setObject(2, projectId);
             statement.setObject(3, applicationId);
@@ -643,6 +788,71 @@ class CatalogSchemaMigrationIntegrationTest {
             statement.setString(13, readModelJson);
             statement.setObject(14, generatedAt);
             statement.executeUpdate();
+        }
+    }
+
+    private static void insertDashboardSnapshotBeforeV007(
+            UUID id,
+            UUID projectId,
+            UUID applicationId,
+            String generatedAtText,
+            String currentWindowEndText,
+            String stateCode,
+            String captureReason,
+            String createdAtText) throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     """
+                     insert into dashboard_snapshots (
+                       id, project_id, application_id, generated_at,
+                       current_window_start_utc, current_window_end_utc,
+                       baseline_window_start_utc, baseline_window_end_utc,
+                       last_accepted_ingest_at, last_observed_at,
+                       state_code, capture_reason, read_model_json, created_at
+                     )
+                     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)
+                     """)) {
+            OffsetDateTime generatedAt = OffsetDateTime.parse(generatedAtText);
+            OffsetDateTime currentWindowEnd = OffsetDateTime.parse(currentWindowEndText);
+            statement.setObject(1, id);
+            statement.setObject(2, projectId);
+            statement.setObject(3, applicationId);
+            statement.setObject(4, generatedAt);
+            statement.setObject(5, currentWindowEnd.minusMinutes(15));
+            statement.setObject(6, currentWindowEnd);
+            statement.setObject(7, currentWindowEnd.minusMinutes(30));
+            statement.setObject(8, currentWindowEnd.minusMinutes(15));
+            statement.setObject(9, generatedAt.minusSeconds(30));
+            statement.setObject(10, generatedAt.minusSeconds(30));
+            statement.setString(11, stateCode);
+            statement.setString(12, captureReason);
+            statement.setString(13, "{\"instanceSummary\":{\"schemaVersion\":\"1.0\",\"items\":[]}}");
+            statement.setObject(14, OffsetDateTime.parse(createdAtText));
+            statement.executeUpdate();
+        }
+    }
+
+    private static int dashboardSnapshotCount(UUID applicationId) throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "select count(*) from dashboard_snapshots where application_id = ?")) {
+            statement.setObject(1, applicationId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                assertThat(resultSet.next()).isTrue();
+                return resultSet.getInt(1);
+            }
+        }
+    }
+
+    private static boolean dashboardSnapshotExists(UUID snapshotId) throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "select exists (select 1 from dashboard_snapshots where id = ?)")) {
+            statement.setObject(1, snapshotId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                assertThat(resultSet.next()).isTrue();
+                return resultSet.getBoolean(1);
+            }
         }
     }
 

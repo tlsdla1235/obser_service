@@ -6,6 +6,8 @@ import com.observation.portal.domain.catalog.repository.ApplicationRepository;
 import com.observation.portal.domain.catalog.repository.ProjectRepository;
 import com.observation.portal.domain.instance.model.InstanceSnapshotTrendReadModel;
 import com.observation.portal.domain.instance.service.InstanceSnapshotTrendParser;
+import com.observation.portal.domain.snapshot.model.DashboardSnapshotDetailRow;
+import com.observation.portal.domain.snapshot.model.DashboardSnapshotSourceRow;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotTrendRow;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
@@ -229,6 +231,77 @@ class DashboardSnapshotRepositoryIntegrationTest {
         assertThat(point.captureReason()).isEqualTo("hourly_scheduled");
         assertThat(point.metricData().statusSource()).isEqualTo("accepted_bucket");
         assertThat(point.starterConnection().stateImpact()).isEqualTo("none");
+    }
+
+    @Test
+    void findsDetailMarkerPreviousStateAndPreviousActiveRowsFromStoredSnapshotsOnly() throws SQLException {
+        UUID activeSnapshotId = UUID.fromString("00000000-0000-0000-0000-000000005731");
+        UUID degradedSnapshotId = UUID.fromString("00000000-0000-0000-0000-000000005732");
+        UUID currentSnapshotId = UUID.fromString("00000000-0000-0000-0000-000000005733");
+        insertSnapshot(
+                activeSnapshotId,
+                PROJECT_ID,
+                APPLICATION_ID,
+                "2026-05-26T05:00:00Z",
+                "active",
+                "hourly_scheduled",
+                "{\"triageCards\":[]}");
+        insertSnapshot(
+                degradedSnapshotId,
+                PROJECT_ID,
+                APPLICATION_ID,
+                "2026-05-26T06:00:00Z",
+                "degraded",
+                "state_change",
+                "{\"triageCards\":[]}");
+        insertSnapshot(
+                currentSnapshotId,
+                PROJECT_ID,
+                APPLICATION_ID,
+                "2026-05-26T07:00:00Z",
+                "unknown",
+                "query_fallback",
+                "{\"triageCards\":[]}");
+        insertSnapshot(
+                UUID.fromString("00000000-0000-0000-0000-000000005734"),
+                OTHER_PROJECT_ID,
+                OTHER_APPLICATION_ID,
+                "2026-05-26T06:30:00Z",
+                "active",
+                "hourly_scheduled",
+                "{\"triageCards\":[]}");
+
+        DashboardSnapshotDetailRow detail = dashboardSnapshotRepository.findDetailRow(
+                        PROJECT_ID,
+                        APPLICATION_ID,
+                        currentSnapshotId)
+                .orElseThrow();
+        List<DashboardSnapshotDetailRow> markers = dashboardSnapshotRepository.findMarkerRows(
+                PROJECT_ID,
+                APPLICATION_ID,
+                OffsetDateTime.parse("2026-05-26T04:30:00Z"),
+                OffsetDateTime.parse("2026-05-26T07:30:00Z"),
+                10);
+        DashboardSnapshotSourceRow previous = dashboardSnapshotRepository.findPreviousSnapshot(
+                        APPLICATION_ID,
+                        OffsetDateTime.parse("2026-05-26T07:00:00Z"))
+                .orElseThrow();
+        DashboardSnapshotSourceRow previousActive = dashboardSnapshotRepository.findPreviousActiveSnapshot(
+                        APPLICATION_ID,
+                        OffsetDateTime.parse("2026-05-26T07:00:00Z"))
+                .orElseThrow();
+
+        assertThat(detail.snapshotId()).isEqualTo(currentSnapshotId);
+        assertThat(detail.captureReason()).isEqualTo("query_fallback");
+        assertThat(markers)
+                .extracting(DashboardSnapshotDetailRow::snapshotId)
+                .containsExactly(activeSnapshotId, degradedSnapshotId, currentSnapshotId);
+        assertThat(previous.snapshotId()).isEqualTo(degradedSnapshotId);
+        assertThat(previous.stateCode()).isEqualTo("degraded");
+        assertThat(previousActive.snapshotId()).isEqualTo(activeSnapshotId);
+        assertThat(previousActive.generatedAt()).isEqualTo(OffsetDateTime.parse("2026-05-26T05:00:00Z"));
+        assertThat(dashboardSnapshotRepository.findDetailRow(OTHER_PROJECT_ID, APPLICATION_ID, currentSnapshotId))
+                .isEmpty();
     }
 
     private static void cleanAndMigrate() {

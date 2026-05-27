@@ -115,6 +115,13 @@ public class ApplicationEntity {
         return environment;
     }
 
+    /**
+     * scheduled snapshot eligibility가 active application만 대상으로 삼을 수 있게 status 값을 반환한다.
+     */
+    public String status() {
+        return status;
+    }
+
     public OffsetDateTime firstSeenAt() {
         return firstSeenAt;
     }

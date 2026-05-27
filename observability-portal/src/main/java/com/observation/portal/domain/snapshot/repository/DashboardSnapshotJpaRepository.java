@@ -1,15 +1,21 @@
 package com.observation.portal.domain.snapshot.repository;
 
 import com.observation.portal.domain.snapshot.entity.DashboardSnapshotEntity;
+import com.observation.portal.domain.snapshot.model.DashboardSnapshotDetailRow;
+import com.observation.portal.domain.snapshot.model.DashboardSnapshotLatestRow;
+import com.observation.portal.domain.snapshot.model.DashboardSnapshotSourceRow;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotTrendRow;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -42,5 +48,122 @@ interface DashboardSnapshotJpaRepository extends JpaRepository<DashboardSnapshot
             @Param("applicationId") UUID applicationId,
             @Param("generatedAtSince") OffsetDateTime generatedAtSince,
             @Param("generatedAtUntil") OffsetDateTime generatedAtUntil,
+            Pageable pageable);
+
+    /**
+     * project/application/snapshot membership이 모두 맞는 detail source row를 조회한다.
+     */
+    @Query("select new com.observation.portal.domain.snapshot.model.DashboardSnapshotDetailRow("
+            + "snapshot.id, "
+            + "snapshot.projectId, "
+            + "snapshot.applicationId, "
+            + "snapshot.generatedAt, "
+            + "snapshot.currentWindowStartUtc, "
+            + "snapshot.currentWindowEndUtc, "
+            + "snapshot.baselineWindowStartUtc, "
+            + "snapshot.baselineWindowEndUtc, "
+            + "snapshot.stateCode, "
+            + "snapshot.captureReason, "
+            + "snapshot.primaryRuleId, "
+            + "snapshot.primaryEndpointKey, "
+            + "snapshot.maxConfidence, "
+            + "snapshot.readModelJson) "
+            + "from DashboardSnapshotEntity snapshot "
+            + "where snapshot.projectId = :projectId "
+            + "and snapshot.applicationId = :applicationId "
+            + "and snapshot.id = :snapshotId")
+    Optional<DashboardSnapshotDetailRow> findDetailRow(
+            @Param("projectId") UUID projectId,
+            @Param("applicationId") UUID applicationId,
+            @Param("snapshotId") UUID snapshotId);
+
+    /**
+     * marker horizon 안의 stored snapshot row를 capturedAt ASC, snapshot id ASC 후보 순서로 bounded 조회한다.
+     */
+    @Query("select new com.observation.portal.domain.snapshot.model.DashboardSnapshotDetailRow("
+            + "snapshot.id, "
+            + "snapshot.projectId, "
+            + "snapshot.applicationId, "
+            + "snapshot.generatedAt, "
+            + "snapshot.currentWindowStartUtc, "
+            + "snapshot.currentWindowEndUtc, "
+            + "snapshot.baselineWindowStartUtc, "
+            + "snapshot.baselineWindowEndUtc, "
+            + "snapshot.stateCode, "
+            + "snapshot.captureReason, "
+            + "snapshot.primaryRuleId, "
+            + "snapshot.primaryEndpointKey, "
+            + "snapshot.maxConfidence, "
+            + "snapshot.readModelJson) "
+            + "from DashboardSnapshotEntity snapshot "
+            + "where snapshot.projectId = :projectId "
+            + "and snapshot.applicationId = :applicationId "
+            + "and snapshot.generatedAt >= :generatedAtSince "
+            + "and snapshot.generatedAt <= :generatedAtUntil "
+            + "order by snapshot.generatedAt asc, snapshot.id asc")
+    List<DashboardSnapshotDetailRow> findMarkerRows(
+            @Param("projectId") UUID projectId,
+            @Param("applicationId") UUID applicationId,
+            @Param("generatedAtSince") OffsetDateTime generatedAtSince,
+            @Param("generatedAtUntil") OffsetDateTime generatedAtUntil,
+            Pageable pageable);
+
+    /**
+     * 같은 application의 strictly earlier current window snapshot 중 previous state 후보를 조회한다.
+     */
+    @Query("select new com.observation.portal.domain.snapshot.model.DashboardSnapshotSourceRow("
+            + "snapshot.id, "
+            + "snapshot.generatedAt, "
+            + "snapshot.currentWindowEndUtc, "
+            + "snapshot.stateCode) "
+            + "from DashboardSnapshotEntity snapshot "
+            + "where snapshot.applicationId = :applicationId "
+            + "and snapshot.currentWindowEndUtc < :currentWindowEndUtc "
+            + "order by snapshot.currentWindowEndUtc desc, snapshot.generatedAt desc, snapshot.id asc")
+    List<DashboardSnapshotSourceRow> findPreviousRows(
+            @Param("applicationId") UUID applicationId,
+            @Param("currentWindowEndUtc") OffsetDateTime currentWindowEndUtc,
+            Pageable pageable);
+
+    /**
+     * 같은 application의 previous active snapshot 중 lastHealthyAt source 후보를 조회한다.
+     */
+    @Query("select new com.observation.portal.domain.snapshot.model.DashboardSnapshotSourceRow("
+            + "snapshot.id, "
+            + "snapshot.generatedAt, "
+            + "snapshot.currentWindowEndUtc, "
+            + "snapshot.stateCode) "
+            + "from DashboardSnapshotEntity snapshot "
+            + "where snapshot.applicationId = :applicationId "
+            + "and snapshot.currentWindowEndUtc < :currentWindowEndUtc "
+            + "and snapshot.stateCode = 'active' "
+            + "order by snapshot.currentWindowEndUtc desc, snapshot.generatedAt desc, snapshot.id asc")
+    List<DashboardSnapshotSourceRow> findPreviousActiveRows(
+            @Param("applicationId") UUID applicationId,
+            @Param("currentWindowEndUtc") OffsetDateTime currentWindowEndUtc,
+            Pageable pageable);
+
+    /**
+     * writer upsert identity에 해당하는 row를 transaction 안에서 잠그고 조회한다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<DashboardSnapshotEntity> findByApplicationIdAndCurrentWindowEndUtc(
+            UUID applicationId,
+            OffsetDateTime currentWindowEndUtc);
+
+    /**
+     * dashboard query fallback threshold 판단을 위해 최신 snapshot metadata만 조회한다.
+     */
+    @Query("select new com.observation.portal.domain.snapshot.model.DashboardSnapshotLatestRow("
+            + "snapshot.id, "
+            + "snapshot.generatedAt, "
+            + "snapshot.currentWindowEndUtc, "
+            + "snapshot.stateCode, "
+            + "snapshot.captureReason) "
+            + "from DashboardSnapshotEntity snapshot "
+            + "where snapshot.applicationId = :applicationId "
+            + "order by snapshot.generatedAt desc, snapshot.id desc")
+    List<DashboardSnapshotLatestRow> findLatestRowsByApplicationId(
+            @Param("applicationId") UUID applicationId,
             Pageable pageable);
 }

@@ -1,0 +1,259 @@
+Project observation_portal_story_5_8_snapshot {
+  database_type: 'PostgreSQL'
+  Note: '''
+  Story 5.8까지 구현된 portal 물리 스키마 스냅샷이다.
+  기준 migration은 V001__create_projects.sql부터 V007__extend_dashboard_snapshots_for_writer_policy.sql까지다.
+
+  accepted_metric_buckets는 metric data-plane source-of-truth이고, starter_heartbeat_telemetry는 starter control-plane latest heartbeat source다.
+  dashboard_snapshots는 stored dashboard read model과 marker/detail/trend projection의 read-side source다.
+
+  MVP 기준으로 operational_events, endpoint_timeseries, raw_snapshots, raw_metric_buckets table은 없다.
+  '''
+}
+
+TableGroup story_5_8_schema_snapshot {
+  projects
+  applications
+  application_instances
+  accepted_metric_buckets
+  starter_heartbeat_telemetry
+  dashboard_snapshots
+}
+
+Table projects {
+  id uuid [pk, not null, note: '프로젝트의 application-generated UUID 기본키.']
+  name varchar(120) [not null, note: '사람이 읽을 수 있는 프로젝트 이름.']
+  key_prefix varchar(32) [not null, note: 'ProjectKeyVerificationService가 raw key 전체를 남기지 않고 후보 row 조회에 사용하는 prefix 값.']
+  project_key_hash varchar(255) [not null, note: '원문 project key를 저장하지 않기 위한 BCrypt hash.']
+  status varchar(32) [not null, note: '프로젝트 사용 상태. active 또는 disabled.']
+  created_at timestamptz [not null, note: '프로젝트 row 생성 시각.']
+  updated_at timestamptz [not null, note: '프로젝트 row 마지막 수정 시각.']
+
+  Indexes {
+    name [unique, name: 'uk_projects_name', note: '프로젝트 이름 중복을 막는다.']
+    key_prefix [unique, name: 'uk_projects_key_prefix', note: 'project key prefix 후보 row를 유일하게 만든다.']
+    project_key_hash [unique, name: 'uk_projects_project_key_hash', note: '동일 project key hash 재사용을 막는다.']
+  }
+
+  Note: '''
+  프로젝트 키와 애플리케이션 묶음의 최상위 식별자를 저장한다.
+  raw project key는 DB row, response, log, repository lookup surface에 남기지 않는다.
+
+  제약:
+  - pk_projects primary key(id)
+  - uk_projects_name unique(name)
+  - uk_projects_key_prefix unique(key_prefix)
+  - uk_projects_project_key_hash unique(project_key_hash)
+  - ck_projects_status check(status in ('active', 'disabled'))
+  '''
+}
+
+Table applications {
+  id uuid [pk, not null, note: '애플리케이션의 application-generated UUID 기본키.']
+  project_id uuid [not null, note: '소속 프로젝트의 UUID 외래키.']
+  name varchar(160) [not null, note: 'ingest envelope의 application.name 값.']
+  environment varchar(80) [not null, note: 'ingest envelope의 application.environment 값.']
+  status varchar(32) [not null, note: '애플리케이션 사용 상태. active 또는 disabled.']
+  first_seen_at timestamptz [note: '첫 accepted metric bucket이 수용된 시각. heartbeat 수신만으로 갱신하지 않는다.']
+  last_seen_at timestamptz [note: '마지막 accepted metric bucket이 수용된 시각. heartbeat freshness가 아니다.']
+  created_at timestamptz [not null, note: '애플리케이션 row 생성 시각.']
+  updated_at timestamptz [not null, note: '애플리케이션 row 마지막 수정 시각.']
+
+  Indexes {
+    (project_id, name, environment) [unique, name: 'uk_applications_project_name_env', note: '한 프로젝트 안에서 애플리케이션 이름과 환경 조합을 유일하게 유지한다.']
+    (project_id, status) [name: 'idx_applications_project_status', note: '프로젝트별 애플리케이션 상태 조회를 돕는다.']
+  }
+
+  Note: '''
+  프로젝트 안에서 애플리케이션과 환경 조합을 식별한다.
+  첫 accepted bucket ingest가 catalog row 생성/갱신 source다.
+  starter heartbeat는 이 catalog를 upsert하지 않는다.
+
+  제약:
+  - pk_applications primary key(id)
+  - fk_applications_project_id foreign key(project_id) references projects(id)
+  - uk_applications_project_name_env unique(project_id, name, environment)
+  - ck_applications_status check(status in ('active', 'disabled'))
+  '''
+}
+
+Table application_instances {
+  id uuid [pk, not null, note: '애플리케이션 인스턴스의 application-generated UUID 기본키.']
+  application_id uuid [not null, note: '소속 애플리케이션의 UUID 외래키.']
+  instance_name varchar(200) [not null, note: 'ingest envelope의 application.instance 값.']
+  first_seen_at timestamptz [not null, note: '해당 인스턴스의 첫 accepted metric bucket 수용 시각.']
+  last_seen_at timestamptz [not null, note: '해당 인스턴스의 마지막 accepted metric bucket 수용 시각.']
+  created_at timestamptz [not null, note: '애플리케이션 인스턴스 row 생성 시각.']
+  updated_at timestamptz [not null, note: '애플리케이션 인스턴스 row 마지막 수정 시각.']
+
+  Indexes {
+    (application_id, instance_name) [unique, name: 'uk_application_instances_app_instance', note: '한 애플리케이션 안에서 인스턴스 이름을 유일하게 유지한다.']
+    (application_id, last_seen_at) [name: 'idx_application_instances_app_last_seen', note: '애플리케이션별 최근 관측 인스턴스 조회를 돕는다. 실제 PostgreSQL migration은 last_seen_at desc 정렬을 사용한다.']
+  }
+
+  Note: '''
+  애플리케이션의 실행 인스턴스 식별자와 마지막 accepted bucket 수신 시각을 저장한다.
+  starter heartbeat payload의 instance_name과 같은 문자열을 가질 수 있지만, heartbeat만으로 이 row를 만들거나 갱신하지 않는다.
+
+  제약:
+  - pk_application_instances primary key(id)
+  - fk_application_instances_application_id foreign key(application_id) references applications(id)
+  - uk_application_instances_app_instance unique(application_id, instance_name)
+  '''
+}
+
+Table accepted_metric_buckets {
+  id uuid [pk, not null, note: 'accepted metric bucket의 application-generated UUID 기본키.']
+  project_id uuid [not null, note: 'bucket이 속한 프로젝트의 UUID 외래키.']
+  application_id uuid [not null, note: 'bucket이 속한 애플리케이션의 UUID 외래키.']
+  application_instance_id uuid [not null, note: 'bucket을 보낸 애플리케이션 인스턴스의 UUID 외래키.']
+  schema_version varchar(16) [not null, note: 'ingest envelope schema version. MVP에서는 1.0만 허용한다.']
+  idempotency_key varchar(300) [not null, note: 'starter가 bucket.startUtc 기준으로 만든 멱등성 키.']
+  payload_hash varchar(128) [not null, note: '동일 멱등성 키에 다른 payload가 들어왔는지 감지하기 위한 payload hash.']
+  bucket_start_utc timestamptz [not null, note: '30초 UTC bucket 시작 시각.']
+  bucket_end_utc timestamptz [not null, note: '30초 UTC bucket 종료 시각. metric freshness/state/read-model source-of-truth다.']
+  duration_seconds integer [not null, note: 'bucket 길이. MVP에서는 30초로 고정한다.']
+  accepted_at timestamptz [not null, note: 'portal이 bucket을 수용한 시각. metric freshness source는 아니다.']
+  request_count bigint [not null, note: 'bucket window의 애플리케이션 전체 요청 수.']
+  error_count bigint [not null, note: 'bucket window의 애플리케이션 전체 오류 수.']
+  duration_buckets_json jsonb [not null, note: '애플리케이션 전체 HTTP server duration cumulative histogram bucket 배열. percentile 재계산 source가 아니라 distribution evidence다.']
+  cpu_usage_ratio numeric(6,5) [note: 'JVM process CPU 사용률 latest sample. 없으면 null.']
+  heap_used_ratio numeric(6,5) [note: 'JVM heap 사용률 latest sample. 없으면 null.']
+  datasource_pool_usage_ratio numeric(6,5) [note: 'datasource connection pool 사용률 latest sample. 없으면 null.']
+  local_percentiles_json jsonb [note: 'starter가 보낸 instance_bucket scope의 canonical p95/p99 point. source=starter_local, mergeable=false 의미를 가진다.']
+  endpoints_json jsonb [not null, note: 'bounded endpoint별 method, normalized route, request/error count, duration histogram bucket 배열. endpoint p95/p99를 만들지 않는다.']
+  created_at timestamptz [not null, note: 'accepted metric bucket row 생성 시각.']
+
+  Indexes {
+    (project_id, idempotency_key) [unique, name: 'uk_buckets_project_idempotency_key', note: 'project scope idempotency key를 유일하게 유지한다.']
+    (application_instance_id, bucket_start_utc) [unique, name: 'uk_buckets_instance_bucket_start', note: '동일 인스턴스의 같은 30초 bucket 중복 저장을 막는다.']
+    (application_id, bucket_start_utc, bucket_end_utc) [name: 'idx_buckets_app_window', note: '애플리케이션 current/baseline window 조회를 돕는다.']
+    (application_id, bucket_end_utc) [name: 'idx_buckets_app_last_end', note: '애플리케이션 마지막 accepted bucket timestamp 조회를 돕는다. 실제 PostgreSQL migration은 bucket_end_utc desc 정렬을 사용한다.']
+    (application_instance_id, bucket_start_utc) [name: 'idx_buckets_instance_window', note: '인스턴스 bucket window 조회를 돕는다.']
+    accepted_at [name: 'idx_buckets_accepted_at', note: '보관 cleanup 후보 조회를 돕는다.']
+  }
+
+  Note: '''
+  검증을 통과해 수용된 30초 단위 애플리케이션 및 endpoint metric bucket을 저장한다.
+  이 테이블은 metric freshness, lifecycle state, current dashboard read model의 data-plane source-of-truth다.
+
+  local_percentiles_json은 starter canonical percentile point다.
+  여러 instance/window의 p95/p99 숫자를 평균, 최댓값, 병합, histogram 재계산으로 app/project/window p95/p99로 만들지 않는다.
+
+  제약:
+  - pk_accepted_metric_buckets primary key(id)
+  - fk_buckets_project_id foreign key(project_id) references projects(id)
+  - fk_buckets_application_id foreign key(application_id) references applications(id)
+  - fk_buckets_application_instance_id foreign key(application_instance_id) references application_instances(id)
+  - uk_buckets_project_idempotency_key unique(project_id, idempotency_key)
+  - uk_buckets_instance_bucket_start unique(application_instance_id, bucket_start_utc)
+  - ck_buckets_schema_version check(schema_version = '1.0')
+  - ck_buckets_duration_30 check(duration_seconds = 30)
+  - ck_buckets_window_positive check(bucket_end_utc > bucket_start_utc)
+  - ck_buckets_counts_non_negative check(request_count >= 0 and error_count >= 0 and error_count <= request_count)
+  - ck_buckets_duration_buckets_array check(jsonb_typeof(duration_buckets_json) = 'array')
+  - ck_buckets_endpoints_array check(jsonb_typeof(endpoints_json) = 'array')
+  - ck_buckets_cpu_ratio_range check(cpu_usage_ratio is null or cpu_usage_ratio between 0 and 1)
+  - ck_buckets_heap_ratio_range check(heap_used_ratio is null or heap_used_ratio between 0 and 1)
+  - ck_buckets_datasource_ratio_range check(datasource_pool_usage_ratio is null or datasource_pool_usage_ratio between 0 and 1)
+  - ck_buckets_local_percentiles_object check(local_percentiles_json is null or jsonb_typeof(local_percentiles_json) = 'object')
+  '''
+}
+
+Table starter_heartbeat_telemetry {
+  id uuid [pk, not null, note: 'heartbeat telemetry row의 application-generated UUID 기본키.']
+  project_id uuid [not null, note: 'heartbeat가 속한 프로젝트의 UUID 외래키.']
+  application_name varchar(160) [not null, note: 'heartbeat payload의 application.name 값. catalog upsert source가 아니다.']
+  environment varchar(80) [not null, note: 'heartbeat payload의 application.environment 값. catalog upsert source가 아니다.']
+  instance_name varchar(200) [not null, note: 'heartbeat payload의 application.instance 값. catalog upsert source가 아니다.']
+  starter_version varchar(80) [not null, note: 'heartbeat를 보낸 starter version.']
+  last_sent_at_utc timestamptz [not null, note: 'starter가 마지막 heartbeat를 보냈다고 보고한 UTC 시각. metric bucket freshness source가 아니다.']
+  last_received_at_utc timestamptz [not null, note: 'portal이 마지막 valid heartbeat를 수신한 UTC 시각. starter connection/liveness source로만 사용한다.']
+  last_sequence bigint [not null, note: '마지막 valid heartbeat의 starter sequence 값.']
+  interval_seconds integer [not null, note: 'starter가 보고한 heartbeat interval seconds 값.']
+  metadata_status varchar(32) [not null, note: 'portal이 heartbeat application metadata를 검증한 결과. MVP 값은 valid.']
+  heartbeat_status varchar(32) [not null, note: 'portal의 heartbeat 수신 결과. MVP 값은 received.']
+  created_at timestamptz [not null, note: 'heartbeat telemetry row 생성 시각.']
+  updated_at timestamptz [not null, note: 'heartbeat telemetry row 마지막 갱신 시각.']
+
+  Indexes {
+    (project_id, application_name, environment, instance_name) [unique, name: 'uk_starter_heartbeat_identity', note: '프로젝트 안에서 heartbeat identity별 최신 row를 하나로 유지한다.']
+    (project_id, last_received_at_utc) [name: 'idx_starter_heartbeat_project_received', note: '프로젝트별 최근 heartbeat 조회를 돕는다. 실제 PostgreSQL migration은 last_received_at_utc desc 정렬을 사용한다.']
+  }
+
+  Note: '''
+  starter heartbeat의 최신 control-plane 수신 상태를 저장한다.
+  이 테이블은 accepted_metric_buckets와 분리된 liveness/connection source다.
+
+  의도적으로 application_id와 application_instance_id FK를 두지 않는다.
+  heartbeat payload metadata는 catalog upsert source가 아니며, 첫 accepted bucket ingest가 catalog source다.
+  heartbeat 성공/실패/미수신은 accepted bucket freshness, host business health, dashboard snapshot/event, p95/p99, rule/read-model calculation source가 아니다.
+
+  제약:
+  - pk_starter_heartbeat_telemetry primary key(id)
+  - fk_starter_heartbeat_project_id foreign key(project_id) references projects(id)
+  - uk_starter_heartbeat_identity unique(project_id, application_name, environment, instance_name)
+  - ck_starter_heartbeat_sequence_non_negative check(last_sequence >= 0)
+  - ck_starter_heartbeat_interval_positive check(interval_seconds > 0)
+  - ck_starter_heartbeat_metadata_status check(metadata_status in ('valid'))
+  - ck_starter_heartbeat_status check(heartbeat_status in ('received'))
+  '''
+}
+
+Table dashboard_snapshots {
+  id uuid [pk, not null, note: 'dashboard snapshot의 application-generated UUID 기본키.']
+  project_id uuid [not null, note: 'snapshot이 속한 프로젝트의 UUID 외래키.']
+  application_id uuid [not null, note: 'snapshot이 속한 애플리케이션의 UUID 외래키.']
+  generated_at timestamptz [not null, note: 'portal service가 dashboard read model을 생성한 UTC 시각. higher-priority update 시 대표 read model 생성 시각으로 갱신될 수 있다.']
+  current_window_start_utc timestamptz [not null, note: '저장 당시 dashboard current window 시작 시각.']
+  current_window_end_utc timestamptz [not null, note: '저장 당시 dashboard current window 종료 시각. application_id와 함께 snapshot duplicate identity를 이룬다.']
+  baseline_window_start_utc timestamptz [not null, note: '저장 당시 dashboard baseline window 시작 시각.']
+  baseline_window_end_utc timestamptz [not null, note: '저장 당시 dashboard baseline window 종료 시각.']
+  last_accepted_ingest_at timestamptz [note: 'snapshot 생성 시점 기준 마지막 accepted ingest 수용 시각. 없으면 null.']
+  last_observed_at timestamptz [note: 'snapshot 생성 시점 기준 마지막 관측 bucket end 시각. 없으면 null.']
+  state_code varchar(40) [not null, note: '저장된 application-level lifecycle state code 복사 값. instance state나 health score가 아니다.']
+  capture_reason varchar(64) [note: 'writer가 저장한 snapshot capture reason token. null과 legacy/unknown 값은 read-side opaque metadata로 허용한다.']
+  primary_rule_id varchar(80) [note: '저장된 대표 dashboard read model에서 가장 행동 가능한 concern rule id를 복사한 낮은 cardinality helper 값.']
+  primary_endpoint_key varchar(240) [note: '저장된 대표 dashboard read model에서 우선 확인할 endpoint key를 복사한 낮은 cardinality helper 값.']
+  max_confidence numeric(4,3) [note: '저장된 triage card와 endpoint priority confidence 중 최댓값. confidence-bearing concern이 없으면 null.']
+  read_model_json jsonb [not null, note: '저장된 dashboard read model JSON object. Story 5.7 trend source는 instanceSummary.items 배열로 제한한다.']
+  created_at timestamptz [not null, note: 'dashboard snapshot row 생성 시각. higher-priority update에도 최초 insert 시각으로 유지한다.']
+
+  Indexes {
+    (application_id, current_window_end_utc) [unique, name: 'uk_dashboard_snapshots_application_current_window_end', note: 'Story 5.8 writer의 idempotent upsert identity다.']
+    (project_id, application_id, generated_at, id) [name: 'idx_dashboard_snapshots_project_app_generated_desc', note: '프로젝트/애플리케이션별 latest/history 조회를 돕는다. 실제 PostgreSQL migration은 generated_at desc, id desc 정렬을 사용한다.']
+    created_at [name: 'idx_dashboard_snapshots_created_at', note: 'snapshot retention cleanup 후보 조회를 돕는다.']
+    (application_id, capture_reason, generated_at) [name: 'idx_dashboard_snapshots_app_capture_generated', note: 'capture reason 기반 snapshot 조회를 돕는다. 실제 PostgreSQL migration은 generated_at desc 정렬을 사용한다.']
+  }
+
+  Note: '''
+  특정 시점의 dashboard read model 전체를 저장하는 coarse-grained snapshot read-side 원천이다.
+  Story 5.7은 이 table을 instance snapshot trend source로 만들었고, Story 5.8-a는 writer policy helper column과 duplicate identity를 추가했다.
+  Story 5.8-b detail/marker API는 current bucket이나 heartbeat를 live join하지 않고 이 row metadata와 stored read_model_json만 읽는다.
+
+  capture_reason은 DB check constraint로 강제하지 않는다.
+  새 writer token 후보는 hourly_scheduled, state_change, high_confidence_concern, short_strong_spike, query_fallback이지만, null/unknown/legacy 값도 read-side opaque metadata로 허용한다.
+
+  read_model_json 안에는 bounded snapshotEndpointEvidence와 instanceSummary.items[]가 들어갈 수 있다.
+  instanceSummary.items[].instanceId는 application_instances.id UUID 문자열이지만 JSON 내부 값이므로 별도 FK를 두지 않는다.
+
+  제약:
+  - pk_dashboard_snapshots primary key(id)
+  - fk_dashboard_snapshots_project_id foreign key(project_id) references projects(id)
+  - fk_dashboard_snapshots_application_id foreign key(application_id) references applications(id)
+  - uk_dashboard_snapshots_application_current_window_end unique(application_id, current_window_end_utc)
+  - ck_dashboard_snapshots_current_window_positive check(current_window_end_utc > current_window_start_utc)
+  - ck_dashboard_snapshots_baseline_window_positive check(baseline_window_end_utc > baseline_window_start_utc)
+  - ck_dashboard_snapshots_read_model_object check(jsonb_typeof(read_model_json) = 'object')
+  - ck_dashboard_snapshots_state_code check(state_code in ('waiting_first_data', 'unknown', 'idle', 'active', 'stale', 'down', 'degraded'))
+  '''
+}
+
+Ref fk_applications_project_id: applications.project_id > projects.id
+Ref fk_application_instances_application_id: application_instances.application_id > applications.id
+Ref fk_buckets_project_id: accepted_metric_buckets.project_id > projects.id
+Ref fk_buckets_application_id: accepted_metric_buckets.application_id > applications.id
+Ref fk_buckets_application_instance_id: accepted_metric_buckets.application_instance_id > application_instances.id
+Ref fk_starter_heartbeat_project_id: starter_heartbeat_telemetry.project_id > projects.id
+Ref fk_dashboard_snapshots_project_id: dashboard_snapshots.project_id > projects.id
+Ref fk_dashboard_snapshots_application_id: dashboard_snapshots.application_id > applications.id

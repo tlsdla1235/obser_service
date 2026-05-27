@@ -31,4 +31,9 @@ public interface ApplicationInstanceRepository extends JpaRepository<Application
     List<ApplicationInstanceEntity> findByApplicationIdOrderByLastSeenAtDescInstanceNameAsc(
             UUID applicationId,
             Pageable pageable);
+
+    /**
+     * Snapshot writer가 bounded instance summary 후보를 50개 cap 적용 전에 전체 observed instance 기준으로 평가한다.
+     */
+    List<ApplicationInstanceEntity> findByApplicationId(UUID applicationId);
 }
