@@ -109,6 +109,40 @@ interface DashboardSnapshotJpaRepository extends JpaRepository<DashboardSnapshot
             Pageable pageable);
 
     /**
+     * operational event history source boundary용 stored snapshot row를 newest-first로 조회한다.
+     *
+     * <p>projection은 row metadata/helper columns/stored JSON만 반환하며 event promotion, dedup, suppression, p95/p99를
+     * 계산하지 않는다.</p>
+     */
+    @Query("select new com.observation.portal.domain.snapshot.model.DashboardSnapshotDetailRow("
+            + "snapshot.id, "
+            + "snapshot.projectId, "
+            + "snapshot.applicationId, "
+            + "snapshot.generatedAt, "
+            + "snapshot.currentWindowStartUtc, "
+            + "snapshot.currentWindowEndUtc, "
+            + "snapshot.baselineWindowStartUtc, "
+            + "snapshot.baselineWindowEndUtc, "
+            + "snapshot.stateCode, "
+            + "snapshot.captureReason, "
+            + "snapshot.primaryRuleId, "
+            + "snapshot.primaryEndpointKey, "
+            + "snapshot.maxConfidence, "
+            + "snapshot.readModelJson) "
+            + "from DashboardSnapshotEntity snapshot "
+            + "where snapshot.projectId = :projectId "
+            + "and snapshot.applicationId = :applicationId "
+            + "and snapshot.generatedAt >= :generatedAtSince "
+            + "and snapshot.generatedAt <= :generatedAtUntil "
+            + "order by snapshot.generatedAt desc, snapshot.id asc")
+    List<DashboardSnapshotDetailRow> findOperationalHistoryRows(
+            @Param("projectId") UUID projectId,
+            @Param("applicationId") UUID applicationId,
+            @Param("generatedAtSince") OffsetDateTime generatedAtSince,
+            @Param("generatedAtUntil") OffsetDateTime generatedAtUntil,
+            Pageable pageable);
+
+    /**
      * 같은 application의 strictly earlier current window snapshot 중 previous state 후보를 조회한다.
      */
     @Query("select new com.observation.portal.domain.snapshot.model.DashboardSnapshotSourceRow("

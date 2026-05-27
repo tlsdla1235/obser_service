@@ -4,6 +4,9 @@ import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
+import com.observation.portal.domain.history.controller.OperationalEventHistoryController;
+import com.observation.portal.domain.history.service.OperationalEventHistoryProjector;
+import com.observation.portal.domain.history.service.OperationalEventHistoryService;
 import com.observation.portal.domain.snapshot.service.DashboardSnapshotDetailService;
 import com.observation.portal.domain.snapshot.service.DashboardSnapshotMarkerService;
 import org.junit.jupiter.api.Test;
@@ -114,7 +117,7 @@ class MvcLayerBoundaryTest {
                 .toList();
 
         assertThat(forbiddenClasses)
-                .as("Story 5.8-a must not add raw explorers, endpoint timeseries, operational events, or job infrastructure")
+                .as("Story 5.8-a/5.9-a must not add raw explorers, endpoint timeseries, event stores, or job infrastructure")
                 .isEmpty();
     }
 
@@ -158,6 +161,57 @@ class MvcLayerBoundaryTest {
         }
     }
 
+    @Test
+    void story59bOperationalEventHistoryBoundaryDoesNotUseForbiddenLiveSources() {
+        List<String> constructorParameterTypeNames = Stream.of(
+                        OperationalEventHistoryController.class,
+                        OperationalEventHistoryProjector.class,
+                        OperationalEventHistoryService.class)
+                .map(Class::getConstructors)
+                .flatMap(Stream::of)
+                .map(Constructor::getParameterTypes)
+                .flatMap(Stream::of)
+                .map(Class::getSimpleName)
+                .toList();
+
+        assertThat(constructorParameterTypeNames)
+                .as("operational event history must project stored dashboard snapshots without live recalculation sources")
+                .doesNotContain(
+                        "MetricBucketRepository",
+                        "StarterHeartbeatTelemetryRepository",
+                        "DashboardReadModelService",
+                        "LifecycleStateService",
+                        "TriageSummaryService",
+                        "EndpointPriorityService",
+                        "InstanceEvidenceReadModelService");
+    }
+
+    @Test
+    void story59aNonGoalPhysicalSurfacesAreNotPresent() throws IOException {
+        List<String> forbiddenClasses = PORTAL_CLASSES.stream()
+                .map(JavaClass::getName)
+                .filter(MvcLayerBoundaryTest::matchesStory59aForbiddenPhysicalSurface)
+                .sorted()
+                .toList();
+
+        assertThat(forbiddenClasses)
+                .as("Story 5.9-a must not add operational event store, endpoint timeseries, or raw explorer classes")
+                .isEmpty();
+
+        try (Stream<Path> migrationFiles = Files.walk(Path.of("src/main/resources/db/migration"))) {
+            List<String> forbiddenMigrationSnippets = migrationFiles
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().endsWith(".sql"))
+                    .flatMap(MvcLayerBoundaryTest::forbiddenStory59aMigrationSnippets)
+                    .sorted()
+                    .toList();
+
+            assertThat(forbiddenMigrationSnippets)
+                    .as("Story 5.9-a must not introduce event stores, endpoint timeseries, materialized views, outbox, or Redis")
+                    .isEmpty();
+        }
+    }
+
     private static boolean isOutsideServiceAndModelPackage(JavaClass javaClass) {
         String packageName = javaClass.getPackageName();
         return !hasPackageSegment(packageName, "service") && !hasPackageSegment(packageName, "model");
@@ -184,7 +238,8 @@ class MvcLayerBoundaryTest {
         return normalized.contains("rawsnapshot")
                 || normalized.contains("rawbucket")
                 || normalized.contains("endpointtimeseries")
-                || normalized.contains("operationalevent")
+                || normalized.contains("operationaleventrepository")
+                || normalized.contains("operationalevententity")
                 || normalized.contains("springbatch")
                 || normalized.contains(".batch.")
                 || normalized.contains("outbox")
@@ -194,10 +249,31 @@ class MvcLayerBoundaryTest {
                 || normalized.contains("jobmetadata");
     }
 
+    private static boolean matchesStory59aForbiddenPhysicalSurface(String className) {
+        String normalized = className.toLowerCase();
+        return normalized.contains("operationaleventrepository")
+                || normalized.contains("operationalevententity")
+                || normalized.contains("endpointtimeseries")
+                || normalized.contains("rawsnapshot")
+                || normalized.contains("rawbucket")
+                || normalized.contains("rawexplorer");
+    }
+
     private static Stream<String> forbiddenMigrationSnippets(Path path) {
         try {
             String content = Files.readString(path).toLowerCase();
             return Stream.of("operational_events", "endpoint_timeseries")
+                    .filter(content::contains)
+                    .map(snippet -> path + ":" + snippet);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Cannot read migration file: " + path, exception);
+        }
+    }
+
+    private static Stream<String> forbiddenStory59aMigrationSnippets(Path path) {
+        try {
+            String content = Files.readString(path).toLowerCase();
+            return Stream.of("operational_events", "endpoint_timeseries", "materialized view", "outbox", "redis")
                     .filter(content::contains)
                     .map(snippet -> path + ":" + snippet);
         } catch (IOException exception) {

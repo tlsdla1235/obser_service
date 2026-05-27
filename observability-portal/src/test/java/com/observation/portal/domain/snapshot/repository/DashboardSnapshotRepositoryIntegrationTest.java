@@ -24,6 +24,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -304,6 +305,78 @@ class DashboardSnapshotRepositoryIntegrationTest {
                 .isEmpty();
     }
 
+    @Test
+    void findsOperationalHistorySourceRowsNewestFirstWithinHorizonAndKeepsHelperColumns() throws SQLException {
+        UUID olderSnapshotId = UUID.fromString("00000000-0000-0000-0000-000000005741");
+        UUID middleSnapshotId = UUID.fromString("00000000-0000-0000-0000-000000005742");
+        UUID newestSnapshotId = UUID.fromString("00000000-0000-0000-0000-000000005743");
+        insertSnapshot(
+                olderSnapshotId,
+                PROJECT_ID,
+                APPLICATION_ID,
+                "2026-05-26T05:00:00Z",
+                "active",
+                "hourly_scheduled",
+                "{\"triageCards\":[]}",
+                null,
+                null,
+                null);
+        insertSnapshot(
+                middleSnapshotId,
+                PROJECT_ID,
+                APPLICATION_ID,
+                "2026-05-26T06:00:00Z",
+                "degraded",
+                "state_change",
+                "{\"snapshotEndpointEvidence\":{\"items\":[]},\"triageCards\":[]}",
+                "endpoint_latency_spike",
+                "POST /orders",
+                new BigDecimal("0.840"));
+        insertSnapshot(
+                newestSnapshotId,
+                PROJECT_ID,
+                APPLICATION_ID,
+                "2026-05-26T07:00:00Z",
+                "degraded",
+                "high_confidence_concern",
+                "{\"snapshotEndpointEvidence\":{\"items\":[]},\"triageCards\":[]}",
+                "endpoint_error_spike",
+                "GET /checkout",
+                new BigDecimal("0.910"));
+        insertSnapshot(
+                UUID.fromString("00000000-0000-0000-0000-000000005744"),
+                PROJECT_ID,
+                APPLICATION_ID,
+                "2026-05-26T08:30:00Z",
+                "active",
+                "future_fixture",
+                "{\"triageCards\":[]}");
+        insertSnapshot(
+                UUID.fromString("00000000-0000-0000-0000-000000005745"),
+                OTHER_PROJECT_ID,
+                OTHER_APPLICATION_ID,
+                "2026-05-26T07:30:00Z",
+                "degraded",
+                "other_scope",
+                "{\"triageCards\":[]}");
+
+        List<DashboardSnapshotDetailRow> rows = dashboardSnapshotRepository.findOperationalHistoryRows(
+                PROJECT_ID,
+                APPLICATION_ID,
+                OffsetDateTime.parse("2026-05-26T05:30:00Z"),
+                OffsetDateTime.parse("2026-05-26T07:30:00Z"),
+                2);
+
+        assertThat(rows)
+                .extracting(DashboardSnapshotDetailRow::snapshotId)
+                .containsExactly(newestSnapshotId, middleSnapshotId);
+        assertThat(rows.get(0).captureReason()).isEqualTo("high_confidence_concern");
+        assertThat(rows.get(0).primaryRuleId()).isEqualTo("endpoint_error_spike");
+        assertThat(rows.get(0).primaryEndpointKey()).isEqualTo("GET /checkout");
+        assertThat(rows.get(0).maxConfidence()).isEqualByComparingTo(new BigDecimal("0.910"));
+        assertThat(rows.get(0).readModelJson()).contains("snapshotEndpointEvidence");
+    }
+
     private static void cleanAndMigrate() {
         Flyway flyway = Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
@@ -323,6 +396,20 @@ class DashboardSnapshotRepositoryIntegrationTest {
             String stateCode,
             String captureReason,
             String readModelJson) throws SQLException {
+        insertSnapshot(id, projectId, applicationId, generatedAt, stateCode, captureReason, readModelJson, null, null, null);
+    }
+
+    private static void insertSnapshot(
+            UUID id,
+            UUID projectId,
+            UUID applicationId,
+            String generatedAt,
+            String stateCode,
+            String captureReason,
+            String readModelJson,
+            String primaryRuleId,
+            String primaryEndpointKey,
+            BigDecimal maxConfidence) throws SQLException {
         OffsetDateTime generated = OffsetDateTime.parse(generatedAt);
         try (Connection connection = DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(),
@@ -335,9 +422,10 @@ class DashboardSnapshotRepositoryIntegrationTest {
                        current_window_start_utc, current_window_end_utc,
                        baseline_window_start_utc, baseline_window_end_utc,
                        last_accepted_ingest_at, last_observed_at,
-                       state_code, capture_reason, read_model_json, created_at
+                       state_code, capture_reason, primary_rule_id, primary_endpoint_key, max_confidence,
+                       read_model_json, created_at
                      )
-                     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)
+                     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)
                      """)) {
             statement.setObject(1, id);
             statement.setObject(2, projectId);
@@ -351,8 +439,11 @@ class DashboardSnapshotRepositoryIntegrationTest {
             statement.setObject(10, generated.minusSeconds(30));
             statement.setString(11, stateCode);
             statement.setString(12, captureReason);
-            statement.setString(13, readModelJson);
-            statement.setObject(14, generated);
+            statement.setString(13, primaryRuleId);
+            statement.setString(14, primaryEndpointKey);
+            statement.setBigDecimal(15, maxConfidence);
+            statement.setString(16, readModelJson);
+            statement.setObject(17, generated);
             statement.executeUpdate();
         }
     }

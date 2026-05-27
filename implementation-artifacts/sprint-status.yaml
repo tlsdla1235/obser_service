@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-05-27T15:38:11+0900
+# last_updated: 2026-05-27T23:15:00+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -46,10 +46,11 @@
 # - Story 5.8은 decomposition contract 기준으로 5-8-a writer/capture policy와 5-8-b marker/detail/recovery source로 나눈다.
 # - 5-8-dashboard-snapshot-persistence-and-marker-contract는 umbrella tracking key이며 독립 구현 story로 create하지 않는다.
 # - Snapshot marker와 bounded instance summary의 세부 shape는 Epic 5 Story 5.8 child stories에서 닫는다.
+# - Story 5.9는 pre-story contract decision 기준으로 5-9-a API/source/response skeleton과 5-9-b promotion/dedup/suppression/period folding으로 나눈다.
 # - Epic 4는 종료됐다. Story 4.0 -> 4.4와 bridge story 4.0.1/4.0.2 및 retrospective는 accepted bucket metric axis와 starter heartbeat control-plane axis 분리 기준으로 done이다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-05-27T15:38:11+0900
+last_updated: 2026-05-27T23:15:00+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -87,7 +88,7 @@ development_status:
   4-4-state-semantics-tests: done
   epic-4-retrospective: done
 
-  epic-5: in-progress
+  epic-5: done
   5-1-project-application-navigation-read-model: done
   5-2-application-dashboard-read-model-skeleton: done
   5-3-source-scoped-percentile-and-histogram-distribution-read-model: done
@@ -95,10 +96,11 @@ development_status:
   5-5-endpoint-priority-read-model: done
   5-6-instance-evidence-read-model: done
   5-7-instance-snapshot-trend-projection: done
-  5-8-dashboard-snapshot-persistence-and-marker-contract: backlog
-  5-8-a-dashboard-snapshot-writer-and-capture-policy: review
+  5-8-dashboard-snapshot-persistence-and-marker-contract: done
+  5-8-a-dashboard-snapshot-writer-and-capture-policy: done
   5-8-b-snapshot-marker-detail-recovery-source: done
-  5-9-operational-event-history-api: backlog
+  5-9-a-operational-event-history-api-skeleton-and-source-boundary: done
+  5-9-b-operational-event-promotion-suppression-and-period-folding: done
   epic-5-retrospective: optional
 
   epic-6: backlog

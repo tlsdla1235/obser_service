@@ -160,6 +160,41 @@ public class DashboardSnapshotRepository {
     }
 
     /**
+     * Operational event history skeleton이 사용할 stored snapshot source rows를 newest-first로 bounded 조회한다.
+     *
+     * <p>repository는 row metadata/helper columns/stored JSON만 운반하고 event type, severity, promotion, dedup,
+     * suppression, p95/p99를 계산하지 않는다.</p>
+     */
+    @Transactional(readOnly = true)
+    public List<DashboardSnapshotDetailRow> findOperationalHistoryRows(
+            UUID projectId,
+            UUID applicationId,
+            OffsetDateTime generatedAtSince,
+            OffsetDateTime generatedAtUntil,
+            int limit) {
+        UUID requiredProjectId = Objects.requireNonNull(projectId, "projectId must not be null");
+        UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
+        OffsetDateTime requiredGeneratedAtSince = Objects.requireNonNull(
+                generatedAtSince,
+                "generatedAtSince must not be null");
+        OffsetDateTime requiredGeneratedAtUntil = Objects.requireNonNull(
+                generatedAtUntil,
+                "generatedAtUntil must not be null");
+        if (requiredGeneratedAtUntil.isBefore(requiredGeneratedAtSince)) {
+            throw new IllegalArgumentException("generatedAtUntil must not be before generatedAtSince");
+        }
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit must be positive");
+        }
+        return jpaRepository.findOperationalHistoryRows(
+                requiredProjectId,
+                requiredApplicationId,
+                requiredGeneratedAtSince,
+                requiredGeneratedAtUntil,
+                PageRequest.of(0, limit));
+    }
+
+    /**
      * 같은 application의 strictly earlier snapshot 중 previous state source row를 하나 조회한다.
      */
     @Transactional(readOnly = true)
