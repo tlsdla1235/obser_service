@@ -27,6 +27,7 @@ import com.observation.portal.domain.dashboard.service.TriageSummaryService.Tria
 import com.observation.portal.domain.ingest.model.StarterHeartbeatTelemetryRecord;
 import com.observation.portal.domain.ingest.repository.StarterHeartbeatTelemetryRepository;
 import com.observation.portal.domain.instance.service.InstanceEvidenceReadModelService;
+import com.observation.portal.domain.snapshot.service.DashboardSnapshotFallbackCaptureService;
 import com.observation.portal.domain.state.model.DegradedHysteresisInput;
 import com.observation.portal.domain.state.model.LifecycleStateDecision;
 import com.observation.portal.domain.state.model.LifecycleStateCode;
@@ -41,6 +42,8 @@ import com.observation.portal.domain.state.model.StarterConnectionSummary;
 import com.observation.portal.domain.state.model.StarterHeartbeatStatus;
 import com.observation.portal.domain.state.service.LifecycleStateService;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -90,10 +93,12 @@ public class DashboardReadModelService {
     private final EndpointPriorityService endpointPriorityService;
     private final Clock clock;
     private final ObjectMapper objectMapper;
+    private final ObjectProvider<DashboardSnapshotFallbackCaptureService> fallbackCaptureServiceProvider;
 
     /**
      * dashboard read model 조립에 필요한 read-only repository와 state/time component를 주입한다.
      */
+    @Autowired
     public DashboardReadModelService(
             ApplicationRepository applicationRepository,
             ApplicationInstanceRepository applicationInstanceRepository,
@@ -105,7 +110,8 @@ public class DashboardReadModelService {
             TriageSummaryService triageSummaryService,
             EndpointPriorityService endpointPriorityService,
             Clock clock,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            ObjectProvider<DashboardSnapshotFallbackCaptureService> fallbackCaptureServiceProvider) {
         this.applicationRepository = Objects.requireNonNull(
                 applicationRepository,
                 "applicationRepository must not be null");
@@ -133,6 +139,39 @@ public class DashboardReadModelService {
                 "endpointPriorityService must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null").withZone(ZoneOffset.UTC);
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper must not be null");
+        this.fallbackCaptureServiceProvider = Objects.requireNonNull(
+                fallbackCaptureServiceProvider,
+                "fallbackCaptureServiceProvider must not be null");
+    }
+
+    /**
+     * focused unit test에서 fallback bean 없이 기존 dashboard orchestration만 검증할 때 사용하는 생성자다.
+     */
+    public DashboardReadModelService(
+            ApplicationRepository applicationRepository,
+            ApplicationInstanceRepository applicationInstanceRepository,
+            MetricBucketRepository metricBucketRepository,
+            StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository,
+            AcceptedBucketFreshnessEvaluator freshnessEvaluator,
+            TimeBucketWindowCalculator timeBucketWindowCalculator,
+            LifecycleStateService lifecycleStateService,
+            TriageSummaryService triageSummaryService,
+            EndpointPriorityService endpointPriorityService,
+            Clock clock,
+            ObjectMapper objectMapper) {
+        this(
+                applicationRepository,
+                applicationInstanceRepository,
+                metricBucketRepository,
+                heartbeatTelemetryRepository,
+                freshnessEvaluator,
+                timeBucketWindowCalculator,
+                lifecycleStateService,
+                triageSummaryService,
+                endpointPriorityService,
+                clock,
+                objectMapper,
+                new NoopFallbackCaptureServiceProvider());
     }
 
     /**
@@ -145,12 +184,48 @@ public class DashboardReadModelService {
         UUID requiredProjectId = Objects.requireNonNull(projectId, "projectId must not be null");
         UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
         return applicationRepository.findByIdAndProjectId(requiredApplicationId, requiredProjectId)
-                .map(this::buildDashboard);
+                .map(application -> {
+                    Instant queryAt = clock.instant();
+                    ApplicationDashboardReadModel readModel = buildDashboard(
+                            application,
+                            queryAt,
+                            floorToBucketBoundary(queryAt));
+                    DashboardSnapshotFallbackCaptureService fallbackCaptureService =
+                            fallbackCaptureServiceProvider.getIfAvailable();
+                    if (fallbackCaptureService != null) {
+                        fallbackCaptureService.captureIfNeeded(readModel, toUtcOffsetDateTime(queryAt));
+                    }
+                    return readModel;
+                });
     }
 
-    private ApplicationDashboardReadModel buildDashboard(ApplicationEntity application) {
-        Instant queryAt = clock.instant();
-        Instant evaluationAt = floorToBucketBoundary(queryAt);
+    /**
+     * scheduled snapshot capture가 target current window end를 고정해 dashboard read model을 생성하는 내부 경로다.
+     *
+     * <p>이 method는 query fallback capture를 호출하지 않아 scheduler/capture/writer recursion을 만들지 않는다.</p>
+     */
+    @Transactional(readOnly = true)
+    public Optional<ApplicationDashboardReadModel> getDashboardForSnapshot(
+            UUID projectId,
+            UUID applicationId,
+            OffsetDateTime currentWindowEndUtc) {
+        UUID requiredProjectId = Objects.requireNonNull(projectId, "projectId must not be null");
+        UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
+        OffsetDateTime requiredCurrentWindowEndUtc = Objects.requireNonNull(
+                currentWindowEndUtc,
+                "currentWindowEndUtc must not be null")
+                .withOffsetSameInstant(ZoneOffset.UTC);
+        return applicationRepository.findByIdAndProjectId(requiredApplicationId, requiredProjectId)
+                .map(application -> buildDashboard(
+                        application,
+                        requiredCurrentWindowEndUtc.toInstant(),
+                        requiredCurrentWindowEndUtc.toInstant()));
+    }
+
+    private ApplicationDashboardReadModel buildDashboard(
+            ApplicationEntity application,
+            Instant queryAt,
+            Instant evaluationAt) {
         DashboardTimeWindow dashboardWindow = timeBucketWindowCalculator.dashboardWindowEndingAt(evaluationAt);
         Optional<OffsetDateTime> latestBucketEndUtc = metricBucketRepository
                 .findLatestBucketEndUtcByApplicationIdAtOrBefore(application.id(), evaluationAt);
@@ -234,7 +309,7 @@ public class DashboardReadModelService {
                         latestBucketEndUtc);
 
         return new ApplicationDashboardReadModel(
-                toUtcOffsetDateTime(clock.instant()),
+                toUtcOffsetDateTime(queryAt),
                 application(application, latestBucketEndUtc, dashboardWindow),
                 state(stateDecision),
                 starterConnection(stateDecision.starterConnection()),
@@ -821,5 +896,29 @@ public class DashboardReadModelService {
 
     private static OffsetDateTime toUtcOffsetDateTime(Instant instant) {
         return OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
+    }
+
+    private static final class NoopFallbackCaptureServiceProvider
+            implements ObjectProvider<DashboardSnapshotFallbackCaptureService> {
+
+        @Override
+        public DashboardSnapshotFallbackCaptureService getObject(Object... args) {
+            return null;
+        }
+
+        @Override
+        public DashboardSnapshotFallbackCaptureService getIfAvailable() {
+            return null;
+        }
+
+        @Override
+        public DashboardSnapshotFallbackCaptureService getIfUnique() {
+            return null;
+        }
+
+        @Override
+        public DashboardSnapshotFallbackCaptureService getObject() {
+            return null;
+        }
     }
 }

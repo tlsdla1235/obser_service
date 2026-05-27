@@ -1,6 +1,8 @@
 package com.observation.portal.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,11 +16,13 @@ import org.springframework.context.annotation.Configuration;
 public class PortalJsonConfiguration {
 
     /**
-     * Spring Web/Jackson 자동 구성 bean이 없을 때 사용할 기본 ObjectMapper를 제공한다.
+     * Spring Web/Jackson 자동 구성 bean이 없을 때도 classpath의 Jackson module을 등록한 ObjectMapper를 제공한다.
      */
     @Bean
     @ConditionalOnMissingBean(ObjectMapper.class)
     public ObjectMapper objectMapper() {
-        return new ObjectMapper();
+        return new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 }
