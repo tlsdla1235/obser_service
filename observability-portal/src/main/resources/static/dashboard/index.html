@@ -28,10 +28,17 @@
           <div>
             <p class="eyebrow">Projects</p>
             <h2 id="projects-title">Scope 선택</h2>
+            <p id="projects-generated-at" class="generated-at" aria-live="polite">목록 기준 시각 대기 중</p>
           </div>
-          <button class="icon-button subtle" type="button" id="reload-projects" aria-label="Project 목록 새로고침">
-            <span aria-hidden="true">↻</span>
-          </button>
+          <div class="project-toolbar">
+            <label class="filter-field" for="project-filter">
+              <span>Project name filter</span>
+              <input id="project-filter" type="search" autocomplete="off" placeholder="Project 이름 필터" disabled>
+            </label>
+            <button class="icon-button subtle" type="button" id="reload-projects" aria-label="Project 목록 새로고침">
+              <span aria-hidden="true">↻</span>
+            </button>
+          </div>
         </div>
         <div id="project-list" class="project-list" aria-live="polite">
           <div class="skeleton-line"></div>
