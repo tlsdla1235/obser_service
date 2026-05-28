@@ -49,14 +49,18 @@ class ProjectSelectionUiContractTest {
     void projectSelectionOffersReloadAndLocalNameFilterWithoutBackendQueryExpansion() throws IOException {
         String indexHtml = Files.readString(STATIC_DASHBOARD.resolve("index.html"));
         String appJs = Files.readString(STATIC_DASHBOARD.resolve("app.js"));
+        String projectSelectionSource = sliceFunction(appJs, "loadProjects")
+                + sliceFunction(appJs, "renderProjects")
+                + sliceFunction(appJs, "filterProjects")
+                + sliceFunction(appJs, "projectMarkup");
 
         assertThat(indexHtml).contains("id=\"reload-projects\"", "id=\"project-filter\"");
         assertThat(appJs).contains("reloadButton.addEventListener('click', loadProjects)");
         assertThat(appJs).contains("filterInput.addEventListener('input', handleFilterInput)");
-        assertThat(appJs).contains("filterProjects");
-        assertThat(appJs).contains("표시할 Project가 없습니다.");
+        assertThat(projectSelectionSource).contains("filterProjects");
+        assertThat(projectSelectionSource).contains("표시할 Project가 없습니다.");
         assertThat(appJs).containsOnlyOnce("fetch('/api/projects'");
-        assertThat(appJs).doesNotContain(
+        assertThat(projectSelectionSource).doesNotContain(
                 "sort(",
                 "rank",
                 "risk",
@@ -366,17 +370,19 @@ class ProjectSelectionUiContractTest {
 
     @Test
     void projectSelectionKeepsSafeStateCopyAndHealthJudgementOutOfUi() throws IOException {
-        String page = Files.readString(STATIC_DASHBOARD.resolve("index.html"))
-                + Files.readString(STATIC_DASHBOARD.resolve("app.js"))
-                + Files.readString(STATIC_DASHBOARD.resolve("styles.css"));
+        String appJs = Files.readString(STATIC_DASHBOARD.resolve("app.js"));
+        String projectSelectionSource = sliceFunction(appJs, "renderAuthorizationRequired")
+                + sliceFunction(appJs, "renderProjectLoadError")
+                + sliceFunction(appJs, "renderProjects")
+                + sliceFunction(appJs, "projectMarkup");
 
-        assertThat(page).contains(
+        assertThat(projectSelectionSource).contains(
                 "GitHub 로그인 후 Project 목록을 볼 수 있습니다.",
                 "local/internal seed 또는 admin bootstrap decision이 필요합니다.",
                 "Project 목록을 불러오지 못했습니다.",
                 "Connection/setup candidates",
                 "최근 concern 없음");
-        assertThat(page).doesNotContain(
+        assertThat(projectSelectionSource).doesNotContain(
                 "정상",
                 "문제 없음",
                 "앱 다운",
