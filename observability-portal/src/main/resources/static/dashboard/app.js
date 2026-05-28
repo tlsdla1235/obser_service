@@ -90,6 +90,7 @@ async function loadProjects() {
     }
     loadedProjects = Array.isArray(data.projects) ? data.projects : [];
     loadedGeneratedAt = data.generatedAt;
+    reconcileSelectedProjectAfterProjectLoad();
     renderProjects();
   } catch (error) {
     if (!isLatestProjectRequest(requestId)) {
@@ -519,11 +520,54 @@ function hasValidApplicationItems(applications, projectId) {
   return applications.every(application => application
     && typeof application === 'object'
     && String(application.applicationId ?? '').trim().length > 0
+    && hasRequiredText(application.name)
+    && hasRequiredText(application.environment)
+    && isValidMetricData(application.metricData)
+    && isValidStarterConnection(application.starterConnection)
+    && isValidLifecycleBadge(application.lifecycleBadge)
+    && isValidTopConcern(application.topConcern)
     && isApplicationDashboardLink(
       application.links && application.links.dashboard,
       projectId,
       application.applicationId
     ));
+}
+
+function isValidMetricData(metricData) {
+  return Boolean(metricData
+    && typeof metricData === 'object'
+    && hasRequiredText(metricData.statusSource)
+    && hasRequiredText(metricData.freshnessLabel));
+}
+
+function isValidStarterConnection(starterConnection) {
+  return Boolean(starterConnection
+    && typeof starterConnection === 'object'
+    && hasRequiredText(starterConnection.statusSource)
+    && hasRequiredText(starterConnection.heartbeatStatus)
+    && hasRequiredText(starterConnection.freshnessLabel)
+    && hasRequiredText(starterConnection.connectionMeaning)
+    && hasRequiredText(starterConnection.stateImpact));
+}
+
+function isValidLifecycleBadge(lifecycleBadge) {
+  return Boolean(lifecycleBadge
+    && typeof lifecycleBadge === 'object'
+    && hasRequiredText(lifecycleBadge.source)
+    && hasRequiredText(lifecycleBadge.code)
+    && hasRequiredText(lifecycleBadge.label));
+}
+
+function isValidTopConcern(topConcern) {
+  return topConcern === null || Boolean(topConcern
+    && typeof topConcern === 'object'
+    && hasRequiredText(topConcern.source)
+    && hasRequiredText(topConcern.code)
+    && hasRequiredText(topConcern.label));
+}
+
+function hasRequiredText(value) {
+  return String(value ?? '').trim().length > 0;
 }
 
 function projectRequestHeaders() {
@@ -620,6 +664,20 @@ function handleApplicationFilterInput() {
     return;
   }
   renderApplications();
+}
+
+function reconcileSelectedProjectAfterProjectLoad() {
+  if (!selectedProjectContext) {
+    return;
+  }
+  const matchingProject = loadedProjects.find(project =>
+    String(project.projectId ?? '') === selectedProjectContext.projectId);
+  const freshApplicationsLink = matchingProject ? safeApplicationsLink(matchingProject) : null;
+  if (!matchingProject || freshApplicationsLink !== selectedProjectContext.applicationsLink) {
+    applicationRequestSequence += 1;
+    clearApplicationSnapshot({ resetFilter: true, resetSelection: true });
+    renderApplicationIdle();
+  }
 }
 
 function clearProjectSnapshot({ resetFilter = false } = {}) {

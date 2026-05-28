@@ -124,6 +124,7 @@ class ApplicationListUiContractTest {
                 const projectList = element('#project-list');
                 const applicationList = element('#application-list');
                 const applicationFilter = element('#application-filter');
+                const reloadProjects = element('#reload-projects');
                 const reloadApplications = element('#reload-applications');
                 const selectedProjectLabel = element('#selected-project-label');
 
@@ -258,6 +259,16 @@ class ApplicationListUiContractTest {
                   applicationFilter.listeners.input();
                   assert.match(applicationList.innerHTML, /표시할 Application이 없습니다/);
 
+                  reloadProjects.listeners.click();
+                  requests.shift().resolve(response(200, {
+                    generatedAt: '2026-05-28T01:12:03Z',
+                    projects: []
+                  }));
+                  await settle();
+                  assert.match(applicationList.innerHTML, /Project를 먼저 선택해 주세요/);
+                  assert.doesNotMatch(applicationList.innerHTML, /Orders API|app-1/);
+                  assert.strictEqual(reloadApplications.disabled, true);
+
                   clickApplications('project-1', 'Project One', 'https://example.invalid/api/projects/project-1/applications');
                   assert.strictEqual(requests.length, 0);
                   assert.match(applicationList.innerHTML, /Application List link를 확인할 수 없습니다/);
@@ -315,6 +326,19 @@ class ApplicationListUiContractTest {
 
                   clickApplications('project-1', 'Project One', '/api/projects/project-1/applications');
                   requests.shift().resolve(response(200, {
+                    generatedAt: '2026-05-28T01:12:07Z',
+                    project: { projectId: 'project-1', name: 'Project One' },
+                    applications: [application('valid-app', {
+                      name: 'Invalid Dashboard Link API',
+                      dashboardLink: '/api/projects/project-1/applications/other-app/dashboard'
+                    })]
+                  }));
+                  await settle();
+                  assert.match(applicationList.innerHTML, /Application 목록을 불러오지 못했습니다/);
+                  assert.doesNotMatch(applicationList.innerHTML, /Invalid Dashboard Link API|other-app\\/dashboard/);
+
+                  clickApplications('project-1', 'Project One', '/api/projects/project-1/applications');
+                  requests.shift().resolve(response(200, {
                     generatedAt: '2026-05-28T01:12:08Z',
                     project: { projectId: 'project-1', name: 'Project One' },
                     applications: [application('', {
@@ -325,6 +349,32 @@ class ApplicationListUiContractTest {
                   await settle();
                   assert.match(applicationList.innerHTML, /Application 목록을 불러오지 못했습니다/);
                   assert.doesNotMatch(applicationList.innerHTML, /Malformed API|project-2\\/applications\\/malformed\\/dashboard/);
+
+                  clickApplications('project-1', 'Project One', '/api/projects/project-1/applications');
+                  requests.shift().resolve(response(200, {
+                    generatedAt: '2026-05-28T01:12:09Z',
+                    project: { projectId: 'project-1', name: 'Project One' },
+                    applications: [application('bad-badge', {
+                      name: 'Malformed Badge API',
+                      lifecycleBadge: { source: 'server_light_navigation_read_model', code: 'unknown' }
+                    })]
+                  }));
+                  await settle();
+                  assert.match(applicationList.innerHTML, /Application 목록을 불러오지 못했습니다/);
+                  assert.doesNotMatch(applicationList.innerHTML, /Malformed Badge API|bad-badge/);
+
+                  clickApplications('project-1', 'Project One', '/api/projects/project-1/applications');
+                  requests.shift().resolve(response(200, {
+                    generatedAt: '2026-05-28T01:12:09Z',
+                    project: { projectId: 'project-1', name: 'Project One' },
+                    applications: [application('bad-concern', {
+                      name: 'Malformed Concern API',
+                      topConcern: { code: 'missing-source', label: 'Missing source' }
+                    })]
+                  }));
+                  await settle();
+                  assert.match(applicationList.innerHTML, /Application 목록을 불러오지 못했습니다/);
+                  assert.doesNotMatch(applicationList.innerHTML, /Malformed Concern API|bad-concern|Missing source/);
 
                   clickApplications('project-1', 'Project One', '/api/projects/project-1/applications');
                   requests.shift().resolve(response(200, {
