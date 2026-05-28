@@ -37,13 +37,18 @@ class CatalogSchemaMigrationIntegrationTest {
     void appliesMigrationsToCleanDatabase() throws SQLException {
         MigrateResult result = cleanAndMigrate();
 
-        assertThat(result.migrationsExecuted).isEqualTo(7);
+        assertThat(result.migrationsExecuted).isEqualTo(9);
         assertThat(tableExists("projects")).isTrue();
         assertThat(tableExists("applications")).isTrue();
         assertThat(tableExists("application_instances")).isTrue();
         assertThat(tableExists("accepted_metric_buckets")).isTrue();
         assertThat(tableExists("starter_heartbeat_telemetry")).isTrue();
         assertThat(tableExists("dashboard_snapshots")).isTrue();
+        assertThat(tableExists("accounts")).isTrue();
+        assertThat(tableExists("external_identities")).isTrue();
+        assertThat(tableExists("refresh_token_families")).isTrue();
+        assertThat(tableExists("refresh_tokens")).isTrue();
+        assertThat(tableExists("oauth_state_nonces")).isTrue();
         assertThat(tableExists("operational_events")).isFalse();
         assertThat(tableExists("endpoint_timeseries")).isFalse();
         assertThat(tableExists("raw_snapshots")).isFalse();
@@ -365,7 +370,7 @@ class CatalogSchemaMigrationIntegrationTest {
 
         MigrateResult result = migrateRemaining();
 
-        assertThat(result.migrationsExecuted).isEqualTo(1);
+        assertThat(result.migrationsExecuted).isEqualTo(3);
         assertThat(dashboardSnapshotCount(applicationId)).isEqualTo(1);
         assertThat(dashboardSnapshotExists(stateChangeId)).isTrue();
         assertThat(constraintExists(

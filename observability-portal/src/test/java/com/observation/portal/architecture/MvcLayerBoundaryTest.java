@@ -109,6 +109,38 @@ class MvcLayerBoundaryTest {
     }
 
     @Test
+    void accountFeatureUsesOnlyMvcPackageRoles() {
+        List<String> accountClassesOutsideMvcRoles = PORTAL_CLASSES.stream()
+                .filter(javaClass -> javaClass.getPackageName()
+                        .startsWith("com.observation.portal.domain.account."))
+                .filter(javaClass -> !javaClass.getSimpleName().equals("package-info"))
+                .filter(MvcLayerBoundaryTest::isOutsideAccountMvcRolePackage)
+                .map(JavaClass::getName)
+                .sorted()
+                .toList();
+
+        assertThat(accountClassesOutsideMvcRoles)
+                .as("Story 6.1 account code must stay in controller/dto/model/repository/service MVC packages")
+                .isEmpty();
+    }
+
+    @Test
+    void accountSchemaDoesNotOpenUnsupportedSignupSurfaces() throws IOException {
+        try (Stream<Path> migrationFiles = Files.walk(Path.of("src/main/resources/db/migration"))) {
+            List<String> forbiddenMigrationSnippets = migrationFiles
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().endsWith(".sql"))
+                    .flatMap(MvcLayerBoundaryTest::forbiddenAccountMigrationSnippets)
+                    .sorted()
+                    .toList();
+
+            assertThat(forbiddenMigrationSnippets)
+                    .as("Story 6.1 schema must not add password, magic link, non-GitHub provider, anonymous, or Redis surfaces")
+                    .isEmpty();
+        }
+    }
+
+    @Test
     void story58aNonGoalSurfacesAreNotPresent() {
         List<String> forbiddenClasses = PORTAL_CLASSES.stream()
                 .map(JavaClass::getName)
@@ -233,6 +265,15 @@ class MvcLayerBoundaryTest {
                 || packageName.startsWith("com.observation.portal.domain.state.");
     }
 
+    private static boolean isOutsideAccountMvcRolePackage(JavaClass javaClass) {
+        String packageName = javaClass.getPackageName();
+        return !hasPackageSegment(packageName, "controller")
+                && !hasPackageSegment(packageName, "dto")
+                && !hasPackageSegment(packageName, "model")
+                && !hasPackageSegment(packageName, "repository")
+                && !hasPackageSegment(packageName, "service");
+    }
+
     private static boolean matchesStory58aForbiddenSurface(String className) {
         String normalized = className.toLowerCase();
         return normalized.contains("rawsnapshot")
@@ -274,6 +315,26 @@ class MvcLayerBoundaryTest {
         try {
             String content = Files.readString(path).toLowerCase();
             return Stream.of("operational_events", "endpoint_timeseries", "materialized view", "outbox", "redis")
+                    .filter(content::contains)
+                    .map(snippet -> path + ":" + snippet);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Cannot read migration file: " + path, exception);
+        }
+    }
+
+    private static Stream<String> forbiddenAccountMigrationSnippets(Path path) {
+        try {
+            String content = Files.readString(path).toLowerCase();
+            return Stream.of(
+                            "password_hash",
+                            "password_reset",
+                            "magic_link",
+                            "email_verification",
+                            "anonymous_user",
+                            "google",
+                            "kakao",
+                            "naver",
+                            "redis")
                     .filter(content::contains)
                     .map(snippet -> path + ":" + snippet);
         } catch (IOException exception) {
