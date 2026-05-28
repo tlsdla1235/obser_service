@@ -3,12 +3,14 @@ package com.observation.portal.domain.dashboard;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -129,6 +131,194 @@ class ProjectSelectionUiContractTest {
                 "clearProjectSnapshot({ resetFilter: true });",
                 "projectRequestSequence += 1;",
                 "renderAuthorizationRequired();");
+    }
+
+    @Test
+    void projectSelectionRuntimeExecutesDomStateAndRequestRaceContracts() throws Exception {
+        runNodeDashboardContract("""
+                const fs = require('fs');
+                const vm = require('vm');
+                const assert = require('assert');
+
+                const source = fs.readFileSync('src/main/resources/static/dashboard/app.js', 'utf8');
+                const elements = new Map();
+                const requests = [];
+
+                function element(selector) {
+                  if (!elements.has(selector)) {
+                    elements.set(selector, {
+                      selector,
+                      innerHTML: '',
+                      textContent: '',
+                      disabled: false,
+                      value: '',
+                      dataset: { authUrl: '/api/auth/github/authorize' },
+                      listeners: {},
+                      addEventListener(type, listener) {
+                        this.listeners[type] = listener;
+                      }
+                    });
+                  }
+                  return elements.get(selector);
+                }
+
+                const context = {
+                  document: { querySelector: element },
+                  window: {
+                    location: {
+                      assigned: null,
+                      assign(url) {
+                        this.assigned = url;
+                      }
+                    }
+                  },
+                  fetch(url, init = {}) {
+                    return new Promise((resolve, reject) => requests.push({ url, init, resolve, reject }));
+                  },
+                  Intl,
+                  Date,
+                  Number,
+                  String,
+                  Array,
+                  Object,
+                  Error,
+                  decodeURIComponent,
+                  console
+                };
+                context.window.window = context.window;
+                vm.runInNewContext(source, context);
+
+                const auth = context.window.observationPortalAuth;
+                const projectList = element('#project-list');
+                const filterInput = element('#project-filter');
+                const reloadButton = element('#reload-projects');
+
+                function response(status, body) {
+                  return {
+                    status,
+                    ok: status >= 200 && status < 300,
+                    json: async () => body
+                  };
+                }
+
+                async function settle() {
+                  await new Promise(resolve => setImmediate(resolve));
+                  await new Promise(resolve => setImmediate(resolve));
+                }
+
+                function project(id, name, applicationsLink, overrides = {}) {
+                  return {
+                    projectId: id,
+                    name,
+                    applicationCount: overrides.applicationCount ?? 1,
+                    setupConnectionIssueCount: overrides.setupConnectionIssueCount ?? 0,
+                    recentConcern: overrides.recentConcern ?? null,
+                    links: { applications: applicationsLink }
+                  };
+                }
+
+                (async () => {
+                  assert.match(projectList.innerHTML, /GitHub 로그인 후 Project 목록을 볼 수 있습니다/);
+                  assert.strictEqual(filterInput.disabled, true);
+                  assert.strictEqual(requests.length, 0);
+
+                  auth.setAccessToken('  token-a  ');
+                  assert.strictEqual(requests.length, 1);
+                  assert.strictEqual(requests[0].url, '/api/projects');
+                  assert.strictEqual(requests[0].init.headers.Authorization, 'Bearer token-a');
+                  assert.match(projectList.innerHTML, /Project 목록 로딩 중/);
+                  assert.strictEqual(filterInput.disabled, true);
+                  filterInput.value = 'anything';
+                  filterInput.listeners.input();
+                  assert.match(projectList.innerHTML, /Project 목록 로딩 중/);
+                  filterInput.value = '';
+
+                  requests.shift().resolve(response(200, {
+                    generatedAt: '2026-05-28T01:00:00Z',
+                    projects: [
+                      project(
+                        'project <1>',
+                        '<img src=x onerror=alert(1)>',
+                        '/api/projects/project%20%3C1%3E/applications',
+                        {
+                          applicationCount: '<b>2</b>',
+                          setupConnectionIssueCount: 3,
+                          recentConcern: { label: '<script>alert(1)</script>' }
+                        }
+                      )
+                    ]
+                  }));
+                  await settle();
+                  assert.strictEqual(filterInput.disabled, false);
+                  assert.match(projectList.innerHTML, /&lt;img src=x onerror=alert\\(1\\)&gt;/);
+                  assert.doesNotMatch(projectList.innerHTML, /<img src=x/);
+                  assert.match(projectList.innerHTML, /&lt;script&gt;alert\\(1\\)&lt;\\/script&gt;/);
+                  assert.match(projectList.innerHTML, /disabled aria-disabled="true"/);
+                  assert.match(projectList.innerHTML, /data-action-state="pending-application-list"/);
+                  assert.match(projectList.innerHTML, /data-applications-link="\\/api\\/projects\\/project%20%3C1%3E\\/applications"/);
+                  assert.doesNotMatch(projectList.innerHTML, /href=/);
+
+                  filterInput.value = 'no-match';
+                  filterInput.listeners.input();
+                  assert.match(projectList.innerHTML, /표시할 Project가 없습니다/);
+                  assert.strictEqual(filterInput.disabled, false);
+
+                  auth.setAccessToken('token-b');
+                  const invalidLinkRequest = requests.shift();
+                  invalidLinkRequest.resolve(response(200, {
+                    generatedAt: '2026-05-28T01:01:00Z',
+                    projects: [project('project-1', 'Project One', '/api/projects/project-2/applications')]
+                  }));
+                  await settle();
+                  assert.match(projectList.innerHTML, /data-action-state="missing-applications-link"/);
+                  assert.match(projectList.innerHTML, /data-applications-link=""/);
+
+                  auth.setAccessToken('race-old');
+                  const oldRequest = requests.shift();
+                  auth.setAccessToken('race-new');
+                  const latestRequest = requests.shift();
+                  latestRequest.resolve(response(200, {
+                    generatedAt: '2026-05-28T01:02:00Z',
+                    projects: [project('new', 'New Project', '/api/projects/new/applications')]
+                  }));
+                  await settle();
+                  assert.match(projectList.innerHTML, /New Project/);
+                  oldRequest.resolve(response(200, {
+                    generatedAt: '2026-05-28T01:03:00Z',
+                    projects: [project('old', 'Old Project', '/api/projects/old/applications')]
+                  }));
+                  await settle();
+                  assert.match(projectList.innerHTML, /New Project/);
+                  assert.doesNotMatch(projectList.innerHTML, /Old Project/);
+
+                  auth.setAccessToken('clear-me');
+                  const clearRequest = requests.shift();
+                  auth.clearAccessToken();
+                  assert.match(projectList.innerHTML, /GitHub 로그인 후 Project 목록을 볼 수 있습니다/);
+                  assert.strictEqual(filterInput.disabled, true);
+                  clearRequest.resolve(response(200, {
+                    generatedAt: '2026-05-28T01:04:00Z',
+                    projects: [project('stale', 'Stale Project', '/api/projects/stale/applications')]
+                  }));
+                  await settle();
+                  assert.match(projectList.innerHTML, /GitHub 로그인 후 Project 목록을 볼 수 있습니다/);
+                  assert.doesNotMatch(projectList.innerHTML, /Stale Project/);
+
+                  auth.setAccessToken('will-401');
+                  const unauthorizedRequest = requests.shift();
+                  unauthorizedRequest.resolve(response(401, {}));
+                  await settle();
+                  assert.match(projectList.innerHTML, /GitHub 로그인 후 Project 목록을 볼 수 있습니다/);
+                  assert.strictEqual(filterInput.disabled, true);
+                  const requestCountBeforeReload = requests.length;
+                  reloadButton.listeners.click();
+                  await settle();
+                  assert.strictEqual(requests.length, requestCountBeforeReload);
+                })().catch(error => {
+                  console.error(error && error.stack ? error.stack : error);
+                  process.exit(1);
+                });
+                """);
     }
 
     @Test
@@ -280,5 +470,29 @@ class ProjectSelectionUiContractTest {
 
     private static String decodeURIComponentLike(String value) {
         return URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * static dashboard script를 실제 Node VM에서 실행해 문자열 탐색으로는 놓칠 수 있는 DOM 상태 전이를 검증한다.
+     * Gradle 테스트 작업의 현재 디렉터리는 portal module root이므로 runtime asset을 그대로 읽어 실행한다.
+     */
+    private static void runNodeDashboardContract(String script) throws IOException, InterruptedException {
+        Process process = new ProcessBuilder("node", "-")
+                .redirectErrorStream(true)
+                .start();
+        try (OutputStreamWriter writer = new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8)) {
+            writer.write(script);
+        }
+        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        boolean finished = process.waitFor(10, TimeUnit.SECONDS);
+        if (!finished) {
+            process.destroyForcibly();
+        }
+        assertThat(finished)
+                .as("Node contract script timed out. Output:%n%s", output)
+                .isTrue();
+        assertThat(process.exitValue())
+                .as("Node contract script failed. Output:%n%s", output)
+                .isZero();
     }
 }
