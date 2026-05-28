@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Observation Portal</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="topbar" aria-label="Account entry">
+      <div>
+        <p class="eyebrow">Observation Portal</p>
+        <h1>Project Entry</h1>
+      </div>
+      <div class="auth-actions">
+        <button class="icon-button primary" type="button" id="github-login" data-auth-url="/api/auth/github/authorize">
+          <span aria-hidden="true" class="button-icon">GH</span>
+          <span>GitHub로 계속</span>
+        </button>
+        <p id="auth-status" class="auth-status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section class="workspace-grid" aria-label="Project workspace">
+      <section class="panel project-panel" aria-labelledby="projects-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Projects</p>
+            <h2 id="projects-title">Scope 선택</h2>
+          </div>
+          <button class="icon-button subtle" type="button" id="reload-projects" aria-label="Project 목록 새로고침">
+            <span aria-hidden="true">↻</span>
+          </button>
+        </div>
+        <div id="project-list" class="project-list" aria-live="polite">
+          <div class="skeleton-line"></div>
+          <div class="skeleton-line short"></div>
+        </div>
+      </section>
+
+      <aside class="panel setup-panel" aria-labelledby="setup-title">
+        <p class="eyebrow">Setup Guide</p>
+        <h2 id="setup-title">Starter 연결</h2>
+        <ol class="setup-steps">
+          <li>
+            <span class="step-index">1</span>
+            <div>
+              <h3>Dependency</h3>
+              <code>com.sst:observability-spring-boot-starter:0.1.0-SNAPSHOT</code>
+            </div>
+          </li>
+          <li>
+            <span class="step-index">2</span>
+            <div>
+              <h3>Portal base URL</h3>
+              <code>observation.heartbeat.portal-base-url=https://portal.example.internal</code>
+            </div>
+          </li>
+          <li>
+            <span class="step-index">3</span>
+            <div>
+              <h3>Project key</h3>
+              <code>observation.heartbeat.project-key=&lt;issued-project-key&gt;</code>
+            </div>
+          </li>
+          <li>
+            <span class="step-index">4</span>
+            <div>
+              <h3>Environment</h3>
+              <code>observation.metric-flush.environment=local</code>
+            </div>
+          </li>
+        </ol>
+      </aside>
+    </section>
+  </main>
+  <script src="./app.js"></script>
+</body>
+</html>
