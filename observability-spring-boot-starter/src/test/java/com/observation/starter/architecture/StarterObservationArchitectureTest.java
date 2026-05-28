@@ -130,9 +130,10 @@ class StarterObservationArchitectureTest {
         noClasses()
                 .that().doNotHaveSimpleName("MetricBucketFlushWorker")
                 .and().doNotHaveSimpleName("MetricDrainAutoConfiguration")
+                .and().doNotHaveSimpleName("JdkPortalMetricBucketClient")
                 .should().dependOnClassesThat()
                 .haveFullyQualifiedName("com.observation.starter.client.PortalMetricBucketClient")
-                .because("portal client invocation stays behind the worker; auto-configuration may wire the bean")
+                .because("portal client invocation stays behind the worker; auto-configuration and the client implementation may wire the bean")
                 .allowEmptyShould(true)
                 .check(STARTER_CLASSES);
     }

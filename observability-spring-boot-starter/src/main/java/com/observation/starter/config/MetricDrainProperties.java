@@ -141,14 +141,14 @@ public class MetricDrainProperties {
     }
 
     /**
-     * 실제 portal flush worker가 뜰 때 generic local default identity가 전송되지 않도록 막는다.
+     * 실제 portal flush worker가 뜰 때 setup guide 핵심 설정인 environment가 기본값으로 남지 않도록 막는다.
+     *
+     * <p>portal project 인증은 heartbeat project key header로 수행한다. project-id/application/instance는
+     * idempotency key와 payload identity에 쓰이는 local metadata라 setup guide 최소 속성으로도 context가 떠야 한다.</p>
      */
     public void validatePortalFlushIdentity(Environment springEnvironment) {
         IngestEnvelopeIdentity identity = ingestEnvelopeIdentity(springEnvironment);
-        rejectGenericDefault(identity.projectId(), DEFAULT_PROJECT_ID, PREFIX + ".project-id");
-        rejectGenericDefault(identity.applicationName(), DEFAULT_APPLICATION_NAME, PREFIX + ".application-name");
         rejectGenericDefault(identity.environment(), DEFAULT_ENVIRONMENT, PREFIX + ".environment");
-        rejectGenericDefault(identity.instance(), DEFAULT_INSTANCE, PREFIX + ".instance");
     }
 
     private String resolvedApplicationName(Environment springEnvironment) {

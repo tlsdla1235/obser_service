@@ -12,6 +12,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-autoconfigure'
     implementation 'org.slf4j:slf4j-api'
     implementation 'com.fasterxml.jackson.core:jackson-databind'
+    compileOnly 'jakarta.servlet:jakarta.servlet-api'
 
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
     testImplementation 'com.fasterxml.jackson.core:jackson-databind'

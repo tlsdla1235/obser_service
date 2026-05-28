@@ -1,16 +1,21 @@
 package com.observation.starter.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.observation.starter.client.JdkPortalMetricBucketClient;
 import com.observation.starter.client.PortalMetricBucketClient;
 import com.observation.starter.queue.BoundedMetricQueue;
 import com.observation.starter.service.IngestEnvelopeBuilderService;
 import com.observation.starter.service.LowCardinalityHttpObservationGuard;
 import com.observation.starter.service.MetricBucketFlushWorker;
 import com.observation.starter.service.MetricBucketRollupService;
+import com.observation.starter.service.ObservationSampleCollector;
 import com.observation.starter.service.StarterMetricIngestService;
 import com.observation.starter.spring.StarterMetricDrainScheduler;
+import com.observation.starter.spring.observation.MicrometerHttpServerObservationBinder;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
@@ -35,7 +40,7 @@ import java.time.Instant;
             project-id: my-project
 
  */
-@EnableConfigurationProperties(MetricDrainProperties.class)
+@EnableConfigurationProperties({MetricDrainProperties.class, HeartbeatProperties.class})
 @EnableScheduling
 public class MetricDrainAutoConfiguration {
 
@@ -69,6 +74,25 @@ public class MetricDrainAutoConfiguration {
     }
 
     /**
+     * setup guide의 portal base URL/project key 설정만으로 bucket ingest HTTP client를 등록한다.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = HeartbeatProperties.PREFIX, name = {"portal-base-url", "project-key"})
+    public PortalMetricBucketClient portalMetricBucketClient(HeartbeatProperties properties) {
+        if (!properties.hasPortalConnectionSettings()) {
+            throw new IllegalStateException(
+                    HeartbeatProperties.PREFIX + ".portal-base-url and "
+                            + HeartbeatProperties.PREFIX + ".project-key must be configured");
+        }
+        return new JdkPortalMetricBucketClient(
+                JdkPortalMetricBucketClient.bucketIngestUri(properties.getPortalBaseUrl()),
+                properties.getProjectKey(),
+                properties.timeout(),
+                new ObjectMapper());
+    }
+
+    /**
      * 포털 client가 제공된 runtime에서 queue -> envelope builder -> client flush 경계를 자동으로 닫는다.
      *
      * <p>worker가 실제 전송 경로를 열기 직전에 generic local default identity가 남아 있지 않은지 검증한다.</p>
@@ -97,6 +121,17 @@ public class MetricDrainAutoConfiguration {
             MetricBucketRollupService rollupService,
             BoundedMetricQueue flushQueue) {
         return new StarterMetricIngestService(httpObservationGuard, rollupService, flushQueue, Instant::now);
+    }
+
+    /**
+     * host runtime의 ObservationHandler 목록에 HTTP server observation collector를 연결한다.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnBean(ObservationSampleCollector.class)
+    public MicrometerHttpServerObservationBinder micrometerHttpServerObservationBinder(
+            ObservationSampleCollector collector) {
+        return new MicrometerHttpServerObservationBinder(collector);
     }
 
     /**

@@ -1,0 +1,22 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'starter-to-snapshot-smoke'
+
+includeBuild('../..') {
+    dependencySubstitution {
+        substitute module('com.sst:observability-spring-boot-starter') using project(':observability-spring-boot-starter')
+        substitute module('com.sst:observability-portal') using project(':observability-portal')
+    }
+}

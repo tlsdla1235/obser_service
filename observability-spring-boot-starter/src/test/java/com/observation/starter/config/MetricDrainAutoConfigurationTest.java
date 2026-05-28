@@ -1,5 +1,6 @@
 package com.observation.starter.config;
 
+import com.observation.starter.client.JdkPortalMetricBucketClient;
 import com.observation.starter.client.PortalMetricBucketClient;
 import com.observation.starter.model.ingest.IngestEnvelopeCandidate;
 import com.observation.starter.model.metric.AppMetricRollup;
@@ -14,6 +15,8 @@ import com.observation.starter.service.MetricBucketRollupService;
 import com.observation.starter.service.ObservationSampleCollector;
 import com.observation.starter.service.StarterMetricIngestService;
 import com.observation.starter.spring.StarterMetricDrainScheduler;
+import com.observation.starter.spring.observation.MicrometerHttpServerObservationBinder;
+import io.micrometer.observation.ObservationHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
@@ -91,6 +94,26 @@ class MetricDrainAutoConfigurationTest {
     }
 
     @Test
+    void setupGuidePropertiesCreatePortalClientAndObservationHandlerWithoutCustomBeans() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("test", Map.of(
+                    "observation.heartbeat.portal-base-url", "http://127.0.0.1:1",
+                    "observation.heartbeat.project-key", "issued-project-key",
+                    "observation.metric-flush.environment", "preflight")));
+            context.register(RouteAttributionAutoConfiguration.class, MetricDrainAutoConfiguration.class);
+            context.refresh();
+
+            assertInstanceOf(JdkPortalMetricBucketClient.class, context.getBean(PortalMetricBucketClient.class));
+            assertInstanceOf(MetricBucketFlushWorker.class, context.getBean(MetricBucketFlushWorker.class));
+            assertInstanceOf(
+                    MicrometerHttpServerObservationBinder.class,
+                    context.getBean(MicrometerHttpServerObservationBinder.class));
+            assertTrue(context.getBeansOfType(ObservationHandler.class).values().stream()
+                    .anyMatch(MicrometerHttpServerObservationBinder.class::isInstance));
+        }
+    }
+
+    @Test
     void autoConfiguredWorkerFlushesQueuedBucketToPortalClientWhenClientBeanExists() throws Exception {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("test", explicitIdentity()));
@@ -114,13 +137,13 @@ class MetricDrainAutoConfigurationTest {
     }
 
     @Test
-    void portalClientWithoutExplicitFlushIdentityFailsContextBeforeWorkerCanSendDefaults() {
+    void portalClientWithoutEnvironmentFailsContextBeforeWorkerCanSendDefaultEnvironment() {
         AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
         context.register(FakePortalClientConfiguration.class, MetricDrainAutoConfiguration.class);
 
         RuntimeException exception = assertThrows(RuntimeException.class, context::refresh);
 
-        assertTrue(rootCauseMessage(exception).contains("observation.metric-flush.project-id"));
+        assertTrue(rootCauseMessage(exception).contains("observation.metric-flush.environment"));
         context.close();
     }
 

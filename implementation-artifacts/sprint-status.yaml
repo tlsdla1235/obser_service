@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-05-28T11:50:01+0900
+# last_updated: 2026-05-28T14:04:43+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -42,6 +42,7 @@
 # - accepted bucket은 application metric freshness/state/read-model source-of-truth다.
 # - 최근 heartbeat와 없음/오래된 accepted bucket 조합은 no recent traffic/waiting for traffic/metric data idle 계열로 표현하고 host application down으로 단정하지 않는다.
 # - Epic 5/6 dashboard alignment 2026-05-25: Application Dashboard는 primary first-screen이며, Epic 5는 server-computed read model/API, Epic 6은 project -> application -> dashboard -> instance evidence -> instance trend -> snapshot/history UI/demo hardening 흐름을 닫는다.
+# - Story 6.0은 Story 6.1 완료 이후 뒤늦게 추가된 일회성 starter-to-snapshot preflight integration smoke다. Epic 6 UI/demo 작업 전 setup guide 실제 연결을 한 번 확인하기 위한 opt-in 검증이며, 이후 모든 story마다 반복해야 하는 regression suite 요구사항이 아니다.
 # - Story 5.8은 decomposition contract 기준으로 5-8-a writer/capture policy와 5-8-b marker/detail/recovery source로 나눈다.
 # - 5-8-dashboard-snapshot-persistence-and-marker-contract는 umbrella tracking key이며 독립 구현 story로 create하지 않는다.
 # - Snapshot marker와 bounded instance summary의 세부 shape는 Epic 5 Story 5.8 child stories에서 닫는다.
@@ -49,7 +50,7 @@
 # - Epic 4는 종료됐다. Story 4.0 -> 4.4와 bridge story 4.0.1/4.0.2 및 retrospective는 accepted bucket metric axis와 starter heartbeat control-plane axis 분리 기준으로 done이다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-05-28T11:50:01+0900
+last_updated: 2026-05-28T14:04:43+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -103,6 +104,7 @@ development_status:
   epic-5-retrospective: done
 
   epic-6: in-progress
+  6-0-starter-to-snapshot-preflight-integration-smoke: done
   6-1-account-project-entry-and-setup-guide: done
   6-2-project-selection-ui: backlog
   6-3-application-list-ui: backlog
