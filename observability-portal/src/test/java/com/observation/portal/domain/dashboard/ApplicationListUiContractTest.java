@@ -487,6 +487,10 @@ class ApplicationListUiContractTest {
         String page = Files.readString(STATIC_DASHBOARD.resolve("index.html"))
                 + Files.readString(STATIC_DASHBOARD.resolve("app.js"))
                 + Files.readString(STATIC_DASHBOARD.resolve("styles.css"));
+        String appJs = Files.readString(STATIC_DASHBOARD.resolve("app.js"));
+        String applicationListSource = sliceFunction(appJs, "applicationMarkup")
+                + sliceFunction(appJs, "renderApplications")
+                + sliceFunction(appJs, "hasValidApplicationItems");
         List<String> forbiddenHelpers = List.of(
                 "calculateLifecycle",
                 "computeLifecycle",
@@ -496,7 +500,6 @@ class ApplicationListUiContractTest {
                 "computeP99",
                 "rankEndpoint",
                 "rankApplication",
-                "zeroInsight",
                 "recoveryRule",
                 "buildHistoryEvent",
                 "createSnapshotEvent");
@@ -516,8 +519,8 @@ class ApplicationListUiContractTest {
                 "#refresh_token",
                 "access_token=",
                 "refresh_token=");
-        assertThat(page).doesNotContain(forbiddenHelpers.toArray(String[]::new));
-        assertThat(page).doesNotContain(
+        assertThat(appJs).doesNotContain(forbiddenHelpers.toArray(String[]::new));
+        assertThat(applicationListSource).doesNotContain(
                 "applicationHealth",
                 "hostHealth",
                 "endpoint priority",

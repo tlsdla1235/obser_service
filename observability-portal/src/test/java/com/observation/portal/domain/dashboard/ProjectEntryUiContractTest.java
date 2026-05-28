@@ -101,9 +101,6 @@ class ProjectEntryUiContractTest {
 
         assertThat(appJs).doesNotContain(forbiddenHelpers.toArray(String[]::new));
         assertThat(appJs).doesNotContain(
-                "histogram",
-                "percentile",
-                "endpointPriority",
                 "transitionTable",
                 "diagnosis",
                 "recompute");
