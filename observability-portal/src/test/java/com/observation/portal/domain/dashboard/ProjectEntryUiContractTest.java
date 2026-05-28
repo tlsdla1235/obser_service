@@ -100,6 +100,13 @@ class ProjectEntryUiContractTest {
                 "createSnapshotEvent");
 
         assertThat(appJs).doesNotContain(forbiddenHelpers.toArray(String[]::new));
-        assertThat(appJs).doesNotContain("histogram", "percentile", "priority", "lifecycle");
+        assertThat(appJs).doesNotContain(
+                "histogram",
+                "percentile",
+                "endpointPriority",
+                "transitionTable",
+                "diagnosis",
+                "recompute");
+        assertThat(appJs).contains("lifecycleBadge.source", "lifecycleBadge.code", "lifecycleBadge.label");
     }
 }

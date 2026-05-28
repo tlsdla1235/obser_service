@@ -23,28 +23,54 @@
     </section>
 
     <section class="workspace-grid" aria-label="Project workspace">
-      <section class="panel project-panel" aria-labelledby="projects-title">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Projects</p>
-            <h2 id="projects-title">Scope 선택</h2>
-            <p id="projects-generated-at" class="generated-at" aria-live="polite">목록 기준 시각 대기 중</p>
+      <div class="main-panels">
+        <section class="panel project-panel" aria-labelledby="projects-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Projects</p>
+              <h2 id="projects-title">Scope 선택</h2>
+              <p id="projects-generated-at" class="generated-at" aria-live="polite">목록 기준 시각 대기 중</p>
+            </div>
+            <div class="project-toolbar">
+              <label class="filter-field" for="project-filter">
+                <span>Project name filter</span>
+                <input id="project-filter" type="search" autocomplete="off" placeholder="Project 이름 필터" disabled>
+              </label>
+              <button class="icon-button subtle" type="button" id="reload-projects" aria-label="Project 목록 새로고침">
+                <span aria-hidden="true">↻</span>
+              </button>
+            </div>
           </div>
-          <div class="project-toolbar">
-            <label class="filter-field" for="project-filter">
-              <span>Project name filter</span>
-              <input id="project-filter" type="search" autocomplete="off" placeholder="Project 이름 필터" disabled>
-            </label>
-            <button class="icon-button subtle" type="button" id="reload-projects" aria-label="Project 목록 새로고침">
-              <span aria-hidden="true">↻</span>
-            </button>
+          <div id="project-list" class="project-list" aria-live="polite">
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line short"></div>
           </div>
-        </div>
-        <div id="project-list" class="project-list" aria-live="polite">
-          <div class="skeleton-line"></div>
-          <div class="skeleton-line short"></div>
-        </div>
-      </section>
+        </section>
+
+        <section class="panel application-panel" aria-labelledby="applications-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Applications</p>
+              <h2 id="applications-title">Application 목록</h2>
+              <p id="selected-project-label" class="generated-at" aria-live="polite">로그인이 필요합니다</p>
+              <p id="applications-generated-at" class="generated-at" aria-live="polite">Application 목록 기준 시각 대기 중</p>
+            </div>
+            <div class="project-toolbar">
+              <label class="filter-field" for="application-filter">
+                <span>Name or environment filter</span>
+                <input id="application-filter" type="search" autocomplete="off" placeholder="Application 필터" disabled>
+              </label>
+              <button class="icon-button subtle" type="button" id="reload-applications" aria-label="Application 목록 새로고침" disabled>
+                <span aria-hidden="true">↻</span>
+              </button>
+            </div>
+          </div>
+          <div id="application-list" class="application-list" aria-live="polite">
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line short"></div>
+          </div>
+        </section>
+      </div>
 
       <aside class="panel setup-panel" aria-labelledby="setup-title">
         <p class="eyebrow">Setup Guide</p>

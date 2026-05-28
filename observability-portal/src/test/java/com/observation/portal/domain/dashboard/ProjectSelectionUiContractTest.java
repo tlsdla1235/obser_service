@@ -67,24 +67,22 @@ class ProjectSelectionUiContractTest {
     @Test
     void projectSelectionUsesApplicationsLinkOnlyForPrimaryNavigation() throws IOException {
         String appJs = Files.readString(STATIC_DASHBOARD.resolve("app.js"));
-        String page = Files.readString(STATIC_DASHBOARD.resolve("index.html")) + appJs;
+        String projectMarkup = sliceFunction(appJs, "projectMarkup");
 
-        assertThat(appJs).contains("safeApplicationsLink(project)");
+        assertThat(projectMarkup).contains("safeApplicationsLink(project)");
         assertThat(appJs).contains("isProjectApplicationsLink");
         assertThat(appJs).contains("api\\/projects");
         assertThat(appJs).contains("\\/applications");
         assertThat(appJs).contains("links.applications");
-        assertThat(appJs).contains("data-applications-link=\"${escapeAttribute(applicationsLink ?? '')}\"");
-        assertThat(appJs).contains("disabled aria-disabled=\"true\"");
-        assertThat(appJs).contains("pending-application-list");
+        assertThat(projectMarkup).contains("data-applications-link=\"${escapeAttribute(exposedApplicationsLink)}\"");
+        assertThat(projectMarkup).contains("ready-application-list");
         assertThat(appJs).contains("return isProjectApplicationsLink(applicationsLink, project.projectId) ? applicationsLink : null;");
         assertThat(appJs).contains("decodeURIComponent(match[1]) === normalizedProjectId");
-        assertThat(appJs).doesNotContain(
+        assertThat(projectMarkup).doesNotContain(
                 "<a class=\"link-button\"",
                 "href=\"${escapeAttribute(applicationsLink)}\"",
                 "location.href = applicationsLink",
-                "encodeURIComponent(normalizedProjectId)");
-        assertThat(page).doesNotContain(
+                "encodeURIComponent(normalizedProjectId)",
                 "links.dashboard",
                 "/dashboard",
                 "dashboard shortcut",
@@ -253,8 +251,7 @@ class ProjectSelectionUiContractTest {
                   assert.match(projectList.innerHTML, /&lt;img src=x onerror=alert\\(1\\)&gt;/);
                   assert.doesNotMatch(projectList.innerHTML, /<img src=x/);
                   assert.match(projectList.innerHTML, /&lt;script&gt;alert\\(1\\)&lt;\\/script&gt;/);
-                  assert.match(projectList.innerHTML, /disabled aria-disabled="true"/);
-                  assert.match(projectList.innerHTML, /data-action-state="pending-application-list"/);
+                  assert.match(projectList.innerHTML, /data-action-state="ready-application-list"/);
                   assert.match(projectList.innerHTML, /data-applications-link="\\/api\\/projects\\/project%20%3C1%3E\\/applications"/);
                   assert.doesNotMatch(projectList.innerHTML, /href=/);
 
@@ -272,6 +269,7 @@ class ProjectSelectionUiContractTest {
                   await settle();
                   assert.match(projectList.innerHTML, /data-action-state="missing-applications-link"/);
                   assert.match(projectList.innerHTML, /data-applications-link=""/);
+                  assert.doesNotMatch(projectList.innerHTML, /href=/);
 
                   auth.setAccessToken('race-old');
                   const oldRequest = requests.shift();
@@ -470,6 +468,13 @@ class ProjectSelectionUiContractTest {
 
     private static String decodeURIComponentLike(String value) {
         return URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8);
+    }
+
+    private static String sliceFunction(String source, String functionName) {
+        int start = source.indexOf("function " + functionName);
+        assertThat(start).as("function %s should exist", functionName).isGreaterThanOrEqualTo(0);
+        int nextFunction = source.indexOf("\nfunction ", start + 1);
+        return nextFunction < 0 ? source.substring(start) : source.substring(start, nextFunction);
     }
 
     /**

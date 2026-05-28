@@ -38,7 +38,9 @@ code {
 .topbar,
 .section-heading,
 .project-meta,
+.application-meta,
 .project-actions,
+.application-actions,
 .empty-state {
   display: flex;
   align-items: center;
@@ -100,6 +102,12 @@ h3 {
   align-items: start;
 }
 
+.main-panels {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -107,7 +115,8 @@ h3 {
   box-shadow: var(--shadow);
 }
 
-.project-panel {
+.project-panel,
+.application-panel {
   padding: 22px;
 }
 
@@ -208,12 +217,14 @@ h3 {
   font-weight: 800;
 }
 
-.project-list {
+.project-list,
+.application-list {
   display: grid;
   gap: 12px;
 }
 
-.project-item {
+.project-item,
+.application-item {
   display: grid;
   gap: 14px;
   padding: 16px;
@@ -222,26 +233,30 @@ h3 {
   background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
 }
 
-.project-title {
+.project-title,
+.application-title {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   align-items: start;
 }
 
-.project-name {
+.project-name,
+.application-name {
   font-weight: 800;
   overflow-wrap: anywhere;
 }
 
-.project-id {
+.project-id,
+.application-id {
   margin-top: 4px;
   color: var(--muted);
   font-size: 0.82rem;
   overflow-wrap: anywhere;
 }
 
-.project-meta {
+.project-meta,
+.application-meta {
   flex-wrap: wrap;
   gap: 8px;
 }
@@ -269,7 +284,64 @@ h3 {
   background: #fff6df;
 }
 
-.project-actions {
+.lifecycle-badge {
+  align-items: flex-start;
+}
+
+.application-axes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.application-axis {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 13px;
+  background: var(--surface);
+}
+
+.application-axis h3 {
+  margin-bottom: 10px;
+}
+
+.application-axis dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.application-axis div {
+  display: grid;
+  grid-template-columns: minmax(80px, 0.45fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.application-axis dt {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.application-axis dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.83rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.application-concern {
+  display: flex;
+  min-width: 0;
+}
+
+.project-actions,
+.application-actions {
   justify-content: flex-end;
 }
 
@@ -422,11 +494,24 @@ code {
   }
 
   .project-panel,
+  .application-panel,
   .setup-panel {
     padding: 16px;
   }
 
   .project-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .application-title {
+    flex-direction: column;
+  }
+
+  .application-axes {
+    grid-template-columns: 1fr;
+  }
+
+  .application-axis div {
     grid-template-columns: 1fr;
   }
 
