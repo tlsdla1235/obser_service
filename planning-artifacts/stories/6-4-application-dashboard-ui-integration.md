@@ -5,7 +5,7 @@ storyKey: "6-4-application-dashboard-ui-integration"
 epic: "Epic 6. Dashboard User Flow and Demo Hardening"
 title: "Application dashboard UI integration"
 architectureStyle: Traditional MVC
-status: review
+status: done
 date: 2026-05-28
 baseline_commit: 4486996e66698010283276dcbaf2a466f7b26077
 ---
@@ -14,7 +14,7 @@ baseline_commit: 4486996e66698010283276dcbaf2a466f7b26077
 
 ## Status
 
-review
+done
 
 ## Story
 

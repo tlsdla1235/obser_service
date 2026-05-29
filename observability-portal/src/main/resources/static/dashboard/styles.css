@@ -348,6 +348,12 @@ h3 {
   min-width: 0;
 }
 
+.instance-evidence-detail {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
 .dashboard-section,
 .dashboard-strip,
 .dashboard-mini-card {
@@ -366,6 +372,19 @@ h3 {
   display: grid;
   gap: 14px;
   background: linear-gradient(180deg, #ffffff 0%, #f8fbfb 100%);
+}
+
+.instance-detail-header {
+  display: grid;
+  gap: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbfb 100%);
+}
+
+.instance-detail-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
 }
 
 .dashboard-strip-grid,
@@ -429,6 +448,20 @@ h3 {
   background: #fbfefc;
 }
 
+.instance-evidence-axis {
+  background: #fbfcfe;
+}
+
+.metric-data-axis {
+  border-color: #cae0dd;
+  background: #fbfefc;
+}
+
+.starter-connection-axis {
+  border-color: #cbd8e8;
+  background: #fbfdff;
+}
+
 .dashboard-list {
   display: grid;
   gap: 10px;
@@ -478,6 +511,11 @@ h3 {
 
 .pending-handoff {
   justify-self: start;
+}
+
+.snapshot-trend-handoff {
+  display: grid;
+  gap: 10px;
 }
 
 .project-actions,
@@ -645,6 +683,10 @@ code {
   }
 
   .application-title {
+    flex-direction: column;
+  }
+
+  .instance-detail-title {
     flex-direction: column;
   }
 
