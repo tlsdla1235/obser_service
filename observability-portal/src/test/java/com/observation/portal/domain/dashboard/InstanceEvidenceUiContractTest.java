@@ -506,6 +506,115 @@ class InstanceEvidenceUiContractTest {
     }
 
     @Test
+    void failureRecoveryEvidenceKeepsAcceptedBucketAndStarterHeartbeatAxesSeparate() throws Exception {
+        runNodeDashboardContract("""
+                const fs = require('fs');
+                const vm = require('vm');
+                const assert = require('assert');
+
+                const source = fs.readFileSync('src/main/resources/static/dashboard/app.js', 'utf8');
+                const harness = createHarness(source);
+                const { auth, requests, elements, response, settle, project, application, dashboard, evidence,
+                  clickApplications, clickDashboard, clickEvidence } = harness;
+                const dashboardDetail = elements.get('#dashboard-detail');
+                const forbiddenCopy = /host application down|host process down|앱 정상 확정|정상 확정|문제 없음|복구 완료|장애 해결 완료|root cause|instanceHealth|hostStatus|connectedAndHealthy|applicationHealth|hostHealth/;
+
+                async function loadFailureDashboard() {
+                  auth.setAccessToken('service-token');
+                  requests.shift().resolve(response(200, {
+                    generatedAt: '2026-05-29T01:00:00Z',
+                    projects: [project('project-1', 'Project One', '/api/projects/project-1/applications')]
+                  }));
+                  await settle();
+                  clickApplications('project-1', 'Project One', '/api/projects/project-1/applications');
+                  requests.shift().resolve(response(200, {
+                    generatedAt: '2026-05-29T01:02:00Z',
+                    project: { projectId: 'project-1', name: 'Project One' },
+                    applications: [application('app-1')]
+                  }));
+                  await settle();
+                  const failureDashboard = dashboard('project-1', 'app-1', { applicationName: 'Orders API' });
+                  failureDashboard.state = {
+                    code: 'stale',
+                    label: 'Metric data stale',
+                    rationale: 'server read model에서 accepted bucket freshness가 stale로 관찰됐습니다.',
+                    recommendedAction: 'starter heartbeat와 metric freshness를 분리해 확인합니다.',
+                    scope: 'application'
+                  };
+                  failureDashboard.zeroInsight = {
+                    reasonCode: 'metric_data_idle',
+                    message: 'metric data가 최근 기준을 벗어나 관찰 부족 상태입니다.',
+                    recommendedAction: 'host 상태를 단정하지 말고 다음 accepted bucket을 확인합니다.'
+                  };
+                  failureDashboard.endpointPriority = [];
+                  clickDashboard('app-1', 'Orders API', 'prod', '/api/projects/project-1/applications/app-1/dashboard');
+                  requests.shift().resolve(response(200, failureDashboard));
+                  await settle();
+                }
+
+                function suppressedEvidence(freshnessLabel, heartbeatStatus, starterMeaning) {
+                  const payload = evidence('project-1', 'app-1', 'instance-1', { instanceName: `${freshnessLabel} pod` });
+                  payload.metricData.lastAcceptedBucketAt = '2026-05-29T00:55:30Z';
+                  payload.metricData.freshnessLabel = freshnessLabel;
+                  payload.metricData.sampleReadiness = 'not_current';
+                  payload.metricData.requestCount = 0;
+                  payload.metricData.errorCount = 0;
+                  payload.metricData.errorRate = 0;
+                  payload.metricData.reason = 'application_freshness_not_current';
+                  payload.starterConnection.lastHeartbeatAt = heartbeatStatus === 'missing' ? null : '2026-05-29T01:20:45Z';
+                  payload.starterConnection.lastHeartbeatStatus = heartbeatStatus;
+                  payload.starterConnection.freshnessLabel = heartbeatStatus === 'missing' ? 'missing' : 'recent';
+                  payload.starterConnection.connectionMeaning = starterMeaning;
+                  payload.starterConnection.stateImpact = 'none';
+                  payload.endpointEvidence.status = 'suppressed';
+                  payload.endpointEvidence.reason = 'application_freshness_not_current';
+                  payload.endpointEvidence.items = [];
+                  payload.applicationTriageContribution = {
+                    status: 'missing',
+                    contributed: false,
+                    relatedRuleIds: [],
+                    reason: 'application_freshness_not_current'
+                  };
+                  payload.starterPercentiles.status = 'missing';
+                  payload.starterPercentiles.reason = 'application_freshness_not_current';
+                  payload.starterPercentiles.points = [];
+                  payload.histogramDistribution.status = 'missing';
+                  payload.histogramDistribution.reason = 'application_freshness_not_current';
+                  payload.histogramDistribution.totalCount = 0;
+                  payload.histogramDistribution.buckets = [];
+                  return payload;
+                }
+
+                async function renderSuppressedEvidence(freshnessLabel, heartbeatStatus, starterMeaning) {
+                  clickEvidence('instance-1', 'pod-a', '/api/projects/project-1/applications/app-1/instances/instance-1/evidence');
+                  assert.strictEqual(requests.length, 1);
+                  assert.strictEqual(requests[0].init.headers.Authorization, 'Bearer service-token');
+                  requests.shift().resolve(response(200, suppressedEvidence(freshnessLabel, heartbeatStatus, starterMeaning)));
+                  await settle();
+                  assert.match(dashboardDetail.innerHTML, /Instance Evidence/);
+                  assert.match(dashboardDetail.innerHTML, /Metric data axis/);
+                  assert.match(dashboardDetail.innerHTML, /Metric data axis[\\s\\S]*source<\\/dt>\\s*<dd>accepted_bucket/);
+                  assert.match(dashboardDetail.innerHTML, /Starter connection axis/);
+                  assert.match(dashboardDetail.innerHTML, /Starter connection axis[\\s\\S]*source<\\/dt>\\s*<dd>starter_heartbeat/);
+                  assert.match(dashboardDetail.innerHTML, /state impact<\\/dt>\\s*<dd>none/);
+                  assert.match(dashboardDetail.innerHTML, /application_freshness_not_current/);
+                  assert.match(dashboardDetail.innerHTML, /stale\\/down 직전 endpoint evidence를 current concern처럼 표시하지 않습니다/);
+                  assert.doesNotMatch(dashboardDetail.innerHTML, /POST \\/orders|GET \\/inventory|relatedApplicationPriorityRank/);
+                  assert.doesNotMatch(dashboardDetail.innerHTML, forbiddenCopy);
+                }
+
+                (async () => {
+                  await loadFailureDashboard();
+                  await renderSuppressedEvidence('stale', 'received', 'starter_connected');
+                  await renderSuppressedEvidence('down', 'missing', 'telemetry_unreachable');
+                })().catch(error => {
+                  console.error(error && error.stack ? error.stack : error);
+                  process.exit(1);
+                });
+                """);
+    }
+
+    @Test
     void instanceEvidenceRuntimePreventsStaleResponsesAcrossEvidenceTokenDashboardAndApplicationChanges() throws Exception {
         runNodeDashboardContract("""
                 const fs = require('fs');

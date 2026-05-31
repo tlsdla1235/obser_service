@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommand;
 import com.observation.portal.domain.bucket.repository.MetricBucketRepository;
+import com.observation.portal.domain.ingest.dto.IngestErrorResponse;
 import com.observation.portal.domain.ingest.model.IngestEnvelopeRequest;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -103,6 +104,38 @@ class IngestAcceptanceServiceTest {
                         root -> ((ObjectNode) root.get("summary")).put("requestCount", 4)));
 
         assertDuplicateIdempotencyKey(result);
+        verifyNoInteractions(payloadHasher);
+        verify(metricBucketRepository, never()).insert(any(AcceptedMetricBucketWriteCommand.class));
+    }
+
+    @Test
+    void duplicateIngestGuardDoesNotCreateRecoveryOrDashboardRefreshMeaning() throws Exception {
+        ProjectKeyVerificationService projectKeyVerificationService = verifiedProjectKeyService();
+        MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        IngestPayloadHasher payloadHasher = mock(IngestPayloadHasher.class);
+        when(metricBucketRepository.findByProjectIdAndIdempotencyKey(
+                PortalIngestValidationFixture.VERIFIED_PROJECT.projectId(),
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY))
+                .thenReturn(Optional.of(ACCEPTED_RECEIPT));
+        IngestAcceptanceService service = newService(projectKeyVerificationService, metricBucketRepository, payloadHasher);
+
+        IngestAcceptanceResult result = service.accept(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                PortalIngestValidationFixture.goldenRequest());
+        IngestErrorResponse response = IngestErrorResponse.duplicateIdempotencyKey();
+
+        assertDuplicateIdempotencyKey(result);
+        assertThat(response.error()).isEqualTo("duplicate_idempotency_key");
+        assertThat(response.message()).doesNotContain(
+                "dashboard",
+                "snapshot",
+                "refresh",
+                "recovery",
+                "recovered",
+                "data loss",
+                "복구",
+                "장애 해결");
         verifyNoInteractions(payloadHasher);
         verify(metricBucketRepository, never()).insert(any(AcceptedMetricBucketWriteCommand.class));
     }

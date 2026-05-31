@@ -280,6 +280,161 @@ class ApplicationDashboardUiContractTest {
     }
 
     @Test
+    void failureRecoveryDashboardStatesKeepMetricAndStarterAxesSeparateWithSafeCopy() throws Exception {
+        runNodeDashboardContract("""
+                const fs = require('fs');
+                const vm = require('vm');
+                const assert = require('assert');
+
+                const source = fs.readFileSync('src/main/resources/static/dashboard/app.js', 'utf8');
+                const harness = createHarness(source);
+                const { auth, requests, elements, response, settle, project, application, dashboard,
+                  clickApplications, clickDashboard } = harness;
+                const dashboardDetail = elements.get('#dashboard-detail');
+                const forbiddenCopy = /host application down|host process down|앱 정상 확정|정상 확정|문제 없음|복구 완료|장애 해결 완료|root cause|applicationHealth|hostHealth|connectedAndHealthy|hostStatus/;
+                const staleMetricDataIdleCopy = /최근 기준|기준을 벗어나|freshness bounds|freshness boundary|host application down|host process down/;
+
+                function failureDashboard({ stateCode, stateLabel, reasonCode, guidanceNeedle, starterMeaning, heartbeatStatus = 'received',
+                  lastAcceptedBucketAt = stateCode === 'telemetry_unreachable' ? null : '2026-05-28T00:55:30Z',
+                  freshnessLastObservedAt = lastAcceptedBucketAt, recovery = null, triageCards = [] }) {
+                  const payload = dashboard('project-1', 'app-1', { applicationName: `${stateCode} Orders API` });
+                  payload.application.lastAcceptedBucketAt = lastAcceptedBucketAt;
+                  payload.application.freshness.lastObservedAt = freshnessLastObservedAt;
+                  payload.state = {
+                    code: stateCode === 'telemetry_unreachable' ? 'unknown' : stateCode,
+                    label: stateLabel,
+                    rationale: `${stateCode} server-provided metric freshness rationale`,
+                    recommendedAction: 'accepted bucket metric freshness와 starter heartbeat source를 분리해서 확인합니다.',
+                    scope: 'application'
+                  };
+                  payload.starterConnection = {
+                    statusSource: 'starter_heartbeat',
+                    lastHeartbeatAt: heartbeatStatus === 'missing' ? null : '2026-05-28T01:19:45Z',
+                    lastHeartbeatStatus: heartbeatStatus,
+                    connectionMeaning: starterMeaning,
+                    stateImpact: 'none'
+                  };
+                  payload.metrics = { requestCount: 0, errorCount: 0, errorRate: 0 };
+                  payload.sourceScopedPercentiles.status = 'missing';
+                  payload.sourceScopedPercentiles.reason = 'failure_recovery_source_absence';
+                  payload.sourceScopedPercentiles.items = [];
+                  payload.histogramDistribution.current = {
+                    status: 'missing',
+                    reason: 'failure_recovery_bucket_distribution_absence',
+                    totalCount: 0,
+                    buckets: []
+                  };
+                  payload.endpointPriority = [];
+                  payload.triageCards = triageCards;
+                  payload.zeroInsight = triageCards.length === 0 ? {
+                    reasonCode,
+                    message: `${reasonCode} server-provided message`,
+                    recommendedAction: `${guidanceNeedle} 다음 bucket/sample을 기다립니다.`
+                  } : null;
+                  payload.recovery = recovery ?? { isRecovering: false, lastHealthyAt: null, retryAfterSeconds: null, recommendedAction: null };
+                  return payload;
+                }
+
+                async function renderFailureDashboard(options) {
+                  clickDashboard('app-1', 'Orders API', 'prod', '/api/projects/project-1/applications/app-1/dashboard');
+                  assert.strictEqual(requests.length, 1);
+                  assert.strictEqual(requests[0].init.headers.Authorization, 'Bearer service-token');
+                  requests.shift().resolve(response(200, failureDashboard(options)));
+                  await settle();
+                  assert.match(dashboardDetail.innerHTML, /Metric data state/);
+                  assert.match(dashboardDetail.innerHTML, /Metric data state[\\s\\S]*source<\\/dt>\\s*<dd>accepted_bucket/);
+                  assert.match(dashboardDetail.innerHTML, /Starter connection/);
+                  assert.match(dashboardDetail.innerHTML, /Starter connection[\\s\\S]*source<\\/dt>\\s*<dd>starter_heartbeat/);
+                  assert.match(dashboardDetail.innerHTML, /state impact<\\/dt>\\s*<dd>none/);
+                  assert.match(dashboardDetail.innerHTML, new RegExp(options.guidanceNeedle));
+                  assert.doesNotMatch(dashboardDetail.innerHTML, forbiddenCopy);
+                  if (options.reasonCode === 'metric_data_idle') {
+                    assert.doesNotMatch(dashboardDetail.innerHTML, staleMetricDataIdleCopy);
+                  }
+                }
+
+                (async () => {
+                  auth.setAccessToken('service-token');
+                  requests.shift().resolve(response(200, {
+                    generatedAt: '2026-05-28T01:00:00Z',
+                    projects: [project('project-1', 'Project One', '/api/projects/project-1/applications')]
+                  }));
+                  await settle();
+                  clickApplications('project-1', 'Project One', '/api/projects/project-1/applications');
+                  requests.shift().resolve(response(200, {
+                    generatedAt: '2026-05-28T01:02:00Z',
+                    project: { projectId: 'project-1', name: 'Project One' },
+                    applications: [application('app-1')]
+                  }));
+                  await settle();
+
+                  await renderFailureDashboard({
+                    stateCode: 'stale',
+                    stateLabel: 'Metric data stale',
+                    reasonCode: 'metric_data_idle',
+                    guidanceNeedle: 'metric data는 요청 없음, bucket sample 부족, 다음 accepted bucket 확인이 필요한 상태일 수 있습니다',
+                    starterMeaning: 'starter_connected'
+                  });
+
+                  await renderFailureDashboard({
+                    stateCode: 'active',
+                    stateLabel: 'Metric data active',
+                    reasonCode: 'metric_data_idle',
+                    guidanceNeedle: 'metric data는 요청 없음, bucket sample 부족, 다음 accepted bucket 확인이 필요한 상태일 수 있습니다',
+                    starterMeaning: 'starter_connected',
+                    lastAcceptedBucketAt: '2026-05-28T01:19:30Z',
+                    freshnessLastObservedAt: '2026-05-28T01:19:30Z'
+                  });
+
+                  await renderFailureDashboard({
+                    stateCode: 'down',
+                    stateLabel: 'Metric data down freshness boundary',
+                    reasonCode: 'telemetry_unreachable',
+                    guidanceNeedle: 'starter/portal/network 연결 후보를 확인하세요',
+                    starterMeaning: 'telemetry_unreachable',
+                    heartbeatStatus: 'missing'
+                  });
+
+                  await renderFailureDashboard({
+                    stateCode: 'unknown',
+                    stateLabel: 'Metric data recovery observation',
+                    reasonCode: 'observing_recovery',
+                    guidanceNeedle: '새 metric bucket이 다시 관찰됐고 sample이 충분해지는지 다음 bucket에서 확인합니다',
+                    starterMeaning: 'starter_connected',
+                    recovery: {
+                      isRecovering: true,
+                      lastHealthyAt: '2026-05-28T00:45:00Z',
+                      retryAfterSeconds: 30,
+                      recommendedAction: '다음 판단까지 약 30초 기다린 뒤 accepted bucket 수용과 sample 증가를 확인하세요.'
+                    }
+                  });
+
+                  await renderFailureDashboard({
+                    stateCode: 'degraded',
+                    stateLabel: 'Metric data degraded',
+                    reasonCode: 'no_action_needed',
+                    guidanceNeedle: 'server-computed degraded concern',
+                    starterMeaning: 'starter_connected',
+                    triageCards: [{
+                      ruleId: 'endpoint_error_spike',
+                      severity: 'warning',
+                      title: 'server-computed degraded concern',
+                      summary: 'stored server read model에서 high-confidence concern을 표시합니다.',
+                      recommendation: 'UI가 threshold나 rule을 다시 계산하지 않고 서버 값을 표시합니다.',
+                      confidence: 0.84,
+                      score: 84,
+                      affectedEndpoint: 'POST /orders',
+                      evidence: { requestCount: 120, currentErrorRate: 0.12 }
+                    }]
+                  });
+                })().catch(error => {
+                  console.error(error && error.stack ? error.stack : error);
+                  process.exit(1);
+                });
+                """);
+    }
+
+    @Test
     void dashboardStaticGuardsForbidPersistenceRoutingFollowupFetchAndUiRecalculation() throws IOException {
         String page = Files.readString(STATIC_DASHBOARD.resolve("index.html"))
                 + Files.readString(STATIC_DASHBOARD.resolve("app.js"))
@@ -329,6 +484,8 @@ class ApplicationDashboardUiContractTest {
                 "문제 없음",
                 "host down",
                 "복구 완료",
+                "metric data가 최근 기준을 벗어나",
+                "freshness bounds",
                 "health score",
                 "root cause");
         assertThat(appJs).contains(
@@ -336,6 +493,9 @@ class ApplicationDashboardUiContractTest {
                 "waiting_first_data",
                 "insufficient_sample",
                 "no_action_needed",
+                "metric_data_idle",
+                "telemetry_unreachable",
+                "observing_recovery",
                 "accepted bucket freshness와 starter heartbeat는 별도 source");
         assertThat(appJs).doesNotContain(forbiddenHelpers.toArray(String[]::new));
         assertThat(appJs).contains(

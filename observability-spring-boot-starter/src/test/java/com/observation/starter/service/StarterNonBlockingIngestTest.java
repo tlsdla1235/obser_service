@@ -16,10 +16,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -95,6 +97,37 @@ class StarterNonBlockingIngestTest {
         assertDoesNotThrow(() -> ingestService.recordHttpServerObservation(http("2026-05-08T01:00:31Z")));
         assertEquals(1, queue.size());
         assertEquals(1, queue.droppedCount());
+    }
+
+    @Test
+    void portalDownFlushFailureStaysAfterHostRequestPathEnqueueBoundary() {
+        BoundedMetricQueue queue = new BoundedMetricQueue(8, MetricQueueDropPolicy.DROP_NEWEST);
+        AtomicReference<Instant> nowUtc = new AtomicReference<>(Instant.parse("2026-05-08T01:01:00Z"));
+        AtomicInteger attempts = new AtomicInteger();
+        PortalMetricBucketClient portalDownClient = candidate -> {
+            attempts.incrementAndGet();
+            throw new IllegalStateException("portal down");
+        };
+        StarterMetricIngestService ingestService = new StarterMetricIngestService(
+                new LowCardinalityHttpObservationGuard(),
+                new MetricBucketRollupService(),
+                queue,
+                nowUtc::get);
+        MetricBucketFlushWorker worker = new MetricBucketFlushWorker(
+                queue,
+                builder(),
+                portalDownClient,
+                new MetricFlushRetryPolicy(1, Duration.ZERO),
+                duration -> {
+                },
+                Duration.ofMillis(10));
+
+        assertDoesNotThrow(() -> ingestService.recordHttpServerObservation(http("2026-05-08T01:00:01Z")));
+
+        ClosedMetricBucket dueBucket = queue.pollNow().orElseThrow();
+        assertFalse(worker.flushBucket(dueBucket));
+        assertEquals(1, attempts.get());
+        assertEquals(0, queue.size());
     }
 
     @Test

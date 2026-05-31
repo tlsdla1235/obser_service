@@ -892,7 +892,42 @@ class MetricBucketRepositoryIntegrationTest {
         assertCatalogSeenAt(FIXED_TIME);
     }
 
+    @Test
+    void failureRecoveryDuplicateIngestFixtureRejectsRetryWithoutSecondRowOrOverwrite() throws SQLException {
+        AcceptedMetricBucketWriteCommand original = failureRecoveryDuplicateCommand(
+                "failure-recovery:orders-api:prod:pod-a:20260508T010000Z",
+                "hash-original",
+                "2026-05-08T01:00:00Z",
+                FIXED_TIME);
+        AcceptedMetricBucketReceipt receipt = metricBucketRepository.insert(original);
+
+        assertThatThrownBy(() -> metricBucketRepository.insert(failureRecoveryDuplicateCommand(
+                "failure-recovery:orders-api:prod:pod-a:20260508T010000Z",
+                "hash-retry-with-different-payload",
+                "2026-05-08T01:00:30Z",
+                OffsetDateTime.parse("2026-05-08T01:01:05Z"))))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        assertThat(countAcceptedBuckets()).isEqualTo(1);
+        assertPersistedBucketRow(receipt.bucketId(), original);
+        assertCatalogSeenAt(FIXED_TIME);
+    }
+
     private static AcceptedMetricBucketWriteCommand command(
+            String idempotencyKey,
+            String payloadHash,
+            String bucketStartUtc,
+            OffsetDateTime acceptedAt) {
+        return command(idempotencyKey, payloadHash, bucketStartUtc, acceptedAt, "orders-api", "prod", "pod-a");
+    }
+
+    /**
+     * Story 6.9 duplicate ingest guard 전용 fixture다.
+     *
+     * <p>Story 6.8 green path command와 이름을 분리해 retry/conflict가 새 accepted bucket row나 overwrite로 이어지지
+     * 않는지 검증한다.</p>
+     */
+    private static AcceptedMetricBucketWriteCommand failureRecoveryDuplicateCommand(
             String idempotencyKey,
             String payloadHash,
             String bucketStartUtc,

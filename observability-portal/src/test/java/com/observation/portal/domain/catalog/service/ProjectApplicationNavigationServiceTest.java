@@ -184,6 +184,45 @@ class ProjectApplicationNavigationServiceTest {
     }
 
     @Test
+    void failureRecoveryNavigationKeepsMetricDataAndStarterHeartbeatAxesSeparate() {
+        ApplicationEntity billing = application(BILLING_ID, "billing-api", "prod");
+        ApplicationEntity orders = application(ORDERS_ID, "orders-api", "prod");
+        when(projectRepository.findById(PROJECT_ID)).thenReturn(Optional.of(project()));
+        when(applicationRepository.findByProjectIdOrderByNameAscEnvironmentAsc(PROJECT_ID))
+                .thenReturn(List.of(billing, orders));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationId(BILLING_ID))
+                .thenReturn(Optional.of(QUERY_AT.minusSeconds(30)));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationId(ORDERS_ID))
+                .thenReturn(Optional.of(QUERY_AT.minusSeconds(181)));
+        when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "billing-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("billing-api", "prod", "pod-b", QUERY_AT.minusSeconds(120))));
+        when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("orders-api", "prod", "pod-a", QUERY_AT.minusSeconds(10))));
+
+        ProjectApplicationNavigationReadModel model = service.listApplications(PROJECT_ID).orElseThrow();
+        ProjectApplicationNavigationReadModel.ApplicationItem billingItem = applicationNamed(model, "billing-api");
+        ProjectApplicationNavigationReadModel.ApplicationItem ordersItem = applicationNamed(model, "orders-api");
+
+        assertThat(billingItem.metricData().statusSource()).isEqualTo("accepted_bucket");
+        assertThat(billingItem.metricData().freshnessLabel()).isEqualTo("current");
+        assertThat(billingItem.starterConnection().statusSource()).isEqualTo("starter_heartbeat");
+        assertThat(billingItem.starterConnection().freshnessLabel()).isEqualTo("stale");
+        assertThat(billingItem.starterConnection().connectionMeaning()).isEqualTo("starter_telemetry_stale");
+        assertThat(billingItem.starterConnection().stateImpact()).isEqualTo("none");
+        assertThat(billingItem.lifecycleBadge().code()).isEqualTo("unknown");
+
+        assertThat(ordersItem.metricData().statusSource()).isEqualTo("accepted_bucket");
+        assertThat(ordersItem.metricData().freshnessLabel()).isEqualTo("down_candidate");
+        assertThat(ordersItem.starterConnection().statusSource()).isEqualTo("starter_heartbeat");
+        assertThat(ordersItem.starterConnection().freshnessLabel()).isEqualTo("recent");
+        assertThat(ordersItem.starterConnection().connectionMeaning()).isEqualTo("starter_connected");
+        assertThat(ordersItem.starterConnection().stateImpact()).isEqualTo("none");
+        assertThat(ordersItem.lifecycleBadge().code()).isEqualTo("unknown");
+        assertThat(List.of(billingItem.toString(), ordersItem.toString()).toString())
+                .doesNotContainIgnoringCase("host down");
+    }
+
+    @Test
     void readModelDoesNotExposeDashboardHealthOrEndpointPercentileFields() {
         List<String> forbiddenNames = List.of(
                 "health",
@@ -205,6 +244,18 @@ class ProjectApplicationNavigationServiceTest {
         return Arrays.stream(recordType.getRecordComponents())
                 .map(RecordComponent::getName)
                 .toList();
+    }
+
+    /**
+     * failure/recovery fixture에서 application별 source axis를 이름으로 검증하기 위한 작은 lookup helper다.
+     */
+    private static ProjectApplicationNavigationReadModel.ApplicationItem applicationNamed(
+            ProjectApplicationNavigationReadModel model,
+            String applicationName) {
+        return model.applications().stream()
+                .filter(application -> application.name().equals(applicationName))
+                .findFirst()
+                .orElseThrow();
     }
 
     private static ProjectEntity project() {

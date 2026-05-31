@@ -799,11 +799,11 @@ public class DashboardReadModelService {
             case "observing_recovery" -> new ApplicationDashboardReadModel.ZeroInsight(
                     reasonCode,
                     "새 accepted bucket이 들어왔지만 회복 여부를 판단할 sample은 아직 부족합니다.",
-                    "복구 완료로 단정하지 말고 다음 bucket까지 accepted bucket 수용과 sample 증가를 관찰하세요.");
+                    "회복 여부를 확정하지 말고 다음 bucket까지 accepted bucket 수용과 sample 증가를 관찰하세요.");
             case "telemetry_unreachable" -> new ApplicationDashboardReadModel.ZeroInsight(
                     reasonCode,
                     "Starter heartbeat와 metric data freshness가 모두 최근 상태가 아닙니다.",
-                    "Starter 설정, project key, portal/network 연결을 확인하되 host application down으로 단정하지 마세요.");
+                    "Starter 설정, project key, portal/network 연결을 확인하되 host application 상태를 이 신호만으로 확정하지 마세요.");
             case "insufficient_sample" -> new ApplicationDashboardReadModel.ZeroInsight(
                     reasonCode,
                     "현재 window의 요청 sample이 lifecycle 판단 기준보다 적습니다.",
