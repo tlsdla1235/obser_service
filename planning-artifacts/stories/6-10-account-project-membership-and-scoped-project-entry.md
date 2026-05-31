@@ -5,7 +5,7 @@ storyKey: "6-10-account-project-membership-and-scoped-project-entry"
 epic: "Epic 6. Dashboard User Flow and Demo Hardening"
 title: "Account-project membership and scoped project entry"
 architectureStyle: Traditional MVC
-status: review
+status: done
 date: 2026-05-31
 ---
 
@@ -13,7 +13,7 @@ date: 2026-05-31
 
 ## Status
 
-review
+done
 
 ## Story
 
