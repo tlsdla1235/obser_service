@@ -1,6 +1,13 @@
 package com.observation.portal.domain.account.repository;
 
+import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
+import com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommand;
+import com.observation.portal.domain.bucket.repository.MetricBucketRepository;
+import com.observation.portal.domain.catalog.entity.ApplicationEntity;
+import com.observation.portal.domain.catalog.entity.ApplicationInstanceEntity;
 import com.observation.portal.domain.catalog.entity.ProjectEntity;
+import com.observation.portal.domain.catalog.repository.ApplicationInstanceRepository;
+import com.observation.portal.domain.catalog.repository.ApplicationRepository;
 import com.observation.portal.domain.catalog.repository.ProjectRepository;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,6 +21,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,6 +36,8 @@ class AccountProjectMembershipRepositoryIntegrationTest {
     private static final UUID OTHER_PROJECT_ID = UUID.fromString("00000000-0000-0000-0000-000000006402");
     private static final UUID DISABLED_PROJECT_ID = UUID.fromString("00000000-0000-0000-0000-000000006403");
     private static final OffsetDateTime NOW = OffsetDateTime.parse("2026-05-31T12:00:00Z");
+    private static final OffsetDateTime DEMO_BUCKET_START = OffsetDateTime.parse("2026-05-31T11:59:30Z");
+    private static final OffsetDateTime DEMO_BUCKET_END = OffsetDateTime.parse("2026-05-31T12:00:00Z");
 
     @Container
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
@@ -37,6 +47,15 @@ class AccountProjectMembershipRepositoryIntegrationTest {
 
     @Autowired
     private ProjectRepository projectRepository;
+
+    @Autowired
+    private ApplicationRepository applicationRepository;
+
+    @Autowired
+    private ApplicationInstanceRepository applicationInstanceRepository;
+
+    @Autowired
+    private MetricBucketRepository metricBucketRepository;
 
     @Autowired
     private AccountProjectMembershipRepository membershipRepository;
@@ -59,7 +78,39 @@ class AccountProjectMembershipRepositoryIntegrationTest {
     }
 
     @Test
-    void findsOnlyActiveMembershipProjectsForAccount() {
+    void demoGreenPathFixtureLinksAccountProjectMembershipCatalogInstanceAndAcceptedBucket() {
+        membershipRepository.saveAndFlush(membership(
+                UUID.fromString("00000000-0000-0000-0000-000000006521"),
+                ACCOUNT_A_ID,
+                ACTIVE_PROJECT_ID,
+                "active"));
+
+        AcceptedMetricBucketReceipt receipt = metricBucketRepository.insert(demoAcceptedBucket());
+
+        assertThat(receipt.acceptedAt()).isEqualTo(NOW);
+        assertThat(membershipRepository.findActiveMembershipProjectsByAccountId(ACCOUNT_A_ID))
+                .extracting(project -> project.toCandidate().projectId())
+                .containsExactly(ACTIVE_PROJECT_ID);
+
+        ApplicationEntity application = applicationRepository
+                .findByProjectIdAndNameAndEnvironment(ACTIVE_PROJECT_ID, "orders-api", "prod")
+                .orElseThrow();
+        ApplicationInstanceEntity instance = applicationInstanceRepository
+                .findByApplicationIdAndInstanceName(application.id(), "pod-a")
+                .orElseThrow();
+
+        assertThat(application.projectId()).isEqualTo(ACTIVE_PROJECT_ID);
+        assertThat(instance.applicationId()).isEqualTo(application.id());
+        assertThat(metricBucketRepository.findLatestBucketEndUtcByApplicationId(application.id()))
+                .contains(DEMO_BUCKET_END);
+        assertThat(metricBucketRepository.findLatestBucketEndUtcByApplicationInstanceIdAtOrBefore(
+                instance.id(),
+                NOW.toInstant()))
+                .contains(DEMO_BUCKET_END);
+    }
+
+    @Test
+    void greenPathMembershipGuardExcludesDisabledMembershipAndDisabledProject() {
         membershipRepository.saveAndFlush(membership(
                 UUID.fromString("00000000-0000-0000-0000-000000006501"),
                 ACCOUNT_A_ID,
@@ -109,11 +160,55 @@ class AccountProjectMembershipRepositoryIntegrationTest {
         return new ProjectEntity(
                 projectId,
                 name,
-                "pk_" + name.replace("-", "_"),
-                "hash-" + name,
+                "prefix-" + name.replace("-", "_"),
+                "hash-only-" + name,
                 status,
                 NOW,
                 NOW);
+    }
+
+    /**
+     * Story 6.8 demo fixture가 raw project key 없이 accepted bucket으로 catalog row를 생성하는 저장 command다.
+     */
+    private static AcceptedMetricBucketWriteCommand demoAcceptedBucket() {
+        return new AcceptedMetricBucketWriteCommand(
+                ACTIVE_PROJECT_ID,
+                "alpha-project",
+                "orders-api",
+                "prod",
+                "pod-a",
+                "1.0",
+                "demo-green-path-2026-05-31T120000Z",
+                "sha256-demo-green-path-fixture-hash",
+                DEMO_BUCKET_START,
+                DEMO_BUCKET_END,
+                30,
+                NOW,
+                40L,
+                0L,
+                List.of(
+                        new AcceptedMetricBucketWriteCommand.DurationBucket(100L, 20L),
+                        new AcceptedMetricBucketWriteCommand.DurationBucket(500L, 40L)),
+                0.20d,
+                0.35d,
+                0.25d,
+                new AcceptedMetricBucketWriteCommand.LocalPercentiles(
+                        "instance_bucket",
+                        "starter_local",
+                        DEMO_BUCKET_START.toString(),
+                        DEMO_BUCKET_END.toString(),
+                        40L,
+                        120L,
+                        240L,
+                        false),
+                List.of(new AcceptedMetricBucketWriteCommand.EndpointBucket(
+                        "GET",
+                        "/orders",
+                        40L,
+                        0L,
+                        List.of(
+                                new AcceptedMetricBucketWriteCommand.DurationBucket(100L, 20L),
+                                new AcceptedMetricBucketWriteCommand.DurationBucket(500L, 40L)))));
     }
 
     private static AccountProjectMembershipEntity membership(

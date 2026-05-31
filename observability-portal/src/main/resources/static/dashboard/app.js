@@ -107,6 +107,13 @@ const SNAPSHOT_HISTORY_PRESET_QUERY = Object.freeze({
   [SNAPSHOT_HISTORY_PRESETS.FOURTEEN_DAYS]: Object.freeze({ eventLimit: 100, markerLimit: 336 })
 });
 
+// zeroInsight reason별 보조 문구는 서버가 준 reasonCode를 설명만 하며 상태를 새로 판정하지 않는다.
+const ZERO_INSIGHT_SOURCE_GUIDANCE = Object.freeze({
+  waiting_first_data: 'starter heartbeat는 수신됐지만 metric 판단 source인 accepted bucket은 아직 없습니다.',
+  insufficient_sample: 'accepted bucket은 들어왔지만 minimum sample guard를 통과할 표본이 아직 부족합니다.',
+  no_action_needed: '현재 우선 노출할 triage는 없습니다. accepted bucket freshness와 starter heartbeat는 별도 source로 봅니다.'
+});
+
 // Snapshot marker type은 backend read model enum만 표시하기 위한 allow-list다.
 const SNAPSHOT_MARKER_TYPES = Object.freeze([
   'scheduled_snapshot',
@@ -874,6 +881,7 @@ function zeroInsightRecoveryMarkup(dashboard) {
     ? `
       <section class="dashboard-section" aria-label="Zero insight">
         <p class="eyebrow">Zero insight</p>
+        <p class="dashboard-empty-copy">${escapeText(zeroInsightSourceGuidance(zeroInsight.reasonCode))}</p>
         <dl class="dashboard-kv-grid">
           ${keyValueMarkup('reasonCode', zeroInsight.reasonCode)}
           ${keyValueMarkup('message', zeroInsight.message)}
@@ -900,6 +908,11 @@ function zeroInsightRecoveryMarkup(dashboard) {
       </dl>
     </section>
   `;
+}
+
+function zeroInsightSourceGuidance(reasonCode) {
+  const key = String(reasonCode ?? '').trim();
+  return ZERO_INSIGHT_SOURCE_GUIDANCE[key] || 'server-provided zeroInsight reason/action을 accepted bucket metric source와 starter heartbeat source 경계 안에서 표시합니다.';
 }
 
 function sourceScopedPercentilesMarkup(sourceScopedPercentiles) {

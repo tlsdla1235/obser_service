@@ -206,13 +206,48 @@ class InstanceEvidenceReadModelServiceTest {
         InstanceEvidenceReadModel evidence = service.getEvidence(PROJECT_ID, APPLICATION_ID, INSTANCE_ID)
                 .orElseThrow();
 
+        assertThat(evidence.metricData().statusSource()).isEqualTo("accepted_bucket");
+        assertThat(evidence.metricData().lastAcceptedBucketAt()).isNull();
         assertThat(evidence.metricData().freshnessLabel()).isEqualTo("waiting_first_data");
+        assertThat(evidence.metricData().sampleReadiness()).isEqualTo("missing");
+        assertThat(evidence.metricData().reason()).isEqualTo("no_current_window_metric_bucket");
         assertThat(evidence.starterConnection().statusSource()).isEqualTo("starter_heartbeat");
         assertThat(evidence.starterConnection().lastHeartbeatStatus()).isEqualTo("received");
         assertThat(evidence.starterConnection().freshnessLabel()).isEqualTo("recent");
         assertThat(evidence.starterConnection().connectionMeaning()).isEqualTo("starter_connected");
         assertThat(evidence.starterConnection().stateImpact()).isEqualTo("none");
         verify(heartbeatRepository).findByIdentity(PROJECT_ID, "orders-api", "prod", "pod-a");
+    }
+
+    @Test
+    void firstAcceptedBucketMetricDataAndStarterHeartbeatStaySeparateAxes() {
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationInstanceIdAtOrBefore(
+                INSTANCE_ID,
+                EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-26T06:10:00Z")));
+        when(metricBucketRepository.findWindowAggregateByApplicationInstanceId(
+                INSTANCE_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(3L, 0L));
+        when(heartbeatRepository.findByIdentity(PROJECT_ID, "orders-api", "prod", "pod-a"))
+                .thenReturn(Optional.of(heartbeat("2026-05-26T06:10:20Z", "received")));
+
+        InstanceEvidenceReadModel evidence = service.getEvidence(PROJECT_ID, APPLICATION_ID, INSTANCE_ID)
+                .orElseThrow();
+
+        assertThat(evidence.metricData().statusSource()).isEqualTo("accepted_bucket");
+        assertThat(evidence.metricData().lastAcceptedBucketAt()).isEqualTo(offset("2026-05-26T06:10:00Z"));
+        assertThat(evidence.metricData().freshnessLabel()).isEqualTo("current");
+        assertThat(evidence.metricData().sampleReadiness()).isEqualTo("insufficient");
+        assertThat(evidence.metricData().requestCount()).isEqualTo(3L);
+        assertThat(evidence.metricData().reason()).isEqualTo("insufficient_request_sample");
+        assertThat(evidence.starterConnection().statusSource()).isEqualTo("starter_heartbeat");
+        assertThat(evidence.starterConnection().lastHeartbeatAt()).isEqualTo(offset("2026-05-26T06:10:20Z"));
+        assertThat(evidence.starterConnection().lastHeartbeatStatus()).isEqualTo("received");
+        assertThat(evidence.starterConnection().freshnessLabel()).isEqualTo("recent");
+        assertThat(evidence.starterConnection().connectionMeaning()).isEqualTo("starter_connected");
+        assertThat(evidence.starterConnection().stateImpact()).isEqualTo("none");
     }
 
     @Test

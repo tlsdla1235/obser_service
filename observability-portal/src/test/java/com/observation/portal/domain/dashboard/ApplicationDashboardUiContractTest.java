@@ -113,6 +113,7 @@ class ApplicationDashboardUiContractTest {
                   assert.match(dashboardDetail.innerHTML, /state impact/);
                   assert.match(dashboardDetail.innerHTML, /none/);
                   assert.match(dashboardDetail.innerHTML, /waiting_first_data/);
+                  assert.match(dashboardDetail.innerHTML, /starter heartbeat는 수신됐지만 metric 판단 source인 accepted bucket은 아직 없습니다/);
                   assert.match(dashboardDetail.innerHTML, /회복 관찰 중/);
                   assert.match(dashboardDetail.innerHTML, /자동 예약이 아니라 다음 판단 대기/);
                   assert.match(dashboardDetail.innerHTML, /이전 정상 시점 없음/);
@@ -293,6 +294,15 @@ class ApplicationDashboardUiContractTest {
                 "computeP99",
                 "calculateP95",
                 "calculateP99",
+                "calculatePercentile",
+                "averageP95",
+                "averageP99",
+                "maxP95",
+                "maxP99",
+                "mergeP95",
+                "mergeP99",
+                "percentileFromHistogram",
+                "histogramToPercentile",
                 "rankEndpoint",
                 "sortEndpointPriority",
                 "buildHistoryEvent",
@@ -313,7 +323,20 @@ class ApplicationDashboardUiContractTest {
                 "#access_token",
                 "#refresh_token",
                 "access_token=",
-                "refresh_token=");
+                "refresh_token=",
+                "앱 정상 확정",
+                "정상 확정",
+                "문제 없음",
+                "host down",
+                "복구 완료",
+                "health score",
+                "root cause");
+        assertThat(appJs).contains(
+                "ZERO_INSIGHT_SOURCE_GUIDANCE",
+                "waiting_first_data",
+                "insufficient_sample",
+                "no_action_needed",
+                "accepted bucket freshness와 starter heartbeat는 별도 source");
         assertThat(appJs).doesNotContain(forbiddenHelpers.toArray(String[]::new));
         assertThat(appJs).contains(
                 "snapshotHistoryOperationalEventsRequestLink",
