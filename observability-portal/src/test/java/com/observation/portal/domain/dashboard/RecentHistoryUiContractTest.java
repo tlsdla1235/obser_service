@@ -52,6 +52,22 @@ class RecentHistoryUiContractTest {
         assertThat(sliceFunction(appJs, "isSnapshotDetailLink")).contains(
                 "snapshots",
                 "selected");
+        assertThat(sliceFunction(appJs, "operationalEventItemMarkup")).contains(
+                "event.title",
+                "event.summary",
+                "event.type",
+                "event.severity");
+        assertThat(sliceFunction(appJs, "snapshotMarkerItemMarkup")).contains(
+                "marker.title",
+                "marker.summary",
+                "marker.type",
+                "marker.severity",
+                "marker.readMeaning");
+        assertThat(sliceFunction(appJs, "snapshotMarkerItemMarkup")).doesNotContain(
+                "captureReason ===",
+                "switch (marker.captureReason",
+                "recovery complete",
+                "복구 완료");
         assertThat(styles).contains(
                 ".snapshot-history-detail",
                 ".snapshot-detail-read-model",
@@ -172,10 +188,147 @@ class RecentHistoryUiContractTest {
                   requests.shift().resolve(response(200, detail('project-1', 'app-1', '018f6b9a-2e1a-7d2b-9b2f-4db69d92c241')));
                   await settle();
                   assert.match(dashboardDetail.innerHTML, /anchorStatus missing/);
+                  assert.doesNotMatch(dashboardDetail.innerHTML, /현재 문제 없음|정상입니다|복구 완료|장애 해결 완료/);
 
                   clickDashboardBack();
                   assert.match(dashboardDetail.innerHTML, /Orders API/);
                   assert.match(dashboardDetail.innerHTML, /Metric data active/);
+                  assert.strictEqual(requests.length, 0);
+                })().catch(error => {
+                  console.error(error && error.stack ? error.stack : error);
+                  process.exit(1);
+                });
+                """);
+    }
+
+    @Test
+    void recentHistoryRuntimeRendersFailureRecoveryEventsAndMarkersAsServerProvidedFields() throws Exception {
+        runNodeDashboardContract("""
+                const fs = require('fs');
+                const vm = require('vm');
+                const assert = require('assert');
+
+                const source = fs.readFileSync('src/main/resources/static/dashboard/app.js', 'utf8');
+                const harness = createHarness(source);
+                const { auth, requests, elements, response, settle, project, application, dashboard,
+                  history, markers, clickApplications, clickDashboard, clickSnapshotHistory } = harness;
+                const dashboardDetail = elements.get('#dashboard-detail');
+
+                async function loadDashboard() {
+                  auth.setAccessToken('service-token');
+                  requests.shift().resolve(response(200, {
+                    generatedAt: '2026-05-31T03:00:00Z',
+                    projects: [project('project-1', 'Project One', '/api/projects/project-1/applications')]
+                  }));
+                  await settle();
+                  clickApplications('project-1', 'Project One', '/api/projects/project-1/applications');
+                  requests.shift().resolve(response(200, {
+                    generatedAt: '2026-05-31T03:02:00Z',
+                    project: { projectId: 'project-1', name: 'Project One' },
+                    applications: [application('app-1')]
+                  }));
+                  await settle();
+                  clickDashboard('app-1', 'Orders API', 'prod', '/api/projects/project-1/applications/app-1/dashboard');
+                  requests.shift().resolve(response(200, dashboard('project-1', 'app-1')));
+                  await settle();
+                }
+
+                function serverEvent(snapshotId, type, severity, title, summary, occurredAt, resolvedAt, stateCode) {
+                  return {
+                    eventId: 'snapshot:' + snapshotId + ':' + type,
+                    type,
+                    severity,
+                    title,
+                    summary,
+                    occurredAt,
+                    resolvedAt,
+                    stateCode,
+                    confidence: type === 'degraded_entered' ? 0.84 : null,
+                    snapshotId,
+                    evidence: {
+                      ruleId: type.startsWith('degraded') ? 'endpoint_latency_spike' : null,
+                      endpointKey: type.startsWith('degraded') ? 'POST /orders' : null,
+                      method: type.startsWith('degraded') ? 'POST' : null,
+                      route: type.startsWith('degraded') ? '/orders' : null,
+                      snapshotDetailAnchor: type.startsWith('degraded') ? 'endpoint-evidence-1' : null,
+                      anchorStatus: type.startsWith('degraded') ? 'resolved' : 'missing',
+                      traceId: 'trace-secret'
+                    },
+                    links: {
+                      snapshot: '/api/projects/project-1/applications/app-1/dashboard/snapshots/' + snapshotId
+                    }
+                  };
+                }
+
+                function serverMarker(snapshotId, type, severity, title, summary, capturedAt, captureReason, stateCode) {
+                  return {
+                    markerId: 'snapshot:' + snapshotId + ':' + type,
+                    snapshotId,
+                    capturedAt,
+                    currentWindowEndUtc: capturedAt,
+                    type,
+                    severity,
+                    readMeaning: 'stored_read_model_point',
+                    captureReason,
+                    storedApplicationStateCode: stateCode,
+                    previousState: {
+                      stateCode: 'stale',
+                      source: 'previous_dashboard_snapshot',
+                      snapshotId: '018f6b9a-2e1a-7d2b-9b2f-4db69d92c111',
+                      capturedAt: '2026-05-31T02:00:00Z'
+                    },
+                    title,
+                    summary,
+                    recommendedAction: 'server marker next action',
+                    confidence: severity === 'warning' ? 0.84 : null,
+                    primaryRuleId: type === 'high_confidence_concern' ? 'endpoint_latency_spike' : null,
+                    primaryEndpointKey: type === 'high_confidence_concern' ? 'POST /orders' : null,
+                    rawSnapshotJson: { hidden: true },
+                    links: {
+                      snapshot: '/api/projects/project-1/applications/app-1/dashboard/snapshots/' + snapshotId
+                    }
+                  };
+                }
+
+                (async () => {
+                  await loadDashboard();
+                  clickSnapshotHistory();
+                  const failureRecoveryHistory = history('project-1', 'app-1', { empty: true });
+                  failureRecoveryHistory.events = [
+                    serverEvent('018f6b9a-2e1a-7d2b-9b2f-4db69d92c205', 'recovery_observed', 'info', 'server recovery observed title', 'server recovery observed summary', '2026-05-31T03:20:00Z', null, 'unknown'),
+                    serverEvent('018f6b9a-2e1a-7d2b-9b2f-4db69d92c204', 'degraded_resolved', 'info', 'server degraded resolved title', 'server degraded resolved summary', '2026-05-31T03:15:00Z', null, 'active'),
+                    serverEvent('018f6b9a-2e1a-7d2b-9b2f-4db69d92c203', 'degraded_entered', 'warning', 'server degraded entered title', 'server degraded entered summary', '2026-05-31T03:10:00Z', '2026-05-31T03:15:00Z', 'degraded'),
+                    serverEvent('018f6b9a-2e1a-7d2b-9b2f-4db69d92c202', 'down_entered', 'critical', 'server down entered title', 'server down entered summary', '2026-05-31T03:05:00Z', '2026-05-31T03:20:00Z', 'down'),
+                    serverEvent('018f6b9a-2e1a-7d2b-9b2f-4db69d92c201', 'stale_entered', 'warning', 'server stale entered title', 'server stale entered summary', '2026-05-31T03:00:00Z', '2026-05-31T03:20:00Z', 'stale')
+                  ];
+                  const failureRecoveryMarkers = markers('app-1', { empty: true });
+                  failureRecoveryMarkers.emptyState = null;
+                  failureRecoveryMarkers.markers = [
+                    serverMarker('018f6b9a-2e1a-7d2b-9b2f-4db69d92c301', 'state_change', 'warning', 'server marker stale transition title', 'server marker stale transition summary', '2026-05-31T03:00:00Z', 'state_change', 'stale'),
+                    serverMarker('018f6b9a-2e1a-7d2b-9b2f-4db69d92c302', 'state_observation', 'critical', 'server marker down observation title', 'server marker down observation summary', '2026-05-31T03:05:00Z', 'hourly_scheduled', 'down'),
+                    serverMarker('018f6b9a-2e1a-7d2b-9b2f-4db69d92c303', 'recovery_observed', 'warning', 'server marker recovery observation title', 'server marker recovery observation summary', '2026-05-31T03:20:00Z', 'state_change', 'unknown')
+                  ];
+                  requests.shift().resolve(response(200, failureRecoveryHistory));
+                  requests.shift().resolve(response(200, failureRecoveryMarkers));
+                  await settle();
+
+                  assert.match(dashboardDetail.innerHTML, /stale_entered/);
+                  assert.match(dashboardDetail.innerHTML, /down_entered/);
+                  assert.match(dashboardDetail.innerHTML, /degraded_entered/);
+                  assert.match(dashboardDetail.innerHTML, /degraded_resolved/);
+                  assert.match(dashboardDetail.innerHTML, /recovery_observed/);
+                  assert.match(dashboardDetail.innerHTML, /server stale entered title/);
+                  assert.match(dashboardDetail.innerHTML, /server down entered summary/);
+                  assert.match(dashboardDetail.innerHTML, /server degraded entered title/);
+                  assert.match(dashboardDetail.innerHTML, /server degraded resolved summary/);
+                  assert.match(dashboardDetail.innerHTML, /server recovery observed title/);
+                  assert.match(dashboardDetail.innerHTML, /server marker stale transition title/);
+                  assert.match(dashboardDetail.innerHTML, /server marker down observation summary/);
+                  assert.match(dashboardDetail.innerHTML, /server marker recovery observation title/);
+                  assert.match(dashboardDetail.innerHTML, /stored_read_model_point/);
+                  assert.match(dashboardDetail.innerHTML, /captureReason/);
+                  assert.match(dashboardDetail.innerHTML, /opaque metadata state_change/);
+                  assert.doesNotMatch(dashboardDetail.innerHTML, /trace-secret|rawSnapshotJson|raw bucket|endpoint-timeseries|event meaning|marker meaning|복구 완료|장애 해결 완료|앱 정상 확정|현재 문제 없음|정상입니다/);
                   assert.strictEqual(requests.length, 0);
                 })().catch(error => {
                   console.error(error && error.stack ? error.stack : error);
@@ -321,7 +474,7 @@ class RecentHistoryUiContractTest {
                   requests.shift().resolve(response(404, { detail: 'snapshot_not_found_or_expired token' }));
                   await settle();
                   assert.match(dashboardDetail.innerHTML, /저장된 snapshot detail이 없거나 보관 기간이 지나/);
-                  assert.doesNotMatch(dashboardDetail.innerHTML, /snapshot_not_found_or_expired|current dashboard|token/);
+                  assert.doesNotMatch(dashboardDetail.innerHTML, /snapshot_not_found_or_expired|current dashboard|token|현재 문제 없음|정상입니다|복구 완료|장애 해결 완료/);
 
                   clickSnapshotDetail('/api/projects/project-1/applications/app-1/dashboard/snapshots/018f6b9a-2e1a-7d2b-9b2f-4db69d92c241', '');
                   requests.shift().resolve(response(500, { detail: 'internal stack provider payload' }));

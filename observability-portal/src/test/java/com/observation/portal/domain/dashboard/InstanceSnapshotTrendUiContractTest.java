@@ -189,6 +189,117 @@ class InstanceSnapshotTrendUiContractTest {
     }
 
     @Test
+    void snapshotTrendRuntimeRendersFailureRecoveryStoredPointsWithoutCurrentReclassification() throws Exception {
+        runNodeDashboardContract("""
+                const fs = require('fs');
+                const vm = require('vm');
+                const assert = require('assert');
+
+                const source = fs.readFileSync('src/main/resources/static/dashboard/app.js', 'utf8');
+                const harness = createHarness(source);
+                const { auth, requests, elements, response, settle, project, application, dashboard, evidence, trend,
+                  clickApplications, clickDashboard, clickEvidence, clickSnapshotTrend } = harness;
+                const dashboardDetail = elements.get('#dashboard-detail');
+
+                async function loadEvidence() {
+                  auth.setAccessToken('service-token');
+                  requests.shift().resolve(response(200, {
+                    generatedAt: '2026-05-31T01:00:00Z',
+                    projects: [project('project-1', 'Project One', '/api/projects/project-1/applications')]
+                  }));
+                  await settle();
+                  clickApplications('project-1', 'Project One', '/api/projects/project-1/applications');
+                  requests.shift().resolve(response(200, {
+                    generatedAt: '2026-05-31T01:02:00Z',
+                    project: { projectId: 'project-1', name: 'Project One' },
+                    applications: [application('app-1')]
+                  }));
+                  await settle();
+                  clickDashboard('app-1', 'Orders API', 'prod', '/api/projects/project-1/applications/app-1/dashboard');
+                  requests.shift().resolve(response(200, dashboard('project-1', 'app-1', { applicationName: 'Orders API' })));
+                  await settle();
+                  clickEvidence('instance-1', 'pod-a', '/api/projects/project-1/applications/app-1/instances/instance-1/evidence');
+                  requests.shift().resolve(response(200, evidence('project-1', 'app-1', 'instance-1')));
+                  await settle();
+                }
+
+                function storedPoint(snapshotId, capturedAt, stateCode, freshnessLabel, captureReason, contributionReason) {
+                  return {
+                    snapshotId,
+                    capturedAt,
+                    currentWindowEndUtc: capturedAt,
+                    storedApplicationStateCode: stateCode,
+                    captureReason,
+                    instanceName: 'pod-a',
+                    observationStatus: 'observed',
+                    metricData: {
+                      statusSource: 'accepted_bucket',
+                      lastAcceptedBucketAt: '2026-05-31T00:59:30Z',
+                      freshnessLabel
+                    },
+                    starterConnection: {
+                      statusSource: 'starter_heartbeat',
+                      lastHeartbeatAt: '2026-05-31T00:59:45Z',
+                      lastHeartbeatStatus: 'received',
+                      connectionMeaning: 'starter_connected',
+                      stateImpact: 'none'
+                    },
+                    starterPercentilePoint: null,
+                    resourceHints: null,
+                    applicationTriageContribution: {
+                      status: 'available',
+                      contributed: false,
+                      relatedRuleIds: [],
+                      reason: contributionReason
+                    },
+                    endpointEvidenceRefs: []
+                  };
+                }
+
+                (async () => {
+                  await loadEvidence();
+                  clickSnapshotTrend('/api/projects/project-1/applications/app-1/instances/instance-1/snapshot-trend');
+                  const failureRecoveryTrend = trend('project-1', 'app-1', 'instance-1');
+                  failureRecoveryTrend.points = [
+                    storedPoint('018f6b9a-2e1a-7d2b-9b2f-4db69d92c101', '2026-05-31T00:00:00Z', 'stale', 'stale', 'state_change', 'stored_stale_observation'),
+                    storedPoint('018f6b9a-2e1a-7d2b-9b2f-4db69d92c102', '2026-05-31T00:10:00Z', 'down', 'down', 'state_change', 'stored_down_observation'),
+                    storedPoint('018f6b9a-2e1a-7d2b-9b2f-4db69d92c103', '2026-05-31T00:20:00Z', 'degraded', 'current', 'high_confidence_concern', 'stored_degraded_observation'),
+                    storedPoint('018f6b9a-2e1a-7d2b-9b2f-4db69d92c104', '2026-05-31T00:30:00Z', 'unknown', 'current', 'state_change', 'observing_recovery')
+                  ];
+                  requests.shift().resolve(response(200, failureRecoveryTrend));
+                  await settle();
+
+                  assert.match(dashboardDetail.innerHTML, /Stored application state copy lane/);
+                  assert.match(dashboardDetail.innerHTML, /storedApplicationStateCode stale/);
+                  assert.match(dashboardDetail.innerHTML, /storedApplicationStateCode down/);
+                  assert.match(dashboardDetail.innerHTML, /storedApplicationStateCode degraded/);
+                  assert.match(dashboardDetail.innerHTML, /storedApplicationStateCode unknown/);
+                  assert.match(dashboardDetail.innerHTML, /Capture reason\\/source marker lane/);
+                  assert.match(dashboardDetail.innerHTML, /captureReason opaque metadata state_change/);
+                  assert.match(dashboardDetail.innerHTML, /captureReason opaque metadata high_confidence_concern/);
+                  assert.match(dashboardDetail.innerHTML, /no concern observed/);
+                  assert.match(dashboardDetail.innerHTML, /health proof가 아닙니다/);
+                  assert.match(dashboardDetail.innerHTML, /reason observing_recovery/);
+                  assert.match(dashboardDetail.innerHTML, /stored starter percentile point source absence/);
+                  assert.match(dashboardDetail.innerHTML, /stored resource hint source absence/);
+                  assert.match(dashboardDetail.innerHTML, /bounded endpoint reference source absence/);
+                  assert.doesNotMatch(dashboardDetail.innerHTML, /current instance state|instanceHealth|hostStatus|connectedAndHealthy|recovery marker|event meaning|복구 완료|장애 해결 완료|정상입니다/);
+
+                  clickSnapshotTrend('/api/projects/project-1/applications/app-1/instances/instance-1/snapshot-trend');
+                  requests.shift().resolve(response(200, trend('project-1', 'app-1', 'instance-1', { empty: true })));
+                  await settle();
+                  assert.match(dashboardDetail.innerHTML, /points source absence/);
+                  assert.match(dashboardDetail.innerHTML, /display range empty/);
+                  assert.match(dashboardDetail.innerHTML, /stored point source absence/);
+                  assert.doesNotMatch(dashboardDetail.innerHTML, /health proof|복구 완료|장애 해결 완료|정상입니다/);
+                })().catch(error => {
+                  console.error(error && error.stack ? error.stack : error);
+                  process.exit(1);
+                });
+                """);
+    }
+
+    @Test
     void snapshotTrendRuntimeRendersSafeStatesAndRejectsMalformedStaleOrMismatchedResponses() throws Exception {
         runNodeDashboardContract("""
                 const fs = require('fs');

@@ -87,6 +87,36 @@ class DashboardSnapshotDetailServiceTest {
     }
 
     @Test
+    void recoveryObservedSnapshotDetailKeepsStoredObservationCopyWithoutCurrentFallback() {
+        DashboardSnapshotDetailRow row = row("unknown", "state_change", recoveryJson());
+        when(snapshotRepository.findDetailRow(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID)).thenReturn(Optional.of(row));
+        when(snapshotRepository.findPreviousSnapshot(APPLICATION_ID, row.currentWindowEndUtc()))
+                .thenReturn(Optional.of(sourceRow(PREVIOUS_SNAPSHOT_ID, "down", "2026-05-26T07:30:00Z")));
+        when(snapshotRepository.findPreviousActiveSnapshot(APPLICATION_ID, row.currentWindowEndUtc()))
+                .thenReturn(Optional.of(sourceRow(HEALTHY_SNAPSHOT_ID, "active", "2026-05-26T06:00:00Z")));
+
+        DashboardSnapshotDetailReadModel detail = service.getDetail(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID)
+                .orElseThrow();
+
+        assertThat(detail.readSemantics().mode()).isEqualTo("stored_snapshot_detail");
+        assertThat(detail.readSemantics().currentStateRecalculated()).isFalse();
+        assertThat(detail.readSemantics().liveSourcesJoined()).isEmpty();
+        assertThat(detail.marker().type().value()).isEqualTo("recovery_observed");
+        assertThat(detail.marker().title()).isEqualTo("회복 관찰 중");
+        assertThat(detail.recoveryMarker()).isNotNull();
+        assertThat(detail.recoveryMarker().type().value()).isEqualTo("recovery_observed");
+        assertThat(detail.recoveryMarker().title()).isEqualTo("회복 관찰 중");
+        assertThat(detail.recoveryMarker().summary()).contains("판단 sample이 아직 부족");
+        assertThat(detail.lastHealthyAt().source()).isEqualTo("previous_active_dashboard_snapshot");
+
+        String userFacingCopy = detail.marker().title() + " " + detail.marker().summary() + " "
+                + detail.marker().recommendedAction() + " " + detail.recoveryMarker().title() + " "
+                + detail.recoveryMarker().summary() + " " + detail.recoveryMarker().recommendedAction();
+        assertThat(userFacingCopy)
+                .doesNotContain("복구 완료", "장애 해결 완료", "앱 정상 확정", "문제 없음", "현재 정상");
+    }
+
+    @Test
     void missingCatalogPathOrSnapshotReturnsEmptyWithoutFallbackProjection() {
         when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID)).thenReturn(Optional.empty());
 
@@ -197,6 +227,29 @@ class DashboardSnapshotDetailServiceTest {
                         ]
                       }
                     ]
+                  }
+                }
+                """;
+    }
+
+    private static String recoveryJson() {
+        return """
+                {
+                  "application": {"name": "orders-api"},
+                  "state": {"code": "unknown"},
+                  "recovery": {"isRecovering": true, "recommendedAction": "다음 bucket까지 관찰하세요."},
+                  "zeroInsight": {"reasonCode": "observing_recovery"},
+                  "triageCards": [],
+                  "snapshotEndpointEvidence": {
+                    "source": "bounded_endpoint_evidence",
+                    "maxItems": 10,
+                    "items": []
+                  },
+                  "instanceSummary": {
+                    "schemaVersion": "1.0",
+                    "source": "bounded_instance_summary",
+                    "maxItems": 50,
+                    "items": []
                   }
                 }
                 """;

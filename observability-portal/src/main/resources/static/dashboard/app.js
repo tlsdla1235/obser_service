@@ -111,7 +111,10 @@ const SNAPSHOT_HISTORY_PRESET_QUERY = Object.freeze({
 const ZERO_INSIGHT_SOURCE_GUIDANCE = Object.freeze({
   waiting_first_data: 'starter heartbeat는 수신됐지만 metric 판단 source인 accepted bucket은 아직 없습니다.',
   insufficient_sample: 'accepted bucket은 들어왔지만 minimum sample guard를 통과할 표본이 아직 부족합니다.',
-  no_action_needed: '현재 우선 노출할 triage는 없습니다. accepted bucket freshness와 starter heartbeat는 별도 source로 봅니다.'
+  no_action_needed: '현재 우선 노출할 triage는 없습니다. accepted bucket freshness와 starter heartbeat는 별도 source로 봅니다.',
+  metric_data_idle: 'metric data는 요청 없음, bucket sample 부족, 다음 accepted bucket 확인이 필요한 상태일 수 있습니다. starter heartbeat와 별도 source이며 host application 상태는 이 신호만으로 확정하지 않습니다.',
+  telemetry_unreachable: 'starter/portal/network 연결 후보를 확인하세요. host application 상태는 이 신호만으로 확정하지 않습니다.',
+  observing_recovery: '새 metric bucket이 다시 관찰됐고 sample이 충분해지는지 다음 bucket에서 확인합니다.'
 });
 
 // Snapshot marker type은 backend read model enum만 표시하기 위한 allow-list다.
@@ -837,6 +840,7 @@ function metricStateStripMarkup(dashboard) {
         <h3>${escapeText(valueOrAbsence(state.label, 'state label source absence'))}</h3>
       </div>
       <dl>
+        ${keyValueMarkup('source', 'accepted_bucket')}
         ${keyValueMarkup('state code', state.code)}
         ${keyValueMarkup('scope', state.scope)}
         ${keyValueMarkup('rationale', state.rationale)}
@@ -1824,7 +1828,7 @@ function instanceSnapshotTrendMetadataMarkup(trend) {
 function instanceSnapshotTrendLanesMarkup(points) {
   const storedPoints = Array.isArray(points) ? points : [];
   const emptyCopy = storedPoints.length === 0
-    ? '<p class="dashboard-empty-copy">points source absence · snapshot source absence, retention gap, target instance absence 중 하나일 수 있습니다.</p>'
+    ? '<p class="dashboard-empty-copy">points source absence · display range empty, snapshot source absence, retention gap, target instance absence 중 하나일 수 있습니다.</p>'
     : '';
   return `
     <section class="dashboard-section snapshot-trend-lanes" aria-label="Snapshot trend lanes">
@@ -1885,7 +1889,7 @@ function instanceSnapshotTrendPointListMarkup(points) {
     <section class="dashboard-section" aria-label="Snapshot trend point list">
       <p class="eyebrow">Point list and stored detail</p>
       <div class="dashboard-list">
-        ${storedPoints.length === 0 ? '<p class="dashboard-empty-copy">stored point source absence · missing hourly snapshot은 보간하지 않습니다.</p>' : storedPoints.map(instanceSnapshotTrendPointMarkup).join('')}
+        ${storedPoints.length === 0 ? '<p class="dashboard-empty-copy">stored point source absence · display range empty 또는 missing hourly snapshot은 보간하지 않습니다.</p>' : storedPoints.map(instanceSnapshotTrendPointMarkup).join('')}
       </div>
     </section>
   `;

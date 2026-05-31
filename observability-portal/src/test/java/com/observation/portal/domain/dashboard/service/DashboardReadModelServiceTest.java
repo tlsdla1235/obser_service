@@ -54,6 +54,9 @@ class DashboardReadModelServiceTest {
     private static final List<String> UNSAFE_OPERATIONAL_OUTCOME_COPY = List.of(
             "host application down",
             "host down",
+            "host process down",
+            "process down",
+            "앱 내려감",
             "앱 정상 확정",
             "정상 확정",
             "문제 없음",
@@ -585,6 +588,11 @@ class DashboardReadModelServiceTest {
         assertThat(dashboard.recovery().retryAfterSeconds()).isEqualTo(30);
         assertThat(dashboard.zeroInsight()).isNotNull();
         assertThat(dashboard.zeroInsight().reasonCode()).isEqualTo("observing_recovery");
+        assertThat(dashboard.starterConnection().statusSource()).isEqualTo("starter_heartbeat");
+        assertThat(dashboard.starterConnection().lastHeartbeatStatus()).isEqualTo("missing");
+        assertThat(dashboard.starterConnection().connectionMeaning()).isEqualTo("unknown");
+        assertThat(dashboard.starterConnection().stateImpact()).isEqualTo("none");
+        assertServerCopyDoesNotDeclareUnsafeOutcome(dashboard);
     }
 
     @Test
@@ -827,6 +835,47 @@ class DashboardReadModelServiceTest {
     }
 
     @Test
+    void failureRecoveryReadModelKeepsAcceptedBucketAndStarterHeartbeatAxesSeparate() {
+        ApplicationDashboardReadModel metricDataIdle = failureRecoveryDashboard(
+                "2026-05-25T10:30:30Z",
+                "2026-05-25T10:32:20Z",
+                0L);
+
+        assertThat(metricDataIdle.state().code()).isEqualTo("stale");
+        assertThat(metricDataIdle.application().freshness().lastObservedAt())
+                .isEqualTo(offset("2026-05-25T10:30:30Z"));
+        assertThat(metricDataIdle.zeroInsight().reasonCode()).isEqualTo("metric_data_idle");
+        assertThat(metricDataIdle.starterConnection().statusSource()).isEqualTo("starter_heartbeat");
+        assertThat(metricDataIdle.starterConnection().connectionMeaning()).isEqualTo("starter_connected");
+        assertThat(metricDataIdle.starterConnection().stateImpact()).isEqualTo("none");
+        assertServerCopyDoesNotDeclareUnsafeOutcome(metricDataIdle);
+
+        ApplicationDashboardReadModel telemetryUnreachable = failureRecoveryDashboard(
+                "2026-05-25T10:30:30Z",
+                "2026-05-25T10:29:00Z",
+                0L);
+
+        assertThat(telemetryUnreachable.state().code()).isEqualTo("stale");
+        assertThat(telemetryUnreachable.zeroInsight().reasonCode()).isEqualTo("telemetry_unreachable");
+        assertThat(telemetryUnreachable.starterConnection().statusSource()).isEqualTo("starter_heartbeat");
+        assertThat(telemetryUnreachable.starterConnection().connectionMeaning()).isEqualTo("starter_disconnected");
+        assertThat(telemetryUnreachable.starterConnection().stateImpact()).isEqualTo("none");
+        assertServerCopyDoesNotDeclareUnsafeOutcome(telemetryUnreachable);
+
+        ApplicationDashboardReadModel currentMetricWithStaleHeartbeat = failureRecoveryDashboard(
+                "2026-05-25T10:32:00Z",
+                "2026-05-25T10:29:00Z",
+                50L);
+
+        assertThat(currentMetricWithStaleHeartbeat.state().code()).isEqualTo("active");
+        assertThat(currentMetricWithStaleHeartbeat.zeroInsight().reasonCode()).isEqualTo("no_action_needed");
+        assertThat(currentMetricWithStaleHeartbeat.starterConnection().connectionMeaning())
+                .isEqualTo("starter_disconnected");
+        assertThat(currentMetricWithStaleHeartbeat.starterConnection().stateImpact()).isEqualTo("none");
+        assertServerCopyDoesNotDeclareUnsafeOutcome(currentMetricWithStaleHeartbeat);
+    }
+
+    @Test
     void demoReadModelStatesExposeSourceAwareReasonsWithoutUnsafeOutcomeCopy() {
         ApplicationDashboardReadModel heartbeatOnly = dashboard(null, "2026-05-25T10:32:20Z", 0L);
 
@@ -930,6 +979,19 @@ class DashboardReadModelServiceTest {
             String latestHeartbeatAt,
             long requestCount) {
         return dashboard(latestBucketEndUtc, latestHeartbeatAt, requestCount, 0L);
+    }
+
+    /**
+     * Story 6.9 failure/recovery guard에서 사용하는 별도 helper다.
+     *
+     * <p>Story 6.8 green path scenario와 이름을 분리해 accepted bucket metric axis와 starter heartbeat control-plane
+     * axis를 섞어 쓰지 않았는지 테스트에서 드러낸다.</p>
+     */
+    private ApplicationDashboardReadModel failureRecoveryDashboard(
+            String latestBucketEndUtc,
+            String latestHeartbeatAt,
+            long requestCount) {
+        return dashboard(latestBucketEndUtc, latestHeartbeatAt, requestCount);
     }
 
     private static List<String> metricRecordComponentNames() {

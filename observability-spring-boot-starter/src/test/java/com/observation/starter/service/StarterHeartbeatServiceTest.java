@@ -13,6 +13,7 @@ import java.net.http.HttpTimeoutException;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -59,6 +60,27 @@ class StarterHeartbeatServiceTest {
                 () -> Instant.parse("2026-05-24T08:30:00Z"));
 
         assertFalse(service.sendOnce());
+    }
+
+    @Test
+    void portalDownHeartbeatResultRemainsFailOpenControlPlaneSignal() {
+        PortalHeartbeatClient failingClient = request -> {
+            throw new RuntimeException(new HttpTimeoutException("request timed out"));
+        };
+        StarterHeartbeatService service = new StarterHeartbeatService(
+                failingClient,
+                identity(),
+                properties(),
+                () -> Instant.parse("2026-05-24T08:30:00Z"));
+
+        StarterHeartbeatResult result = assertDoesNotThrow(service::sendOnceResult);
+
+        assertFalse(result.success());
+        assertTrue(result.failed());
+        assertEquals(HeartbeatFailureCategory.READ_TIMEOUT, result.failureCategory());
+        assertFalse(result.toString().contains("host application down"));
+        assertFalse(result.toString().contains("host process down"));
+        assertFalse(result.toString().contains("pk_live.secret"));
     }
 
     @Test

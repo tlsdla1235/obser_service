@@ -163,6 +163,47 @@ class OperationalEventHistoryProjectorTest {
     }
 
     @Test
+    void failureRecoveryEventCopyUsesStoredObservationLanguageWithoutCompletionClaims() {
+        List<OperationalEventItem> events = projector.project(
+                PROJECT_ID,
+                APPLICATION_ID,
+                List.of(
+                        row(48, "2026-05-27T11:10:00Z", "unknown", "state_change", null, null, null, recoveryJson()),
+                        row(47, "2026-05-27T11:00:00Z", "down", "state_change", null, null, null, emptyJson()),
+                        row(46, "2026-05-27T10:50:00Z", "unknown", "state_change", null, null, null, recoveryJson()),
+                        row(45, "2026-05-27T10:40:00Z", "stale", "state_change", null, null, null, emptyJson()),
+                        row(44, "2026-05-27T10:30:00Z", "active", "state_change", null, null, "0.20", emptyJson()),
+                        row(43, "2026-05-27T10:20:00Z", "degraded", "state_change", "endpoint_latency_spike", "POST /orders", "0.84",
+                                evidenceJson("endpoint_latency_spike", "POST", "/orders", "POST /orders", "0.84")),
+                        row(42, "2026-05-27T10:10:00Z", "active", "hourly_scheduled", null, null, null, emptyJson())));
+
+        assertThat(events)
+                .extracting(OperationalEventItem::type)
+                .containsExactly(
+                        OperationalEventType.DEGRADED_ENTERED,
+                        OperationalEventType.DEGRADED_RESOLVED,
+                        OperationalEventType.STALE_ENTERED,
+                        OperationalEventType.RECOVERY_OBSERVED,
+                        OperationalEventType.DOWN_ENTERED,
+                        OperationalEventType.RECOVERY_OBSERVED);
+        assertThat(events).allSatisfy(OperationalEventHistoryProjectorTest::assertSafeEventCopy);
+        assertThat(only(events, OperationalEventType.DEGRADED_RESOLVED).summary())
+                .contains("해소 조건")
+                .doesNotContain("복구 완료", "장애 해결 완료", "앱 정상 확정");
+        assertThat(only(events, OperationalEventType.STALE_ENTERED).summary())
+                .contains("accepted bucket freshness 부족")
+                .doesNotContain("host application down");
+        assertThat(only(events, OperationalEventType.DOWN_ENTERED).summary())
+                .contains("metric data freshness boundary")
+                .doesNotContain("host application down", "host process down");
+        assertThat(events)
+                .filteredOn(event -> event.type() == OperationalEventType.RECOVERY_OBSERVED)
+                .allSatisfy(event -> assertThat(event.summary())
+                        .contains("회복 흐름")
+                        .doesNotContain("복구 완료", "장애 해결 완료", "앱 정상 확정"));
+    }
+
+    @Test
     void promotesHighConfidenceConcernsWithGuardSuppressionBoundaryAndShortSpikeMapping() {
         DashboardSnapshotDetailRow firstConcern = row(
                 10,
@@ -269,8 +310,7 @@ class OperationalEventHistoryProjectorTest {
         assertThat(events)
                 .allSatisfy(event -> {
                     assertThat(event.severity()).isEqualTo(OperationalEventSeverity.WARNING);
-                    assertThat(event.summary()).doesNotContain("복구 완료", "장애 해결 완료", "앱 정상 확정", "heartbeat");
-                    assertThat(event.title()).doesNotContain("복구 완료", "장애 해결 완료", "앱 정상 확정", "heartbeat");
+                    assertSafeEventCopy(event);
                 });
         assertThat(events)
                 .extracting(event -> event.evidence().endpointKey() + ":" + event.occurredAt() + ":" + event.resolvedAt())
@@ -360,6 +400,27 @@ class OperationalEventHistoryProjectorTest {
                 .filter(event -> event.type() == type)
                 .findFirst()
                 .orElseThrow();
+    }
+
+    private static void assertSafeEventCopy(OperationalEventItem event) {
+        assertThat(event.summary()).doesNotContain(
+                "복구 완료",
+                "장애 해결 완료",
+                "앱 정상 확정",
+                "문제 없음",
+                "현재 정상",
+                "host application down",
+                "host process down",
+                "heartbeat");
+        assertThat(event.title()).doesNotContain(
+                "복구 완료",
+                "장애 해결 완료",
+                "앱 정상 확정",
+                "문제 없음",
+                "현재 정상",
+                "host application down",
+                "host process down",
+                "heartbeat");
     }
 
     private static DashboardSnapshotDetailRow row(
