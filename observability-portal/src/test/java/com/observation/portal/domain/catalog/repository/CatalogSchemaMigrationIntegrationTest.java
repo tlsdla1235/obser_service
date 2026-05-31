@@ -37,7 +37,7 @@ class CatalogSchemaMigrationIntegrationTest {
     void appliesMigrationsToCleanDatabase() throws SQLException {
         MigrateResult result = cleanAndMigrate();
 
-        assertThat(result.migrationsExecuted).isEqualTo(9);
+        assertThat(result.migrationsExecuted).isEqualTo(11);
         assertThat(tableExists("projects")).isTrue();
         assertThat(tableExists("applications")).isTrue();
         assertThat(tableExists("application_instances")).isTrue();
@@ -49,6 +49,7 @@ class CatalogSchemaMigrationIntegrationTest {
         assertThat(tableExists("refresh_token_families")).isTrue();
         assertThat(tableExists("refresh_tokens")).isTrue();
         assertThat(tableExists("oauth_state_nonces")).isTrue();
+        assertThat(tableExists("account_project_memberships")).isTrue();
         assertThat(tableExists("operational_events")).isFalse();
         assertThat(tableExists("endpoint_timeseries")).isFalse();
         assertThat(tableExists("raw_snapshots")).isFalse();
@@ -296,6 +297,125 @@ class CatalogSchemaMigrationIntegrationTest {
     }
 
     @Test
+    void enforcesAccountAuthConstraintsAndIndexes() throws SQLException {
+        cleanAndMigrate();
+
+        assertThat(constraintExists("accounts", "pk_accounts")).isTrue();
+        assertThat(constraintExists("accounts", "ck_accounts_status")).isTrue();
+
+        assertThat(constraintExists("external_identities", "pk_external_identities")).isTrue();
+        assertThat(constraintExists("external_identities", "fk_external_identities_account_id")).isTrue();
+        assertThat(constraintExists("external_identities", "uk_external_identities_provider_subject")).isTrue();
+        assertThat(constraintExists("external_identities", "ck_external_identities_provider")).isTrue();
+        assertThat(indexExists("idx_external_identities_account")).isTrue();
+
+        assertThat(constraintExists("refresh_token_families", "pk_refresh_token_families")).isTrue();
+        assertThat(constraintExists("refresh_token_families", "uk_refresh_token_families_id_account")).isTrue();
+        assertThat(constraintExists("refresh_token_families", "fk_refresh_token_families_account_id")).isTrue();
+        assertThat(constraintExists("refresh_token_families", "ck_refresh_token_families_status")).isTrue();
+        assertThat(indexExists("idx_refresh_token_families_account")).isTrue();
+
+        assertThat(constraintExists("refresh_tokens", "pk_refresh_tokens")).isTrue();
+        assertThat(constraintExists("refresh_tokens", "fk_refresh_tokens_account_id")).isTrue();
+        assertThat(constraintExists("refresh_tokens", "fk_refresh_tokens_family_account")).isTrue();
+        assertThat(constraintExists("refresh_tokens", "uk_refresh_tokens_token_hash")).isTrue();
+        assertThat(constraintExists("refresh_tokens", "ck_refresh_tokens_status")).isTrue();
+        assertThat(constraintExists("refresh_tokens", "ck_refresh_tokens_hash_hex")).isTrue();
+        assertThat(indexExists("idx_refresh_tokens_family")).isTrue();
+        assertThat(indexExists("idx_refresh_tokens_account_created")).isTrue();
+
+        assertThat(constraintExists("oauth_state_nonces", "pk_oauth_state_nonces")).isTrue();
+        assertThat(constraintExists("oauth_state_nonces", "uk_oauth_state_nonces_nonce_hash")).isTrue();
+        assertThat(constraintExists("oauth_state_nonces", "ck_oauth_state_nonces_status")).isTrue();
+        assertThat(constraintExists("oauth_state_nonces", "ck_oauth_state_nonces_hash_hex")).isTrue();
+        assertThat(indexExists("idx_oauth_state_nonces_expires")).isTrue();
+    }
+
+    @Test
+    void enforcesAccountProjectMembershipConstraintsAndIndexes() throws SQLException {
+        cleanAndMigrate();
+
+        UUID accountId = UUID.fromString("00000000-0000-0000-0000-000000001001");
+        UUID otherAccountId = UUID.fromString("00000000-0000-0000-0000-000000001002");
+        UUID projectId = UUID.fromString("00000000-0000-0000-0000-000000001101");
+        UUID otherProjectId = UUID.fromString("00000000-0000-0000-0000-000000001102");
+        insertAccount(accountId);
+        insertAccount(otherAccountId);
+        insertProject(projectId, "membership-project", "member", "hash-member");
+        insertProject(otherProjectId, "membership-other-project", "member-other", "hash-member-other");
+
+        assertThat(constraintExists("account_project_memberships", "pk_account_project_memberships")).isTrue();
+        assertThat(constraintExists(
+                "account_project_memberships",
+                "fk_account_project_memberships_account_id")).isTrue();
+        assertThat(constraintExists(
+                "account_project_memberships",
+                "fk_account_project_memberships_project_id")).isTrue();
+        assertThat(constraintExists(
+                "account_project_memberships",
+                "uk_account_project_memberships_account_project")).isTrue();
+        assertThat(constraintExists("account_project_memberships", "ck_account_project_memberships_role")).isTrue();
+        assertThat(constraintExists("account_project_memberships", "ck_account_project_memberships_status")).isTrue();
+        assertThat(indexExists("idx_account_project_memberships_account_status_project")).isTrue();
+        assertThat(indexExists("idx_account_project_memberships_project_status_account")).isTrue();
+
+        insertAccountProjectMembership(
+                UUID.fromString("00000000-0000-0000-0000-000000001201"),
+                accountId,
+                projectId,
+                "member",
+                "active");
+        insertAccountProjectMembership(
+                UUID.fromString("00000000-0000-0000-0000-000000001202"),
+                otherAccountId,
+                projectId,
+                "member",
+                "disabled");
+        insertAccountProjectMembership(
+                UUID.fromString("00000000-0000-0000-0000-000000001203"),
+                accountId,
+                otherProjectId,
+                "member",
+                "active");
+
+        assertSqlState(UNIQUE_VIOLATION,
+                () -> insertAccountProjectMembership(
+                        UUID.fromString("00000000-0000-0000-0000-000000001204"),
+                        accountId,
+                        projectId,
+                        "member",
+                        "active"));
+        assertSqlState(CHECK_VIOLATION,
+                () -> insertAccountProjectMembership(
+                        UUID.fromString("00000000-0000-0000-0000-000000001205"),
+                        otherAccountId,
+                        otherProjectId,
+                        "owner",
+                        "active"));
+        assertSqlState(CHECK_VIOLATION,
+                () -> insertAccountProjectMembership(
+                        UUID.fromString("00000000-0000-0000-0000-000000001206"),
+                        otherAccountId,
+                        otherProjectId,
+                        "member",
+                        "pending"));
+        assertSqlState(FOREIGN_KEY_VIOLATION,
+                () -> insertAccountProjectMembership(
+                        UUID.fromString("00000000-0000-0000-0000-000000001207"),
+                        UUID.fromString("00000000-0000-0000-0000-000000001999"),
+                        otherProjectId,
+                        "member",
+                        "active"));
+        assertSqlState(FOREIGN_KEY_VIOLATION,
+                () -> insertAccountProjectMembership(
+                        UUID.fromString("00000000-0000-0000-0000-000000001208"),
+                        otherAccountId,
+                        UUID.fromString("00000000-0000-0000-0000-000000001999"),
+                        "member",
+                        "active"));
+    }
+
+    @Test
     void v007CleansDuplicateDashboardSnapshotsDeterministicallyBeforeAddingUniqueConstraint() throws SQLException {
         cleanAndMigrateTo("6");
 
@@ -370,7 +490,7 @@ class CatalogSchemaMigrationIntegrationTest {
 
         MigrateResult result = migrateRemaining();
 
-        assertThat(result.migrationsExecuted).isEqualTo(3);
+        assertThat(result.migrationsExecuted).isEqualTo(5);
         assertThat(dashboardSnapshotCount(applicationId)).isEqualTo(1);
         assertThat(dashboardSnapshotExists(stateChangeId)).isTrue();
         assertThat(constraintExists(
@@ -379,89 +499,132 @@ class CatalogSchemaMigrationIntegrationTest {
     }
 
     @Test
-    void keepsKoreanCommentsForEveryCatalogTableAndColumn() throws SQLException {
+    void keepsKoreanCommentsForEveryApplicationTableAndColumn() throws SQLException {
         cleanAndMigrate();
 
-        Map<String, List<String>> expectedColumnsByTable = Map.of(
-                "projects",
-                List.of("id", "name", "key_prefix", "project_key_hash", "status", "created_at", "updated_at"),
-                "applications",
-                List.of(
-                        "id",
-                        "project_id",
-                        "name",
-                        "environment",
-                        "status",
-                        "first_seen_at",
-                        "last_seen_at",
-                        "created_at",
-                        "updated_at"),
-                "application_instances",
-                List.of(
-                        "id",
-                        "application_id",
-                        "instance_name",
-                        "first_seen_at",
-                        "last_seen_at",
-                        "created_at",
-                        "updated_at"),
-                "accepted_metric_buckets",
-                List.of(
-                        "id",
-                        "project_id",
-                        "application_id",
-                        "application_instance_id",
-                        "schema_version",
-                        "idempotency_key",
-                        "payload_hash",
-                        "bucket_start_utc",
-                        "bucket_end_utc",
-                        "duration_seconds",
-                        "accepted_at",
-                        "request_count",
-                        "error_count",
-                        "duration_buckets_json",
-                        "cpu_usage_ratio",
-                        "heap_used_ratio",
-                        "datasource_pool_usage_ratio",
-                        "local_percentiles_json",
-                        "endpoints_json",
-                        "created_at"),
-                "starter_heartbeat_telemetry",
-                List.of(
-                        "id",
-                        "project_id",
-                        "application_name",
-                        "environment",
-                        "instance_name",
-                        "starter_version",
-                        "last_sent_at_utc",
-                        "last_received_at_utc",
-                        "last_sequence",
-                        "interval_seconds",
-                        "metadata_status",
-                        "heartbeat_status",
-                        "created_at",
-                        "updated_at"),
-                "dashboard_snapshots",
-                List.of(
-                        "id",
-                        "project_id",
-                        "application_id",
-                        "generated_at",
-                        "current_window_start_utc",
-                        "current_window_end_utc",
-                        "baseline_window_start_utc",
-                        "baseline_window_end_utc",
-                        "last_accepted_ingest_at",
-                        "last_observed_at",
-                        "state_code",
-                        "capture_reason",
-                        "primary_rule_id",
-                        "primary_endpoint_key",
-                        "max_confidence",
-                        "read_model_json",
-                        "created_at"));
+        Map<String, List<String>> expectedColumnsByTable = Map.ofEntries(
+                Map.entry(
+                        "projects",
+                        List.of("id", "name", "key_prefix", "project_key_hash", "status", "created_at", "updated_at")),
+                Map.entry(
+                        "applications",
+                        List.of(
+                                "id",
+                                "project_id",
+                                "name",
+                                "environment",
+                                "status",
+                                "first_seen_at",
+                                "last_seen_at",
+                                "created_at",
+                                "updated_at")),
+                Map.entry(
+                        "application_instances",
+                        List.of(
+                                "id",
+                                "application_id",
+                                "instance_name",
+                                "first_seen_at",
+                                "last_seen_at",
+                                "created_at",
+                                "updated_at")),
+                Map.entry(
+                        "accepted_metric_buckets",
+                        List.of(
+                                "id",
+                                "project_id",
+                                "application_id",
+                                "application_instance_id",
+                                "schema_version",
+                                "idempotency_key",
+                                "payload_hash",
+                                "bucket_start_utc",
+                                "bucket_end_utc",
+                                "duration_seconds",
+                                "accepted_at",
+                                "request_count",
+                                "error_count",
+                                "duration_buckets_json",
+                                "cpu_usage_ratio",
+                                "heap_used_ratio",
+                                "datasource_pool_usage_ratio",
+                                "local_percentiles_json",
+                                "endpoints_json",
+                                "created_at")),
+                Map.entry(
+                        "starter_heartbeat_telemetry",
+                        List.of(
+                                "id",
+                                "project_id",
+                                "application_name",
+                                "environment",
+                                "instance_name",
+                                "starter_version",
+                                "last_sent_at_utc",
+                                "last_received_at_utc",
+                                "last_sequence",
+                                "interval_seconds",
+                                "metadata_status",
+                                "heartbeat_status",
+                                "created_at",
+                                "updated_at")),
+                Map.entry(
+                        "dashboard_snapshots",
+                        List.of(
+                                "id",
+                                "project_id",
+                                "application_id",
+                                "generated_at",
+                                "current_window_start_utc",
+                                "current_window_end_utc",
+                                "baseline_window_start_utc",
+                                "baseline_window_end_utc",
+                                "last_accepted_ingest_at",
+                                "last_observed_at",
+                                "state_code",
+                                "capture_reason",
+                                "primary_rule_id",
+                                "primary_endpoint_key",
+                                "max_confidence",
+                                "read_model_json",
+                                "created_at")),
+                Map.entry(
+                        "accounts",
+                        List.of("id", "status", "created_at", "updated_at")),
+                Map.entry(
+                        "external_identities",
+                        List.of(
+                                "id",
+                                "account_id",
+                                "provider",
+                                "provider_subject",
+                                "email",
+                                "display_name",
+                                "avatar_url",
+                                "created_at",
+                                "updated_at")),
+                Map.entry(
+                        "refresh_token_families",
+                        List.of("id", "account_id", "status", "created_at", "updated_at")),
+                Map.entry(
+                        "refresh_tokens",
+                        List.of(
+                                "id",
+                                "family_id",
+                                "account_id",
+                                "token_hash",
+                                "status",
+                                "expires_at",
+                                "consumed_at",
+                                "revoked_at",
+                                "reuse_detected_at",
+                                "created_at")),
+                Map.entry(
+                        "oauth_state_nonces",
+                        List.of("id", "nonce_hash", "status", "expires_at", "consumed_at", "created_at")),
+                Map.entry(
+                        "account_project_memberships",
+                        List.of("id", "account_id", "project_id", "role", "status", "created_at", "updated_at")));
 
         for (Map.Entry<String, List<String>> table : expectedColumnsByTable.entrySet()) {
             assertKoreanComment(tableComment(table.getKey()), table.getKey() + " table comment");
@@ -603,6 +766,45 @@ class CatalogSchemaMigrationIntegrationTest {
             statement.setString(4, projectKeyHash);
             statement.setObject(5, OffsetDateTime.parse("2026-05-10T00:00:00Z"));
             statement.setObject(6, OffsetDateTime.parse("2026-05-10T00:00:00Z"));
+            statement.executeUpdate();
+        }
+    }
+
+    private static void insertAccount(UUID id) throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     """
+                     insert into accounts (id, status, created_at, updated_at)
+                     values (?, 'active', ?, ?)
+                     """)) {
+            statement.setObject(1, id);
+            statement.setObject(2, OffsetDateTime.parse("2026-05-10T00:00:00Z"));
+            statement.setObject(3, OffsetDateTime.parse("2026-05-10T00:00:00Z"));
+            statement.executeUpdate();
+        }
+    }
+
+    private static void insertAccountProjectMembership(
+            UUID id,
+            UUID accountId,
+            UUID projectId,
+            String role,
+            String status) throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     """
+                     insert into account_project_memberships (
+                       id, account_id, project_id, role, status, created_at, updated_at
+                     )
+                     values (?, ?, ?, ?, ?, ?, ?)
+                     """)) {
+            statement.setObject(1, id);
+            statement.setObject(2, accountId);
+            statement.setObject(3, projectId);
+            statement.setString(4, role);
+            statement.setString(5, status);
+            statement.setObject(6, OffsetDateTime.parse("2026-05-10T00:00:00Z"));
+            statement.setObject(7, OffsetDateTime.parse("2026-05-10T00:00:00Z"));
             statement.executeUpdate();
         }
     }

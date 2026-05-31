@@ -83,7 +83,7 @@ public record InstanceEvidenceReadModel(
     ) {
 
         /**
-         * API path membership에 사용된 project/application UUID와 표시용 문자열 identity를 검증한다.
+         * API catalog path 정합성에 사용된 project/application UUID와 표시용 문자열 identity를 검증한다.
          */
         public Application {
             Objects.requireNonNull(projectId, "projectId must not be null");

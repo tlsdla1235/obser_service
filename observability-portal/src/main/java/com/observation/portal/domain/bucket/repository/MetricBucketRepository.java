@@ -178,7 +178,7 @@ public class MetricBucketRepository {
      * selected application instance current window의 request/error count 합계만 조회한다.
      *
      * <p>repository는 sample readiness, lifecycle state, health score, p95/p99, rule을 계산하지 않고 `(start, end]`
-     * bucket membership과 count 합계만 service에 전달한다.</p>
+     * bucket window 포함 여부와 count 합계만 service에 전달한다.</p>
      */
     @Transactional(readOnly = true)
     public WindowBucketAggregate findWindowAggregateByApplicationInstanceId(

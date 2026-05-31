@@ -20,8 +20,8 @@ import java.util.UUID;
 /**
  * Stored dashboard snapshot detail과 marker list API를 HTTP endpoint로 노출한다.
  *
- * <p>controller는 UUID/query 변환과 status mapping만 담당하고, membership 검증 및 stored JSON projection은 service
- * 계층에 위임한다.</p>
+ * <p>controller는 UUID/query 변환과 status mapping만 담당하고, account-project authorization은 interceptor에,
+ * catalog path 정합성 및 stored JSON projection은 service 계층에 위임한다.</p>
  */
 @RestController
 @RequestMapping("/api/projects/{projectId}/applications/{applicationId}/dashboard")
@@ -41,7 +41,7 @@ public class DashboardSnapshotController {
     }
 
     /**
-     * 특정 stored snapshot detail을 반환하고, invalid UUID는 400, missing/retention/membership mismatch는 404로 매핑한다.
+     * 특정 stored snapshot detail을 반환하고, invalid UUID는 400, missing/retention/path mismatch는 404로 매핑한다.
      */
     @GetMapping("/snapshots/{snapshotId}")
     public ResponseEntity<?> getSnapshotDetail(

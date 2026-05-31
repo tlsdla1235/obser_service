@@ -63,7 +63,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Instance Evidence API의 membership 검증과 current instance evidence read model 조립을 담당한다.
+ * Instance Evidence API의 catalog path 정합성 검증과 current instance evidence read model 조립을 담당한다.
  *
  * <p>selected `application_instances.id` scope에서 accepted bucket metric axis와 starter heartbeat axis를 분리해 읽고,
  * endpoint detail selection이나 snapshot/history projection은 후속 phase에 남긴다.</p>
@@ -92,7 +92,7 @@ public class InstanceEvidenceReadModelService {
     private final Clock clock;
 
     /**
-     * membership lookup repository와 current 15분 evidence 계산 component를 주입한다.
+     * catalog path 정합성 lookup repository와 current 15분 evidence 계산 component를 주입한다.
      */
     public InstanceEvidenceReadModelService(
             ApplicationRepository applicationRepository,
@@ -140,7 +140,7 @@ public class InstanceEvidenceReadModelService {
     }
 
     /**
-     * project/application/instance UUID membership이 모두 맞는 경우에만 instance evidence read model을 반환한다.
+     * project/application/instance UUID catalog path 정합성이 모두 맞는 경우에만 instance evidence read model을 반환한다.
      *
      * <p>project 없음, application 없음, project/application mismatch, instance 없음, instance/application mismatch는 모두
      * empty로 수렴해 controller가 404로 매핑한다.</p>

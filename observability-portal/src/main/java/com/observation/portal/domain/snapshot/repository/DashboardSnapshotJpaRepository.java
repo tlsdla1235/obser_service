@@ -51,7 +51,7 @@ interface DashboardSnapshotJpaRepository extends JpaRepository<DashboardSnapshot
             Pageable pageable);
 
     /**
-     * project/application/snapshot membership이 모두 맞는 detail source row를 조회한다.
+     * project/application/snapshot catalog path 정합성이 모두 맞는 detail source row를 조회한다.
      */
     @Query("select new com.observation.portal.domain.snapshot.model.DashboardSnapshotDetailRow("
             + "snapshot.id, "

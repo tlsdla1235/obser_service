@@ -33,6 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ProjectNavigationControllerTest {
 
     private static final UUID PROJECT_ID = UUID.fromString("00000000-0000-0000-0000-000000005101");
+    private static final UUID ACCOUNT_ID = UUID.fromString("00000000-0000-0000-0000-000000006101");
     private static final UUID APPLICATION_ID = UUID.fromString("00000000-0000-0000-0000-000000005111");
     private static final OffsetDateTime GENERATED_AT = OffsetDateTime.parse("2026-05-25T10:00:00Z");
 
@@ -52,9 +53,10 @@ class ProjectNavigationControllerTest {
                         null,
                         new ProjectNavigationReadModel.ProjectLinks(
                                 "/api/projects/" + PROJECT_ID + "/applications"))));
-        when(service.listProjects()).thenReturn(readModel);
+        when(service.listProjects(ACCOUNT_ID)).thenReturn(readModel);
 
-        mockMvc.perform(get("/api/projects"))
+        mockMvc.perform(get("/api/projects")
+                        .requestAttr("observation.portal.accountId", ACCOUNT_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.generatedAt").value("2026-05-25T10:00:00Z"))
                 .andExpect(jsonPath("$.projects[0].projectId").value(PROJECT_ID.toString()))
@@ -64,7 +66,7 @@ class ProjectNavigationControllerTest {
                 .andExpect(jsonPath("$.projects[0].recentConcern").value(nullValue()))
                 .andExpect(jsonPath("$.projects[0].links.applications")
                         .value("/api/projects/" + PROJECT_ID + "/applications"));
-        verify(service).listProjects();
+        verify(service).listProjects(ACCOUNT_ID);
     }
 
     @Test

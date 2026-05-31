@@ -1,8 +1,10 @@
 package com.observation.portal.domain.catalog.controller;
 
+import com.observation.portal.domain.account.controller.BearerResourceApiInterceptor;
 import com.observation.portal.domain.catalog.model.ProjectApplicationNavigationReadModel;
 import com.observation.portal.domain.catalog.model.ProjectNavigationReadModel;
 import com.observation.portal.domain.catalog.service.ProjectApplicationNavigationService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,11 +33,11 @@ public class ProjectNavigationController {
     }
 
     /**
-     * Project Entry에서 사용할 read-only project 목록을 반환한다.
+     * Project Entry에서 사용할 account-scoped read-only project 목록을 반환한다.
      */
     @GetMapping
-    public ProjectNavigationReadModel listProjects() {
-        return navigationService.listProjects();
+    public ProjectNavigationReadModel listProjects(HttpServletRequest request) {
+        return navigationService.listProjects(BearerResourceApiInterceptor.requiredAccountId(request));
     }
 
     /**

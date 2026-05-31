@@ -85,7 +85,7 @@ public class ApplicationInstanceEntity {
     }
 
     /**
-     * instance membership 검증과 evidence link 생성을 위해 부모 application id를 반환한다.
+     * instance/application catalog path 정합성 검증과 evidence link 생성을 위해 부모 application id를 반환한다.
      */
     public UUID applicationId() {
         return applicationId;

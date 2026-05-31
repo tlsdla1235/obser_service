@@ -36,7 +36,7 @@ public class DashboardSnapshotDetailService {
     private final DashboardSnapshotMarkerClassifier markerClassifier;
 
     /**
-     * membership lookup, stored snapshot repository, stored JSON parser/classifier만 주입한다.
+     * catalog path 정합성 lookup, stored snapshot repository, stored JSON parser/classifier만 주입한다.
      */
     public DashboardSnapshotDetailService(
             ApplicationRepository applicationRepository,
@@ -54,7 +54,7 @@ public class DashboardSnapshotDetailService {
     }
 
     /**
-     * project/application/snapshot membership이 맞는 stored snapshot detail을 반환하고, mismatch는 empty로 둔다.
+     * project/application/snapshot catalog path 정합성이 맞는 stored snapshot detail을 반환하고, mismatch는 empty로 둔다.
      */
     @Transactional(readOnly = true)
     public Optional<DashboardSnapshotDetailReadModel> getDetail(

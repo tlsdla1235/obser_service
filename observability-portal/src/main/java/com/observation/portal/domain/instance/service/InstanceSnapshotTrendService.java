@@ -23,7 +23,7 @@ import java.util.UUID;
 /**
  * Stored dashboard snapshot에서 selected instance의 bounded trend read model을 projection하는 service다.
  *
- * <p>이 service는 project/application/instance membership repository, `DashboardSnapshotRepository`, 그리고
+ * <p>이 service는 project/application/instance catalog path 정합성 repository, `DashboardSnapshotRepository`, 그리고
  * `instanceSummary.items[]` parser만 사용한다. Snapshot absence는 live accepted bucket, heartbeat, current dashboard,
  * current evidence, lifecycle/rule/endpoint priority 재계산으로 이어지지 않는다.</p>
  */
@@ -41,7 +41,7 @@ public class InstanceSnapshotTrendService {
     private final int retentionDays;
 
     /**
-     * membership lookup repository와 stored snapshot projection dependency를 주입한다.
+     * catalog path 정합성 lookup repository와 stored snapshot projection dependency를 주입한다.
      *
      * <p>`retentionDays`는 dashboard snapshot retention clamp에만 사용하며, 별도 설정이 없으면 14일로 동작한다.</p>
      */
@@ -70,7 +70,7 @@ public class InstanceSnapshotTrendService {
     }
 
     /**
-     * UUID path membership이 맞으면 selected instance snapshot trend를 반환하고, mismatch는 empty로 수렴한다.
+     * UUID catalog path 정합성이 맞으면 selected instance snapshot trend를 반환하고, mismatch는 empty로 수렴한다.
      *
      * <p>`since` 생략은 `7d`, 지원 token은 `7d`/`14d`이며 retention과 최대 14일로 clamp한다. `limit` 생략은 168,
      * 최대 336으로 clamp한다.</p>

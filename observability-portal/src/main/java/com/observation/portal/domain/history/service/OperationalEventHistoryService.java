@@ -20,7 +20,7 @@ import java.util.UUID;
  * Operational event history response를 stored `dashboard_snapshots` source boundary에서 조립하는 service다.
  *
  * <p>current dashboard, accepted bucket, heartbeat, lifecycle, triage, endpoint priority, p95/p99 source를 조회하지 않고
- * membership 확인 후 snapshot repository row만 읽는다.</p>
+ * catalog path 정합성 확인 후 snapshot repository row만 읽는다.</p>
  */
 @Service
 public class OperationalEventHistoryService {
@@ -35,7 +35,7 @@ public class OperationalEventHistoryService {
     private final Clock clock;
 
     /**
-     * membership repository, stored snapshot repository, 5.9-b projector extension point, UTC clock을 주입한다.
+     * catalog path 정합성 repository, stored snapshot repository, 5.9-b projector extension point, UTC clock을 주입한다.
      */
     public OperationalEventHistoryService(
             ApplicationRepository applicationRepository,
@@ -53,7 +53,7 @@ public class OperationalEventHistoryService {
     }
 
     /**
-     * project/application membership이 유효하면 compact history response를 반환하고, mismatch는 empty로 둔다.
+     * project/application catalog path 정합성이 유효하면 compact history response를 반환하고, mismatch는 empty로 둔다.
      */
     @Transactional(readOnly = true)
     public Optional<OperationalEventHistoryReadModel> getHistory(

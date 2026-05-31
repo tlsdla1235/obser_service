@@ -14,8 +14,8 @@ import java.util.UUID;
 /**
  * selected application instance의 bounded evidence read model을 HTTP endpoint로 노출한다.
  *
- * <p>controller는 UUID path variable과 404 mapping만 담당하고, membership 검증과 read model 조립은 service 계층에
- * 위임한다.</p>
+ * <p>controller는 UUID path variable과 404 mapping만 담당하고, account-project authorization은 interceptor에,
+ * catalog path 정합성과 read model 조립은 service 계층에 위임한다.</p>
  */
 @RestController
 @RequestMapping("/api/projects/{projectId}/applications/{applicationId}/instances/{instanceId}/evidence")

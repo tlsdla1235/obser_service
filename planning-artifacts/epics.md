@@ -212,6 +212,13 @@ Epic 6은 Epic 5 read model/API를 소비하는 사용자-facing UX epic이다. 
    - portal down, duplicate ingest, stale/down candidate, telemetry unreachable, recovery observed 시나리오를 prototype의 상태 시나리오와 맞춰 시연한다.
    - failure/recovery demo copy는 host application down을 확정하지 않고 accepted bucket axis와 heartbeat axis를 분리한다.
    - Snapshot/history marker와 instance snapshot trend가 demo-only인지 MVP 포함인지 open decision으로 남기되, 어느 쪽이든 raw explorer로 보이지 않게 한다.
+10. Account-project membership and scoped project entry
+   - Account와 Project를 N:M membership으로 연결해 authenticated account 기준 Project visibility를 닫는다.
+   - MVP membership role은 `member` 단일 role로 시작하고, status는 `active`, `disabled`만 둔다.
+   - `GET /api/projects`는 현재 Bearer access token의 account가 active membership을 가진 project만 반환한다.
+   - `/api/projects/{projectId}/applications` 및 후속 `/api/projects/{projectId}/applications/**` resource API는 active account-project membership이 없으면 정보 노출을 줄이기 위해 `404`로 fail-closed한다.
+   - Epic 5의 project/application/instance membership은 catalog path 정합성이고, Story 6.10의 membership은 account-project authorization임을 분리한다.
+   - Project creation, project key issuance/rotation, invite/team/org management, billing/tenant model은 포함하지 않는다.
 
 ## Post-MVP Candidate Backlog
 
@@ -290,6 +297,8 @@ Epic 6은 Epic 5 read model/API를 소비하는 사용자-facing UX epic이다. 
 - MVP에서는 별도 `operational_events` table을 만들지 않는다.
 - Account signup과 login은 GitHub OAuth only다.
 - MVP는 cookie 기반 server session을 사용하지 않고, API 요청은 `Authorization: Bearer <access_token>` 기준으로 인증한다.
+- Project Entry와 `/api/projects/{projectId}/applications/**` resource API는 Bearer token account의 active account-project membership 안에서만 project를 노출한다.
+- Account-project membership mismatch는 project 존재 여부 노출을 줄이기 위해 `404`로 fail-closed한다.
 - Refresh Token은 rotation, 만료, revoke, reuse detection을 갖춘 token store 기준을 따른다.
 - Local password, password reset, email verification required for signup, magic link, Google/Kakao/Naver OAuth, anonymous flow는 MVP 범위 밖이다.
 - Controller/API response, log, error에는 GitHub OAuth token, provider raw payload, secret을 노출하지 않는다. 일반 resource API response/log/error에는 access token, refresh token도 노출하지 않는다.
@@ -312,4 +321,5 @@ Epic 6은 Epic 5 read model/API를 소비하는 사용자-facing UX epic이다. 
 | Instance snapshot trend projection | Epic 5, 6 | `read-model-contract.md`, `operational-event-history.md`, `api-surface.md` | `InstanceSnapshotTrendService` candidate + `DashboardSnapshotRepository` | `InstanceSnapshotTrendProjectionTest` |
 | GitHub OAuth only account signup/login | Epic 6 | `account-auth-policy.md`, `api-surface.md` | `AccountAuthService`, `AccountAuthController` | `AccountAuthPolicyTest` |
 | Bearer JWT/refresh token session policy | Epic 6 | `account-auth-policy.md`, `architecture.md` | `ServiceTokenService`, `RefreshTokenStore` | `ServiceTokenPolicyTest` |
+| Account-scoped project visibility | Epic 6 | `account-auth-policy.md`, `api-surface.md`, Story 6.10 contract | account-project membership service + project resource guard | `AccountProjectMembershipAuthorizationTest` |
 | Demo promise | Epic 6 | `read-model-contract.md` | starter + portal e2e | `FirstBucketToAliveE2ETest` |

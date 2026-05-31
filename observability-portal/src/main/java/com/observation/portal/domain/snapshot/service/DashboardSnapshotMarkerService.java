@@ -45,7 +45,7 @@ public class DashboardSnapshotMarkerService {
     private final int retentionDays;
 
     /**
-     * membership lookup, stored snapshot repository, stored JSON parser/classifier와 retention clamp 설정을 주입한다.
+     * catalog path 정합성 lookup, stored snapshot repository, stored JSON parser/classifier와 retention clamp 설정을 주입한다.
      */
     public DashboardSnapshotMarkerService(
             ApplicationRepository applicationRepository,
@@ -70,7 +70,7 @@ public class DashboardSnapshotMarkerService {
     }
 
     /**
-     * project/application membership이 맞으면 marker list를 반환하고, mismatch는 empty로 수렴한다.
+     * project/application catalog path 정합성이 맞으면 marker list를 반환하고, mismatch는 empty로 수렴한다.
      */
     @Transactional(readOnly = true)
     public Optional<DashboardSnapshotMarkerReadModel> getMarkers(

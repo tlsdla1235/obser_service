@@ -15,21 +15,31 @@ import java.util.Objects;
 @Configuration
 public class BearerResourceApiWebConfig implements WebMvcConfigurer {
 
-    private final BearerResourceApiInterceptor interceptor;
+    private final BearerResourceApiInterceptor bearerInterceptor;
+    private final AccountProjectMembershipResourceApiInterceptor membershipInterceptor;
 
     /**
-     * resource API Bearer 검증 interceptor를 주입한다.
+     * resource API Bearer 검증과 project-scoped membership 검증 interceptor를 주입한다.
      */
-    public BearerResourceApiWebConfig(BearerResourceApiInterceptor interceptor) {
-        this.interceptor = Objects.requireNonNull(interceptor, "interceptor must not be null");
+    public BearerResourceApiWebConfig(
+            BearerResourceApiInterceptor bearerInterceptor,
+            AccountProjectMembershipResourceApiInterceptor membershipInterceptor) {
+        this.bearerInterceptor = Objects.requireNonNull(
+                bearerInterceptor,
+                "bearerInterceptor must not be null");
+        this.membershipInterceptor = Objects.requireNonNull(
+                membershipInterceptor,
+                "membershipInterceptor must not be null");
     }
 
     /**
-     * Project Entry와 후속 dashboard resource API를 `/api/projects` 경계로 보호한다.
+     * Project Entry는 Bearer로 보호하고, project-scoped resource API는 추가로 account-project membership을 확인한다.
      */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(interceptor)
+        registry.addInterceptor(bearerInterceptor)
                 .addPathPatterns("/api/projects", "/api/projects/**");
+        registry.addInterceptor(membershipInterceptor)
+                .addPathPatterns("/api/projects/*/applications", "/api/projects/*/applications/**");
     }
 }

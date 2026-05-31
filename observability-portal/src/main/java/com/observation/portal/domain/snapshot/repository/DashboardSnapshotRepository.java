@@ -114,7 +114,7 @@ public class DashboardSnapshotRepository {
     }
 
     /**
-     * project/application/snapshot membership이 모두 맞는 snapshot detail source row를 조회한다.
+     * project/application/snapshot catalog path 정합성이 모두 맞는 snapshot detail source row를 조회한다.
      */
     @Transactional(readOnly = true)
     public Optional<DashboardSnapshotDetailRow> findDetailRow(

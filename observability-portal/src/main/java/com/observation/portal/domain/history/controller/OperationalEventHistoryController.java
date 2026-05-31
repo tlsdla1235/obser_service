@@ -17,8 +17,8 @@ import java.util.UUID;
 /**
  * Operational event history API를 `/operational-events` HTTP endpoint로 노출한다.
  *
- * <p>controller는 path/query 변환과 HTTP status mapping만 담당하고, membership 검증과 stored snapshot source 조회는
- * service에 위임한다.</p>
+ * <p>controller는 path/query 변환과 HTTP status mapping만 담당하고, account-project authorization은 interceptor에,
+ * catalog path 정합성과 stored snapshot source 조회는 service에 위임한다.</p>
  */
 @RestController
 @RequestMapping("/api/projects/{projectId}/applications/{applicationId}")

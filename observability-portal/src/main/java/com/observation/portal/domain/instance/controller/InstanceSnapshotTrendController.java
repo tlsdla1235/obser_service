@@ -18,7 +18,7 @@ import java.util.UUID;
  * selected application instance의 stored snapshot trend projection을 HTTP endpoint로 노출한다.
  *
  * <p>controller는 UUID path variable, optional `since`/`limit` query parameter 전달, HTTP status mapping만 담당하고
- * membership 검증과 snapshot JSON projection은 service 계층에 위임한다.</p>
+ * account-project authorization은 interceptor에, catalog path 정합성과 snapshot JSON projection은 service 계층에 위임한다.</p>
  */
 @RestController
 @RequestMapping("/api/projects/{projectId}/applications/{applicationId}/instances/{instanceId}/snapshot-trend")
@@ -36,7 +36,7 @@ public class InstanceSnapshotTrendController {
     }
 
     /**
-     * project/application/instance scope가 맞는 stored snapshot trend를 반환하고, membership mismatch는 404로 매핑한다.
+     * project/application/instance catalog path 정합성이 맞는 stored snapshot trend를 반환하고, mismatch는 404로 매핑한다.
      */
     @GetMapping("")
     public ResponseEntity<InstanceSnapshotTrendReadModel> getSnapshotTrend(

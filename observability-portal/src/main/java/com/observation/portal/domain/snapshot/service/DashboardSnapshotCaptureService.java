@@ -39,7 +39,7 @@ public class DashboardSnapshotCaptureService {
     /**
      * capture request의 target current window end 기준으로 read model을 한 번 생성해 writer에 전달한다.
      *
-     * <p>application membership이 사라졌거나 save가 실패하면 exception을 삼키고 caller가 다음 application/run으로
+     * <p>application catalog path 정합성이 사라졌거나 save가 실패하면 exception을 삼키고 caller가 다음 application/run으로
      * 진행할 수 있게 한다.</p>
      */
     public void capture(DashboardSnapshotCaptureRequest request) {

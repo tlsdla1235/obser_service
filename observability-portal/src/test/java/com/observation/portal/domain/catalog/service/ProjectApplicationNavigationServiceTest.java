@@ -1,6 +1,7 @@
 package com.observation.portal.domain.catalog.service;
 
 import com.observation.portal.common.time.AcceptedBucketFreshnessEvaluator;
+import com.observation.portal.domain.account.service.AccountProjectMembershipService;
 import com.observation.portal.domain.bucket.repository.MetricBucketRepository;
 import com.observation.portal.domain.catalog.entity.ApplicationEntity;
 import com.observation.portal.domain.catalog.entity.ProjectEntity;
@@ -11,7 +12,6 @@ import com.observation.portal.domain.catalog.repository.ProjectRepository;
 import com.observation.portal.domain.ingest.model.StarterHeartbeatTelemetryRecord;
 import com.observation.portal.domain.ingest.repository.StarterHeartbeatTelemetryRepository;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.domain.Sort;
 
 import java.lang.reflect.RecordComponent;
 import java.time.Clock;
@@ -26,23 +26,27 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class ProjectApplicationNavigationServiceTest {
 
     private static final UUID PROJECT_ID = UUID.fromString("00000000-0000-0000-0000-000000005101");
+    private static final UUID ACCOUNT_ID = UUID.fromString("00000000-0000-0000-0000-000000006101");
     private static final UUID ORDERS_ID = UUID.fromString("00000000-0000-0000-0000-000000005111");
     private static final UUID BILLING_ID = UUID.fromString("00000000-0000-0000-0000-000000005112");
     private static final OffsetDateTime QUERY_AT = OffsetDateTime.parse("2026-05-25T10:00:00Z");
     private static final Clock CLOCK = Clock.fixed(QUERY_AT.toInstant(), ZoneOffset.UTC);
 
     private final ProjectRepository projectRepository = mock(ProjectRepository.class);
+    private final AccountProjectMembershipService membershipService = mock(AccountProjectMembershipService.class);
     private final ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
     private final MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
     private final StarterHeartbeatTelemetryRepository heartbeatRepository =
             mock(StarterHeartbeatTelemetryRepository.class);
     private final ProjectApplicationNavigationService service = new ProjectApplicationNavigationService(
             projectRepository,
+            membershipService,
             applicationRepository,
             metricBucketRepository,
             heartbeatRepository,
@@ -53,8 +57,8 @@ class ProjectApplicationNavigationServiceTest {
     void projectListSummarizesIdentityCountAndLightIssueCandidatesWithoutTriage() {
         ApplicationEntity orders = application(ORDERS_ID, "orders-api", "prod");
         ApplicationEntity billing = application(BILLING_ID, "billing-api", "prod");
-        when(projectRepository.findAll(Sort.by(Sort.Direction.ASC, "name")))
-                .thenReturn(List.of(project()));
+        when(membershipService.listActiveProjects(ACCOUNT_ID))
+                .thenReturn(List.of(project().toCandidate()));
         when(applicationRepository.findByProjectIdOrderByNameAscEnvironmentAsc(PROJECT_ID))
                 .thenReturn(List.of(billing, orders));
         when(metricBucketRepository.findLatestBucketEndUtcByApplicationId(BILLING_ID))
@@ -66,7 +70,7 @@ class ProjectApplicationNavigationServiceTest {
         when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
                 .thenReturn(Optional.empty());
 
-        ProjectNavigationReadModel model = service.listProjects();
+        ProjectNavigationReadModel model = service.listProjects(ACCOUNT_ID);
 
         assertThat(model.generatedAt()).isEqualTo(QUERY_AT);
         assertThat(model.projects()).singleElement().satisfies(project -> {
@@ -78,6 +82,17 @@ class ProjectApplicationNavigationServiceTest {
             assertThat(project.links().applications()).isEqualTo("/api/projects/" + PROJECT_ID + "/applications");
         });
         verify(heartbeatRepository, never()).findLatestByProjectId(PROJECT_ID);
+    }
+
+    @Test
+    void projectListReturnsEmptyWhenAccountHasNoActiveMembership() {
+        when(membershipService.listActiveProjects(ACCOUNT_ID)).thenReturn(List.of());
+
+        ProjectNavigationReadModel model = service.listProjects(ACCOUNT_ID);
+
+        assertThat(model.generatedAt()).isEqualTo(QUERY_AT);
+        assertThat(model.projects()).isEmpty();
+        verifyNoInteractions(applicationRepository, metricBucketRepository, heartbeatRepository);
     }
 
     @Test

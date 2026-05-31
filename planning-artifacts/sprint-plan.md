@@ -94,6 +94,7 @@ supersedes: Epic 3 Portal Ingest Acceptance sprint plan dated 2026-05-18
 | 6.7 Snapshot/history marker UI and deep link | marker timeline과 stored snapshot detail | Snapshot / History |
 | 6.8 Demo green path | heartbeat -> first bucket -> dashboard -> instance evidence demo | First data waiting, insufficient sample, no triage |
 | 6.9 Failure/recovery path demo hardening | stale/down, telemetry unreachable, recovery observed demo | degraded, stale/down, recovery, unreachable |
+| 6.10 Account-project membership and scoped project entry | authenticated account 기준 Project visibility와 project-scoped resource authorization | Project Entry / Resource API authorization |
 
 ## 7. Workflow Notes
 
@@ -107,6 +108,8 @@ supersedes: Epic 3 Portal Ingest Acceptance sprint plan dated 2026-05-18
 - 1시간 cadence 외 capture는 state-change, high-confidence concern, 짧지만 강한 spike 실험값, query fallback 조건에만 허용한다.
 - Snapshot `read_model_json`에는 endpoint evidence 최대 10개와 bounded instance summary 최대 50개를 둘 수 있다.
 - UI는 lifecycle state, starter connection diagnosis, rule, p95/p99, endpoint priority, snapshot/history event를 재계산하지 않는다.
+- `GET /api/projects`와 `/api/projects/{projectId}/applications/**`는 Bearer account의 active account-project membership scope 안에서만 project를 노출한다.
+- Account-project membership mismatch는 `403` 대신 `404`로 fail-closed한다.
 
 ## 8. 권장 검증
 
@@ -123,7 +126,7 @@ supersedes: Epic 3 Portal Ingest Acceptance sprint plan dated 2026-05-18
 
 아래 결정은 이번 정렬에서 닫지 않는다.
 
-1. Project 생성은 MVP에서 public onboarding API로 열 것인가, local/internal admin seed로 유지할 것인가?
+1. Project 생성은 MVP에서 public onboarding API로 열 것인가, local/internal admin seed로 유지할 것인가? Account-project visibility와 resource authorization은 Story 6.10 membership으로 닫았지만 project creation/product onboarding은 여전히 열지 않는다.
 2. Instance detail read model을 Epic 5에서 어느 깊이까지 닫을 것인가?
 3. Instance snapshot trend를 Epic 6 MVP에 포함할 것인가, demo-only로 둘 것인가?
 4. Snapshot/history marker UI를 Epic 6 MVP에 포함할 것인가, demo-only로 둘 것인가?
@@ -132,7 +135,7 @@ supersedes: Epic 3 Portal Ingest Acceptance sprint plan dated 2026-05-18
 
 ## 10. Sprint Status 기대값
 
-이 Sprint Planning 정렬 후 기대 status:
+이 Sprint Planning 정렬 직후 기대 status:
 
 - `epic-5`: `backlog`
 - Story 5.1 -> 5.9: `backlog`
@@ -140,5 +143,7 @@ supersedes: Epic 3 Portal Ingest Acceptance sprint plan dated 2026-05-18
 - `epic-6`: `backlog`
 - Story 6.1 -> 6.9: `backlog`
 - `epic-6-retrospective`: `optional`
+
+2026-05-31 follow-up으로 추가된 Story 6.10은 account-project membership open decision을 닫기 위한 ready-for-dev story다.
 
 Epic 1~4의 완료 또는 진행 상태는 이번 정렬에서 되돌리지 않는다.

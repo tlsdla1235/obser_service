@@ -63,6 +63,32 @@ class ProjectEntryUiContractTest {
     }
 
     @Test
+    void emptyProjectListShowsSafeStateWithoutCreateProjectFlow() throws IOException {
+        String appJs = Files.readString(STATIC_DASHBOARD.resolve("app.js"));
+
+        assertThat(appJs).contains("loadedProjects.length === 0");
+        assertThat(appJs).contains("local/internal seed 또는 admin bootstrap decision이 필요합니다.");
+        assertThat(appJs).doesNotContain(
+                "Create Project",
+                "POST /api/projects",
+                "fetch('/api/projects', { method: 'POST'",
+                "fetch(\"/api/projects\", { method: \"POST\"");
+    }
+
+    @Test
+    void projectEntryUsesOnlyServerProjectResponseForVisibility() throws IOException {
+        String appJs = Files.readString(STATIC_DASHBOARD.resolve("app.js"));
+
+        assertThat(appJs).contains("loadedProjects = Array.isArray(data.projects) ? data.projects : []");
+        assertThat(appJs).doesNotContain(
+                "hardCodedProject",
+                "previousProjectResponse",
+                "window.location.hash",
+                "document.body.dataset.project",
+                "probeHiddenProject");
+    }
+
+    @Test
     void setupGuideCopyStaysOnStarterDependencyAndThreeExistingPropertiesOnly() throws IOException {
         String page = Files.readString(STATIC_DASHBOARD.resolve("index.html"));
 

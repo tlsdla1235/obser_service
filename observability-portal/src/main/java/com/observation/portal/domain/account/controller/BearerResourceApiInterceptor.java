@@ -23,7 +23,7 @@ import java.util.UUID;
 public class BearerResourceApiInterceptor implements HandlerInterceptor {
 
     private static final String BEARER_PREFIX = "Bearer ";
-    private static final String ACCOUNT_ID_ATTRIBUTE = "observation.portal.accountId";
+    public static final String ACCOUNT_ID_ATTRIBUTE = "observation.portal.accountId";
     private static final String UNAUTHORIZED_BODY = """
             {"error":"unauthorized","message":"Bearer access token이 필요합니다."}
             """;
@@ -51,6 +51,17 @@ public class BearerResourceApiInterceptor implements HandlerInterceptor {
         }
         request.setAttribute(ACCOUNT_ID_ATTRIBUTE, accountId.get());
         return true;
+    }
+
+    /**
+     * Bearer 검증을 통과한 resource API 요청에서 account id request attribute를 읽는다.
+     */
+    public static UUID requiredAccountId(HttpServletRequest request) {
+        Object value = Objects.requireNonNull(request, "request must not be null").getAttribute(ACCOUNT_ID_ATTRIBUTE);
+        if (value instanceof UUID accountId) {
+            return accountId;
+        }
+        throw new IllegalStateException("Bearer resource API account id attribute is missing");
     }
 
     private static Optional<String> bearerTokenFrom(String authorization) {

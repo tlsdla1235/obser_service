@@ -3,6 +3,7 @@ package com.observation.portal.domain.catalog.service;
 import com.observation.portal.common.time.AcceptedBucketFreshness;
 import com.observation.portal.common.time.AcceptedBucketFreshnessEvaluator;
 import com.observation.portal.common.time.AcceptedBucketFreshnessStatus;
+import com.observation.portal.domain.account.service.AccountProjectMembershipService;
 import com.observation.portal.domain.bucket.repository.MetricBucketRepository;
 import com.observation.portal.domain.catalog.entity.ApplicationEntity;
 import com.observation.portal.domain.catalog.entity.ProjectEntity;
@@ -13,7 +14,6 @@ import com.observation.portal.domain.catalog.repository.ApplicationRepository;
 import com.observation.portal.domain.catalog.repository.ProjectRepository;
 import com.observation.portal.domain.ingest.model.StarterHeartbeatTelemetryRecord;
 import com.observation.portal.domain.ingest.repository.StarterHeartbeatTelemetryRepository;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,7 +35,6 @@ import java.util.UUID;
 @Service
 public class ProjectApplicationNavigationService {
 
-    private static final Sort PROJECT_SORT = Sort.by(Sort.Direction.ASC, "name");
     private static final Duration STARTER_HEARTBEAT_RECENT_WINDOW = Duration.ofSeconds(90);
     private static final String ACCEPTED_BUCKET_SOURCE = "accepted_bucket";
     private static final String STARTER_HEARTBEAT_SOURCE = "starter_heartbeat";
@@ -43,6 +42,7 @@ public class ProjectApplicationNavigationService {
     private static final String STATE_IMPACT_NONE = "none";
 
     private final ProjectRepository projectRepository;
+    private final AccountProjectMembershipService membershipService;
     private final ApplicationRepository applicationRepository;
     private final MetricBucketRepository metricBucketRepository;
     private final StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository;
@@ -54,12 +54,14 @@ public class ProjectApplicationNavigationService {
      */
     public ProjectApplicationNavigationService(
             ProjectRepository projectRepository,
+            AccountProjectMembershipService membershipService,
             ApplicationRepository applicationRepository,
             MetricBucketRepository metricBucketRepository,
             StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository,
             AcceptedBucketFreshnessEvaluator freshnessEvaluator,
             Clock clock) {
         this.projectRepository = Objects.requireNonNull(projectRepository, "projectRepository must not be null");
+        this.membershipService = Objects.requireNonNull(membershipService, "membershipService must not be null");
         this.applicationRepository = Objects.requireNonNull(
                 applicationRepository,
                 "applicationRepository must not be null");
@@ -74,15 +76,17 @@ public class ProjectApplicationNavigationService {
     }
 
     /**
-     * Project Entry용 project 목록 read model을 반환한다.
+     * Project Entry용 account-scoped project 목록 read model을 반환한다.
      *
-     * <p>recentConcern은 Story 5.4 triage source가 아직 없으므로 null로 유지한다.</p>
+     * <p>account-project authorization membership으로 통과한 active project만 후보로 삼고, recentConcern은 Story 5.4
+     * triage source가 아직 없으므로 null로 유지한다.</p>
      */
     @Transactional(readOnly = true)
-    public ProjectNavigationReadModel listProjects() {
+    public ProjectNavigationReadModel listProjects(UUID accountId) {
+        UUID requiredAccountId = Objects.requireNonNull(accountId, "accountId must not be null");
         OffsetDateTime generatedAt = nowUtc();
-        List<ProjectNavigationReadModel.ProjectItem> projects = projectRepository.findAll(PROJECT_SORT).stream()
-                .map(ProjectEntity::toCandidate)
+        List<ProjectNavigationReadModel.ProjectItem> projects = membershipService.listActiveProjects(requiredAccountId)
+                .stream()
                 .map(this::toProjectItem)
                 .toList();
         return new ProjectNavigationReadModel(generatedAt, projects);
@@ -91,7 +95,7 @@ public class ProjectApplicationNavigationService {
     /**
      * Application List용 project-scoped application navigation read model을 반환한다.
      *
-     * <p>project가 없으면 controller가 404로 매핑할 수 있도록 empty를 반환한다.</p>
+     * <p>account-project membership guard를 통과한 뒤 project가 없으면 controller가 404로 매핑할 수 있도록 empty를 반환한다.</p>
      */
     @Transactional(readOnly = true)
     public Optional<ProjectApplicationNavigationReadModel> listApplications(UUID projectId) {
