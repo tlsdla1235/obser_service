@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Observation Context 및 Low Cardinality Guard PR 설명</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1f2933;
+      --muted: #5b6673;
+      --line: #d8dee6;
+      --paper: #ffffff;
+      --surface: #f6f8fa;
+      --accent: #0f766e;
+      --accent-soft: #e6f4f1;
+      --danger-soft: #fff1f0;
+      --danger: #b42318;
+      --code: #27313f;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--surface);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.65;
+    }
+
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 40px 24px 56px;
+    }
+
+    header {
+      margin-bottom: 28px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(28px, 4vw, 42px);
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 34px 0 12px;
+      font-size: 22px;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 22px 0 8px;
+      font-size: 17px;
+      line-height: 1.4;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0 0 12px;
+    }
+
+    ul,
+    ol {
+      margin: 10px 0 0;
+      padding-left: 24px;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: #eef2f6;
+      color: var(--code);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.93em;
+    }
+
+    .lead {
+      max-width: 820px;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    .section {
+      padding: 22px 24px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper);
+      margin-top: 18px;
+    }
+
+    .callout {
+      margin-top: 18px;
+      padding: 16px 18px;
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      border-radius: 6px;
+    }
+
+    .warning {
+      border-left-color: var(--danger);
+      background: var(--danger-soft);
+    }
+
+    .warning strong {
+      color: var(--danger);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 12px;
+    }
+
+    .mini {
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfd;
+    }
+
+    .mini strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .step {
+      min-height: 118px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfd;
+    }
+
+    .step-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      margin-bottom: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .copy-block {
+      margin-top: 14px;
+      padding: 16px;
+      border-radius: 8px;
+      background: #18212f;
+      color: #edf2f7;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    @media (max-width: 760px) {
+      main {
+        padding: 28px 16px 40px;
+      }
+
+      .grid,
+      .flow {
+        grid-template-columns: 1fr;
+      }
+
+      .section {
+        padding: 18px 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Observation Context 및 Low Cardinality Guard 설명</h1>
+      <p class="lead">
+        이 문서는 프로젝트를 처음 보는 리뷰어가 Micrometer HTTP observation 입력이 어떤 경계를 거쳐
+        안전한 endpoint rollup과 ingest payload로 바뀌는지 빠르게 이해하도록 정리한 PR 설명용 요약이다.
+      </p>
+    </header>
+
+    <section class="section">
+      <h2>한 줄 요약</h2>
+      <p>
+        Micrometer HTTP observation을 <code>method + normalizedRoute</code> 중심의 low-cardinality 모델로 닫고,
+        raw path, query string, high-cardinality tag가 rollup 및 ingest payload로 넘어가지 않도록 guard를 적용했다.
+      </p>
+    </section>
+
+    <section class="section">
+      <h2>Observation Context에서 읽는 값</h2>
+      <p>
+        starter는 Micrometer <code>Observation.Context</code> 전체를 그대로 신뢰하지 않고, HTTP 서버 요청 관측에 필요한
+        low-cardinality 후보만 꺼낸다.
+      </p>
+      <div class="grid">
+        <div class="mini">
+          <strong>사용하는 low-cardinality 값</strong>
+          <p>
+            <code>method</code>, <code>status</code>, <code>http.route</code>,
+            <code>uri</code>/<code>path</code>, <code>exception</code>
+          </p>
+        </div>
+        <div class="mini">
+          <strong>사용하지 않는 값</strong>
+          <p>
+            <code>http.url</code>, high-cardinality tag, custom context map,
+            <code>userId</code>, <code>tenantId</code>, <code>sessionId</code>, <code>traceId</code>
+          </p>
+        </div>
+      </div>
+      <div class="callout">
+        <p>
+          <code>http.route</code>는 framework가 제공한 route template 후보로 최우선 사용한다.
+          <code>uri</code>/<code>path</code>는 <code>http.route</code>가 없거나 blank/<code>UNKNOWN</code>일 때만
+          allowlist matching을 위한 임시 raw path candidate가 된다.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Low Cardinality Normalize 대상</h2>
+      <p>
+        정규화의 핵심 대상은 endpoint rollup key를 구성하는 <code>method</code>와 <code>normalizedRoute</code>다.
+        endpoint key는 <code>method + normalizedRoute</code>만으로 만든다.
+      </p>
+      <ul>
+        <li><code>method</code>는 허용된 HTTP method 또는 <code>UNKNOWN</code>으로 제한한다.</li>
+        <li><code>normalizedRoute</code>는 framework route template, allowlist template, <code>UNKNOWN</code> 중 하나다.</li>
+        <li>raw path, query key/value, 사용자 식별자, tenant/session/trace 값은 endpoint key에 들어가지 않는다.</li>
+      </ul>
+    </section>
+
+    <section class="section">
+      <h2>Guard 흐름</h2>
+      <p>
+        guard는 observation 입력을 rollup 가능한 내부 모델로 바꾸는 안전 경계다. 이 경계를 지나면 downstream 코드는
+        raw path나 arbitrary tag map을 받을 수 없다.
+      </p>
+      <div class="flow" aria-label="guard flow">
+        <div class="step">
+          <span class="step-number">1</span>
+          <strong>Micrometer binder</strong>
+          <p><code>Observation.Context</code>에서 필요한 후보 값만 추출한다.</p>
+        </div>
+        <div class="step">
+          <span class="step-number">2</span>
+          <strong>Input boundary</strong>
+          <p><code>HttpServerObservationInput</code>에 query 없는 route/path 후보만 둔다.</p>
+        </div>
+        <div class="step">
+          <span class="step-number">3</span>
+          <strong>Low-cardinality guard</strong>
+          <p><code>RouteNormalizationService</code>로 route를 정규화하고 실패하면 <code>UNKNOWN</code>으로 수렴한다.</p>
+        </div>
+        <div class="step">
+          <span class="step-number">4</span>
+          <strong>Rollup model</strong>
+          <p><code>LowCardinalityHttpServerObservation</code>에는 normalized route만 남는다.</p>
+        </div>
+      </div>
+      <div class="warning">
+        <p>
+          <strong>중요:</strong> <code>http.route</code>가 present지만 invalid shape인 경우에는
+          <code>uri</code>/<code>path</code> allowlist fallback으로 우회하지 않고 <code>UNKNOWN</code> 처리한다.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Route Allowlist와 Query String 정책</h2>
+      <p>
+        allowlist는 query string allowlist가 아니라 route template allowlist다. 설정 namespace는
+        <code>observation.route-attribution.allowlist</code>이며, 아래처럼 template만 선언한다.
+      </p>
+      <div class="copy-block">observation:
+  route-attribution:
+    allowlist:
+      - /orders/{orderId}
+      - /search</div>
+      <h3>허용 예시</h3>
+      <ul>
+        <li><code>/orders/{orderId}</code></li>
+        <li><code>/api/v1/orders/{orderId}</code></li>
+        <li><code>/search</code></li>
+      </ul>
+      <h3>거부 예시</h3>
+      <ul>
+        <li><code>/orders/12345</code>처럼 실제 ID가 들어간 raw path</li>
+        <li><code>/orders/{orderId}?debug=true</code>처럼 query string이 포함된 template</li>
+        <li><code>https://example.test/orders/{orderId}</code> 같은 absolute URL</li>
+      </ul>
+      <div class="callout">
+        <p>
+          raw path candidate의 query string은 matcher 입력 전에 버린다. 이는 query를 정규화하거나 허용한다는 뜻이 아니라,
+          query key/value를 어떤 route, tag, metric key, payload, log, read model에도 남기지 않는다는 뜻이다.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>PR에 바로 붙일 짧은 문구</h2>
+      <div class="copy-block">Micrometer HTTP observation을 method + normalizedRoute 중심의 low-cardinality 모델로 닫고,
+raw path/query/high-cardinality tag가 rollup 및 ingest payload로 넘어가지 않도록 guard를 추가했다.
+Route allowlist는 query string 허용 목록이 아니라 http.route 부재 시 raw path를 안전한 route template으로 귀속시키기 위한 template 목록이며,
+query string은 matching 전에 폐기된다.</div>
+    </section>
+  </main>
+</body>
+</html>
