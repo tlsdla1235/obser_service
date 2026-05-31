@@ -300,6 +300,212 @@ class InstanceEvidenceUiContractTest {
     }
 
     @Test
+    void greenPathRendersProjectApplicationDashboardAndEvidenceWithSourceAwareGuidance() throws Exception {
+        runNodeDashboardContract("""
+                const fs = require('fs');
+                const vm = require('vm');
+                const assert = require('assert');
+
+                const source = fs.readFileSync('src/main/resources/static/dashboard/app.js', 'utf8');
+                const harness = createHarness(source);
+                const { auth, requests, elements, response, settle, project, application, dashboard, evidence,
+                  clickApplications, clickDashboard, clickEvidence } = harness;
+                const applicationList = elements.get('#application-list');
+                const dashboardDetail = elements.get('#dashboard-detail');
+                const forbiddenCopy = /앱 정상 확정|정상 확정|문제 없음|host down|복구 완료|health score|root cause|endpoint health score|connectedAndHealthy|hostStatus|applicationHealth|hostHealth/;
+
+                function safeGreenPathDashboard(reasonCode) {
+                  const payload = dashboard('project-1', 'app-1', { applicationName: 'Orders API' });
+                  payload.endpointPriority = [];
+                  payload.triageCards = [];
+                  payload.recovery = { isRecovering: false, lastHealthyAt: null, retryAfterSeconds: null, recommendedAction: null };
+                  payload.starterConnection = {
+                    statusSource: 'starter_heartbeat',
+                    lastHeartbeatAt: '2026-05-29T01:20:45Z',
+                    lastHeartbeatStatus: 'received',
+                    connectionMeaning: 'starter_connected',
+                    stateImpact: 'none'
+                  };
+                  payload.sourceScopedPercentiles = {
+                    source: 'starter_canonical_percentile',
+                    scope: 'instance_bucket',
+                    displayPolicy: 'source_scoped_points',
+                    aggregatePolicy: 'no_average_no_max_no_merge_no_histogram_recalculation',
+                    status: 'missing',
+                    reason: 'waiting_for_source',
+                    items: []
+                  };
+                  payload.histogramDistribution.current = {
+                    status: 'missing',
+                    reason: 'waiting_for_accepted_bucket',
+                    totalCount: 0,
+                    buckets: []
+                  };
+
+                  if (reasonCode === 'waiting_first_data') {
+                    payload.application.lastAcceptedBucketAt = null;
+                    payload.application.freshness.lastObservedAt = null;
+                    payload.state = {
+                      code: 'unknown',
+                      label: 'Metric data waiting',
+                      rationale: 'accepted bucket source absence',
+                      recommendedAction: 'starter heartbeat와 accepted bucket source를 분리해서 기다립니다.',
+                      scope: 'application'
+                    };
+                    payload.metrics = { requestCount: 0, errorCount: 0, errorRate: 0 };
+                    payload.zeroInsight = {
+                      reasonCode: 'waiting_first_data',
+                      message: 'starter heartbeat는 수신됐지만 metric 판단 source인 accepted bucket은 아직 없습니다.',
+                      recommendedAction: '첫 accepted bucket이 수용될 때까지 기다립니다.'
+                    };
+                    return payload;
+                  }
+
+                  if (reasonCode === 'insufficient_sample') {
+                    payload.state = {
+                      code: 'unknown',
+                      label: 'Metric data insufficient sample',
+                      rationale: 'accepted bucket은 들어왔지만 sample guard가 부족합니다.',
+                      recommendedAction: 'minimum sample guard를 통과할 때까지 다음 bucket을 기다립니다.',
+                      scope: 'application'
+                    };
+                    payload.metrics = { requestCount: 1, errorCount: 0, errorRate: 0 };
+                    payload.sourceScopedPercentiles.status = 'insufficient';
+                    payload.sourceScopedPercentiles.reason = 'insufficient_sample';
+                    payload.histogramDistribution.current.status = 'insufficient';
+                    payload.histogramDistribution.current.reason = 'insufficient_sample';
+                    payload.zeroInsight = {
+                      reasonCode: 'insufficient_sample',
+                      message: 'accepted bucket은 들어왔지만 minimum sample guard를 통과할 표본이 아직 부족합니다.',
+                      recommendedAction: 'host 상태를 단정하지 말고 accepted bucket 표본이 쌓이는지 확인합니다.'
+                    };
+                    return payload;
+                  }
+
+                  payload.state = {
+                    code: 'active',
+                    label: 'Metric data active',
+                    rationale: 'freshness와 sample guard는 충분하지만 우선 triage 후보가 없습니다.',
+                    recommendedAction: '현재 우선 노출할 triage가 없으므로 source 축을 유지해 관찰합니다.',
+                    scope: 'application'
+                  };
+                  payload.metrics = { requestCount: 180, errorCount: 0, errorRate: 0 };
+                  payload.sourceScopedPercentiles.status = 'available';
+                  payload.sourceScopedPercentiles.reason = null;
+                  payload.sourceScopedPercentiles.items = [{
+                    source: 'starter_canonical_percentile',
+                    application: 'orders-api',
+                    environment: 'prod',
+                    instance: 'pod-a',
+                    bucketStartUtc: '2026-05-29T01:19:30Z',
+                    bucketEndUtc: '2026-05-29T01:20:00Z',
+                    requestCount: 60,
+                    p95Ms: 120,
+                    p99Ms: 240
+                  }];
+                  payload.histogramDistribution.current.status = 'available';
+                  payload.histogramDistribution.current.reason = null;
+                  payload.histogramDistribution.current.totalCount = 180;
+                  payload.histogramDistribution.current.buckets = [{ leMs: 100, count: 130 }, { leMs: 500, count: 180 }];
+                  payload.zeroInsight = {
+                    reasonCode: 'no_action_needed',
+                    message: '현재 우선 노출할 triage는 없습니다.',
+                    recommendedAction: 'accepted bucket freshness와 starter heartbeat를 별도 source로 계속 봅니다.'
+                  };
+                  return payload;
+                }
+
+                async function renderDashboardState(reasonCode) {
+                  clickDashboard('app-1', 'Orders API', 'prod', '/api/projects/project-1/applications/app-1/dashboard');
+                  assert.strictEqual(requests.length, 1);
+                  assert.strictEqual(requests[0].url, '/api/projects/project-1/applications/app-1/dashboard');
+                  assert.strictEqual(requests[0].init.headers.Authorization, 'Bearer service-token');
+                  requests.shift().resolve(response(200, safeGreenPathDashboard(reasonCode)));
+                  await settle();
+                  assert.doesNotMatch(dashboardDetail.innerHTML, forbiddenCopy);
+                }
+
+                (async () => {
+                  auth.setAccessToken('service-token');
+                  assert.strictEqual(requests[0].url, '/api/projects');
+                  assert.strictEqual(requests[0].init.headers.Authorization, 'Bearer service-token');
+                  requests.shift().resolve(response(200, {
+                    generatedAt: '2026-05-29T01:00:00Z',
+                    projects: [project('project-1', 'Project One', '/api/projects/project-1/applications')]
+                  }));
+                  await settle();
+
+                  clickApplications('project-1', 'Project One', '/api/projects/project-1/applications');
+                  assert.strictEqual(requests[0].url, '/api/projects/project-1/applications');
+                  assert.strictEqual(requests[0].init.headers.Authorization, 'Bearer service-token');
+                  const waitingApplication = application('app-1');
+                  waitingApplication.metricData.lastAcceptedBucketAt = null;
+                  waitingApplication.metricData.freshnessLabel = 'waiting_first_data';
+                  waitingApplication.starterConnection.lastHeartbeatAt = '2026-05-29T01:00:30Z';
+                  waitingApplication.starterConnection.freshnessLabel = 'recent';
+                  requests.shift().resolve(response(200, {
+                    generatedAt: '2026-05-29T01:02:00Z',
+                    project: { projectId: 'project-1', name: 'Project One' },
+                    applications: [waitingApplication]
+                  }));
+                  await settle();
+
+                  assert.match(applicationList.innerHTML, /Accepted bucket/);
+                  assert.match(applicationList.innerHTML, /source<\\/dt>\\s*<dd>accepted_bucket/);
+                  assert.match(applicationList.innerHTML, /last accepted bucket absence/);
+                  assert.match(applicationList.innerHTML, /Starter connection/);
+                  assert.match(applicationList.innerHTML, /source<\\/dt>\\s*<dd>starter_heartbeat/);
+                  assert.match(applicationList.innerHTML, /state impact<\\/dt>\\s*<dd>none/);
+                  assert.doesNotMatch(applicationList.innerHTML, forbiddenCopy);
+
+                  await renderDashboardState('waiting_first_data');
+                  assert.match(dashboardDetail.innerHTML, /waiting_first_data/);
+                  assert.match(dashboardDetail.innerHTML, /starter heartbeat는 수신됐지만 metric 판단 source인 accepted bucket은 아직 없습니다/);
+                  assert.match(dashboardDetail.innerHTML, /accepted bucket source absence/);
+                  assert.match(dashboardDetail.innerHTML, /starter_heartbeat/);
+                  assert.match(dashboardDetail.innerHTML, /state impact<\\/dt>\\s*<dd>none/);
+
+                  await renderDashboardState('insufficient_sample');
+                  assert.match(dashboardDetail.innerHTML, /insufficient_sample/);
+                  assert.match(dashboardDetail.innerHTML, /accepted bucket은 들어왔지만 minimum sample guard를 통과할 표본이 아직 부족합니다/);
+                  assert.match(dashboardDetail.innerHTML, /host 상태를 단정하지 말고 accepted bucket 표본이 쌓이는지 확인합니다/);
+                  assert.match(dashboardDetail.innerHTML, /no_average_no_max_no_merge_no_histogram_recalculation/);
+
+                  await renderDashboardState('no_action_needed');
+                  assert.match(dashboardDetail.innerHTML, /no_action_needed/);
+                  assert.match(dashboardDetail.innerHTML, /현재 우선 노출할 triage는 없습니다/);
+                  assert.match(dashboardDetail.innerHTML, /server-computed triage card source absence · zeroInsight 표시 중/);
+                  assert.match(dashboardDetail.innerHTML, /starter_canonical_percentile/);
+                  assert.match(dashboardDetail.innerHTML, /p95Ms/);
+                  assert.match(dashboardDetail.innerHTML, /p99Ms/);
+                  assert.match(dashboardDetail.innerHTML, /histogram_bucket_distribution/);
+                  assert.match(dashboardDetail.innerHTML, /data-evidence-link="\\/api\\/projects\\/project-1\\/applications\\/app-1\\/instances\\/instance-1\\/evidence"/);
+
+                  clickEvidence('instance-1', 'pod-a', '/api/projects/project-1/applications/app-1/instances/instance-1/evidence');
+                  assert.strictEqual(requests[0].url, '/api/projects/project-1/applications/app-1/instances/instance-1/evidence');
+                  assert.strictEqual(requests[0].init.headers.Authorization, 'Bearer service-token');
+                  requests.shift().resolve(response(200, evidence('project-1', 'app-1', 'instance-1')));
+                  await settle();
+
+                  assert.match(dashboardDetail.innerHTML, /Instance Evidence/);
+                  assert.match(dashboardDetail.innerHTML, /Metric data axis/);
+                  assert.match(dashboardDetail.innerHTML, /source<\\/dt>\\s*<dd>accepted_bucket/);
+                  assert.match(dashboardDetail.innerHTML, /Starter connection axis/);
+                  assert.match(dashboardDetail.innerHTML, /source<\\/dt>\\s*<dd>starter_heartbeat/);
+                  assert.match(dashboardDetail.innerHTML, /state impact<\\/dt>\\s*<dd>none/);
+                  assert.match(dashboardDetail.innerHTML, /Application triage contribution/);
+                  assert.match(dashboardDetail.innerHTML, /기여 evidence 없음/);
+                  assert.doesNotMatch(dashboardDetail.innerHTML, forbiddenCopy);
+                  assert.doesNotMatch(dashboardDetail.innerHTML, /service-token|rawPath|queryString|traceId/);
+                  assert.strictEqual(requests.length, 0);
+                })().catch(error => {
+                  console.error(error && error.stack ? error.stack : error);
+                  process.exit(1);
+                });
+                """);
+    }
+
+    @Test
     void instanceEvidenceRuntimePreventsStaleResponsesAcrossEvidenceTokenDashboardAndApplicationChanges() throws Exception {
         runNodeDashboardContract("""
                 const fs = require('fs');
@@ -430,8 +636,16 @@ class InstanceEvidenceUiContractTest {
                 "calculateP95",
                 "calculateP99",
                 "averagePercentile",
+                "averageP95",
+                "averageP99",
+                "maxP95",
+                "maxP99",
                 "mergePercentile",
+                "mergeP95",
+                "mergeP99",
                 "interpolatePercentile",
+                "percentileFromHistogram",
+                "histogramToPercentile",
                 "rankEndpoint",
                 "sortEndpointPriority",
                 "deriveInstanceHealth",

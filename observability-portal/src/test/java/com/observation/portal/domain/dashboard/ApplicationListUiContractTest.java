@@ -58,6 +58,10 @@ class ApplicationListUiContractTest {
                 "application.topConcern",
                 "application.links.dashboard");
         assertThat(appJs).contains("Accepted bucket", "Starter connection", "server-computed light badge");
+        assertThat(sliceFunction(appJs, "applicationMarkup")).contains(
+                "metricData.statusSource",
+                "starterConnection.statusSource",
+                "state impact");
         assertThat(styles).contains(
                 ".application-list",
                 ".application-item",
@@ -498,6 +502,14 @@ class ApplicationListUiContractTest {
                 "diagnoseConnection",
                 "computeP95",
                 "computeP99",
+                "averageP95",
+                "averageP99",
+                "maxP95",
+                "maxP99",
+                "mergeP95",
+                "mergeP99",
+                "percentileFromHistogram",
+                "histogramToPercentile",
                 "rankEndpoint",
                 "rankApplication",
                 "recoveryRule",
@@ -526,7 +538,11 @@ class ApplicationListUiContractTest {
                 "endpoint priority",
                 "snapshot event",
                 "p95",
-                "p99");
+                "p99",
+                "hostHealth",
+                "applicationHealth",
+                "connectedAndHealthy",
+                "hostStatus");
     }
 
     private static String sliceFunction(String source, String functionName) {

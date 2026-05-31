@@ -51,6 +51,14 @@ class DashboardReadModelServiceTest {
     private static final Instant CURRENT_START = Instant.parse("2026-05-25T10:17:30Z");
     private static final Instant BASELINE_START = Instant.parse("2026-05-25T10:02:30Z");
     private static final Clock CLOCK = Clock.fixed(QUERY_AT, ZoneOffset.UTC);
+    private static final List<String> UNSAFE_OPERATIONAL_OUTCOME_COPY = List.of(
+            "host application down",
+            "host down",
+            "앱 정상 확정",
+            "정상 확정",
+            "문제 없음",
+            "복구 완료",
+            "장애 해결 완료");
 
     private final ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
     private final ApplicationInstanceRepository applicationInstanceRepository = mock(ApplicationInstanceRepository.class);
@@ -818,6 +826,53 @@ class DashboardReadModelServiceTest {
         assertThat(dashboard.zeroInsight().reasonCode()).isEqualTo("no_action_needed");
     }
 
+    @Test
+    void demoReadModelStatesExposeSourceAwareReasonsWithoutUnsafeOutcomeCopy() {
+        ApplicationDashboardReadModel heartbeatOnly = dashboard(null, "2026-05-25T10:32:20Z", 0L);
+
+        assertThat(heartbeatOnly.state().code()).isEqualTo("waiting_first_data");
+        assertThat(heartbeatOnly.application().lastAcceptedBucketAt()).isNull();
+        assertThat(heartbeatOnly.starterConnection().statusSource()).isEqualTo("starter_heartbeat");
+        assertThat(heartbeatOnly.starterConnection().connectionMeaning()).isEqualTo("starter_connected");
+        assertThat(heartbeatOnly.starterConnection().stateImpact()).isEqualTo("none");
+        assertThat(heartbeatOnly.triageCards()).isEmpty();
+        assertThat(heartbeatOnly.zeroInsight().reasonCode()).isEqualTo("waiting_first_data");
+        assertThat(heartbeatOnly.zeroInsight().message()).contains("accepted metric bucket");
+        assertThat(heartbeatOnly.zeroInsight().recommendedAction()).contains("bucket");
+        assertThat(heartbeatOnly.recovery().isRecovering()).isFalse();
+        assertServerCopyDoesNotDeclareUnsafeOutcome(heartbeatOnly);
+
+        ApplicationDashboardReadModel firstAcceptedBucket = dashboard(
+                "2026-05-25T10:32:00Z",
+                "2026-05-25T10:32:20Z",
+                3L);
+
+        assertThat(firstAcceptedBucket.state().code()).isEqualTo("unknown");
+        assertThat(firstAcceptedBucket.application().lastAcceptedBucketAt())
+                .isEqualTo(offset("2026-05-25T10:32:00Z"));
+        assertThat(firstAcceptedBucket.metrics().requestCount()).isEqualTo(3L);
+        assertThat(firstAcceptedBucket.triageCards()).isEmpty();
+        assertThat(firstAcceptedBucket.zeroInsight().reasonCode()).isEqualTo("insufficient_sample");
+        assertThat(firstAcceptedBucket.zeroInsight().message()).contains("sample");
+        assertThat(firstAcceptedBucket.zeroInsight().recommendedAction()).contains("요청 sample");
+        assertThat(firstAcceptedBucket.endpointPriority()).isEmpty();
+        assertThat(firstAcceptedBucket.recovery().isRecovering()).isFalse();
+        assertServerCopyDoesNotDeclareUnsafeOutcome(firstAcceptedBucket);
+
+        ApplicationDashboardReadModel lowRiskBaseline = dashboard(
+                "2026-05-25T10:32:00Z",
+                "2026-05-25T10:32:20Z",
+                50L);
+
+        assertThat(lowRiskBaseline.state().code()).isEqualTo("active");
+        assertThat(lowRiskBaseline.metrics().requestCount()).isEqualTo(50L);
+        assertThat(lowRiskBaseline.triageCards()).isEmpty();
+        assertThat(lowRiskBaseline.zeroInsight().reasonCode()).isEqualTo("no_action_needed");
+        assertThat(lowRiskBaseline.endpointPriority()).isEmpty();
+        assertThat(lowRiskBaseline.recovery().isRecovering()).isFalse();
+        assertServerCopyDoesNotDeclareUnsafeOutcome(lowRiskBaseline);
+    }
+
     private void assertZeroInsight(
             String latestBucketEndUtc,
             String latestHeartbeatAt,
@@ -829,6 +884,24 @@ class DashboardReadModelServiceTest {
         assertThat(dashboard.zeroInsight().reasonCode()).isEqualTo(expectedReasonCode);
         assertThat(dashboard.zeroInsight().reasonCode()).isNotEqualTo("observing_recovery");
         assertThat(dashboard.triageCards()).isEmpty();
+    }
+
+    /**
+     * Story 6.8 demo 상태 copy가 현재 read model 증거보다 강한 운영 결론을 단정하지 않는지 확인한다.
+     */
+    private static void assertServerCopyDoesNotDeclareUnsafeOutcome(ApplicationDashboardReadModel dashboard) {
+        assertThat(String.join("\n",
+                dashboard.state().label(),
+                dashboard.state().rationale(),
+                dashboard.state().recommendedAction(),
+                nullableText(dashboard.zeroInsight() == null ? null : dashboard.zeroInsight().message()),
+                nullableText(dashboard.zeroInsight() == null ? null : dashboard.zeroInsight().recommendedAction()),
+                nullableText(dashboard.recovery().recommendedAction())))
+                .doesNotContain(UNSAFE_OPERATIONAL_OUTCOME_COPY.toArray(String[]::new));
+    }
+
+    private static String nullableText(String value) {
+        return value == null ? "" : value;
     }
 
     private ApplicationDashboardReadModel dashboard(
