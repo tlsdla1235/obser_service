@@ -354,6 +354,12 @@ h3 {
   min-width: 0;
 }
 
+.instance-snapshot-trend-detail {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
 .dashboard-section,
 .dashboard-strip,
 .dashboard-mini-card {
@@ -385,6 +391,13 @@ h3 {
   justify-content: space-between;
   gap: 12px;
   align-items: flex-start;
+}
+
+.detail-back-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .dashboard-strip-grid,
@@ -516,6 +529,37 @@ h3 {
 .snapshot-trend-handoff {
   display: grid;
   gap: 10px;
+}
+
+.trend-horizon-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.trend-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.trend-preset-button[data-selected="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.snapshot-trend-lanes {
+  display: grid;
+  gap: 12px;
+}
+
+.trend-lane-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.trend-lane-card {
+  align-content: start;
 }
 
 .project-actions,
@@ -696,6 +740,7 @@ code {
 
   .dashboard-strip-grid,
   .histogram-grid,
+  .trend-lane-grid,
   .dashboard-strip dl,
   .dashboard-kv-grid {
     grid-template-columns: 1fr;

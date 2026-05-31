@@ -317,7 +317,8 @@ class ApplicationDashboardUiContractTest {
         assertThat(appJs).doesNotContain(forbiddenHelpers.toArray(String[]::new));
         assertThat(appJs).doesNotContain(
                 "fetch(instance",
-                "fetch(snapshot",
+                "fetch(snapshotDetail",
+                "fetch(snapshotHistory",
                 "fetch(history",
                 "snapshot-markers",
                 "dashboard/snapshots",

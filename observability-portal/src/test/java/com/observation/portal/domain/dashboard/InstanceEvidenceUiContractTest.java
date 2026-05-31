@@ -457,7 +457,8 @@ class InstanceEvidenceUiContractTest {
         assertThat(appJs).contains("fetch(selectedInstanceEvidenceContext.evidenceLink");
         assertThat(appJs).doesNotContain(forbiddenHelpers.toArray(String[]::new));
         assertThat(appJs).doesNotContain(
-                "fetch(snapshot",
+                "fetch(snapshotDetail",
+                "fetch(snapshotHistory",
                 "fetch(history",
                 "fetch(operational",
                 "dashboard/snapshots",

@@ -55,6 +55,24 @@ const INSTANCE_EVIDENCE_VIEW_STATE = Object.freeze({
   READY: 'ready'
 });
 
+const INSTANCE_SNAPSHOT_TREND_VIEW_STATE = Object.freeze({
+  IDLE: 'idle',
+  LOADING: 'loading',
+  AUTH_REQUIRED: 'auth-required',
+  INVALID_LINK: 'invalid-link',
+  BAD_QUERY: 'bad-query',
+  NOT_FOUND: 'not-found',
+  ERROR: 'error',
+  READY: 'ready',
+  PENDING_PRESET: 'pending-preset'
+});
+
+const INSTANCE_SNAPSHOT_TREND_PRESETS = Object.freeze({
+  PENDING_24H: '24h',
+  SEVEN_DAYS: '7d',
+  FOURTEEN_DAYS: '14d'
+});
+
 let serviceAccessToken = null;
 let loadedProjects = [];
 let loadedGeneratedAt = null;
@@ -74,6 +92,10 @@ let selectedInstanceEvidenceContext = null;
 let loadedInstanceEvidence = null;
 let currentInstanceEvidenceViewState = INSTANCE_EVIDENCE_VIEW_STATE.AUTH_REQUIRED;
 let instanceEvidenceRequestSequence = 0;
+let selectedInstanceSnapshotTrendContext = null;
+let loadedInstanceSnapshotTrend = null;
+let currentInstanceSnapshotTrendViewState = INSTANCE_SNAPSHOT_TREND_VIEW_STATE.AUTH_REQUIRED;
+let instanceSnapshotTrendRequestSequence = 0;
 
 window.observationPortalAuth = Object.freeze({
   setAccessToken(accessToken) {
@@ -82,10 +104,12 @@ window.observationPortalAuth = Object.freeze({
     applicationRequestSequence += 1;
     dashboardRequestSequence += 1;
     instanceEvidenceRequestSequence += 1;
+    instanceSnapshotTrendRequestSequence += 1;
     clearProjectSnapshot({ resetFilter: true });
     clearApplicationSnapshot({ resetFilter: true, resetSelection: true });
     clearDashboardSnapshot({ resetSelection: true });
     clearInstanceEvidenceSnapshot({ resetSelection: true });
+    clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
     if (!serviceAccessToken) {
       renderAuthorizationRequired();
       renderApplicationAuthorizationRequired();
@@ -104,6 +128,7 @@ window.observationPortalAuth = Object.freeze({
 async function loadProjects() {
   const requestId = ++projectRequestSequence;
   discardInstanceEvidenceForParentReload();
+  discardInstanceSnapshotTrendForParentReload();
   if (!serviceAccessToken) {
     clearProjectSnapshot({ resetFilter: true });
     renderAuthorizationRequired();
@@ -258,6 +283,7 @@ function selectProjectApplications(projectContext) {
   applicationRequestSequence += 1;
   dashboardRequestSequence += 1;
   instanceEvidenceRequestSequence += 1;
+  instanceSnapshotTrendRequestSequence += 1;
   selectedProjectContext = {
     projectId: String(projectContext.projectId ?? ''),
     projectName: String(projectContext.projectName ?? ''),
@@ -266,6 +292,7 @@ function selectProjectApplications(projectContext) {
   clearApplicationSnapshot({ resetFilter: true });
   clearDashboardSnapshot({ resetSelection: true });
   clearInstanceEvidenceSnapshot({ resetSelection: true });
+  clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
   renderDashboardIdle();
   if (!isProjectApplicationsLink(selectedProjectContext.applicationsLink, selectedProjectContext.projectId)) {
     renderApplicationInvalidLink();
@@ -278,8 +305,10 @@ async function loadApplicationsForSelectedProject() {
   const requestId = ++applicationRequestSequence;
   dashboardRequestSequence += 1;
   instanceEvidenceRequestSequence += 1;
+  instanceSnapshotTrendRequestSequence += 1;
   clearDashboardSnapshot({ resetSelection: true });
   clearInstanceEvidenceSnapshot({ resetSelection: true });
+  clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
   renderDashboardIdle();
   if (!selectedProjectContext) {
     renderApplicationIdle();
@@ -509,6 +538,7 @@ function handleApplicationListClick(event) {
 function selectApplicationDashboard(dashboardContext) {
   dashboardRequestSequence += 1;
   instanceEvidenceRequestSequence += 1;
+  instanceSnapshotTrendRequestSequence += 1;
   selectedDashboardContext = {
     projectId: currentApplicationProjectId(),
     projectName: currentApplicationProjectName(),
@@ -519,6 +549,7 @@ function selectApplicationDashboard(dashboardContext) {
   };
   loadedDashboard = null;
   clearInstanceEvidenceSnapshot({ resetSelection: true });
+  clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
   if (!serviceAccessToken) {
     renderDashboardAuthorizationRequired();
     return;
@@ -537,7 +568,9 @@ function selectApplicationDashboard(dashboardContext) {
 async function loadDashboardForSelectedApplication() {
   const requestId = ++dashboardRequestSequence;
   instanceEvidenceRequestSequence += 1;
+  instanceSnapshotTrendRequestSequence += 1;
   clearInstanceEvidenceSnapshot({ resetSelection: true });
+  clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
   if (!selectedDashboardContext) {
     renderDashboardIdle();
     return;
@@ -663,6 +696,7 @@ function renderDashboardReady() {
   const dashboard = loadedDashboard;
   setDashboardViewState(DASHBOARD_VIEW_STATE.READY);
   setInstanceEvidenceViewState(INSTANCE_EVIDENCE_VIEW_STATE.IDLE);
+  setInstanceSnapshotTrendViewState(INSTANCE_SNAPSHOT_TREND_VIEW_STATE.IDLE);
   setDashboardGeneratedAtLabel(formatDashboardGeneratedAt(dashboard.generatedAt));
   setSelectedApplicationLabel(dashboardApplicationText(dashboard.application));
   dashboardDetail.innerHTML = `
@@ -1020,7 +1054,30 @@ function instanceEntryMarkup(instance) {
 function handleDashboardDetailClick(event) {
   const backAction = event.target.closest('[data-dashboard-back]');
   if (backAction) {
-    renderApplicationDashboardFromInstanceDetail();
+    renderApplicationDashboardFromDetail();
+    return;
+  }
+  const instanceEvidenceBackAction = event.target.closest('[data-instance-evidence-back]');
+  if (instanceEvidenceBackAction) {
+    renderInstanceEvidenceFromSnapshotTrend();
+    return;
+  }
+  const trendHorizonAction = event.target.closest('[data-trend-horizon]');
+  if (trendHorizonAction) {
+    if (trendHorizonAction.disabled || trendHorizonAction.getAttribute && trendHorizonAction.getAttribute('aria-disabled') === 'true') {
+      return;
+    }
+    loadInstanceSnapshotTrendForSelectedInstance(trendHorizonAction.dataset.trendHorizon);
+    return;
+  }
+  const snapshotTrendAction = event.target.closest('button[data-snapshot-trend-link]');
+  if (snapshotTrendAction) {
+    if (snapshotTrendAction.disabled || snapshotTrendAction.getAttribute && snapshotTrendAction.getAttribute('aria-disabled') === 'true') {
+      return;
+    }
+    selectInstanceSnapshotTrend({
+      snapshotTrendLink: snapshotTrendAction.dataset.snapshotTrendLink
+    });
     return;
   }
   const evidenceAction = event.target.closest('[data-evidence-link]');
@@ -1039,6 +1096,8 @@ function handleDashboardDetailClick(event) {
 
 function selectInstanceEvidence(instanceContext) {
   instanceEvidenceRequestSequence += 1;
+  instanceSnapshotTrendRequestSequence += 1;
+  clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
   selectedInstanceEvidenceContext = {
     projectId: selectedDashboardContext ? selectedDashboardContext.projectId : '',
     projectName: selectedDashboardContext ? selectedDashboardContext.projectName : '',
@@ -1068,8 +1127,10 @@ function selectInstanceEvidence(instanceContext) {
 
 async function loadInstanceEvidenceForSelectedInstance() {
   const requestId = ++instanceEvidenceRequestSequence;
+  instanceSnapshotTrendRequestSequence += 1;
+  clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
   if (!selectedInstanceEvidenceContext) {
-    renderApplicationDashboardFromInstanceDetail();
+    renderApplicationDashboardFromDetail();
     return;
   }
   if (!serviceAccessToken) {
@@ -1122,9 +1183,11 @@ async function loadInstanceEvidenceForSelectedInstance() {
   }
 }
 
-function renderApplicationDashboardFromInstanceDetail() {
+function renderApplicationDashboardFromDetail() {
   instanceEvidenceRequestSequence += 1;
+  instanceSnapshotTrendRequestSequence += 1;
   clearInstanceEvidenceSnapshot({ resetSelection: true });
+  clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
   if (!serviceAccessToken) {
     clearDashboardSnapshot({ resetSelection: true });
     renderDashboardAuthorizationRequired();
@@ -1175,7 +1238,9 @@ function handleInstanceEvidenceAuthorizationLoss() {
   applicationRequestSequence += 1;
   dashboardRequestSequence += 1;
   instanceEvidenceRequestSequence += 1;
+  instanceSnapshotTrendRequestSequence += 1;
   loadedInstanceEvidence = null;
+  clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
   clearDashboardSnapshot({ resetSelection: true });
   renderAuthorizationRequired();
   renderApplicationAuthorizationRequired();
@@ -1248,6 +1313,520 @@ function renderInstanceEvidenceReady() {
       ${snapshotTrendPendingHandoffMarkup(evidence.links)}
     `
   });
+}
+
+function selectInstanceSnapshotTrend(trendContext) {
+  instanceSnapshotTrendRequestSequence += 1;
+  selectedInstanceSnapshotTrendContext = {
+    projectId: selectedInstanceEvidenceContext ? selectedInstanceEvidenceContext.projectId : '',
+    projectName: selectedInstanceEvidenceContext ? selectedInstanceEvidenceContext.projectName : '',
+    applicationId: selectedInstanceEvidenceContext ? selectedInstanceEvidenceContext.applicationId : '',
+    applicationName: selectedInstanceEvidenceContext ? selectedInstanceEvidenceContext.applicationName : '',
+    applicationEnvironment: selectedInstanceEvidenceContext ? selectedInstanceEvidenceContext.applicationEnvironment : '',
+    instanceId: selectedInstanceEvidenceContext ? selectedInstanceEvidenceContext.instanceId : '',
+    instanceName: selectedInstanceEvidenceContext ? selectedInstanceEvidenceContext.instanceName : '',
+    snapshotTrendLink: String(trendContext.snapshotTrendLink ?? ''),
+    horizonPreset: INSTANCE_SNAPSHOT_TREND_PRESETS.SEVEN_DAYS
+  };
+  loadedInstanceSnapshotTrend = null;
+  if (!serviceAccessToken) {
+    renderInstanceSnapshotTrendAuthorizationRequired();
+    return;
+  }
+  if (!isInstanceSnapshotTrendLink(
+    selectedInstanceSnapshotTrendContext.snapshotTrendLink,
+    selectedInstanceSnapshotTrendContext.projectId,
+    selectedInstanceSnapshotTrendContext.applicationId,
+    selectedInstanceSnapshotTrendContext.instanceId
+  )) {
+    renderInstanceSnapshotTrendInvalidLink();
+    return;
+  }
+  loadInstanceSnapshotTrendForSelectedInstance(INSTANCE_SNAPSHOT_TREND_PRESETS.SEVEN_DAYS);
+}
+
+async function loadInstanceSnapshotTrendForSelectedInstance(horizonPreset) {
+  const normalizedPreset = normalizeTrendPreset(horizonPreset);
+  const requestId = ++instanceSnapshotTrendRequestSequence;
+  if (!selectedInstanceSnapshotTrendContext) {
+    renderInstanceEvidenceFromSnapshotTrend();
+    return;
+  }
+  selectedInstanceSnapshotTrendContext.horizonPreset = normalizedPreset;
+  if (normalizedPreset === INSTANCE_SNAPSHOT_TREND_PRESETS.PENDING_24H) {
+    loadedInstanceSnapshotTrend = null;
+    renderInstanceSnapshotTrendPendingPreset();
+    return;
+  }
+  if (!serviceAccessToken) {
+    loadedInstanceSnapshotTrend = null;
+    renderInstanceSnapshotTrendAuthorizationRequired();
+    return;
+  }
+  if (!isInstanceSnapshotTrendLink(
+    selectedInstanceSnapshotTrendContext.snapshotTrendLink,
+    selectedInstanceSnapshotTrendContext.projectId,
+    selectedInstanceSnapshotTrendContext.applicationId,
+    selectedInstanceSnapshotTrendContext.instanceId
+  )) {
+    renderInstanceSnapshotTrendInvalidLink();
+    return;
+  }
+  const requestLink = snapshotTrendRequestLink(selectedInstanceSnapshotTrendContext.snapshotTrendLink, normalizedPreset);
+  if (!requestLink) {
+    loadedInstanceSnapshotTrend = null;
+    renderInstanceSnapshotTrendPendingPreset();
+    return;
+  }
+  renderInstanceSnapshotTrendLoadingState();
+  try {
+    const response = await fetch(snapshotTrendRequestLink(
+      selectedInstanceSnapshotTrendContext.snapshotTrendLink,
+      normalizedPreset
+    ), { headers: projectRequestHeaders() });
+    if (!isLatestInstanceSnapshotTrendRequest(requestId)) {
+      return;
+    }
+    if (response.status === 401) {
+      handleInstanceSnapshotTrendAuthorizationLoss();
+      return;
+    }
+    if (response.status === 400) {
+      loadedInstanceSnapshotTrend = null;
+      renderInstanceSnapshotTrendBadQuery();
+      return;
+    }
+    if (response.status === 404) {
+      loadedInstanceSnapshotTrend = null;
+      renderInstanceSnapshotTrendNotFound();
+      return;
+    }
+    if (!response.ok) {
+      throw new Error('instance_snapshot_trend_load_failed');
+    }
+    const trend = await response.json();
+    if (!isLatestInstanceSnapshotTrendRequest(requestId)) {
+      return;
+    }
+    if (!isSelectedInstanceSnapshotTrendResponse(trend)) {
+      throw new Error('instance_snapshot_trend_context_mismatch');
+    }
+    loadedInstanceSnapshotTrend = trend;
+    renderInstanceSnapshotTrendReady();
+  } catch (error) {
+    if (!isLatestInstanceSnapshotTrendRequest(requestId)) {
+      return;
+    }
+    loadedInstanceSnapshotTrend = null;
+    renderInstanceSnapshotTrendLoadError();
+  }
+}
+
+function renderInstanceEvidenceFromSnapshotTrend() {
+  instanceSnapshotTrendRequestSequence += 1;
+  clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
+  if (!serviceAccessToken) {
+    renderInstanceEvidenceAuthorizationRequired();
+    return;
+  }
+  if (loadedInstanceEvidence && selectedInstanceEvidenceContext) {
+    renderInstanceEvidenceReady();
+    return;
+  }
+  renderApplicationDashboardFromDetail();
+}
+
+function renderInstanceSnapshotTrendLoadingState() {
+  setInstanceSnapshotTrendViewState(INSTANCE_SNAPSHOT_TREND_VIEW_STATE.LOADING);
+  setDashboardGeneratedAtLabel('Instance Snapshot Trend를 불러오는 중');
+  setSelectedApplicationLabel(instanceSnapshotTrendContextText());
+  dashboardDetail.innerHTML = instanceSnapshotTrendShellMarkup({
+    state: 'loading',
+    generatedAt: null,
+    bodyMarkup: `
+      <div class="loading-state" aria-label="Instance Snapshot Trend 로딩 중">
+        <p class="dashboard-empty-copy">Instance Snapshot Trend를 불러오는 중</p>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line short"></div>
+      </div>
+    `
+  });
+}
+
+function renderInstanceSnapshotTrendAuthorizationRequired() {
+  setInstanceSnapshotTrendViewState(INSTANCE_SNAPSHOT_TREND_VIEW_STATE.AUTH_REQUIRED);
+  setDashboardGeneratedAtLabel('로그인이 필요합니다');
+  setSelectedApplicationLabel(instanceSnapshotTrendContextText());
+  dashboardDetail.innerHTML = instanceSnapshotTrendShellMarkup({
+    state: 'auth-required',
+    generatedAt: null,
+    bodyMarkup: `
+      <div class="empty-state">
+        <p><strong>GitHub 로그인 후 Instance Snapshot Trend를 볼 수 있습니다.</strong>로그인을 완료한 뒤 같은 Instance Evidence에서 Snapshot Trend action을 다시 선택해 주세요.</p>
+      </div>
+    `
+  });
+}
+
+function handleInstanceSnapshotTrendAuthorizationLoss() {
+  serviceAccessToken = null;
+  projectRequestSequence += 1;
+  applicationRequestSequence += 1;
+  dashboardRequestSequence += 1;
+  instanceEvidenceRequestSequence += 1;
+  instanceSnapshotTrendRequestSequence += 1;
+  loadedInstanceSnapshotTrend = null;
+  renderAuthorizationRequired();
+  renderApplicationAuthorizationRequired();
+  renderInstanceSnapshotTrendAuthorizationRequired();
+}
+
+function renderInstanceSnapshotTrendInvalidLink() {
+  setInstanceSnapshotTrendViewState(INSTANCE_SNAPSHOT_TREND_VIEW_STATE.INVALID_LINK);
+  setDashboardGeneratedAtLabel('Instance Snapshot Trend 기준 시각 확인 불가');
+  setSelectedApplicationLabel(instanceSnapshotTrendContextText());
+  dashboardDetail.innerHTML = instanceSnapshotTrendShellMarkup({
+    state: 'invalid-link',
+    generatedAt: null,
+    bodyMarkup: `
+      <div class="empty-state">
+        <p><strong>Snapshot Trend link를 확인할 수 없습니다.</strong>현재 Project/Application/Instance와 일치하는 내부 Snapshot Trend link만 사용할 수 있습니다.</p>
+      </div>
+    `
+  });
+}
+
+function renderInstanceSnapshotTrendBadQuery() {
+  setInstanceSnapshotTrendViewState(INSTANCE_SNAPSHOT_TREND_VIEW_STATE.BAD_QUERY);
+  setDashboardGeneratedAtLabel('Instance Snapshot Trend 기준 시각 확인 불가');
+  setSelectedApplicationLabel(instanceSnapshotTrendContextText());
+  dashboardDetail.innerHTML = instanceSnapshotTrendShellMarkup({
+    state: 'bad-query',
+    generatedAt: null,
+    bodyMarkup: `
+      <div class="empty-state">
+        <p><strong>Snapshot Trend query contract를 확인할 수 없습니다.</strong>UI는 fixed 7d/14d preset만 사용하며 잠시 후 다시 시도해 주세요.</p>
+      </div>
+    `
+  });
+}
+
+function renderInstanceSnapshotTrendNotFound() {
+  setInstanceSnapshotTrendViewState(INSTANCE_SNAPSHOT_TREND_VIEW_STATE.NOT_FOUND);
+  setDashboardGeneratedAtLabel('Instance Snapshot Trend 기준 시각 확인 불가');
+  setSelectedApplicationLabel(instanceSnapshotTrendContextText());
+  dashboardDetail.innerHTML = instanceSnapshotTrendShellMarkup({
+    state: 'not-found',
+    generatedAt: null,
+    bodyMarkup: `
+      <div class="empty-state">
+        <p><strong>Project/Application/Instance scope를 찾을 수 없습니다.</strong>scope mismatch 또는 접근 가능한 instance 범위를 다시 확인해 주세요.</p>
+      </div>
+    `
+  });
+}
+
+function renderInstanceSnapshotTrendLoadError() {
+  setInstanceSnapshotTrendViewState(INSTANCE_SNAPSHOT_TREND_VIEW_STATE.ERROR);
+  setDashboardGeneratedAtLabel('Instance Snapshot Trend 기준 시각 확인 불가');
+  setSelectedApplicationLabel(instanceSnapshotTrendContextText());
+  dashboardDetail.innerHTML = instanceSnapshotTrendShellMarkup({
+    state: 'error',
+    generatedAt: null,
+    bodyMarkup: `
+      <div class="empty-state">
+        <p><strong>Instance Snapshot Trend를 불러오지 못했습니다.</strong>잠시 후 같은 instance에서 다시 시도해 주세요.</p>
+      </div>
+    `
+  });
+}
+
+function renderInstanceSnapshotTrendPendingPreset() {
+  setInstanceSnapshotTrendViewState(INSTANCE_SNAPSHOT_TREND_VIEW_STATE.PENDING_PRESET);
+  setDashboardGeneratedAtLabel('Instance Snapshot Trend 24h preset 대기 중');
+  setSelectedApplicationLabel(instanceSnapshotTrendContextText());
+  dashboardDetail.innerHTML = instanceSnapshotTrendShellMarkup({
+    state: 'pending-preset',
+    generatedAt: loadedInstanceSnapshotTrend ? loadedInstanceSnapshotTrend.generatedAt : null,
+    bodyMarkup: `
+      ${instanceSnapshotTrendHorizonControlsMarkup()}
+      <div class="empty-state">
+        <p><strong>24h preset pending.</strong>현재 backend contract는 7d/14d만 지원하므로 24h backend 호출은 만들지 않습니다.</p>
+      </div>
+    `
+  });
+}
+
+function renderInstanceSnapshotTrendReady() {
+  const trend = loadedInstanceSnapshotTrend;
+  setInstanceSnapshotTrendViewState(INSTANCE_SNAPSHOT_TREND_VIEW_STATE.READY);
+  setDashboardGeneratedAtLabel(formatTrendGeneratedAt(trend.generatedAt));
+  setSelectedApplicationLabel(instanceSnapshotTrendReadyText(trend));
+  dashboardDetail.innerHTML = instanceSnapshotTrendShellMarkup({
+    state: 'ready',
+    generatedAt: trend.generatedAt,
+    bodyMarkup: `
+      ${instanceSnapshotTrendHorizonControlsMarkup()}
+      ${instanceSnapshotTrendMetadataMarkup(trend)}
+      ${instanceSnapshotTrendLanesMarkup(trend.points)}
+      ${instanceSnapshotTrendPointListMarkup(trend.points)}
+    `
+  });
+}
+
+function instanceSnapshotTrendShellMarkup({ state, generatedAt, bodyMarkup }) {
+  return `
+    <article class="instance-snapshot-trend-detail" data-instance-snapshot-trend-state="${escapeAttribute(state)}">
+      ${instanceSnapshotTrendHeaderMarkup(generatedAt)}
+      ${bodyMarkup}
+    </article>
+  `;
+}
+
+function instanceSnapshotTrendHeaderMarkup(generatedAt) {
+  const context = selectedInstanceSnapshotTrendContext || {};
+  return `
+    <section class="dashboard-section instance-detail-header" aria-label="Instance snapshot trend context">
+      <div class="instance-detail-title">
+        <div>
+          <p class="eyebrow">Instance Snapshot Trend</p>
+          <h3>${escapeText(valueOrAbsence(context.instanceName, 'instance name source absence'))}</h3>
+        </div>
+        <div class="detail-back-actions">
+          <button class="link-button" type="button" data-dashboard-back="true">Application Dashboard</button>
+          <button class="link-button" type="button" data-instance-evidence-back="true">Instance Evidence</button>
+        </div>
+      </div>
+      <dl class="dashboard-kv-grid">
+        ${keyValueMarkup('project id', context.projectId)}
+        ${keyValueMarkup('application id', context.applicationId)}
+        ${keyValueMarkup('application', valueOrAbsence(context.applicationName, 'application name source absence'))}
+        ${keyValueMarkup('environment', context.applicationEnvironment)}
+        ${keyValueMarkup('instanceId', context.instanceId)}
+        ${keyValueMarkup('instanceName', context.instanceName)}
+        ${keyValueMarkup('generatedAt', valueOrAbsence(generatedAt, 'trend generatedAt source absence'))}
+      </dl>
+    </section>
+  `;
+}
+
+function instanceSnapshotTrendHorizonControlsMarkup() {
+  const selectedPreset = selectedInstanceSnapshotTrendContext
+    ? selectedInstanceSnapshotTrendContext.horizonPreset
+    : INSTANCE_SNAPSHOT_TREND_PRESETS.SEVEN_DAYS;
+  return `
+    <section class="dashboard-section trend-horizon-controls" aria-label="Snapshot trend horizon controls">
+      <p class="eyebrow">Horizon preset</p>
+      <div class="trend-preset-row">
+        ${trendPresetButtonMarkup(INSTANCE_SNAPSHOT_TREND_PRESETS.PENDING_24H, selectedPreset, true)}
+        ${trendPresetButtonMarkup(INSTANCE_SNAPSHOT_TREND_PRESETS.SEVEN_DAYS, selectedPreset, false)}
+        ${trendPresetButtonMarkup(INSTANCE_SNAPSHOT_TREND_PRESETS.FOURTEEN_DAYS, selectedPreset, false)}
+      </div>
+      <p class="dashboard-empty-copy">24h preset pending · backend 지원 전까지 24h backend call을 만들지 않습니다.</p>
+    </section>
+  `;
+}
+
+function trendPresetButtonMarkup(preset, selectedPreset, disabled) {
+  const selected = preset === selectedPreset ? 'true' : 'false';
+  const disabledAttributes = disabled ? 'disabled aria-disabled="true"' : 'aria-disabled="false"';
+  return `<button class="link-button trend-preset-button" type="button" data-trend-horizon="${escapeAttribute(preset)}" data-selected="${selected}" ${disabledAttributes}>${escapeText(preset)}</button>`;
+}
+
+function instanceSnapshotTrendMetadataMarkup(trend) {
+  const application = trend.application || {};
+  const instance = trend.instance || {};
+  const horizon = trend.horizon || {};
+  return `
+    <section class="dashboard-section" aria-label="Snapshot trend metadata">
+      <p class="eyebrow">Trend source and horizon</p>
+      <dl class="dashboard-kv-grid">
+        ${keyValueMarkup('source', trend.source)}
+        ${keyValueMarkup('projectId', application.projectId)}
+        ${keyValueMarkup('applicationId', application.applicationId)}
+        ${keyValueMarkup('instanceId', instance.instanceId)}
+        ${keyValueMarkup('since', horizon.since)}
+        ${keyValueMarkup('until', horizon.until)}
+        ${keyValueMarkup('requestedSince', horizon.requestedSince)}
+        ${keyValueMarkup('defaultSince', horizon.defaultSince)}
+        ${keyValueMarkup('maxSince', horizon.maxSince)}
+        ${keyValueMarkup('limit', horizon.limit)}
+        ${keyValueMarkup('maxLimit', horizon.maxLimit)}
+        ${keyValueMarkup('order', horizon.order)}
+        ${keyValueMarkup('point count', Array.isArray(trend.points) ? trend.points.length : 0)}
+      </dl>
+    </section>
+  `;
+}
+
+function instanceSnapshotTrendLanesMarkup(points) {
+  const storedPoints = Array.isArray(points) ? points : [];
+  const emptyCopy = storedPoints.length === 0
+    ? '<p class="dashboard-empty-copy">points source absence · snapshot source absence, retention gap, target instance absence 중 하나일 수 있습니다.</p>'
+    : '';
+  return `
+    <section class="dashboard-section snapshot-trend-lanes" aria-label="Snapshot trend lanes">
+      <p class="eyebrow">Stored trend lanes</p>
+      ${emptyCopy}
+      ${storedPoints.length === 0 ? '' : noConcernObservedCopy(storedPoints)}
+      <div class="trend-lane-grid">
+        ${trendLaneMarkup('Stored application state copy lane', storedPoints.map(point => [
+          point.capturedAt,
+          `storedApplicationStateCode ${valueOrAbsence(point.storedApplicationStateCode, 'source absence')}`
+        ]))}
+        ${trendLaneMarkup('Metric data axis lane', storedPoints.map(point => [
+          point.capturedAt,
+          `source ${valueOrAbsence(point.metricData && point.metricData.statusSource, 'metric data source absence')}`,
+          `freshness ${valueOrAbsence(point.metricData && point.metricData.freshnessLabel, 'metric freshness source absence')}`
+        ]))}
+        ${trendLaneMarkup('Starter connection axis lane', storedPoints.map(point => [
+          point.capturedAt,
+          `source ${valueOrAbsence(point.starterConnection && point.starterConnection.statusSource, 'starter heartbeat source absence')}`,
+          `stateImpact ${valueOrAbsence(point.starterConnection && point.starterConnection.stateImpact, 'state impact source absence')}`,
+          `meaning ${valueOrAbsence(point.starterConnection && point.starterConnection.connectionMeaning, 'connection meaning source absence')}`
+        ]))}
+        ${trendLaneMarkup('Capture reason/source marker lane', storedPoints.map(point => [
+          point.capturedAt,
+          `captureReason opaque metadata ${valueOrAbsence(point.captureReason, 'capture reason source absence')}`
+        ]))}
+      </div>
+    </section>
+  `;
+}
+
+function trendLaneMarkup(title, rows) {
+  return `
+    <article class="dashboard-mini-card trend-lane-card">
+      <h3>${escapeText(title)}</h3>
+      <div class="dashboard-list">
+        ${rows.length === 0 ? '<p class="dashboard-empty-copy">lane source absence</p>' : rows.map(row => `<p class="dashboard-empty-copy">${escapeText(row.filter(Boolean).join(' · '))}</p>`).join('')}
+      </div>
+    </article>
+  `;
+}
+
+function noConcernObservedCopy(points) {
+  return points.some(hasStoredConcernCandidate)
+    ? ''
+    : '<p class="dashboard-empty-copy">no concern observed · selected stored points에서 triage contribution 또는 endpoint reference가 관찰되지 않았다는 뜻이며 health proof가 아닙니다.</p>';
+}
+
+function hasStoredConcernCandidate(point) {
+  const contribution = point.applicationTriageContribution || {};
+  const refs = Array.isArray(point.endpointEvidenceRefs) ? point.endpointEvidenceRefs : [];
+  return contribution.contributed === true || refs.length > 0;
+}
+
+function instanceSnapshotTrendPointListMarkup(points) {
+  const storedPoints = Array.isArray(points) ? points : [];
+  return `
+    <section class="dashboard-section" aria-label="Snapshot trend point list">
+      <p class="eyebrow">Point list and stored detail</p>
+      <div class="dashboard-list">
+        ${storedPoints.length === 0 ? '<p class="dashboard-empty-copy">stored point source absence · missing hourly snapshot은 보간하지 않습니다.</p>' : storedPoints.map(instanceSnapshotTrendPointMarkup).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function instanceSnapshotTrendPointMarkup(point) {
+  return `
+    <article class="dashboard-mini-card">
+      <h3>${escapeText(valueOrAbsence(point.capturedAt, 'capturedAt source absence'))}</h3>
+      <dl class="dashboard-kv-grid compact">
+        ${keyValueMarkup('snapshotId', point.snapshotId)}
+        ${keyValueMarkup('capturedAt', point.capturedAt)}
+        ${keyValueMarkup('currentWindowEndUtc', point.currentWindowEndUtc)}
+        ${keyValueMarkup('storedApplicationStateCode', point.storedApplicationStateCode)}
+        ${keyValueMarkup('captureReason', valueOrAbsence(point.captureReason, 'nullable opaque metadata source absence'))}
+        ${keyValueMarkup('instanceName', point.instanceName)}
+        ${keyValueMarkup('observationStatus', point.observationStatus)}
+        ${keyValueMarkup('metricData', snapshotTrendMetricDataText(point.metricData))}
+        ${keyValueMarkup('starterConnection', snapshotTrendStarterConnectionText(point.starterConnection))}
+        ${keyValueMarkup('starterPercentilePoint', snapshotTrendStarterPercentilePointText(point.starterPercentilePoint))}
+        ${keyValueMarkup('resourceHints', snapshotTrendResourceHintsText(point.resourceHints))}
+        ${keyValueMarkup('applicationTriageContribution', snapshotTrendTriageContributionText(point.applicationTriageContribution))}
+        ${keyValueMarkup('endpointEvidenceRefs', snapshotTrendEndpointRefsText(point.endpointEvidenceRefs))}
+      </dl>
+    </article>
+  `;
+}
+
+function snapshotTrendMetricDataText(metricData) {
+  const metric = metricData || {};
+  return [
+    metric.statusSource,
+    `lastAcceptedBucketAt ${valueOrAbsence(metric.lastAcceptedBucketAt, 'accepted bucket source absence')}`,
+    `freshness ${valueOrAbsence(metric.freshnessLabel, 'metric freshness source absence')}`
+  ].filter(value => String(value ?? '').trim().length > 0).join(' · ');
+}
+
+function snapshotTrendStarterConnectionText(starterConnection) {
+  const starter = starterConnection || {};
+  return [
+    starter.statusSource,
+    `lastHeartbeatAt ${valueOrAbsence(starter.lastHeartbeatAt, 'starter heartbeat source absence')}`,
+    `lastHeartbeatStatus ${valueOrAbsence(starter.lastHeartbeatStatus, 'heartbeat status source absence')}`,
+    `connectionMeaning ${valueOrAbsence(starter.connectionMeaning, 'connection meaning source absence')}`,
+    `stateImpact ${valueOrAbsence(starter.stateImpact, 'state impact source absence')}`
+  ].filter(value => String(value ?? '').trim().length > 0).join(' · ');
+}
+
+function snapshotTrendStarterPercentilePointText(point) {
+  if (!point) {
+    return 'stored starter percentile point source absence';
+  }
+  return [
+    point.source,
+    point.scope,
+    `bucketStartUtc ${point.bucketStartUtc}`,
+    `bucketEndUtc ${point.bucketEndUtc}`,
+    `requestCount ${point.requestCount}`,
+    `p95Ms ${point.p95Ms}`,
+    `p99Ms ${point.p99Ms}`
+  ].join(' · ');
+}
+
+function snapshotTrendResourceHintsText(resourceHints) {
+  if (!resourceHints) {
+    return 'stored resource hint source absence';
+  }
+  return [
+    resourceHints.source,
+    `status ${resourceHints.status}`,
+    `bucketEndUtc ${valueOrAbsence(resourceHints.bucketEndUtc, 'latest sample source absence')}`,
+    `cpuUsageRatio ${valueOrAbsence(resourceHints.cpuUsageRatio, 'source absence')}`,
+    `heapUsedRatio ${valueOrAbsence(resourceHints.heapUsedRatio, 'source absence')}`,
+    `datasourcePoolUsageRatio ${valueOrAbsence(resourceHints.datasourcePoolUsageRatio, 'source absence')}`
+  ].join(' · ');
+}
+
+function snapshotTrendTriageContributionText(applicationTriageContribution) {
+  const contribution = applicationTriageContribution || {};
+  const ruleIds = Array.isArray(contribution.relatedRuleIds) ? contribution.relatedRuleIds.join(', ') : '';
+  const absence = contribution.contributed ? '' : '저장된 application triage contribution 없음';
+  return [
+    `status ${valueOrAbsence(contribution.status, 'triage contribution status source absence')}`,
+    `contributed ${valueOrAbsence(contribution.contributed, 'source absence')}`,
+    `relatedRuleIds ${valueOrAbsence(ruleIds, 'triage rule source absence')}`,
+    `reason ${valueOrAbsence(contribution.reason, absence || 'triage contribution reason source absence')}`,
+    absence
+  ].filter(value => String(value ?? '').trim().length > 0).join(' · ');
+}
+
+function snapshotTrendEndpointRefsText(endpointEvidenceRefs) {
+  const refs = Array.isArray(endpointEvidenceRefs) ? endpointEvidenceRefs : [];
+  if (refs.length === 0) {
+    return 'bounded endpoint reference source absence';
+  }
+  return refs.map(ref => [
+    ref.endpointKey,
+    ref.method,
+    ref.route,
+    `relatedApplicationPriorityRank ${valueOrAbsence(ref.relatedApplicationPriorityRank, 'rank source absence')}`,
+    `relatedRuleIds ${Array.isArray(ref.relatedRuleIds) ? ref.relatedRuleIds.join(', ') : ''}`,
+    `snapshotDetailAnchor ${valueOrAbsence(ref.snapshotDetailAnchor, 'anchor source absence')}`
+  ].filter(value => String(value ?? '').trim().length > 0).join(' · ')).join(' | ');
 }
 
 function instanceEvidenceShellMarkup({ state, generatedAt, bodyMarkup }) {
@@ -1504,8 +2083,8 @@ function snapshotTrendPendingHandoffMarkup(links) {
   return `
     <section class="dashboard-section snapshot-trend-handoff" aria-label="Snapshot trend handoff" ${handoffAttributes}>
       <p class="eyebrow">Snapshot trend handoff</p>
-      <p class="dashboard-empty-copy">${snapshotTrendLink ? '후속 trend 화면에서 사용할 handoff link가 보존되었습니다.' : 'snapshot trend handoff source absence'}</p>
-      ${snapshotTrendLink ? `<button class="link-button pending-handoff" type="button" disabled aria-disabled="true" data-snapshot-trend-link="${escapeAttribute(snapshotTrendLink)}">Snapshot trend pending</button>` : ''}
+      <p class="dashboard-empty-copy">${snapshotTrendLink ? 'links.snapshotTrend handoff link로 stored snapshot trend를 조회합니다.' : 'snapshot trend handoff source absence'}</p>
+      ${snapshotTrendLink ? `<button class="link-button snapshot-trend-handoff-action" type="button" aria-disabled="false" data-snapshot-trend-link="${escapeAttribute(snapshotTrendLink)}">Snapshot trend</button>` : ''}
     </section>
   `;
 }
@@ -1748,6 +2327,34 @@ function safeSnapshotTrendLink(candidate) {
   ) ? normalized : '';
 }
 
+function normalizeTrendPreset(preset) {
+  if (preset === INSTANCE_SNAPSHOT_TREND_PRESETS.FOURTEEN_DAYS) {
+    return INSTANCE_SNAPSHOT_TREND_PRESETS.FOURTEEN_DAYS;
+  }
+  if (preset === INSTANCE_SNAPSHOT_TREND_PRESETS.PENDING_24H) {
+    return INSTANCE_SNAPSHOT_TREND_PRESETS.PENDING_24H;
+  }
+  return INSTANCE_SNAPSHOT_TREND_PRESETS.SEVEN_DAYS;
+}
+
+function snapshotTrendRequestLink(snapshotTrendLink, preset) {
+  if (!selectedInstanceSnapshotTrendContext || !isInstanceSnapshotTrendLink(
+    snapshotTrendLink,
+    selectedInstanceSnapshotTrendContext.projectId,
+    selectedInstanceSnapshotTrendContext.applicationId,
+    selectedInstanceSnapshotTrendContext.instanceId
+  )) {
+    return null;
+  }
+  if (preset === INSTANCE_SNAPSHOT_TREND_PRESETS.SEVEN_DAYS) {
+    return `${snapshotTrendLink}?since=7d&limit=168`;
+  }
+  if (preset === INSTANCE_SNAPSHOT_TREND_PRESETS.FOURTEEN_DAYS) {
+    return `${snapshotTrendLink}?since=14d&limit=336`;
+  }
+  return null;
+}
+
 function isSelectedProjectApplicationResponse(data) {
   if (!selectedProjectContext || !data || !data.project) {
     return false;
@@ -1778,6 +2385,18 @@ function isSelectedInstanceEvidenceResponse(evidence) {
     && String(evidence.instance.instanceId ?? '') === selectedInstanceEvidenceContext.instanceId;
 }
 
+function isSelectedInstanceSnapshotTrendResponse(trend) {
+  if (!selectedInstanceSnapshotTrendContext || !trend || !trend.application || !trend.instance) {
+    return false;
+  }
+  if (!hasInstanceSnapshotTrendTopLevelFields(trend)) {
+    return false;
+  }
+  return String(trend.application.projectId ?? '') === selectedInstanceSnapshotTrendContext.projectId
+    && String(trend.application.applicationId ?? '') === selectedInstanceSnapshotTrendContext.applicationId
+    && String(trend.instance.instanceId ?? '') === selectedInstanceSnapshotTrendContext.instanceId;
+}
+
 function hasInstanceEvidenceTopLevelFields(evidence) {
   return Boolean(isObjectValue(evidence)
     && evidence.generatedAt
@@ -1791,6 +2410,169 @@ function hasInstanceEvidenceTopLevelFields(evidence) {
     && isValidInstanceTriageContribution(evidence.applicationTriageContribution)
     && isValidInstanceEndpointEvidence(evidence.endpointEvidence)
     && isValidInstanceEvidenceLinks(evidence.links));
+}
+
+function hasInstanceSnapshotTrendTopLevelFields(trend) {
+  return Boolean(isObjectValue(trend)
+    && trend.generatedAt
+    && isObjectValue(trend.application)
+    && isObjectValue(trend.instance)
+    && trend.source === 'dashboard_snapshots.read_model_json.instanceSummary.items'
+    && isValidInstanceSnapshotTrendApplication(trend.application)
+    && isValidInstanceSnapshotTrendInstance(trend.instance)
+    && isValidInstanceSnapshotTrendHorizon(trend.horizon)
+    && Array.isArray(trend.points)
+    && trend.points.length <= trend.horizon.limit
+    && hasAscendingSnapshotTrendPoints(trend.points)
+    && trend.points.every(isValidInstanceSnapshotTrendPoint));
+}
+
+function isValidInstanceSnapshotTrendApplication(application) {
+  return Boolean(isObjectValue(application)
+    && hasRequiredText(application.projectId)
+    && hasRequiredText(application.applicationId)
+    && hasRequiredText(application.name)
+    && hasRequiredText(application.environment)
+    && isObjectValue(application.links)
+    && isApplicationDashboardLink(
+      application.links.dashboard,
+      selectedInstanceSnapshotTrendContext.projectId,
+      selectedInstanceSnapshotTrendContext.applicationId
+    ));
+}
+
+function isValidInstanceSnapshotTrendInstance(instance) {
+  return Boolean(isObjectValue(instance)
+    && hasRequiredText(instance.instanceId)
+    && hasRequiredText(instance.instanceName)
+    && isObjectValue(instance.links)
+    && isInstanceEvidenceLink(
+      instance.links.evidence,
+      selectedInstanceSnapshotTrendContext.projectId,
+      selectedInstanceSnapshotTrendContext.applicationId,
+      selectedInstanceSnapshotTrendContext.instanceId
+    ));
+}
+
+function isValidInstanceSnapshotTrendHorizon(horizon) {
+  return Boolean(isObjectValue(horizon)
+    && hasRequiredText(horizon.since)
+    && hasRequiredText(horizon.until)
+    && isBeforeTimestamp(horizon.since, horizon.until)
+    && isAllowedValue(horizon.requestedSince, [
+      INSTANCE_SNAPSHOT_TREND_PRESETS.SEVEN_DAYS,
+      INSTANCE_SNAPSHOT_TREND_PRESETS.FOURTEEN_DAYS
+    ])
+    && horizon.defaultSince === INSTANCE_SNAPSHOT_TREND_PRESETS.SEVEN_DAYS
+    && horizon.maxSince === INSTANCE_SNAPSHOT_TREND_PRESETS.FOURTEEN_DAYS
+    && isPositiveInteger(horizon.limit)
+    && horizon.limit <= 336
+    && horizon.maxLimit === 336
+    && horizon.order === 'capturedAt_asc'
+    && (horizon.requestedSince !== INSTANCE_SNAPSHOT_TREND_PRESETS.SEVEN_DAYS || horizon.limit === 168)
+    && (horizon.requestedSince !== INSTANCE_SNAPSHOT_TREND_PRESETS.FOURTEEN_DAYS || horizon.limit === 336));
+}
+
+function hasAscendingSnapshotTrendPoints(points) {
+  let previousCapturedAt = null;
+  let previousSnapshotId = null;
+  for (const point of points) {
+    if (!isObjectValue(point)) {
+      return false;
+    }
+    const capturedAtMillis = parseTimestampMillis(point.capturedAt);
+    const snapshotId = String(point.snapshotId ?? '');
+    if (capturedAtMillis == null) {
+      return false;
+    }
+    if (previousCapturedAt != null && capturedAtMillis < previousCapturedAt) {
+      return false;
+    }
+    if (previousCapturedAt != null
+      && capturedAtMillis === previousCapturedAt
+      && snapshotId <= previousSnapshotId) {
+      return false;
+    }
+    previousCapturedAt = capturedAtMillis;
+    previousSnapshotId = snapshotId;
+  }
+  return true;
+}
+
+function isValidInstanceSnapshotTrendPoint(point) {
+  return Boolean(isObjectValue(point)
+    && hasRequiredText(point.snapshotId)
+    && hasRequiredText(point.capturedAt)
+    && hasRequiredText(point.currentWindowEndUtc)
+    && hasRequiredText(point.storedApplicationStateCode)
+    && (point.captureReason == null || typeof point.captureReason === 'string')
+    && hasRequiredText(point.instanceName)
+    && hasRequiredText(point.observationStatus)
+    && isValidSnapshotTrendMetricData(point.metricData)
+    && isValidSnapshotTrendStarterConnection(point.starterConnection)
+    && isValidSnapshotTrendStarterPercentilePoint(point.starterPercentilePoint)
+    && isValidSnapshotTrendResourceHints(point.resourceHints)
+    && isValidSnapshotTrendTriageContribution(point.applicationTriageContribution)
+    && Array.isArray(point.endpointEvidenceRefs)
+    && point.endpointEvidenceRefs.length <= 10
+    && point.endpointEvidenceRefs.every(isValidSnapshotTrendEndpointRef));
+}
+
+function isValidSnapshotTrendMetricData(metricData) {
+  return Boolean(isObjectValue(metricData)
+    && metricData.statusSource === 'accepted_bucket'
+    && hasRequiredText(metricData.freshnessLabel));
+}
+
+function isValidSnapshotTrendStarterConnection(starterConnection) {
+  return Boolean(isObjectValue(starterConnection)
+    && starterConnection.statusSource === 'starter_heartbeat'
+    && hasRequiredText(starterConnection.lastHeartbeatStatus)
+    && hasRequiredText(starterConnection.connectionMeaning)
+    && starterConnection.stateImpact === 'none');
+}
+
+function isValidSnapshotTrendStarterPercentilePoint(point) {
+  return point == null || Boolean(isObjectValue(point)
+    && point.source === 'starter_canonical_percentile'
+    && point.scope === 'instance_bucket'
+    && hasRequiredText(point.bucketStartUtc)
+    && hasRequiredText(point.bucketEndUtc)
+    && isBeforeTimestamp(point.bucketStartUtc, point.bucketEndUtc)
+    && isNonNegativeNumber(point.requestCount)
+    && isNonNegativeNumber(point.p95Ms)
+    && isNonNegativeNumber(point.p99Ms)
+    && point.p99Ms >= point.p95Ms);
+}
+
+function isValidSnapshotTrendResourceHints(resourceHints) {
+  return resourceHints == null || Boolean(isObjectValue(resourceHints)
+    && resourceHints.source === 'accepted_bucket_latest_sample'
+    && hasRequiredText(resourceHints.status)
+    && isNullableFraction(resourceHints.cpuUsageRatio)
+    && isNullableFraction(resourceHints.heapUsedRatio)
+    && isNullableFraction(resourceHints.datasourcePoolUsageRatio));
+}
+
+function isValidSnapshotTrendTriageContribution(applicationTriageContribution) {
+  return Boolean(isObjectValue(applicationTriageContribution)
+    && hasRequiredText(applicationTriageContribution.status)
+    && typeof applicationTriageContribution.contributed === 'boolean'
+    && Array.isArray(applicationTriageContribution.relatedRuleIds)
+    && applicationTriageContribution.relatedRuleIds.every(hasRequiredText)
+    && (applicationTriageContribution.contributed || applicationTriageContribution.relatedRuleIds.length === 0));
+}
+
+function isValidSnapshotTrendEndpointRef(ref) {
+  return Boolean(isObjectValue(ref)
+    && hasRequiredText(ref.endpointKey)
+    && !hasRawEndpointDetail(ref.endpointKey)
+    && (ref.method == null || hasRequiredText(ref.method))
+    && (ref.route == null || (hasRequiredText(ref.route) && !hasRawEndpointDetail(ref.route)))
+    && isNullablePositiveInteger(ref.relatedApplicationPriorityRank)
+    && Array.isArray(ref.relatedRuleIds)
+    && ref.relatedRuleIds.every(hasRequiredText)
+    && (ref.snapshotDetailAnchor == null || hasRequiredText(ref.snapshotDetailAnchor)));
 }
 
 function isValidInstanceMetricData(metricData) {
@@ -2218,10 +3000,12 @@ function handleAuthorizationLoss() {
   applicationRequestSequence += 1;
   dashboardRequestSequence += 1;
   instanceEvidenceRequestSequence += 1;
+  instanceSnapshotTrendRequestSequence += 1;
   clearProjectSnapshot({ resetFilter: true });
   clearApplicationSnapshot({ resetFilter: true, resetSelection: true });
   clearDashboardSnapshot({ resetSelection: true });
   clearInstanceEvidenceSnapshot({ resetSelection: true });
+  clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
   renderAuthorizationRequired();
   renderApplicationAuthorizationRequired();
   renderDashboardAuthorizationRequired();
@@ -2270,6 +3054,10 @@ function setInstanceEvidenceViewState(nextState) {
   currentInstanceEvidenceViewState = nextState;
 }
 
+function setInstanceSnapshotTrendViewState(nextState) {
+  currentInstanceSnapshotTrendViewState = nextState;
+}
+
 function canRenderFilteredProjects() {
   return currentViewState === VIEW_STATE.READY || currentViewState === VIEW_STATE.FILTERED_EMPTY;
 }
@@ -2309,9 +3097,11 @@ function reconcileSelectedProjectAfterProjectLoad() {
     applicationRequestSequence += 1;
     dashboardRequestSequence += 1;
     instanceEvidenceRequestSequence += 1;
+    instanceSnapshotTrendRequestSequence += 1;
     clearApplicationSnapshot({ resetFilter: true, resetSelection: true });
     clearDashboardSnapshot({ resetSelection: true });
     clearInstanceEvidenceSnapshot({ resetSelection: true });
+    clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
     renderApplicationIdle();
     renderDashboardIdle();
   }
@@ -2351,11 +3141,27 @@ function clearInstanceEvidenceSnapshot({ resetSelection = false } = {}) {
   }
 }
 
+function clearInstanceSnapshotTrendSnapshot({ resetSelection = false } = {}) {
+  loadedInstanceSnapshotTrend = null;
+  if (resetSelection) {
+    selectedInstanceSnapshotTrendContext = null;
+  }
+}
+
 function discardInstanceEvidenceForParentReload() {
   instanceEvidenceRequestSequence += 1;
   const hadVisibleInstanceEvidence = Boolean(selectedInstanceEvidenceContext || loadedInstanceEvidence);
   clearInstanceEvidenceSnapshot({ resetSelection: true });
   if (hadVisibleInstanceEvidence) {
+    renderDashboardIdle();
+  }
+}
+
+function discardInstanceSnapshotTrendForParentReload() {
+  instanceSnapshotTrendRequestSequence += 1;
+  const hadVisibleTrend = Boolean(selectedInstanceSnapshotTrendContext || loadedInstanceSnapshotTrend);
+  clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
+  if (hadVisibleTrend) {
     renderDashboardIdle();
   }
 }
@@ -2374,6 +3180,10 @@ function isLatestDashboardRequest(requestId) {
 
 function isLatestInstanceEvidenceRequest(requestId) {
   return requestId === instanceEvidenceRequestSequence;
+}
+
+function isLatestInstanceSnapshotTrendRequest(requestId) {
+  return requestId === instanceSnapshotTrendRequestSequence;
 }
 
 function selectedProjectText() {
@@ -2436,6 +3246,21 @@ function instanceEvidenceReadyText(evidence) {
   return `${valueOrAbsence(application.name, 'Application name source absence')} · ${valueOrAbsence(instance.instanceName, 'Instance name source absence')} · ${valueOrAbsence(instance.instanceId, 'Instance id source absence')}`;
 }
 
+function instanceSnapshotTrendContextText() {
+  if (!selectedInstanceSnapshotTrendContext) {
+    return 'Instance Evidence에서 Snapshot Trend를 선택하면 stored trend를 볼 수 있습니다.';
+  }
+  const applicationLabel = selectedInstanceSnapshotTrendContext.applicationName || selectedInstanceSnapshotTrendContext.applicationId;
+  const instanceLabel = selectedInstanceSnapshotTrendContext.instanceName || selectedInstanceSnapshotTrendContext.instanceId;
+  return `${valueOrAbsence(applicationLabel, 'Application source absence')} · ${valueOrAbsence(instanceLabel, 'Instance source absence')} · ${valueOrAbsence(selectedInstanceSnapshotTrendContext.instanceId, 'Instance id source absence')}`;
+}
+
+function instanceSnapshotTrendReadyText(trend) {
+  const application = trend.application || {};
+  const instance = trend.instance || {};
+  return `${valueOrAbsence(application.name, 'Application name source absence')} · ${valueOrAbsence(instance.instanceName, 'Instance name source absence')} · ${valueOrAbsence(instance.instanceId, 'Instance id source absence')}`;
+}
+
 function formatGeneratedAt(generatedAt) {
   if (!generatedAt) {
     return '목록 기준 시각 대기 중';
@@ -2473,6 +3298,20 @@ function formatEvidenceGeneratedAt(generatedAt) {
     return 'Instance Evidence 기준 시각 확인 불가';
   }
   return `Instance Evidence 기준 ${new Intl.DateTimeFormat('ko-KR', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(date)}`;
+}
+
+function formatTrendGeneratedAt(generatedAt) {
+  if (!generatedAt) {
+    return 'Instance Snapshot Trend 기준 시각 대기 중';
+  }
+  const date = new Date(generatedAt);
+  if (Number.isNaN(date.getTime())) {
+    return 'Instance Snapshot Trend 기준 시각 확인 불가';
+  }
+  return `Instance Snapshot Trend 기준 ${new Intl.DateTimeFormat('ko-KR', {
     dateStyle: 'medium',
     timeStyle: 'short'
   }).format(date)}`;
