@@ -454,15 +454,16 @@ class InstanceEvidenceUiContractTest {
                 "#refresh_token",
                 "access_token=",
                 "refresh_token=");
-        assertThat(appJs).contains("fetch(selectedInstanceEvidenceContext.evidenceLink");
+        assertThat(appJs).contains(
+                "fetch(selectedInstanceEvidenceContext.evidenceLink",
+                "snapshotHistoryOperationalEventsRequestLink",
+                "isSnapshotDetailLink");
         assertThat(appJs).doesNotContain(forbiddenHelpers.toArray(String[]::new));
         assertThat(appJs).doesNotContain(
                 "fetch(snapshotDetail",
                 "fetch(snapshotHistory",
                 "fetch(history",
                 "fetch(operational",
-                "dashboard/snapshots",
-                "operational-events",
                 "window.location.href",
                 "location.href");
     }

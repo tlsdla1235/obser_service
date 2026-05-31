@@ -71,9 +71,9 @@ class InstanceSnapshotTrendUiContractTest {
 
                 const source = fs.readFileSync('src/main/resources/static/dashboard/app.js', 'utf8');
                 const harness = createHarness(source);
-                const { auth, requests, elements, response, settle, project, application, dashboard, evidence, trend,
-                  clickApplications, clickDashboard, clickEvidence, clickSnapshotTrend, clickTrendHorizon,
-                  clickDashboardBack, clickEvidenceBack } = harness;
+                        const { auth, requests, elements, response, settle, project, application, dashboard, evidence, trend, detail,
+                          clickApplications, clickDashboard, clickEvidence, clickSnapshotTrend, clickTrendHorizon,
+                          clickTrendDetail, clickDashboardBack, clickEvidenceBack } = harness;
                 const dashboardDetail = elements.get('#dashboard-detail');
 
                 async function loadEvidence() {
@@ -138,7 +138,7 @@ class InstanceSnapshotTrendUiContractTest {
                   assert.match(dashboardDetail.innerHTML, /applicationTriageContribution/);
                   assert.match(dashboardDetail.innerHTML, /저장된 application triage contribution 없음/);
                   assert.match(dashboardDetail.innerHTML, /endpointEvidenceRefs/);
-                  assert.match(dashboardDetail.innerHTML, /no concern observed/);
+                          assert.match(dashboardDetail.innerHTML, /endpoint-evidence-1/);
                   assert.doesNotMatch(dashboardDetail.innerHTML, /service-token|provider payload|rawSnapshotJson|raw bucket|instanceHealth|hostStatus|connectedAndHealthy|root cause|recovery marker|endpoint p95|endpoint p99|복구 완료/);
                   assert.strictEqual(requests.length, 0);
 
@@ -169,6 +169,14 @@ class InstanceSnapshotTrendUiContractTest {
                   clickSnapshotTrend('/api/projects/project-1/applications/app-1/instances/instance-1/snapshot-trend');
                   requests.shift().resolve(response(200, trend('project-1', 'app-1', 'instance-1')));
                   await settle();
+                  clickTrendDetail('018f6b9a-2e1a-7d2b-9b2f-4db69d92c241', 'endpoint-evidence-1');
+                  assert.strictEqual(requests.length, 1);
+                  assert.strictEqual(requests[0].url, '/api/projects/project-1/applications/app-1/dashboard/snapshots/018f6b9a-2e1a-7d2b-9b2f-4db69d92c241');
+                  assert.strictEqual(requests[0].init.headers.Authorization, 'Bearer service-token');
+                  requests.shift().resolve(response(200, detail('project-1', 'app-1', '018f6b9a-2e1a-7d2b-9b2f-4db69d92c241')));
+                  await settle();
+                  assert.match(dashboardDetail.innerHTML, /Snapshot Detail/);
+                  assert.match(dashboardDetail.innerHTML, /data-active-anchor="true"/);
                   clickDashboardBack();
                   assert.match(dashboardDetail.innerHTML, /Orders API/);
                   assert.match(dashboardDetail.innerHTML, /Metric data active/);
@@ -359,7 +367,8 @@ class InstanceSnapshotTrendUiContractTest {
                 "refresh_token=");
         assertThat(appJs).contains(
                 "fetch(snapshotTrendRequestLink(",
-                "snapshotTrendLink");
+                "snapshotTrendLink",
+                "isSnapshotDetailLink");
         assertThat(appJs).doesNotContain(forbiddenHelpers.toArray(String[]::new));
         assertThat(appJs).doesNotContain(
                 "fetch('/api/projects/",
@@ -370,12 +379,9 @@ class InstanceSnapshotTrendUiContractTest {
                 "fetch(operational",
                 "fetch(endpoint",
                 "fetch(raw",
-                "dashboard/snapshots",
-                "operational-events",
                 "endpoint-timeseries",
                 "window.location.href",
-                "location.href",
-                "since=24h");
+                "location.href");
     }
 
     private static String sliceFunction(String source, String functionName) {
@@ -413,9 +419,10 @@ class InstanceSnapshotTrendUiContractTest {
      */
     private static String commonNodeHarness() {
         return """
-                function createHarness(source) {
-                  const elements = new Map();
-                  const requests = [];
+                        function createHarness(source) {
+                          const elements = new Map();
+                          const requests = [];
+                          const snapshotId = '018f6b9a-2e1a-7d2b-9b2f-4db69d92c241';
 
                   function element(selector) {
                     if (!elements.has(selector)) {
@@ -717,8 +724,8 @@ class InstanceSnapshotTrendUiContractTest {
                         maxLimit: 336,
                         order: 'capturedAt_asc'
                       },
-                      points: overrides.empty ? [] : [{
-                        snapshotId: 'snapshot-1',
+                              points: overrides.empty ? [] : [{
+                                snapshotId,
                         capturedAt: '2026-05-31T01:00:00Z',
                         currentWindowEndUtc: '2026-05-31T01:00:00Z',
                         storedApplicationStateCode: 'active',
@@ -760,10 +767,109 @@ class InstanceSnapshotTrendUiContractTest {
                           relatedRuleIds: [],
                           reason: 'no_action_needed'
                         },
-                        endpointEvidenceRefs: []
-                      }]
-                    };
-                  }
+                                endpointEvidenceRefs: [{
+                                  endpointKey: 'POST /orders',
+                                  method: 'POST',
+                                  route: '/orders',
+                                  relatedApplicationPriorityRank: 1,
+                                  relatedRuleIds: ['endpoint_error_spike'],
+                                  snapshotDetailAnchor: 'endpoint-evidence-1',
+                                  anchorStatus: 'resolved'
+                                }]
+                              }]
+                            };
+                          }
+
+                          function detail(projectId, applicationId, requestedSnapshotId) {
+                            return {
+                              generatedAt: '2026-05-31T01:31:00Z',
+                              source: 'dashboard_snapshots',
+                              readSemantics: {
+                                mode: 'stored_snapshot_detail',
+                                currentStateRecalculated: false,
+                                liveSourcesJoined: [],
+                                rawReadModelJsonExposed: false
+                              },
+                              snapshot: {
+                                snapshotId: requestedSnapshotId,
+                                capturedAt: '2026-05-31T01:00:00Z',
+                                generatedAt: '2026-05-31T01:00:00Z',
+                                currentWindow: { startUtc: '2026-05-31T00:45:00Z', endUtc: '2026-05-31T01:00:00Z' },
+                                baselineWindow: { startUtc: '2026-05-31T00:30:00Z', endUtc: '2026-05-31T00:45:00Z' },
+                                captureReason: 'high_confidence_concern',
+                                storedApplicationStateCode: 'active',
+                                primaryRuleId: 'endpoint_error_spike',
+                                primaryEndpointKey: 'POST /orders',
+                                maxConfidence: 0.84
+                              },
+                              marker: {
+                                markerId: 'snapshot:' + requestedSnapshotId + ':high_confidence_concern',
+                                snapshotId: requestedSnapshotId,
+                                capturedAt: '2026-05-31T01:00:00Z',
+                                currentWindowEndUtc: '2026-05-31T01:00:00Z',
+                                type: 'high_confidence_concern',
+                                severity: 'warning',
+                                readMeaning: 'stored_read_model_point',
+                                storedApplicationStateCode: 'active',
+                                previousState: {},
+                                title: 'server marker title',
+                                summary: 'server marker summary',
+                                links: {
+                                  snapshot: `/api/projects/${projectId}/applications/${applicationId}/dashboard/snapshots/${requestedSnapshotId}`
+                                }
+                              },
+                              previousState: {},
+                              lastHealthyAt: {},
+                              recoveryMarker: null,
+                              readModel: {
+                                application: { name: 'Orders API', environment: 'prod' },
+                                state: { code: 'active', label: 'Metric data active' },
+                                starterConnection: { statusSource: 'starter_heartbeat' },
+                                zeroInsight: null,
+                                recovery: null,
+                                metrics: null,
+                                sourceScopedPercentiles: null,
+                                triageCards: [],
+                                endpointPriority: []
+                              },
+                              snapshotEndpointEvidence: {
+                                source: 'bounded_endpoint_evidence',
+                                maxItems: 10,
+                                selectionPolicy: 'endpoint_priority_rank_then_high_confidence_concern_then_triage_affected_endpoint',
+                                unavailableReason: null,
+                                items: [{
+                                  anchorId: 'endpoint-evidence-1',
+                                  endpointKey: 'POST /orders',
+                                  method: 'POST',
+                                  route: '/orders',
+                                  rank: 1,
+                                  reason: 'error_and_latency',
+                                  ruleIds: ['endpoint_error_spike'],
+                                  confidence: 0.84,
+                                  score: 84,
+                                  requestCount: 120,
+                                  errorRate: 0.1,
+                                  durationBuckets: [{ leMs: 500, count: 120 }],
+                                  baselineDurationBuckets: [{ leMs: 500, count: 100 }],
+                                  bucketDistributionSource: 'histogram_bucket_distribution',
+                                  freshness: { status: 'stored' },
+                                  recommendedAction: 'server endpoint action'
+                                }]
+                              },
+                              instanceSummary: {
+                                schemaVersion: '1.0',
+                                source: 'bounded_instance_summary',
+                                maxItems: 50,
+                                selectionPolicy: 'stored_instance_summary_order',
+                                unavailableReason: null,
+                                items: []
+                              },
+                              links: {
+                                self: `/api/projects/${projectId}/applications/${applicationId}/dashboard/snapshots/${requestedSnapshotId}`,
+                                markers: `/api/projects/${projectId}/applications/${applicationId}/dashboard/snapshot-markers?since=24h`
+                              }
+                            };
+                          }
 
                   function clickApplications(projectId, name, link) {
                     elements.get('#project-list').listeners.click({
@@ -852,6 +958,25 @@ class InstanceSnapshotTrendUiContractTest {
                     });
                   }
 
+                  function clickTrendDetail(snapshotId, anchor) {
+                    elements.get('#dashboard-detail').listeners.click({
+                      target: {
+                        closest(selector) {
+                          if (selector === '[data-trend-snapshot-id]') {
+                            return {
+                              disabled: false,
+                              getAttribute(name) {
+                                return name === 'aria-disabled' ? 'false' : null;
+                              },
+                              dataset: { trendSnapshotId: snapshotId, snapshotDetailAnchor: anchor }
+                            };
+                          }
+                          return null;
+                        }
+                      }
+                    });
+                  }
+
                   function clickDashboardBack() {
                     elements.get('#dashboard-detail').listeners.click({
                       target: {
@@ -887,14 +1012,16 @@ class InstanceSnapshotTrendUiContractTest {
                     project,
                     application,
                     dashboard,
-                    evidence,
-                    trend,
-                    clickApplications,
+                            evidence,
+                            trend,
+                            detail,
+                            clickApplications,
                     clickDashboard,
                     clickEvidence,
-                    clickSnapshotTrend,
-                    clickTrendHorizon,
-                    clickDashboardBack,
+                            clickSnapshotTrend,
+                            clickTrendHorizon,
+                            clickTrendDetail,
+                            clickDashboardBack,
                     clickEvidenceBack
                   };
                 }

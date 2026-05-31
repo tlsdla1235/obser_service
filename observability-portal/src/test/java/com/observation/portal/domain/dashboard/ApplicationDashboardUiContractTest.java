@@ -315,14 +315,15 @@ class ApplicationDashboardUiContractTest {
                 "access_token=",
                 "refresh_token=");
         assertThat(appJs).doesNotContain(forbiddenHelpers.toArray(String[]::new));
+        assertThat(appJs).contains(
+                "snapshotHistoryOperationalEventsRequestLink",
+                "snapshotHistoryMarkersRequestLink",
+                "isSnapshotDetailLink");
         assertThat(appJs).doesNotContain(
                 "fetch(instance",
                 "fetch(snapshotDetail",
                 "fetch(snapshotHistory",
                 "fetch(history",
-                "snapshot-markers",
-                "dashboard/snapshots",
-                "operational-events",
                 "window.location.href",
                 "location.href");
     }

@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-05-31T19:11:28+0900
+# last_updated: 2026-05-31T20:57:22+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -49,7 +49,7 @@
 # - Epic 4는 종료됐다. Story 4.0 -> 4.4와 bridge story 4.0.1/4.0.2 및 retrospective는 accepted bucket metric axis와 starter heartbeat control-plane axis 분리 기준으로 done이다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-05-31T19:11:28+0900
+last_updated: 2026-05-31T20:57:22+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -109,7 +109,7 @@ development_status:
   6-4-application-dashboard-ui-integration: done
   6-5-instance-evidence-ui: done
   6-6-instance-snapshot-trend-ui: done
-  6-7-snapshot-history-marker-ui-and-deep-link: backlog
+  6-7-snapshot-history-marker-ui-and-deep-link: done
   6-8-demo-green-path: backlog
   6-9-failure-recovery-path-demo-hardening: backlog
   epic-6-retrospective: optional

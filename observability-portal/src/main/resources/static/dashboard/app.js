@@ -73,6 +73,52 @@ const INSTANCE_SNAPSHOT_TREND_PRESETS = Object.freeze({
   FOURTEEN_DAYS: '14d'
 });
 
+const SNAPSHOT_HISTORY_VIEW_STATE = Object.freeze({
+  IDLE: 'idle',
+  LOADING: 'loading',
+  AUTH_REQUIRED: 'auth-required',
+  INVALID_LINK: 'invalid-link',
+  BAD_QUERY: 'bad-query',
+  NOT_FOUND: 'not-found',
+  ERROR: 'error',
+  READY: 'ready',
+  EMPTY: 'empty'
+});
+
+const SNAPSHOT_DETAIL_VIEW_STATE = Object.freeze({
+  IDLE: 'idle',
+  LOADING: 'loading',
+  AUTH_REQUIRED: 'auth-required',
+  INVALID_LINK: 'invalid-link',
+  NOT_FOUND_OR_EXPIRED: 'not-found-or-expired',
+  ERROR: 'error',
+  READY: 'ready'
+});
+
+const SNAPSHOT_HISTORY_PRESETS = Object.freeze({
+  DAY: '24h',
+  SEVEN_DAYS: '7d',
+  FOURTEEN_DAYS: '14d'
+});
+
+const SNAPSHOT_HISTORY_PRESET_QUERY = Object.freeze({
+  [SNAPSHOT_HISTORY_PRESETS.DAY]: Object.freeze({ eventLimit: 50, markerLimit: 50 }),
+  [SNAPSHOT_HISTORY_PRESETS.SEVEN_DAYS]: Object.freeze({ eventLimit: 100, markerLimit: 168 }),
+  [SNAPSHOT_HISTORY_PRESETS.FOURTEEN_DAYS]: Object.freeze({ eventLimit: 100, markerLimit: 336 })
+});
+
+// Snapshot marker type은 backend read model enum만 표시하기 위한 allow-list다.
+const SNAPSHOT_MARKER_TYPES = Object.freeze([
+  'scheduled_snapshot',
+  'query_fallback_snapshot',
+  'state_change',
+  'state_observation',
+  'high_confidence_concern',
+  'short_strong_spike',
+  'recovery_observed',
+  'stored_snapshot'
+]);
+
 let serviceAccessToken = null;
 let loadedProjects = [];
 let loadedGeneratedAt = null;
@@ -96,6 +142,15 @@ let selectedInstanceSnapshotTrendContext = null;
 let loadedInstanceSnapshotTrend = null;
 let currentInstanceSnapshotTrendViewState = INSTANCE_SNAPSHOT_TREND_VIEW_STATE.AUTH_REQUIRED;
 let instanceSnapshotTrendRequestSequence = 0;
+let selectedSnapshotHistoryContext = null;
+let loadedOperationalEvents = null;
+let loadedSnapshotMarkers = null;
+let currentSnapshotHistoryViewState = SNAPSHOT_HISTORY_VIEW_STATE.AUTH_REQUIRED;
+let snapshotHistoryRequestSequence = 0;
+let selectedSnapshotDetailContext = null;
+let loadedSnapshotDetail = null;
+let currentSnapshotDetailViewState = SNAPSHOT_DETAIL_VIEW_STATE.AUTH_REQUIRED;
+let snapshotDetailRequestSequence = 0;
 
 window.observationPortalAuth = Object.freeze({
   setAccessToken(accessToken) {
@@ -105,11 +160,15 @@ window.observationPortalAuth = Object.freeze({
     dashboardRequestSequence += 1;
     instanceEvidenceRequestSequence += 1;
     instanceSnapshotTrendRequestSequence += 1;
+    snapshotHistoryRequestSequence += 1;
+    snapshotDetailRequestSequence += 1;
     clearProjectSnapshot({ resetFilter: true });
     clearApplicationSnapshot({ resetFilter: true, resetSelection: true });
     clearDashboardSnapshot({ resetSelection: true });
     clearInstanceEvidenceSnapshot({ resetSelection: true });
     clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
+    clearSnapshotHistorySnapshot({ resetSelection: true });
+    clearSnapshotDetailSnapshot({ resetSelection: true });
     if (!serviceAccessToken) {
       renderAuthorizationRequired();
       renderApplicationAuthorizationRequired();
@@ -129,6 +188,8 @@ async function loadProjects() {
   const requestId = ++projectRequestSequence;
   discardInstanceEvidenceForParentReload();
   discardInstanceSnapshotTrendForParentReload();
+  discardSnapshotHistoryForParentReload();
+  discardSnapshotDetailForParentReload();
   if (!serviceAccessToken) {
     clearProjectSnapshot({ resetFilter: true });
     renderAuthorizationRequired();
@@ -284,6 +345,8 @@ function selectProjectApplications(projectContext) {
   dashboardRequestSequence += 1;
   instanceEvidenceRequestSequence += 1;
   instanceSnapshotTrendRequestSequence += 1;
+  snapshotHistoryRequestSequence += 1;
+  snapshotDetailRequestSequence += 1;
   selectedProjectContext = {
     projectId: String(projectContext.projectId ?? ''),
     projectName: String(projectContext.projectName ?? ''),
@@ -293,6 +356,8 @@ function selectProjectApplications(projectContext) {
   clearDashboardSnapshot({ resetSelection: true });
   clearInstanceEvidenceSnapshot({ resetSelection: true });
   clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
+  clearSnapshotHistorySnapshot({ resetSelection: true });
+  clearSnapshotDetailSnapshot({ resetSelection: true });
   renderDashboardIdle();
   if (!isProjectApplicationsLink(selectedProjectContext.applicationsLink, selectedProjectContext.projectId)) {
     renderApplicationInvalidLink();
@@ -306,9 +371,13 @@ async function loadApplicationsForSelectedProject() {
   dashboardRequestSequence += 1;
   instanceEvidenceRequestSequence += 1;
   instanceSnapshotTrendRequestSequence += 1;
+  snapshotHistoryRequestSequence += 1;
+  snapshotDetailRequestSequence += 1;
   clearDashboardSnapshot({ resetSelection: true });
   clearInstanceEvidenceSnapshot({ resetSelection: true });
   clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
+  clearSnapshotHistorySnapshot({ resetSelection: true });
+  clearSnapshotDetailSnapshot({ resetSelection: true });
   renderDashboardIdle();
   if (!selectedProjectContext) {
     renderApplicationIdle();
@@ -539,6 +608,8 @@ function selectApplicationDashboard(dashboardContext) {
   dashboardRequestSequence += 1;
   instanceEvidenceRequestSequence += 1;
   instanceSnapshotTrendRequestSequence += 1;
+  snapshotHistoryRequestSequence += 1;
+  snapshotDetailRequestSequence += 1;
   selectedDashboardContext = {
     projectId: currentApplicationProjectId(),
     projectName: currentApplicationProjectName(),
@@ -550,6 +621,8 @@ function selectApplicationDashboard(dashboardContext) {
   loadedDashboard = null;
   clearInstanceEvidenceSnapshot({ resetSelection: true });
   clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
+  clearSnapshotHistorySnapshot({ resetSelection: true });
+  clearSnapshotDetailSnapshot({ resetSelection: true });
   if (!serviceAccessToken) {
     renderDashboardAuthorizationRequired();
     return;
@@ -569,8 +642,12 @@ async function loadDashboardForSelectedApplication() {
   const requestId = ++dashboardRequestSequence;
   instanceEvidenceRequestSequence += 1;
   instanceSnapshotTrendRequestSequence += 1;
+  snapshotHistoryRequestSequence += 1;
+  snapshotDetailRequestSequence += 1;
   clearInstanceEvidenceSnapshot({ resetSelection: true });
   clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
+  clearSnapshotHistorySnapshot({ resetSelection: true });
+  clearSnapshotDetailSnapshot({ resetSelection: true });
   if (!selectedDashboardContext) {
     renderDashboardIdle();
     return;
@@ -697,6 +774,8 @@ function renderDashboardReady() {
   setDashboardViewState(DASHBOARD_VIEW_STATE.READY);
   setInstanceEvidenceViewState(INSTANCE_EVIDENCE_VIEW_STATE.IDLE);
   setInstanceSnapshotTrendViewState(INSTANCE_SNAPSHOT_TREND_VIEW_STATE.IDLE);
+  setSnapshotHistoryViewState(SNAPSHOT_HISTORY_VIEW_STATE.IDLE);
+  setSnapshotDetailViewState(SNAPSHOT_DETAIL_VIEW_STATE.IDLE);
   setDashboardGeneratedAtLabel(formatDashboardGeneratedAt(dashboard.generatedAt));
   setSelectedApplicationLabel(dashboardApplicationText(dashboard.application));
   dashboardDetail.innerHTML = `
@@ -1052,9 +1131,53 @@ function instanceEntryMarkup(instance) {
 }
 
 function handleDashboardDetailClick(event) {
+  const snapshotHistoryBackAction = event.target.closest('[data-snapshot-history-back]');
+  if (snapshotHistoryBackAction) {
+    renderSnapshotHistoryFromDetail();
+    return;
+  }
   const backAction = event.target.closest('[data-dashboard-back]');
   if (backAction) {
     renderApplicationDashboardFromDetail();
+    return;
+  }
+  const historyPresetAction = event.target.closest('[data-history-preset]');
+  if (historyPresetAction) {
+    if (historyPresetAction.disabled || historyPresetAction.getAttribute && historyPresetAction.getAttribute('aria-disabled') === 'true') {
+      return;
+    }
+    loadSnapshotHistoryForSelectedApplication(historyPresetAction.dataset.historyPreset);
+    return;
+  }
+  const snapshotHistoryAction = event.target.closest('[data-snapshot-history-action]');
+  if (snapshotHistoryAction) {
+    if (snapshotHistoryAction.disabled || snapshotHistoryAction.getAttribute && snapshotHistoryAction.getAttribute('aria-disabled') === 'true') {
+      return;
+    }
+    selectSnapshotHistory();
+    return;
+  }
+  const snapshotDetailAction = event.target.closest('[data-snapshot-detail-link]');
+  if (snapshotDetailAction) {
+    if (snapshotDetailAction.disabled || snapshotDetailAction.getAttribute && snapshotDetailAction.getAttribute('aria-disabled') === 'true') {
+      return;
+    }
+    selectSnapshotDetailFromLink({
+      detailLink: snapshotDetailAction.dataset.snapshotDetailLink,
+      anchor: snapshotDetailAction.dataset.snapshotDetailAnchor,
+      origin: snapshotDetailAction.dataset.snapshotDetailOrigin
+    });
+    return;
+  }
+  const trendDetailAction = event.target.closest('[data-trend-snapshot-id]');
+  if (trendDetailAction) {
+    if (trendDetailAction.disabled || trendDetailAction.getAttribute && trendDetailAction.getAttribute('aria-disabled') === 'true') {
+      return;
+    }
+    selectSnapshotDetailFromTrendPoint({
+      snapshotId: trendDetailAction.dataset.trendSnapshotId,
+      anchor: trendDetailAction.dataset.snapshotDetailAnchor
+    });
     return;
   }
   const instanceEvidenceBackAction = event.target.closest('[data-instance-evidence-back]');
@@ -1097,7 +1220,11 @@ function handleDashboardDetailClick(event) {
 function selectInstanceEvidence(instanceContext) {
   instanceEvidenceRequestSequence += 1;
   instanceSnapshotTrendRequestSequence += 1;
+  snapshotHistoryRequestSequence += 1;
+  snapshotDetailRequestSequence += 1;
   clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
+  clearSnapshotHistorySnapshot({ resetSelection: true });
+  clearSnapshotDetailSnapshot({ resetSelection: true });
   selectedInstanceEvidenceContext = {
     projectId: selectedDashboardContext ? selectedDashboardContext.projectId : '',
     projectName: selectedDashboardContext ? selectedDashboardContext.projectName : '',
@@ -1128,7 +1255,11 @@ function selectInstanceEvidence(instanceContext) {
 async function loadInstanceEvidenceForSelectedInstance() {
   const requestId = ++instanceEvidenceRequestSequence;
   instanceSnapshotTrendRequestSequence += 1;
+  snapshotHistoryRequestSequence += 1;
+  snapshotDetailRequestSequence += 1;
   clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
+  clearSnapshotHistorySnapshot({ resetSelection: true });
+  clearSnapshotDetailSnapshot({ resetSelection: true });
   if (!selectedInstanceEvidenceContext) {
     renderApplicationDashboardFromDetail();
     return;
@@ -1186,8 +1317,12 @@ async function loadInstanceEvidenceForSelectedInstance() {
 function renderApplicationDashboardFromDetail() {
   instanceEvidenceRequestSequence += 1;
   instanceSnapshotTrendRequestSequence += 1;
+  snapshotHistoryRequestSequence += 1;
+  snapshotDetailRequestSequence += 1;
   clearInstanceEvidenceSnapshot({ resetSelection: true });
   clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
+  clearSnapshotHistorySnapshot({ resetSelection: true });
+  clearSnapshotDetailSnapshot({ resetSelection: true });
   if (!serviceAccessToken) {
     clearDashboardSnapshot({ resetSelection: true });
     renderDashboardAuthorizationRequired();
@@ -1239,8 +1374,12 @@ function handleInstanceEvidenceAuthorizationLoss() {
   dashboardRequestSequence += 1;
   instanceEvidenceRequestSequence += 1;
   instanceSnapshotTrendRequestSequence += 1;
+  snapshotHistoryRequestSequence += 1;
+  snapshotDetailRequestSequence += 1;
   loadedInstanceEvidence = null;
   clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
+  clearSnapshotHistorySnapshot({ resetSelection: true });
+  clearSnapshotDetailSnapshot({ resetSelection: true });
   clearDashboardSnapshot({ resetSelection: true });
   renderAuthorizationRequired();
   renderApplicationAuthorizationRequired();
@@ -1317,6 +1456,10 @@ function renderInstanceEvidenceReady() {
 
 function selectInstanceSnapshotTrend(trendContext) {
   instanceSnapshotTrendRequestSequence += 1;
+  snapshotHistoryRequestSequence += 1;
+  snapshotDetailRequestSequence += 1;
+  clearSnapshotHistorySnapshot({ resetSelection: true });
+  clearSnapshotDetailSnapshot({ resetSelection: true });
   selectedInstanceSnapshotTrendContext = {
     projectId: selectedInstanceEvidenceContext ? selectedInstanceEvidenceContext.projectId : '',
     projectName: selectedInstanceEvidenceContext ? selectedInstanceEvidenceContext.projectName : '',
@@ -1424,7 +1567,9 @@ async function loadInstanceSnapshotTrendForSelectedInstance(horizonPreset) {
 
 function renderInstanceEvidenceFromSnapshotTrend() {
   instanceSnapshotTrendRequestSequence += 1;
+  snapshotDetailRequestSequence += 1;
   clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
+  clearSnapshotDetailSnapshot({ resetSelection: true });
   if (!serviceAccessToken) {
     renderInstanceEvidenceAuthorizationRequired();
     return;
@@ -1475,7 +1620,11 @@ function handleInstanceSnapshotTrendAuthorizationLoss() {
   dashboardRequestSequence += 1;
   instanceEvidenceRequestSequence += 1;
   instanceSnapshotTrendRequestSequence += 1;
+  snapshotHistoryRequestSequence += 1;
+  snapshotDetailRequestSequence += 1;
   loadedInstanceSnapshotTrend = null;
+  clearSnapshotHistorySnapshot({ resetSelection: true });
+  clearSnapshotDetailSnapshot({ resetSelection: true });
   renderAuthorizationRequired();
   renderApplicationAuthorizationRequired();
   renderInstanceSnapshotTrendAuthorizationRequired();
@@ -1748,7 +1897,31 @@ function instanceSnapshotTrendPointMarkup(point) {
         ${keyValueMarkup('applicationTriageContribution', snapshotTrendTriageContributionText(point.applicationTriageContribution))}
         ${keyValueMarkup('endpointEvidenceRefs', snapshotTrendEndpointRefsText(point.endpointEvidenceRefs))}
       </dl>
+      ${snapshotTrendDetailActionsMarkup(point)}
     </article>
+  `;
+}
+
+function snapshotTrendDetailActionsMarkup(point) {
+  const snapshotId = String(point && point.snapshotId ? point.snapshotId : '');
+  const detailLink = canonicalSnapshotDetailLink(snapshotId);
+  if (!detailLink) {
+    return '<p class="dashboard-empty-copy">snapshot detail link source absence</p>';
+  }
+  const refs = Array.isArray(point.endpointEvidenceRefs) ? point.endpointEvidenceRefs : [];
+  const anchorButtons = refs
+    .filter(ref => hasRequiredText(ref.snapshotDetailAnchor))
+    .map(ref => `
+      <button class="link-button" type="button" data-trend-snapshot-id="${escapeAttribute(snapshotId)}" data-snapshot-detail-anchor="${escapeAttribute(ref.snapshotDetailAnchor)}">
+        ${escapeText(valueOrAbsence(ref.endpointKey, 'endpoint anchor'))}
+      </button>
+    `)
+    .join('');
+  return `
+    <div class="snapshot-detail-actions">
+      <button class="link-button" type="button" data-trend-snapshot-id="${escapeAttribute(snapshotId)}" data-snapshot-detail-anchor="">Snapshot detail</button>
+      ${anchorButtons}
+    </div>
   `;
 }
 
@@ -1826,6 +1999,878 @@ function snapshotTrendEndpointRefsText(endpointEvidenceRefs) {
     `relatedApplicationPriorityRank ${valueOrAbsence(ref.relatedApplicationPriorityRank, 'rank source absence')}`,
     `relatedRuleIds ${Array.isArray(ref.relatedRuleIds) ? ref.relatedRuleIds.join(', ') : ''}`,
     `snapshotDetailAnchor ${valueOrAbsence(ref.snapshotDetailAnchor, 'anchor source absence')}`
+  ].filter(value => String(value ?? '').trim().length > 0).join(' · ')).join(' | ');
+}
+
+function selectSnapshotHistory() {
+  snapshotHistoryRequestSequence += 1;
+  snapshotDetailRequestSequence += 1;
+  instanceEvidenceRequestSequence += 1;
+  instanceSnapshotTrendRequestSequence += 1;
+  clearInstanceEvidenceSnapshot({ resetSelection: true });
+  clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
+  clearSnapshotDetailSnapshot({ resetSelection: true });
+  selectedSnapshotHistoryContext = snapshotHistoryContextFromSelectedDashboard();
+  loadedOperationalEvents = null;
+  loadedSnapshotMarkers = null;
+  if (!serviceAccessToken) {
+    renderSnapshotHistoryAuthorizationRequired();
+    return;
+  }
+  if (!isValidSnapshotHistoryContext(selectedSnapshotHistoryContext)) {
+    renderSnapshotHistoryInvalidLink();
+    return;
+  }
+  loadSnapshotHistoryForSelectedApplication(SNAPSHOT_HISTORY_PRESETS.DAY);
+}
+
+async function loadSnapshotHistoryForSelectedApplication(preset) {
+  const normalizedPreset = normalizeSnapshotHistoryPreset(preset);
+  const requestId = ++snapshotHistoryRequestSequence;
+  snapshotDetailRequestSequence += 1;
+  clearSnapshotDetailSnapshot({ resetSelection: true });
+  if (!selectedSnapshotHistoryContext) {
+    renderApplicationDashboardFromDetail();
+    return;
+  }
+  selectedSnapshotHistoryContext.preset = normalizedPreset;
+  if (!serviceAccessToken) {
+    loadedOperationalEvents = null;
+    loadedSnapshotMarkers = null;
+    renderSnapshotHistoryAuthorizationRequired();
+    return;
+  }
+  if (!isValidSnapshotHistoryContext(selectedSnapshotHistoryContext)) {
+    renderSnapshotHistoryInvalidLink();
+    return;
+  }
+  const eventsLink = snapshotHistoryOperationalEventsRequestLink(normalizedPreset);
+  const markersLink = snapshotHistoryMarkersRequestLink(normalizedPreset);
+  if (!eventsLink || !markersLink) {
+    loadedOperationalEvents = null;
+    loadedSnapshotMarkers = null;
+    renderSnapshotHistoryBadQuery();
+    return;
+  }
+  renderSnapshotHistoryLoadingState();
+  try {
+    const eventResponsePromise = fetch(eventsLink, { headers: projectRequestHeaders() });
+    const markerResponsePromise = fetch(markersLink, { headers: projectRequestHeaders() });
+    const [eventResponse, markerResponse] = await Promise.all([eventResponsePromise, markerResponsePromise]);
+    if (!isLatestSnapshotHistoryRequest(requestId)) {
+      return;
+    }
+    if (eventResponse.status === 401 || markerResponse.status === 401) {
+      handleSnapshotHistoryAuthorizationLoss();
+      return;
+    }
+    if (eventResponse.status === 400 || markerResponse.status === 400) {
+      loadedOperationalEvents = null;
+      loadedSnapshotMarkers = null;
+      renderSnapshotHistoryBadQuery();
+      return;
+    }
+    if (eventResponse.status === 404 || markerResponse.status === 404) {
+      loadedOperationalEvents = null;
+      loadedSnapshotMarkers = null;
+      renderSnapshotHistoryNotFound();
+      return;
+    }
+    if (!eventResponse.ok || !markerResponse.ok) {
+      throw new Error('snapshot_history_load_failed');
+    }
+    const [events, markers] = await Promise.all([eventResponse.json(), markerResponse.json()]);
+    if (!isLatestSnapshotHistoryRequest(requestId)) {
+      return;
+    }
+    if (!isSelectedOperationalEventsHistoryResponse(events, normalizedPreset)
+      || !isSelectedSnapshotMarkerResponse(markers, normalizedPreset)) {
+      throw new Error('snapshot_history_context_mismatch');
+    }
+    loadedOperationalEvents = events;
+    loadedSnapshotMarkers = markers;
+    renderSnapshotHistoryReady();
+  } catch (error) {
+    if (!isLatestSnapshotHistoryRequest(requestId)) {
+      return;
+    }
+    loadedOperationalEvents = null;
+    loadedSnapshotMarkers = null;
+    renderSnapshotHistoryLoadError();
+  }
+}
+
+function renderSnapshotHistoryLoadingState() {
+  setSnapshotHistoryViewState(SNAPSHOT_HISTORY_VIEW_STATE.LOADING);
+  setDashboardGeneratedAtLabel('Snapshot/History를 불러오는 중');
+  setSelectedApplicationLabel(snapshotHistoryContextText());
+  dashboardDetail.innerHTML = snapshotHistoryShellMarkup({
+    state: 'loading',
+    generatedAt: null,
+    bodyMarkup: `
+      <div class="loading-state" aria-label="Snapshot/History 로딩 중">
+        <p class="dashboard-empty-copy">Snapshot/History를 불러오는 중</p>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line short"></div>
+      </div>
+    `
+  });
+}
+
+function renderSnapshotHistoryAuthorizationRequired() {
+  setSnapshotHistoryViewState(SNAPSHOT_HISTORY_VIEW_STATE.AUTH_REQUIRED);
+  setDashboardGeneratedAtLabel('로그인이 필요합니다');
+  setSelectedApplicationLabel(snapshotHistoryContextText());
+  dashboardDetail.innerHTML = snapshotHistoryShellMarkup({
+    state: 'auth-required',
+    generatedAt: null,
+    bodyMarkup: `
+      <div class="empty-state">
+        <p><strong>GitHub 로그인 후 Snapshot/History를 볼 수 있습니다.</strong>로그인을 완료한 뒤 같은 Application Dashboard에서 Snapshot/History action을 다시 선택해 주세요.</p>
+      </div>
+    `
+  });
+}
+
+function handleSnapshotHistoryAuthorizationLoss() {
+  serviceAccessToken = null;
+  projectRequestSequence += 1;
+  applicationRequestSequence += 1;
+  dashboardRequestSequence += 1;
+  instanceEvidenceRequestSequence += 1;
+  instanceSnapshotTrendRequestSequence += 1;
+  snapshotHistoryRequestSequence += 1;
+  snapshotDetailRequestSequence += 1;
+  loadedOperationalEvents = null;
+  loadedSnapshotMarkers = null;
+  clearSnapshotDetailSnapshot({ resetSelection: true });
+  renderAuthorizationRequired();
+  renderApplicationAuthorizationRequired();
+  renderSnapshotHistoryAuthorizationRequired();
+}
+
+function renderSnapshotHistoryInvalidLink() {
+  setSnapshotHistoryViewState(SNAPSHOT_HISTORY_VIEW_STATE.INVALID_LINK);
+  setDashboardGeneratedAtLabel('Snapshot/History 기준 시각 확인 불가');
+  setSelectedApplicationLabel(snapshotHistoryContextText());
+  dashboardDetail.innerHTML = snapshotHistoryShellMarkup({
+    state: 'invalid-link',
+    generatedAt: null,
+    bodyMarkup: `
+      <div class="empty-state">
+        <p><strong>Snapshot/History context를 확인할 수 없습니다.</strong>현재 Project/Application과 일치하는 Dashboard context에서만 history를 조회합니다.</p>
+      </div>
+    `
+  });
+}
+
+function renderSnapshotHistoryBadQuery() {
+  setSnapshotHistoryViewState(SNAPSHOT_HISTORY_VIEW_STATE.BAD_QUERY);
+  setDashboardGeneratedAtLabel('Snapshot/History 기준 시각 확인 불가');
+  setSelectedApplicationLabel(snapshotHistoryContextText());
+  dashboardDetail.innerHTML = snapshotHistoryShellMarkup({
+    state: 'bad-query',
+    generatedAt: null,
+    bodyMarkup: `
+      ${snapshotHistoryPresetControlsMarkup()}
+      <div class="empty-state">
+        <p><strong>History query contract를 확인할 수 없습니다.</strong>UI는 fixed 24h/7d/14d preset만 사용하며 잠시 후 같은 Application에서 다시 시도해 주세요.</p>
+      </div>
+    `
+  });
+}
+
+function renderSnapshotHistoryNotFound() {
+  setSnapshotHistoryViewState(SNAPSHOT_HISTORY_VIEW_STATE.NOT_FOUND);
+  setDashboardGeneratedAtLabel('Snapshot/History 기준 시각 확인 불가');
+  setSelectedApplicationLabel(snapshotHistoryContextText());
+  dashboardDetail.innerHTML = snapshotHistoryShellMarkup({
+    state: 'not-found',
+    generatedAt: null,
+    bodyMarkup: `
+      ${snapshotHistoryPresetControlsMarkup()}
+      <div class="empty-state">
+        <p><strong>Project/Application scope를 찾을 수 없습니다.</strong>scope mismatch 또는 접근 가능한 Application 범위를 다시 확인해 주세요.</p>
+      </div>
+    `
+  });
+}
+
+function renderSnapshotHistoryLoadError() {
+  setSnapshotHistoryViewState(SNAPSHOT_HISTORY_VIEW_STATE.ERROR);
+  setDashboardGeneratedAtLabel('Snapshot/History 기준 시각 확인 불가');
+  setSelectedApplicationLabel(snapshotHistoryContextText());
+  dashboardDetail.innerHTML = snapshotHistoryShellMarkup({
+    state: 'error',
+    generatedAt: null,
+    bodyMarkup: `
+      ${snapshotHistoryPresetControlsMarkup()}
+      <div class="empty-state">
+        <p><strong>Snapshot/History를 불러오지 못했습니다.</strong>잠시 후 같은 Application에서 다시 시도해 주세요.</p>
+      </div>
+    `
+  });
+}
+
+function renderSnapshotHistoryReady() {
+  const events = loadedOperationalEvents;
+  const markers = loadedSnapshotMarkers;
+  const eventItems = Array.isArray(events && events.events) ? events.events : [];
+  const markerItems = Array.isArray(markers && markers.markers) ? markers.markers : [];
+  const state = eventItems.length === 0 && markerItems.length === 0 ? SNAPSHOT_HISTORY_VIEW_STATE.EMPTY : SNAPSHOT_HISTORY_VIEW_STATE.READY;
+  setSnapshotHistoryViewState(state);
+  setDashboardGeneratedAtLabel(formatSnapshotHistoryGeneratedAt(historyDisplayGeneratedAt(events, markers)));
+  setSelectedApplicationLabel(snapshotHistoryReadyText(events, markers));
+  dashboardDetail.innerHTML = snapshotHistoryShellMarkup({
+    state,
+    generatedAt: historyDisplayGeneratedAt(events, markers),
+    bodyMarkup: `
+      ${snapshotHistoryPresetControlsMarkup()}
+      ${snapshotHistoryMetadataMarkup(events, markers)}
+      ${operationalEventFeedMarkup(eventItems)}
+      ${snapshotMarkerTimelineMarkup(markerItems, markers && markers.emptyState)}
+    `
+  });
+}
+
+function renderSnapshotHistoryFromDetail() {
+  snapshotDetailRequestSequence += 1;
+  clearSnapshotDetailSnapshot({ resetSelection: true });
+  if (!serviceAccessToken) {
+    renderSnapshotHistoryAuthorizationRequired();
+    return;
+  }
+  if (loadedOperationalEvents && loadedSnapshotMarkers && selectedSnapshotHistoryContext) {
+    renderSnapshotHistoryReady();
+    return;
+  }
+  renderApplicationDashboardFromDetail();
+}
+
+function snapshotHistoryShellMarkup({ state, generatedAt, bodyMarkup }) {
+  return `
+    <article class="snapshot-history-detail" data-snapshot-history-state="${escapeAttribute(state)}">
+      ${snapshotHistoryHeaderMarkup(generatedAt)}
+      ${bodyMarkup}
+    </article>
+  `;
+}
+
+function snapshotHistoryHeaderMarkup(generatedAt) {
+  const context = selectedSnapshotHistoryContext || snapshotHistoryContextFromSelectedDashboard() || {};
+  return `
+    <section class="dashboard-section instance-detail-header snapshot-history-header" aria-label="Snapshot history context">
+      <div class="instance-detail-title">
+        <div>
+          <p class="eyebrow">Snapshot/History</p>
+          <h3>${escapeText(valueOrAbsence(context.applicationName, 'Application name source absence'))}</h3>
+        </div>
+        <div class="detail-back-actions">
+          <button class="link-button" type="button" data-dashboard-back="true">Application Dashboard</button>
+        </div>
+      </div>
+      <dl class="dashboard-kv-grid">
+        ${keyValueMarkup('project id', context.projectId)}
+        ${keyValueMarkup('project', valueOrAbsence(context.projectName, 'Project name source absence'))}
+        ${keyValueMarkup('application id', context.applicationId)}
+        ${keyValueMarkup('application', valueOrAbsence(context.applicationName, 'Application name source absence'))}
+        ${keyValueMarkup('environment', context.applicationEnvironment)}
+        ${keyValueMarkup('generatedAt', valueOrAbsence(generatedAt, 'history query 기준 시각 source absence'))}
+      </dl>
+    </section>
+  `;
+}
+
+function snapshotHistoryPresetControlsMarkup() {
+  const selectedPreset = selectedSnapshotHistoryContext
+    ? selectedSnapshotHistoryContext.preset
+    : SNAPSHOT_HISTORY_PRESETS.DAY;
+  return `
+    <section class="dashboard-section snapshot-history-presets" aria-label="Snapshot history preset controls">
+      <p class="eyebrow">History preset</p>
+      <div class="trend-preset-row">
+        ${historyPresetButtonMarkup(SNAPSHOT_HISTORY_PRESETS.DAY, selectedPreset)}
+        ${historyPresetButtonMarkup(SNAPSHOT_HISTORY_PRESETS.SEVEN_DAYS, selectedPreset)}
+        ${historyPresetButtonMarkup(SNAPSHOT_HISTORY_PRESETS.FOURTEEN_DAYS, selectedPreset)}
+      </div>
+      <p class="dashboard-empty-copy">fixed 24h/7d/14d preset만 사용하며 custom query는 만들지 않습니다.</p>
+    </section>
+  `;
+}
+
+function historyPresetButtonMarkup(preset, selectedPreset) {
+  const selected = preset === selectedPreset ? 'true' : 'false';
+  return `<button class="link-button trend-preset-button" type="button" data-history-preset="${escapeAttribute(preset)}" data-selected="${selected}" aria-disabled="false">${escapeText(preset)}</button>`;
+}
+
+function snapshotHistoryMetadataMarkup(events, markers) {
+  const eventHorizon = events && events.horizon ? events.horizon : {};
+  const markerHorizon = markers && markers.horizon ? markers.horizon : {};
+  return `
+    <section class="dashboard-section" aria-label="Snapshot history source metadata">
+      <p class="eyebrow">Stored source and horizon</p>
+      <dl class="dashboard-kv-grid">
+        ${keyValueMarkup('event source', events && events.source)}
+        ${keyValueMarkup('event applicationId', events && events.applicationId)}
+        ${keyValueMarkup('event defaultSince', eventHorizon.defaultSince)}
+        ${keyValueMarkup('event maxSince', eventHorizon.maxSince)}
+        ${keyValueMarkup('event maxLimit', eventHorizon.maxLimit)}
+        ${keyValueMarkup('event order', eventHorizon.order)}
+        ${keyValueMarkup('marker source', markers && markers.source)}
+        ${keyValueMarkup('marker applicationId', markers && markers.applicationId)}
+        ${keyValueMarkup('marker defaultSince', markerHorizon.defaultSince)}
+        ${keyValueMarkup('marker maxSince', markerHorizon.maxSince)}
+        ${keyValueMarkup('marker maxLimit', markerHorizon.maxLimit)}
+        ${keyValueMarkup('marker order', markerHorizon.order)}
+      </dl>
+    </section>
+  `;
+}
+
+function operationalEventFeedMarkup(events) {
+  const items = Array.isArray(events) ? events : [];
+  return `
+    <section class="dashboard-section operational-event-feed" aria-label="Operational event feed">
+      <p class="eyebrow">Operational events</p>
+      <div class="dashboard-list">
+        ${items.length === 0 ? '<p class="dashboard-empty-copy">operational event source absence 또는 event 후보 없음 · current health proof가 아닙니다.</p>' : items.map(operationalEventItemMarkup).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function operationalEventItemMarkup(event) {
+  const evidence = event.evidence || {};
+  const snapshotLink = safeSnapshotDetailLink(event.links && event.links.snapshot);
+  return `
+    <article class="dashboard-mini-card">
+      <div class="snapshot-item-title">
+        <h3>${escapeText(valueOrAbsence(event.title, 'event title source absence'))}</h3>
+        <span class="badge">${escapeText(valueOrAbsence(event.severity, 'severity source absence'))}</span>
+      </div>
+      <p class="dashboard-empty-copy">${escapeText(valueOrAbsence(event.summary, 'event summary source absence'))}</p>
+      <dl class="dashboard-kv-grid compact">
+        ${keyValueMarkup('eventId', event.eventId)}
+        ${keyValueMarkup('type', event.type)}
+        ${keyValueMarkup('severity', event.severity)}
+        ${keyValueMarkup('occurredAt', event.occurredAt)}
+        ${keyValueMarkup('resolvedAt', valueOrAbsence(event.resolvedAt, 'nullable stored period field source absence'))}
+        ${keyValueMarkup('stateCode', event.stateCode)}
+        ${keyValueMarkup('confidence', valueOrAbsence(event.confidence, 'nullable confidence source absence'))}
+        ${keyValueMarkup('snapshotId', event.snapshotId)}
+        ${keyValueMarkup('evidence', operationalEventEvidenceText(evidence))}
+      </dl>
+      ${snapshotLink ? snapshotDetailButtonMarkup(snapshotLink, evidence.snapshotDetailAnchor, 'event') : '<p class="dashboard-empty-copy">snapshot detail link source absence</p>'}
+    </article>
+  `;
+}
+
+function operationalEventEvidenceText(evidence) {
+  return [
+    `ruleId ${valueOrAbsence(evidence.ruleId, 'rule source absence')}`,
+    `endpointKey ${valueOrAbsence(evidence.endpointKey, 'endpoint source absence')}`,
+    evidence.method ? `method ${evidence.method}` : '',
+    evidence.route ? `route ${evidence.route}` : '',
+    evidence.snapshotDetailAnchor ? `snapshotDetailAnchor ${evidence.snapshotDetailAnchor}` : 'snapshotDetailAnchor source absence',
+    evidence.anchorStatus ? `anchorStatus ${evidence.anchorStatus}` : 'anchorStatus source absence'
+  ].filter(value => String(value ?? '').trim().length > 0).join(' · ');
+}
+
+function snapshotMarkerTimelineMarkup(markers, emptyState) {
+  const items = Array.isArray(markers) ? markers : [];
+  return `
+    <section class="dashboard-section snapshot-marker-timeline" aria-label="Snapshot marker timeline">
+      <p class="eyebrow">Snapshot markers</p>
+      <div class="dashboard-list">
+        ${items.length === 0 ? snapshotMarkerEmptyCopy(emptyState) : items.map(snapshotMarkerItemMarkup).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function snapshotMarkerEmptyCopy(emptyState) {
+  const state = emptyState || {};
+  return `
+    <p class="dashboard-empty-copy">
+      marker source absence 또는 retention horizon 안에 표시할 marker 없음 · ${escapeText(valueOrAbsence(state.reasonCode, 'empty reason source absence'))}
+    </p>
+  `;
+}
+
+function snapshotMarkerItemMarkup(marker) {
+  const previous = marker.previousState || {};
+  const snapshotLink = safeSnapshotDetailLink(marker.links && marker.links.snapshot);
+  return `
+    <article class="dashboard-mini-card">
+      <div class="snapshot-item-title">
+        <h3>${escapeText(valueOrAbsence(marker.title, 'marker title source absence'))}</h3>
+        <span class="badge">${escapeText(valueOrAbsence(marker.severity, 'severity source absence'))}</span>
+      </div>
+      <p class="dashboard-empty-copy">${escapeText(valueOrAbsence(marker.summary, 'marker summary source absence'))}</p>
+      <dl class="dashboard-kv-grid compact">
+        ${keyValueMarkup('markerId', marker.markerId)}
+        ${keyValueMarkup('snapshotId', marker.snapshotId)}
+        ${keyValueMarkup('capturedAt', marker.capturedAt)}
+        ${keyValueMarkup('currentWindowEndUtc', marker.currentWindowEndUtc)}
+        ${keyValueMarkup('type', marker.type)}
+        ${keyValueMarkup('severity', marker.severity)}
+        ${keyValueMarkup('readMeaning', marker.readMeaning)}
+        ${keyValueMarkup('captureReason', `opaque metadata ${valueOrAbsence(marker.captureReason, 'capture reason source absence')}`)}
+        ${keyValueMarkup('storedApplicationStateCode', marker.storedApplicationStateCode)}
+        ${keyValueMarkup('previousState', previousStateText(previous))}
+        ${keyValueMarkup('recommendedAction', valueOrAbsence(marker.recommendedAction, 'recommended action source absence'))}
+        ${keyValueMarkup('confidence', valueOrAbsence(marker.confidence, 'nullable confidence source absence'))}
+        ${keyValueMarkup('primaryRuleId', valueOrAbsence(marker.primaryRuleId, 'rule source absence'))}
+        ${keyValueMarkup('primaryEndpointKey', valueOrAbsence(marker.primaryEndpointKey, 'endpoint source absence'))}
+      </dl>
+      ${snapshotLink ? snapshotDetailButtonMarkup(snapshotLink, '', 'marker') : '<p class="dashboard-empty-copy">snapshot detail link source absence</p>'}
+    </article>
+  `;
+}
+
+function snapshotDetailButtonMarkup(snapshotLink, anchor, origin) {
+  return `
+    <button class="link-button" type="button" data-snapshot-detail-link="${escapeAttribute(snapshotLink)}" data-snapshot-detail-anchor="${escapeAttribute(anchor || '')}" data-snapshot-detail-origin="${escapeAttribute(origin || '')}">
+      Snapshot detail
+    </button>
+  `;
+}
+
+function selectSnapshotDetailFromLink(detailContext) {
+  const detailLink = String(detailContext.detailLink ?? '');
+  const anchor = String(detailContext.anchor ?? '');
+  snapshotDetailRequestSequence += 1;
+  selectedSnapshotDetailContext = snapshotDetailContextFromLink(detailLink, anchor, detailContext.origin || 'snapshot-history');
+  loadedSnapshotDetail = null;
+  if (!serviceAccessToken) {
+    renderSnapshotDetailAuthorizationRequired();
+    return;
+  }
+  if (!selectedSnapshotDetailContext) {
+    renderSnapshotDetailInvalidLink();
+    return;
+  }
+  loadSelectedSnapshotDetail();
+}
+
+function selectSnapshotDetailFromTrendPoint(detailContext) {
+  const snapshotId = String(detailContext.snapshotId ?? '');
+  const detailLink = canonicalSnapshotDetailLink(snapshotId);
+  snapshotDetailRequestSequence += 1;
+  selectedSnapshotDetailContext = snapshotDetailContextFromLink(detailLink, String(detailContext.anchor ?? ''), 'instance-snapshot-trend');
+  loadedSnapshotDetail = null;
+  if (!serviceAccessToken) {
+    renderSnapshotDetailAuthorizationRequired();
+    return;
+  }
+  if (!selectedSnapshotDetailContext) {
+    renderSnapshotDetailInvalidLink();
+    return;
+  }
+  loadSelectedSnapshotDetail();
+}
+
+async function loadSelectedSnapshotDetail() {
+  const requestId = ++snapshotDetailRequestSequence;
+  if (!selectedSnapshotDetailContext) {
+    renderSnapshotDetailInvalidLink();
+    return;
+  }
+  if (!serviceAccessToken) {
+    loadedSnapshotDetail = null;
+    renderSnapshotDetailAuthorizationRequired();
+    return;
+  }
+  if (!isSnapshotDetailLink(
+    selectedSnapshotDetailContext.detailLink,
+    selectedSnapshotDetailContext.projectId,
+    selectedSnapshotDetailContext.applicationId
+  )) {
+    renderSnapshotDetailInvalidLink();
+    return;
+  }
+  renderSnapshotDetailLoadingState();
+  try {
+    const response = await fetch(selectedSnapshotDetailContext.detailLink, { headers: projectRequestHeaders() });
+    if (!isLatestSnapshotDetailRequest(requestId)) {
+      return;
+    }
+    if (response.status === 401) {
+      handleSnapshotDetailAuthorizationLoss();
+      return;
+    }
+    if (response.status === 400) {
+      loadedSnapshotDetail = null;
+      renderSnapshotDetailInvalidLink();
+      return;
+    }
+    if (response.status === 404) {
+      loadedSnapshotDetail = null;
+      renderSnapshotDetailNotFoundOrExpired();
+      return;
+    }
+    if (!response.ok) {
+      throw new Error('snapshot_detail_load_failed');
+    }
+    const detail = await response.json();
+    if (!isLatestSnapshotDetailRequest(requestId)) {
+      return;
+    }
+    if (!isSelectedSnapshotDetailResponse(detail)) {
+      throw new Error('snapshot_detail_context_mismatch');
+    }
+    loadedSnapshotDetail = detail;
+    renderSnapshotDetailReady();
+  } catch (error) {
+    if (!isLatestSnapshotDetailRequest(requestId)) {
+      return;
+    }
+    loadedSnapshotDetail = null;
+    renderSnapshotDetailLoadError();
+  }
+}
+
+function renderSnapshotDetailLoadingState() {
+  setSnapshotDetailViewState(SNAPSHOT_DETAIL_VIEW_STATE.LOADING);
+  setDashboardGeneratedAtLabel('Snapshot Detail을 불러오는 중');
+  setSelectedApplicationLabel(snapshotDetailContextText());
+  dashboardDetail.innerHTML = snapshotDetailShellMarkup({
+    state: 'loading',
+    generatedAt: null,
+    bodyMarkup: `
+      <div class="loading-state" aria-label="Snapshot Detail 로딩 중">
+        <p class="dashboard-empty-copy">Snapshot Detail을 불러오는 중</p>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line short"></div>
+      </div>
+    `
+  });
+}
+
+function renderSnapshotDetailAuthorizationRequired() {
+  setSnapshotDetailViewState(SNAPSHOT_DETAIL_VIEW_STATE.AUTH_REQUIRED);
+  setDashboardGeneratedAtLabel('로그인이 필요합니다');
+  setSelectedApplicationLabel(snapshotDetailContextText());
+  dashboardDetail.innerHTML = snapshotDetailShellMarkup({
+    state: 'auth-required',
+    generatedAt: null,
+    bodyMarkup: `
+      <div class="empty-state">
+        <p><strong>GitHub 로그인 후 Snapshot Detail을 볼 수 있습니다.</strong>로그인을 완료한 뒤 같은 Application에서 detail action을 다시 선택해 주세요.</p>
+      </div>
+    `
+  });
+}
+
+function handleSnapshotDetailAuthorizationLoss() {
+  serviceAccessToken = null;
+  projectRequestSequence += 1;
+  applicationRequestSequence += 1;
+  dashboardRequestSequence += 1;
+  instanceEvidenceRequestSequence += 1;
+  instanceSnapshotTrendRequestSequence += 1;
+  snapshotHistoryRequestSequence += 1;
+  snapshotDetailRequestSequence += 1;
+  loadedSnapshotDetail = null;
+  renderAuthorizationRequired();
+  renderApplicationAuthorizationRequired();
+  renderSnapshotDetailAuthorizationRequired();
+}
+
+function renderSnapshotDetailInvalidLink() {
+  setSnapshotDetailViewState(SNAPSHOT_DETAIL_VIEW_STATE.INVALID_LINK);
+  setDashboardGeneratedAtLabel('Snapshot Detail 기준 시각 확인 불가');
+  setSelectedApplicationLabel(snapshotDetailContextText());
+  dashboardDetail.innerHTML = snapshotDetailShellMarkup({
+    state: 'invalid-link',
+    generatedAt: null,
+    bodyMarkup: `
+      <div class="empty-state">
+        <p><strong>Snapshot detail link를 확인할 수 없습니다.</strong>현재 Project/Application과 일치하는 내부 snapshot detail link만 사용할 수 있습니다.</p>
+      </div>
+    `
+  });
+}
+
+function renderSnapshotDetailNotFoundOrExpired() {
+  setSnapshotDetailViewState(SNAPSHOT_DETAIL_VIEW_STATE.NOT_FOUND_OR_EXPIRED);
+  setDashboardGeneratedAtLabel('Snapshot Detail 기준 시각 확인 불가');
+  setSelectedApplicationLabel(snapshotDetailContextText());
+  dashboardDetail.innerHTML = snapshotDetailShellMarkup({
+    state: 'not-found-or-expired',
+    generatedAt: null,
+    bodyMarkup: `
+      <div class="empty-state">
+        <p><strong>저장된 snapshot detail이 없거나 보관 기간이 지나 더 이상 없습니다.</strong>현재 dashboard로 대체하지 않고 저장된 detail absence로 표시합니다.</p>
+      </div>
+    `
+  });
+}
+
+function renderSnapshotDetailLoadError() {
+  setSnapshotDetailViewState(SNAPSHOT_DETAIL_VIEW_STATE.ERROR);
+  setDashboardGeneratedAtLabel('Snapshot Detail 기준 시각 확인 불가');
+  setSelectedApplicationLabel(snapshotDetailContextText());
+  dashboardDetail.innerHTML = snapshotDetailShellMarkup({
+    state: 'error',
+    generatedAt: null,
+    bodyMarkup: `
+      <div class="empty-state">
+        <p><strong>Snapshot detail을 불러오지 못했습니다.</strong>잠시 후 같은 snapshot detail action으로 다시 시도해 주세요.</p>
+      </div>
+    `
+  });
+}
+
+function renderSnapshotDetailReady() {
+  const detail = loadedSnapshotDetail;
+  setSnapshotDetailViewState(SNAPSHOT_DETAIL_VIEW_STATE.READY);
+  setDashboardGeneratedAtLabel(formatSnapshotDetailGeneratedAt(detail.generatedAt));
+  setSelectedApplicationLabel(snapshotDetailReadyText(detail));
+  dashboardDetail.innerHTML = snapshotDetailShellMarkup({
+    state: 'ready',
+    generatedAt: detail.generatedAt,
+    bodyMarkup: `
+      ${snapshotDetailAnchorStatusMarkup(detail)}
+      ${snapshotDetailReadSemanticsMarkup(detail.readSemantics)}
+      ${snapshotDetailMetadataMarkup(detail)}
+      ${snapshotDetailStateSourceMarkup(detail)}
+      ${snapshotDetailReadModelMarkup(detail.readModel)}
+      ${snapshotEndpointEvidenceMarkup(detail.snapshotEndpointEvidence)}
+      ${snapshotInstanceSummaryMarkup(detail.instanceSummary)}
+    `
+  });
+}
+
+function snapshotDetailShellMarkup({ state, generatedAt, bodyMarkup }) {
+  return `
+    <article class="snapshot-detail-read-model" data-snapshot-detail-state="${escapeAttribute(state)}">
+      ${snapshotDetailHeaderMarkup(generatedAt)}
+      ${bodyMarkup}
+    </article>
+  `;
+}
+
+function snapshotDetailHeaderMarkup(generatedAt) {
+  const context = selectedSnapshotDetailContext || {};
+  const historyBack = loadedOperationalEvents && loadedSnapshotMarkers
+    ? '<button class="link-button" type="button" data-snapshot-history-back="true">Snapshot/History</button>'
+    : '';
+  return `
+    <section class="dashboard-section instance-detail-header snapshot-detail-header" aria-label="Snapshot detail context">
+      <div class="instance-detail-title">
+        <div>
+          <p class="eyebrow">Snapshot Detail</p>
+          <h3>${escapeText(valueOrAbsence(context.snapshotId, 'snapshot id source absence'))}</h3>
+        </div>
+        <div class="detail-back-actions">
+          <button class="link-button" type="button" data-dashboard-back="true">Application Dashboard</button>
+          ${historyBack}
+        </div>
+      </div>
+      <dl class="dashboard-kv-grid">
+        ${keyValueMarkup('project id', context.projectId)}
+        ${keyValueMarkup('application id', context.applicationId)}
+        ${keyValueMarkup('snapshot id', context.snapshotId)}
+        ${keyValueMarkup('active anchor', valueOrAbsence(context.anchor, 'anchor source absence'))}
+        ${keyValueMarkup('origin', valueOrAbsence(context.origin, 'origin source absence'))}
+        ${keyValueMarkup('generatedAt', valueOrAbsence(generatedAt, 'detail generatedAt source absence'))}
+      </dl>
+    </section>
+  `;
+}
+
+function snapshotDetailAnchorStatusMarkup(detail) {
+  const anchor = selectedSnapshotDetailContext ? selectedSnapshotDetailContext.anchor : '';
+  if (!anchor) {
+    return '';
+  }
+  return hasSnapshotEndpointAnchor(detail, anchor)
+    ? `<p class="dashboard-empty-copy snapshot-anchor-status">anchorStatus resolved · ${escapeText(anchor)}</p>`
+    : `<p class="dashboard-empty-copy snapshot-anchor-status">anchorStatus missing · ${escapeText(anchor)}</p>`;
+}
+
+function snapshotDetailReadSemanticsMarkup(readSemantics) {
+  const semantics = readSemantics || {};
+  return `
+    <section class="dashboard-section" aria-label="Snapshot detail read semantics">
+      <p class="eyebrow">Read semantics</p>
+      <dl class="dashboard-kv-grid">
+        ${keyValueMarkup('mode', semantics.mode)}
+        ${keyValueMarkup('currentStateRecalculated', semantics.currentStateRecalculated)}
+        ${keyValueMarkup('liveSourcesJoined', Array.isArray(semantics.liveSourcesJoined) ? semantics.liveSourcesJoined.join(', ') : 'source absence')}
+        ${keyValueMarkup('rawReadModelJsonExposed', semantics.rawReadModelJsonExposed)}
+      </dl>
+    </section>
+  `;
+}
+
+function snapshotDetailMetadataMarkup(detail) {
+  const snapshot = detail.snapshot || {};
+  const marker = detail.marker || {};
+  return `
+    <section class="dashboard-section" aria-label="Snapshot metadata">
+      <p class="eyebrow">snapshot metadata</p>
+      <dl class="dashboard-kv-grid">
+        ${keyValueMarkup('snapshotId', snapshot.snapshotId)}
+        ${keyValueMarkup('capturedAt', snapshot.capturedAt)}
+        ${keyValueMarkup('generatedAt', snapshot.generatedAt)}
+        ${keyValueMarkup('currentWindow', windowRangeText(snapshot.currentWindow))}
+        ${keyValueMarkup('baselineWindow', windowRangeText(snapshot.baselineWindow))}
+        ${keyValueMarkup('captureReason', valueOrAbsence(snapshot.captureReason, 'capture reason source absence'))}
+        ${keyValueMarkup('storedApplicationStateCode', snapshot.storedApplicationStateCode)}
+        ${keyValueMarkup('primaryRuleId', valueOrAbsence(snapshot.primaryRuleId, 'rule source absence'))}
+        ${keyValueMarkup('primaryEndpointKey', valueOrAbsence(snapshot.primaryEndpointKey, 'endpoint source absence'))}
+        ${keyValueMarkup('maxConfidence', valueOrAbsence(snapshot.maxConfidence, 'confidence source absence'))}
+        ${keyValueMarkup('marker', markerSummaryText(marker))}
+      </dl>
+    </section>
+  `;
+}
+
+function markerSummaryText(marker) {
+  return [
+    marker.markerId,
+    marker.type,
+    marker.severity,
+    marker.readMeaning,
+    marker.title,
+    marker.summary,
+    marker.recommendedAction
+  ].filter(value => String(value ?? '').trim().length > 0).join(' · ');
+}
+
+function snapshotDetailStateSourceMarkup(detail) {
+  return `
+    <section class="dashboard-section" aria-label="Snapshot state source">
+      <p class="eyebrow">Stored state source</p>
+      <dl class="dashboard-kv-grid">
+        ${keyValueMarkup('previousState', previousStateText(detail.previousState || {}))}
+        ${keyValueMarkup('lastHealthyAt', lastHealthyAtText(detail.lastHealthyAt || {}))}
+        ${keyValueMarkup('recoveryMarker', recoveryMarkerText(detail.recoveryMarker))}
+      </dl>
+    </section>
+  `;
+}
+
+function snapshotDetailReadModelMarkup(readModel) {
+  const model = readModel || {};
+  return `
+    <section class="dashboard-section" aria-label="Snapshot read model summary">
+      <p class="eyebrow">readModel summary</p>
+      <dl class="dashboard-kv-grid">
+        ${keyValueMarkup('application', readModelApplicationText(model.application))}
+        ${keyValueMarkup('state', readModelStateText(model.state))}
+        ${keyValueMarkup('starterConnection', readModelStarterConnectionText(model.starterConnection))}
+        ${keyValueMarkup('zeroInsight', readModelZeroInsightText(model.zeroInsight))}
+        ${keyValueMarkup('recovery', readModelRecoveryText(model.recovery))}
+        ${keyValueMarkup('metrics', readModelMetricsText(model.metrics))}
+        ${keyValueMarkup('sourceScopedPercentiles', readModelSourceScopedPercentilesText(model.sourceScopedPercentiles))}
+        ${keyValueMarkup('triageCards', readModelTriageCardsText(model.triageCards))}
+        ${keyValueMarkup('endpointPriority', readModelEndpointPriorityText(model.endpointPriority))}
+      </dl>
+    </section>
+  `;
+}
+
+function snapshotEndpointEvidenceMarkup(snapshotEndpointEvidence) {
+  const evidence = snapshotEndpointEvidence || {};
+  const items = Array.isArray(evidence.items) ? evidence.items : [];
+  return `
+    <section class="dashboard-section" aria-label="Snapshot endpoint evidence">
+      <p class="eyebrow">snapshotEndpointEvidence</p>
+      <dl class="dashboard-kv-grid">
+        ${keyValueMarkup('source', evidence.source)}
+        ${keyValueMarkup('maxItems', evidence.maxItems)}
+        ${keyValueMarkup('selectionPolicy', valueOrAbsence(evidence.selectionPolicy, 'selection policy source absence'))}
+        ${keyValueMarkup('unavailableReason', valueOrAbsence(evidence.unavailableReason, 'unavailable reason source absence'))}
+      </dl>
+      <div class="dashboard-list">
+        ${items.length === 0 ? '<p class="dashboard-empty-copy">bounded endpoint evidence source absence</p>' : items.map(snapshotEndpointEvidenceItemMarkup).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function snapshotEndpointEvidenceItemMarkup(item) {
+  const active = selectedSnapshotDetailContext && item.anchorId === selectedSnapshotDetailContext.anchor ? 'true' : 'false';
+  const ruleIds = Array.isArray(item.ruleIds) ? item.ruleIds.join(', ') : '';
+  return `
+    <article class="dashboard-mini-card snapshot-endpoint-evidence-item" id="${escapeAttribute(item.anchorId)}" data-active-anchor="${active}">
+      <h3>${escapeText(valueOrAbsence(item.endpointKey, 'endpoint evidence source absence'))}</h3>
+      <dl class="dashboard-kv-grid compact">
+        ${keyValueMarkup('anchorId', item.anchorId)}
+        ${keyValueMarkup('method', valueOrAbsence(item.method, 'method source absence'))}
+        ${keyValueMarkup('route', valueOrAbsence(item.route, 'route source absence'))}
+        ${keyValueMarkup('rank', valueOrAbsence(item.rank, 'rank source absence'))}
+        ${keyValueMarkup('reason', valueOrAbsence(item.reason, 'reason source absence'))}
+        ${keyValueMarkup('ruleIds', valueOrAbsence(ruleIds, 'rule source absence'))}
+        ${keyValueMarkup('confidence', valueOrAbsence(item.confidence, 'confidence source absence'))}
+        ${keyValueMarkup('score', valueOrAbsence(item.score, 'score source absence'))}
+        ${keyValueMarkup('requestCount', valueOrAbsence(item.requestCount, 'request count source absence'))}
+        ${keyValueMarkup('errorRate', valueOrAbsence(item.errorRate, 'error rate source absence'))}
+        ${keyValueMarkup('durationBuckets', bucketSummaryText(item.durationBuckets))}
+        ${keyValueMarkup('baselineDurationBuckets', bucketSummaryText(item.baselineDurationBuckets))}
+        ${keyValueMarkup('bucketDistributionSource', valueOrAbsence(item.bucketDistributionSource, 'bucket distribution source absence'))}
+        ${keyValueMarkup('freshness', readModelFreshnessText(item.freshness))}
+        ${keyValueMarkup('recommendedAction', valueOrAbsence(item.recommendedAction, 'recommended action source absence'))}
+      </dl>
+    </article>
+  `;
+}
+
+function snapshotInstanceSummaryMarkup(instanceSummary) {
+  const summary = instanceSummary || {};
+  const items = Array.isArray(summary.items) ? summary.items : [];
+  return `
+    <section class="dashboard-section" aria-label="Snapshot instance summary">
+      <p class="eyebrow">instanceSummary</p>
+      <dl class="dashboard-kv-grid">
+        ${keyValueMarkup('schemaVersion', summary.schemaVersion)}
+        ${keyValueMarkup('source', summary.source)}
+        ${keyValueMarkup('maxItems', summary.maxItems)}
+        ${keyValueMarkup('selectionPolicy', valueOrAbsence(summary.selectionPolicy, 'selection policy source absence'))}
+        ${keyValueMarkup('unavailableReason', valueOrAbsence(summary.unavailableReason, 'unavailable reason source absence'))}
+      </dl>
+      <div class="dashboard-list">
+        ${items.length === 0 ? '<p class="dashboard-empty-copy">bounded instance summary source absence</p>' : items.map(snapshotInstanceSummaryItemMarkup).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function snapshotInstanceSummaryItemMarkup(item) {
+  const refs = Array.isArray(item.endpointEvidenceRefs) ? item.endpointEvidenceRefs : [];
+  return `
+    <article class="dashboard-mini-card">
+      <h3>${escapeText(valueOrAbsence(item.instanceName, 'instance name source absence'))}</h3>
+      <dl class="dashboard-kv-grid compact">
+        ${keyValueMarkup('instanceId', item.instanceId)}
+        ${keyValueMarkup('observationStatus', item.observationStatus)}
+        ${keyValueMarkup('metricData', snapshotTrendMetricDataText(item.metricData))}
+        ${keyValueMarkup('starterConnection', snapshotTrendStarterConnectionText(item.starterConnection))}
+        ${keyValueMarkup('starterPercentilePoint', snapshotTrendStarterPercentilePointText(item.starterPercentilePoint))}
+        ${keyValueMarkup('resourceHints', snapshotTrendResourceHintsText(item.resourceHints))}
+        ${keyValueMarkup('applicationTriageContribution', snapshotTrendTriageContributionText(item.applicationTriageContribution))}
+        ${keyValueMarkup('endpointEvidenceRefs', snapshotEndpointEvidenceRefsText(refs))}
+      </dl>
+    </article>
+  `;
+}
+
+function snapshotEndpointEvidenceRefsText(refs) {
+  const values = Array.isArray(refs) ? refs : [];
+  if (values.length === 0) {
+    return 'bounded endpoint reference source absence';
+  }
+  return values.map(ref => [
+    ref.endpointKey,
+    ref.method,
+    ref.route,
+    `relatedApplicationPriorityRank ${valueOrAbsence(ref.relatedApplicationPriorityRank, 'rank source absence')}`,
+    `relatedRuleIds ${Array.isArray(ref.relatedRuleIds) ? ref.relatedRuleIds.join(', ') : ''}`,
+    `snapshotDetailAnchor ${valueOrAbsence(ref.snapshotDetailAnchor, 'anchor source absence')}`,
+    `anchorStatus ${valueOrAbsence(ref.anchorStatus, 'anchor status source absence')}`
   ].filter(value => String(value ?? '').trim().length > 0).join(' · ')).join(' | ');
 }
 
@@ -2099,9 +3144,9 @@ function snapshotHandoffMarkup(snapshot) {
     : 'data-snapshot-handoff="source-absence" data-snapshot-id="" data-snapshot-link=""';
   return `
     <section class="dashboard-section snapshot-handoff" aria-label="Snapshot handoff" ${handoffAttributes}>
-      <p class="eyebrow">Snapshot handoff</p>
-      <p class="dashboard-empty-copy">${available ? 'Snapshot/History handoff data 보존됨' : 'snapshot handoff source absence'}</p>
-      ${available ? `<button class="link-button pending-handoff" type="button" disabled aria-disabled="true" data-snapshot-link="${escapeAttribute(snapshotLink)}">Snapshot pending</button>` : ''}
+      <p class="eyebrow">Snapshot/History</p>
+      <p class="dashboard-empty-copy">${available ? 'Snapshot handoff metadata 보존됨 · history는 selected Project/Application 기준 stored snapshots에서 조회합니다.' : 'current dashboard snapshot field source absence · history는 selected Project/Application 기준 stored snapshots에서 조회합니다.'}</p>
+      <button class="link-button snapshot-history-action" type="button" aria-disabled="false" data-snapshot-history-action="true">Snapshot/History</button>
     </section>
   `;
 }
@@ -2141,6 +3186,151 @@ function normalizeHandoffLinkCandidate(candidate) {
     return normalizeHandoffLinkCandidate(candidate.href ?? candidate.url);
   }
   return '';
+}
+
+function previousStateText(previousState) {
+  const previous = previousState || {};
+  return [
+    `stateCode ${valueOrAbsence(previous.stateCode, 'previous state source absence')}`,
+    `source ${valueOrAbsence(previous.source, 'previous source absence')}`,
+    `snapshotId ${valueOrAbsence(previous.snapshotId, 'previous snapshot source absence')}`,
+    `capturedAt ${valueOrAbsence(previous.capturedAt, 'previous capturedAt source absence')}`
+  ].join(' · ');
+}
+
+function lastHealthyAtText(lastHealthyAt) {
+  const value = lastHealthyAt || {};
+  return [
+    `value ${valueOrAbsence(value.value, 'lastHealthyAt source absence')}`,
+    `source ${valueOrAbsence(value.source, 'lastHealthyAt source absence')}`,
+    `snapshotId ${valueOrAbsence(value.snapshotId, 'lastHealthyAt snapshot source absence')}`
+  ].join(' · ');
+}
+
+function recoveryMarkerText(recoveryMarker) {
+  if (!recoveryMarker) {
+    return 'recovery marker source absence';
+  }
+  return [
+    '회복 관찰 중',
+    recoveryMarker.markerId,
+    recoveryMarker.type,
+    recoveryMarker.severity,
+    recoveryMarker.title,
+    recoveryMarker.summary,
+    recoveryMarker.recommendedAction
+  ].filter(value => String(value ?? '').trim().length > 0).join(' · ');
+}
+
+function readModelApplicationText(application) {
+  const value = application || {};
+  return [
+    value.name,
+    value.environment,
+    value.projectId,
+    value.applicationId
+  ].filter(item => String(item ?? '').trim().length > 0).join(' · ') || 'stored application summary source absence';
+}
+
+function readModelStateText(state) {
+  const value = state || {};
+  return [
+    value.code,
+    value.label,
+    value.scope,
+    value.rationale,
+    value.recommendedAction
+  ].filter(item => String(item ?? '').trim().length > 0).join(' · ') || 'stored state summary source absence';
+}
+
+function readModelStarterConnectionText(starterConnection) {
+  const value = starterConnection || {};
+  return [
+    value.statusSource,
+    value.lastHeartbeatAt,
+    value.lastHeartbeatStatus,
+    value.connectionMeaning,
+    value.stateImpact
+  ].filter(item => String(item ?? '').trim().length > 0).join(' · ') || 'stored starter connection source absence';
+}
+
+function readModelZeroInsightText(zeroInsight) {
+  if (!zeroInsight) {
+    return 'zeroInsight source absence';
+  }
+  return [
+    zeroInsight.reasonCode,
+    zeroInsight.message,
+    zeroInsight.recommendedAction
+  ].filter(item => String(item ?? '').trim().length > 0).join(' · ') || 'zeroInsight source absence';
+}
+
+function readModelRecoveryText(recovery) {
+  const value = recovery || {};
+  return [
+    `isRecovering ${valueOrAbsence(value.isRecovering, 'source absence')}`,
+    `lastHealthyAt ${valueOrAbsence(value.lastHealthyAt, 'source absence')}`,
+    `retryAfterSeconds ${valueOrAbsence(value.retryAfterSeconds, 'source absence')}`,
+    value.recommendedAction
+  ].filter(item => String(item ?? '').trim().length > 0).join(' · ') || 'stored recovery summary source absence';
+}
+
+function readModelMetricsText(metrics) {
+  const value = metrics || {};
+  return [
+    `requestCount ${valueOrAbsence(value.requestCount, 'source absence')}`,
+    `errorCount ${valueOrAbsence(value.errorCount, 'source absence')}`,
+    `errorRate ${valueOrAbsence(value.errorRate, 'source absence')}`
+  ].join(' · ');
+}
+
+function readModelSourceScopedPercentilesText(sourceScopedPercentiles) {
+  const value = sourceScopedPercentiles || {};
+  const items = Array.isArray(value.items) ? value.items : [];
+  return [
+    value.source,
+    value.scope,
+    value.displayPolicy,
+    value.aggregatePolicy,
+    `status ${valueOrAbsence(value.status, 'source absence')}`,
+    `itemCount ${items.length}`
+  ].filter(item => String(item ?? '').trim().length > 0).join(' · ') || 'stored source scoped percentile summary source absence';
+}
+
+function readModelTriageCardsText(triageCards) {
+  const cards = Array.isArray(triageCards) ? triageCards : [];
+  if (cards.length === 0) {
+    return 'stored triage card source absence';
+  }
+  return cards.map(card => [
+    card.title,
+    card.ruleId,
+    card.severity,
+    card.summary
+  ].filter(value => String(value ?? '').trim().length > 0).join(' · ')).join(' | ');
+}
+
+function readModelEndpointPriorityText(endpointPriority) {
+  const items = Array.isArray(endpointPriority) ? endpointPriority : [];
+  if (items.length === 0) {
+    return 'stored endpoint priority source absence';
+  }
+  return items.map(item => [
+    `rank ${valueOrAbsence(item.rank, 'rank source absence')}`,
+    item.endpointKey,
+    item.reason,
+    item.recommendedAction
+  ].filter(value => String(value ?? '').trim().length > 0).join(' · ')).join(' | ');
+}
+
+function readModelFreshnessText(freshness) {
+  const value = freshness || {};
+  return [
+    value.status,
+    value.lastObservedAt,
+    value.sourceWindow,
+    value.reason
+  ].filter(item => String(item ?? '').trim().length > 0).join(' · ') || 'freshness source absence';
 }
 
 function keyValueMarkup(label, value) {
@@ -2355,6 +3545,160 @@ function snapshotTrendRequestLink(snapshotTrendLink, preset) {
   return null;
 }
 
+function snapshotHistoryContextFromSelectedDashboard() {
+  if (!selectedDashboardContext) {
+    return null;
+  }
+  return {
+    projectId: selectedDashboardContext.projectId,
+    projectName: selectedDashboardContext.projectName,
+    applicationId: selectedDashboardContext.applicationId,
+    applicationName: selectedDashboardContext.applicationName,
+    applicationEnvironment: selectedDashboardContext.applicationEnvironment,
+    dashboardLink: selectedDashboardContext.dashboardLink,
+    preset: SNAPSHOT_HISTORY_PRESETS.DAY
+  };
+}
+
+function isValidSnapshotHistoryContext(context) {
+  return Boolean(isObjectValue(context)
+    && hasRequiredText(context.projectId)
+    && hasRequiredText(context.applicationId)
+    && isApplicationDashboardLink(
+      context.dashboardLink,
+      context.projectId,
+      context.applicationId
+    ));
+}
+
+function normalizeSnapshotHistoryPreset(preset) {
+  if (preset === SNAPSHOT_HISTORY_PRESETS.SEVEN_DAYS) {
+    return SNAPSHOT_HISTORY_PRESETS.SEVEN_DAYS;
+  }
+  if (preset === SNAPSHOT_HISTORY_PRESETS.FOURTEEN_DAYS) {
+    return SNAPSHOT_HISTORY_PRESETS.FOURTEEN_DAYS;
+  }
+  return SNAPSHOT_HISTORY_PRESETS.DAY;
+}
+
+function snapshotHistoryOperationalEventsRequestLink(preset) {
+  const normalizedPreset = normalizeSnapshotHistoryPreset(preset);
+  const query = SNAPSHOT_HISTORY_PRESET_QUERY[normalizedPreset];
+  if (!isValidSnapshotHistoryContext(selectedSnapshotHistoryContext) || !query) {
+    return null;
+  }
+  return `/api/projects/${selectedSnapshotHistoryContext.projectId}/applications/${selectedSnapshotHistoryContext.applicationId}/operational-events?since=${normalizedPreset}&limit=${query.eventLimit}`;
+}
+
+function snapshotHistoryMarkersRequestLink(preset) {
+  const normalizedPreset = normalizeSnapshotHistoryPreset(preset);
+  const query = SNAPSHOT_HISTORY_PRESET_QUERY[normalizedPreset];
+  if (!isValidSnapshotHistoryContext(selectedSnapshotHistoryContext) || !query) {
+    return null;
+  }
+  return `/api/projects/${selectedSnapshotHistoryContext.projectId}/applications/${selectedSnapshotHistoryContext.applicationId}/dashboard/snapshot-markers?since=${normalizedPreset}&limit=${query.markerLimit}`;
+}
+
+function safeSnapshotDetailLink(candidate) {
+  const normalized = normalizeHandoffLinkCandidate(candidate);
+  const context = selectedSnapshotHistoryContext || snapshotHistoryContextFromSelectedDashboard();
+  if (!context || normalized.length === 0) {
+    return '';
+  }
+  return isSnapshotDetailLink(normalized, context.projectId, context.applicationId) ? normalized : '';
+}
+
+function canonicalSnapshotDetailLink(snapshotId) {
+  const normalizedSnapshotId = String(snapshotId ?? '').trim();
+  if (!selectedDashboardContext || !isValidSnapshotId(normalizedSnapshotId)) {
+    return '';
+  }
+  if (!isApplicationDashboardLink(
+    selectedDashboardContext.dashboardLink,
+    selectedDashboardContext.projectId,
+    selectedDashboardContext.applicationId
+  )) {
+    return '';
+  }
+  return `/api/projects/${selectedDashboardContext.projectId}/applications/${selectedDashboardContext.applicationId}/dashboard/snapshots/${normalizedSnapshotId}`;
+}
+
+function snapshotDetailContextFromLink(detailLink, anchor, origin) {
+  const context = selectedSnapshotHistoryContext || snapshotHistoryContextFromSelectedDashboard();
+  if (!context || !isSnapshotDetailLink(detailLink, context.projectId, context.applicationId)) {
+    return null;
+  }
+  const snapshotId = snapshotIdFromDetailLink(detailLink);
+  if (!snapshotId) {
+    return null;
+  }
+  return {
+    projectId: context.projectId,
+    projectName: context.projectName,
+    applicationId: context.applicationId,
+    applicationName: context.applicationName,
+    applicationEnvironment: context.applicationEnvironment,
+    snapshotId,
+    detailLink,
+    anchor: String(anchor ?? '').trim(),
+    origin: String(origin ?? '').trim()
+  };
+}
+
+function isSnapshotDetailLink(detailLink, projectId, applicationId) {
+  const selectedProjectId = String(projectId ?? '').trim();
+  const selectedApplicationId = String(applicationId ?? '').trim();
+  if (selectedProjectId.length === 0 || selectedApplicationId.length === 0) {
+    return false;
+  }
+  const match = String(detailLink ?? '').match(
+    /^\/api\/projects\/([^/?#]+)\/applications\/([^/?#]+)\/dashboard\/snapshots\/([^/?#]+)$/
+  );
+  if (!match || !isValidSnapshotId(match[3])) {
+    return false;
+  }
+  try {
+    return decodeURIComponent(match[1]) === selectedProjectId
+      && decodeURIComponent(match[2]) === selectedApplicationId;
+  } catch (error) {
+    return false;
+  }
+}
+
+function snapshotIdFromDetailLink(detailLink) {
+  const match = String(detailLink ?? '').match(
+    /^\/api\/projects\/[^/?#]+\/applications\/[^/?#]+\/dashboard\/snapshots\/([^/?#]+)$/
+  );
+  if (!match || !isValidSnapshotId(match[1])) {
+    return '';
+  }
+  try {
+    return decodeURIComponent(match[1]);
+  } catch (error) {
+    return '';
+  }
+}
+
+function isSnapshotMarkerListLink(markersLink, projectId, applicationId) {
+  const normalizedProjectId = String(projectId ?? '').trim();
+  const normalizedApplicationId = String(applicationId ?? '').trim();
+  if (normalizedProjectId.length === 0 || normalizedApplicationId.length === 0) {
+    return false;
+  }
+  const match = String(markersLink ?? '').match(
+    /^\/api\/projects\/([^/?#]+)\/applications\/([^/?#]+)\/dashboard\/snapshot-markers(?:\?[^#]*)?$/
+  );
+  if (!match) {
+    return false;
+  }
+  try {
+    return decodeURIComponent(match[1]) === normalizedProjectId
+      && decodeURIComponent(match[2]) === normalizedApplicationId;
+  } catch (error) {
+    return false;
+  }
+}
+
 function isSelectedProjectApplicationResponse(data) {
   if (!selectedProjectContext || !data || !data.project) {
     return false;
@@ -2395,6 +3739,370 @@ function isSelectedInstanceSnapshotTrendResponse(trend) {
   return String(trend.application.projectId ?? '') === selectedInstanceSnapshotTrendContext.projectId
     && String(trend.application.applicationId ?? '') === selectedInstanceSnapshotTrendContext.applicationId
     && String(trend.instance.instanceId ?? '') === selectedInstanceSnapshotTrendContext.instanceId;
+}
+
+function isSelectedOperationalEventsHistoryResponse(history, preset) {
+  if (!isValidSnapshotHistoryContext(selectedSnapshotHistoryContext) || !isObjectValue(history)) {
+    return false;
+  }
+  return history.source === 'dashboard_snapshots'
+    && String(history.applicationId ?? '') === selectedSnapshotHistoryContext.applicationId
+    && isValidOperationalEventHorizon(history.horizon, preset)
+    && Array.isArray(history.events)
+    && history.events.length <= history.horizon.limit
+    && hasOperationalEventOrder(history.events)
+    && history.events.every(isValidOperationalEventItem);
+}
+
+function isValidOperationalEventHorizon(horizon, preset) {
+  const normalizedPreset = normalizeSnapshotHistoryPreset(preset);
+  const query = SNAPSHOT_HISTORY_PRESET_QUERY[normalizedPreset];
+  return Boolean(isObjectValue(horizon)
+    && isBeforeTimestamp(horizon.since, horizon.until)
+    && horizon.requestedSince === normalizedPreset
+    && horizon.defaultSince === SNAPSHOT_HISTORY_PRESETS.DAY
+    && horizon.maxSince === SNAPSHOT_HISTORY_PRESETS.FOURTEEN_DAYS
+    && horizon.limit === query.eventLimit
+    && horizon.maxLimit === 100
+    && horizon.order === 'occurredAt_desc');
+}
+
+function hasOperationalEventOrder(events) {
+  let previousOccurredAt = null;
+  let previousEventId = null;
+  for (const event of events) {
+    if (!isObjectValue(event)) {
+      return false;
+    }
+    const occurredAtMillis = parseTimestampMillis(event.occurredAt);
+    const eventId = String(event.eventId ?? '');
+    if (occurredAtMillis == null) {
+      return false;
+    }
+    if (previousOccurredAt != null && occurredAtMillis > previousOccurredAt) {
+      return false;
+    }
+    if (previousOccurredAt != null
+      && occurredAtMillis === previousOccurredAt
+      && eventId <= previousEventId) {
+      return false;
+    }
+    previousOccurredAt = occurredAtMillis;
+    previousEventId = eventId;
+  }
+  return true;
+}
+
+function isValidOperationalEventItem(event) {
+  const snapshotId = String(event && event.snapshotId ? event.snapshotId : '');
+  return Boolean(isObjectValue(event)
+    && hasRequiredText(event.eventId)
+    && isAllowedValue(event.type, [
+      'degraded_entered',
+      'degraded_resolved',
+      'stale_entered',
+      'down_entered',
+      'recovery_observed',
+      'high_confidence_concern',
+      'state_changed'
+    ])
+    && isAllowedValue(event.severity, ['info', 'warning', 'critical'])
+    && hasRequiredText(event.title)
+    && hasRequiredText(event.summary)
+    && hasRequiredText(event.occurredAt)
+    && (event.resolvedAt == null || hasRequiredText(event.resolvedAt))
+    && hasRequiredText(event.stateCode)
+    && isNullableFraction(event.confidence)
+    && isValidSnapshotId(snapshotId)
+    && isValidOperationalEventEvidence(event.evidence)
+    && isObjectValue(event.links)
+    && isSnapshotDetailLink(
+      event.links.snapshot,
+      selectedSnapshotHistoryContext.projectId,
+      selectedSnapshotHistoryContext.applicationId
+    )
+    && snapshotIdFromDetailLink(event.links.snapshot) === snapshotId);
+}
+
+function isValidOperationalEventEvidence(evidence) {
+  return Boolean(isObjectValue(evidence)
+    && (evidence.ruleId == null || hasRequiredText(evidence.ruleId))
+    && (evidence.endpointKey == null || (hasRequiredText(evidence.endpointKey) && !hasRawEndpointDetail(evidence.endpointKey)))
+    && (evidence.method == null || hasRequiredText(evidence.method))
+    && (evidence.route == null || (hasRequiredText(evidence.route) && !hasRawEndpointDetail(evidence.route)))
+    && (evidence.snapshotDetailAnchor == null || hasRequiredText(evidence.snapshotDetailAnchor))
+    && (evidence.anchorStatus == null || isAllowedValue(evidence.anchorStatus, ['resolved', 'missing'])));
+}
+
+function isSelectedSnapshotMarkerResponse(markers, preset) {
+  if (!isValidSnapshotHistoryContext(selectedSnapshotHistoryContext) || !isObjectValue(markers)) {
+    return false;
+  }
+  return markers.source === 'dashboard_snapshots'
+    && String(markers.applicationId ?? '') === selectedSnapshotHistoryContext.applicationId
+    && isValidSnapshotMarkerHorizon(markers.horizon, preset)
+    && Array.isArray(markers.markers)
+    && markers.markers.length <= markers.horizon.limit
+    && hasAscendingSnapshotMarkers(markers.markers)
+    && markers.markers.every(isValidSnapshotMarkerItem);
+}
+
+function isValidSnapshotMarkerHorizon(horizon, preset) {
+  const normalizedPreset = normalizeSnapshotHistoryPreset(preset);
+  const query = SNAPSHOT_HISTORY_PRESET_QUERY[normalizedPreset];
+  return Boolean(isObjectValue(horizon)
+    && isBeforeTimestamp(horizon.since, horizon.until)
+    && horizon.requestedSince === normalizedPreset
+    && horizon.defaultSince === SNAPSHOT_HISTORY_PRESETS.DAY
+    && horizon.maxSince === SNAPSHOT_HISTORY_PRESETS.FOURTEEN_DAYS
+    && horizon.limit === query.markerLimit
+    && horizon.maxLimit === 336
+    && horizon.order === 'capturedAt_asc');
+}
+
+function hasAscendingSnapshotMarkers(markers) {
+  let previousCapturedAt = null;
+  let previousSnapshotId = null;
+  for (const marker of markers) {
+    if (!isObjectValue(marker)) {
+      return false;
+    }
+    const capturedAtMillis = parseTimestampMillis(marker.capturedAt);
+    const snapshotId = String(marker.snapshotId ?? '');
+    if (capturedAtMillis == null) {
+      return false;
+    }
+    if (previousCapturedAt != null && capturedAtMillis < previousCapturedAt) {
+      return false;
+    }
+    if (previousCapturedAt != null
+      && capturedAtMillis === previousCapturedAt
+      && snapshotId <= previousSnapshotId) {
+      return false;
+    }
+    previousCapturedAt = capturedAtMillis;
+    previousSnapshotId = snapshotId;
+  }
+  return true;
+}
+
+function isValidSnapshotMarkerItem(marker) {
+  const snapshotId = String(marker && marker.snapshotId ? marker.snapshotId : '');
+  return Boolean(isObjectValue(marker)
+    && hasRequiredText(marker.markerId)
+    && isValidSnapshotId(snapshotId)
+    && hasRequiredText(marker.capturedAt)
+    && hasRequiredText(marker.currentWindowEndUtc)
+    && isAllowedSnapshotMarkerType(marker.type)
+    && isAllowedValue(marker.severity, ['info', 'warning', 'critical'])
+    && marker.readMeaning === 'stored_read_model_point'
+    && (marker.captureReason == null || typeof marker.captureReason === 'string')
+    && hasRequiredText(marker.storedApplicationStateCode)
+    && isObjectValue(marker.previousState)
+    && hasRequiredText(marker.title)
+    && hasRequiredText(marker.summary)
+    && (marker.recommendedAction == null || typeof marker.recommendedAction === 'string')
+    && isNullableFraction(marker.confidence)
+    && (marker.primaryRuleId == null || hasRequiredText(marker.primaryRuleId))
+    && (marker.primaryEndpointKey == null || (hasRequiredText(marker.primaryEndpointKey) && !hasRawEndpointDetail(marker.primaryEndpointKey)))
+    && isObjectValue(marker.links)
+    && isSnapshotDetailLink(
+      marker.links.snapshot,
+      selectedSnapshotHistoryContext.projectId,
+      selectedSnapshotHistoryContext.applicationId
+    )
+    && snapshotIdFromDetailLink(marker.links.snapshot) === snapshotId);
+}
+
+function isSelectedSnapshotDetailResponse(detail) {
+  if (!selectedSnapshotDetailContext || !isObjectValue(detail)) {
+    return false;
+  }
+  return detail.source === 'dashboard_snapshots'
+    && isValidSnapshotReadSemantics(detail.readSemantics)
+    && isValidSnapshotMetadata(detail.snapshot)
+    && String(detail.snapshot.snapshotId ?? '') === selectedSnapshotDetailContext.snapshotId
+    && isValidSnapshotMarkerItemForDetail(detail.marker)
+    && isObjectValue(detail.previousState)
+    && isObjectValue(detail.lastHealthyAt)
+    && isValidRecoveryMarker(detail.recoveryMarker)
+    && isValidSnapshotDetailReadModel(detail.readModel)
+    && isValidSnapshotEndpointEvidence(detail.snapshotEndpointEvidence)
+    && isValidSnapshotInstanceSummary(detail.instanceSummary)
+    && isObjectValue(detail.links)
+    && isSnapshotDetailLink(
+      detail.links.self,
+      selectedSnapshotDetailContext.projectId,
+      selectedSnapshotDetailContext.applicationId
+    )
+    && snapshotIdFromDetailLink(detail.links.self) === selectedSnapshotDetailContext.snapshotId
+    && isSnapshotMarkerListLink(
+      detail.links.markers,
+      selectedSnapshotDetailContext.projectId,
+      selectedSnapshotDetailContext.applicationId
+    );
+}
+
+function isValidSnapshotReadSemantics(readSemantics) {
+  return Boolean(isObjectValue(readSemantics)
+    && readSemantics.mode === 'stored_snapshot_detail'
+    && readSemantics.currentStateRecalculated === false
+    && Array.isArray(readSemantics.liveSourcesJoined)
+    && readSemantics.liveSourcesJoined.length === 0
+    && readSemantics.rawReadModelJsonExposed === false);
+}
+
+function isValidSnapshotMetadata(snapshot) {
+  return Boolean(isObjectValue(snapshot)
+    && isValidSnapshotId(snapshot.snapshotId)
+    && hasRequiredText(snapshot.capturedAt)
+    && hasRequiredText(snapshot.generatedAt)
+    && isValidSnapshotWindow(snapshot.currentWindow)
+    && isValidSnapshotWindow(snapshot.baselineWindow)
+    && (snapshot.captureReason == null || typeof snapshot.captureReason === 'string')
+    && hasRequiredText(snapshot.storedApplicationStateCode)
+    && (snapshot.primaryRuleId == null || hasRequiredText(snapshot.primaryRuleId))
+    && (snapshot.primaryEndpointKey == null || (hasRequiredText(snapshot.primaryEndpointKey) && !hasRawEndpointDetail(snapshot.primaryEndpointKey)))
+    && isNullableFraction(snapshot.maxConfidence));
+}
+
+function isValidSnapshotWindow(window) {
+  return Boolean(isObjectValue(window)
+    && hasRequiredText(window.startUtc)
+    && hasRequiredText(window.endUtc)
+    && isBeforeTimestamp(window.startUtc, window.endUtc));
+}
+
+function isValidSnapshotMarkerItemForDetail(marker) {
+  const context = selectedSnapshotDetailContext;
+  const snapshotId = String(marker && marker.snapshotId ? marker.snapshotId : '');
+  return Boolean(isObjectValue(marker)
+    && hasRequiredText(marker.markerId)
+    && isValidSnapshotId(snapshotId)
+    && snapshotId === context.snapshotId
+    && hasRequiredText(marker.capturedAt)
+    && hasRequiredText(marker.currentWindowEndUtc)
+    && isAllowedSnapshotMarkerType(marker.type)
+    && isAllowedValue(marker.severity, ['info', 'warning', 'critical'])
+    && marker.readMeaning === 'stored_read_model_point'
+    && hasRequiredText(marker.storedApplicationStateCode)
+    && isObjectValue(marker.previousState)
+    && hasRequiredText(marker.title)
+    && hasRequiredText(marker.summary)
+    && isObjectValue(marker.links)
+    && isSnapshotDetailLink(marker.links.snapshot, context.projectId, context.applicationId)
+    && snapshotIdFromDetailLink(marker.links.snapshot) === snapshotId);
+}
+
+function isAllowedSnapshotMarkerType(value) {
+  return isAllowedValue(value, SNAPSHOT_MARKER_TYPES);
+}
+
+function isValidRecoveryMarker(recoveryMarker) {
+  return recoveryMarker == null || Boolean(isObjectValue(recoveryMarker)
+    && hasRequiredText(recoveryMarker.markerId)
+    && recoveryMarker.type === 'recovery_observed'
+    && recoveryMarker.severity === 'warning'
+    && hasRequiredText(recoveryMarker.title)
+    && hasRequiredText(recoveryMarker.summary)
+    && hasRequiredText(recoveryMarker.recommendedAction)
+    && isObjectValue(recoveryMarker.previousState)
+    && isObjectValue(recoveryMarker.lastHealthyAt));
+}
+
+function isValidSnapshotDetailReadModel(readModel) {
+  return Boolean(isObjectValue(readModel)
+    && Object.prototype.hasOwnProperty.call(readModel, 'application')
+    && Object.prototype.hasOwnProperty.call(readModel, 'state')
+    && Object.prototype.hasOwnProperty.call(readModel, 'starterConnection')
+    && Object.prototype.hasOwnProperty.call(readModel, 'zeroInsight')
+    && Object.prototype.hasOwnProperty.call(readModel, 'recovery')
+    && Object.prototype.hasOwnProperty.call(readModel, 'metrics')
+    && Object.prototype.hasOwnProperty.call(readModel, 'sourceScopedPercentiles')
+    && Object.prototype.hasOwnProperty.call(readModel, 'triageCards')
+    && Object.prototype.hasOwnProperty.call(readModel, 'endpointPriority'));
+}
+
+function isValidSnapshotEndpointEvidence(snapshotEndpointEvidence) {
+  const items = Array.isArray(snapshotEndpointEvidence && snapshotEndpointEvidence.items)
+    ? snapshotEndpointEvidence.items
+    : [];
+  return Boolean(isObjectValue(snapshotEndpointEvidence)
+    && snapshotEndpointEvidence.source === 'bounded_endpoint_evidence'
+    && snapshotEndpointEvidence.maxItems === 10
+    && (snapshotEndpointEvidence.selectionPolicy == null || typeof snapshotEndpointEvidence.selectionPolicy === 'string')
+    && (snapshotEndpointEvidence.unavailableReason == null || typeof snapshotEndpointEvidence.unavailableReason === 'string')
+    && Array.isArray(snapshotEndpointEvidence.items)
+    && items.length <= 10
+    && items.every((item, index) => isValidSnapshotEndpointEvidenceItem(item, index)));
+}
+
+function isValidSnapshotEndpointEvidenceItem(item, index) {
+  return Boolean(isObjectValue(item)
+    && item.anchorId === `endpoint-evidence-${index + 1}`
+    && hasRequiredText(item.endpointKey)
+    && !hasRawEndpointDetail(item.endpointKey)
+    && (item.method == null || hasRequiredText(item.method))
+    && (item.route == null || (hasRequiredText(item.route) && !hasRawEndpointDetail(item.route)))
+    && isNullablePositiveInteger(item.rank)
+    && (item.reason == null || hasRequiredText(item.reason))
+    && Array.isArray(item.ruleIds)
+    && item.ruleIds.every(hasRequiredText)
+    && isNullableFraction(item.confidence)
+    && isNullableNonNegativeNumber(item.score)
+    && isNullableNonNegativeNumber(item.requestCount)
+    && isNullableFraction(item.errorRate)
+    && isNullableBucketArray(item.durationBuckets)
+    && isNullableBucketArray(item.baselineDurationBuckets)
+    && (item.bucketDistributionSource == null || hasRequiredText(item.bucketDistributionSource))
+    && (item.freshness == null || isObjectValue(item.freshness))
+    && (item.recommendedAction == null || typeof item.recommendedAction === 'string'));
+}
+
+function isNullableBucketArray(value) {
+  return value == null || (Array.isArray(value) && value.every(isValidHistogramBucket));
+}
+
+function isValidSnapshotInstanceSummary(instanceSummary) {
+  const items = Array.isArray(instanceSummary && instanceSummary.items) ? instanceSummary.items : [];
+  return Boolean(isObjectValue(instanceSummary)
+    && instanceSummary.schemaVersion === '1.0'
+    && instanceSummary.source === 'bounded_instance_summary'
+    && instanceSummary.maxItems === 50
+    && (instanceSummary.selectionPolicy == null || typeof instanceSummary.selectionPolicy === 'string')
+    && (instanceSummary.unavailableReason == null || typeof instanceSummary.unavailableReason === 'string')
+    && Array.isArray(instanceSummary.items)
+    && items.length <= 50
+    && items.every(isValidSnapshotInstanceSummaryItem));
+}
+
+function isValidSnapshotInstanceSummaryItem(item) {
+  return Boolean(isObjectValue(item)
+    && hasRequiredText(item.instanceId)
+    && hasRequiredText(item.instanceName)
+    && hasRequiredText(item.observationStatus)
+    && Array.isArray(item.endpointEvidenceRefs)
+    && item.endpointEvidenceRefs.every(isValidSnapshotEndpointEvidenceRef));
+}
+
+function isValidSnapshotEndpointEvidenceRef(ref) {
+  return Boolean(isObjectValue(ref)
+    && hasRequiredText(ref.endpointKey)
+    && !hasRawEndpointDetail(ref.endpointKey)
+    && (ref.method == null || hasRequiredText(ref.method))
+    && (ref.route == null || (hasRequiredText(ref.route) && !hasRawEndpointDetail(ref.route)))
+    && isNullablePositiveInteger(ref.relatedApplicationPriorityRank)
+    && Array.isArray(ref.relatedRuleIds)
+    && ref.relatedRuleIds.every(hasRequiredText)
+    && (ref.snapshotDetailAnchor == null || hasRequiredText(ref.snapshotDetailAnchor))
+    && isAllowedValue(ref.anchorStatus, ['resolved', 'missing']));
+}
+
+function hasSnapshotEndpointAnchor(detail, anchor) {
+  const items = detail && detail.snapshotEndpointEvidence && Array.isArray(detail.snapshotEndpointEvidence.items)
+    ? detail.snapshotEndpointEvidence.items
+    : [];
+  return items.some(item => item.anchorId === anchor);
 }
 
 function hasInstanceEvidenceTopLevelFields(evidence) {
@@ -2963,6 +4671,10 @@ function hasRequiredText(value) {
   return String(value ?? '').trim().length > 0;
 }
 
+function isValidSnapshotId(value) {
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(String(value ?? '').trim());
+}
+
 function projectRequestHeaders() {
   const headers = { Accept: 'application/json' };
   if (serviceAccessToken) {
@@ -3001,11 +4713,15 @@ function handleAuthorizationLoss() {
   dashboardRequestSequence += 1;
   instanceEvidenceRequestSequence += 1;
   instanceSnapshotTrendRequestSequence += 1;
+  snapshotHistoryRequestSequence += 1;
+  snapshotDetailRequestSequence += 1;
   clearProjectSnapshot({ resetFilter: true });
   clearApplicationSnapshot({ resetFilter: true, resetSelection: true });
   clearDashboardSnapshot({ resetSelection: true });
   clearInstanceEvidenceSnapshot({ resetSelection: true });
   clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
+  clearSnapshotHistorySnapshot({ resetSelection: true });
+  clearSnapshotDetailSnapshot({ resetSelection: true });
   renderAuthorizationRequired();
   renderApplicationAuthorizationRequired();
   renderDashboardAuthorizationRequired();
@@ -3058,6 +4774,14 @@ function setInstanceSnapshotTrendViewState(nextState) {
   currentInstanceSnapshotTrendViewState = nextState;
 }
 
+function setSnapshotHistoryViewState(nextState) {
+  currentSnapshotHistoryViewState = nextState;
+}
+
+function setSnapshotDetailViewState(nextState) {
+  currentSnapshotDetailViewState = nextState;
+}
+
 function canRenderFilteredProjects() {
   return currentViewState === VIEW_STATE.READY || currentViewState === VIEW_STATE.FILTERED_EMPTY;
 }
@@ -3098,10 +4822,14 @@ function reconcileSelectedProjectAfterProjectLoad() {
     dashboardRequestSequence += 1;
     instanceEvidenceRequestSequence += 1;
     instanceSnapshotTrendRequestSequence += 1;
+    snapshotHistoryRequestSequence += 1;
+    snapshotDetailRequestSequence += 1;
     clearApplicationSnapshot({ resetFilter: true, resetSelection: true });
     clearDashboardSnapshot({ resetSelection: true });
     clearInstanceEvidenceSnapshot({ resetSelection: true });
     clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
+    clearSnapshotHistorySnapshot({ resetSelection: true });
+    clearSnapshotDetailSnapshot({ resetSelection: true });
     renderApplicationIdle();
     renderDashboardIdle();
   }
@@ -3148,6 +4876,21 @@ function clearInstanceSnapshotTrendSnapshot({ resetSelection = false } = {}) {
   }
 }
 
+function clearSnapshotHistorySnapshot({ resetSelection = false } = {}) {
+  loadedOperationalEvents = null;
+  loadedSnapshotMarkers = null;
+  if (resetSelection) {
+    selectedSnapshotHistoryContext = null;
+  }
+}
+
+function clearSnapshotDetailSnapshot({ resetSelection = false } = {}) {
+  loadedSnapshotDetail = null;
+  if (resetSelection) {
+    selectedSnapshotDetailContext = null;
+  }
+}
+
 function discardInstanceEvidenceForParentReload() {
   instanceEvidenceRequestSequence += 1;
   const hadVisibleInstanceEvidence = Boolean(selectedInstanceEvidenceContext || loadedInstanceEvidence);
@@ -3162,6 +4905,24 @@ function discardInstanceSnapshotTrendForParentReload() {
   const hadVisibleTrend = Boolean(selectedInstanceSnapshotTrendContext || loadedInstanceSnapshotTrend);
   clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
   if (hadVisibleTrend) {
+    renderDashboardIdle();
+  }
+}
+
+function discardSnapshotHistoryForParentReload() {
+  snapshotHistoryRequestSequence += 1;
+  const hadVisibleHistory = Boolean(selectedSnapshotHistoryContext || loadedOperationalEvents || loadedSnapshotMarkers);
+  clearSnapshotHistorySnapshot({ resetSelection: true });
+  if (hadVisibleHistory) {
+    renderDashboardIdle();
+  }
+}
+
+function discardSnapshotDetailForParentReload() {
+  snapshotDetailRequestSequence += 1;
+  const hadVisibleDetail = Boolean(selectedSnapshotDetailContext || loadedSnapshotDetail);
+  clearSnapshotDetailSnapshot({ resetSelection: true });
+  if (hadVisibleDetail) {
     renderDashboardIdle();
   }
 }
@@ -3184,6 +4945,14 @@ function isLatestInstanceEvidenceRequest(requestId) {
 
 function isLatestInstanceSnapshotTrendRequest(requestId) {
   return requestId === instanceSnapshotTrendRequestSequence;
+}
+
+function isLatestSnapshotHistoryRequest(requestId) {
+  return requestId === snapshotHistoryRequestSequence;
+}
+
+function isLatestSnapshotDetailRequest(requestId) {
+  return requestId === snapshotDetailRequestSequence;
 }
 
 function selectedProjectText() {
@@ -3261,6 +5030,38 @@ function instanceSnapshotTrendReadyText(trend) {
   return `${valueOrAbsence(application.name, 'Application name source absence')} · ${valueOrAbsence(instance.instanceName, 'Instance name source absence')} · ${valueOrAbsence(instance.instanceId, 'Instance id source absence')}`;
 }
 
+function snapshotHistoryContextText() {
+  if (!selectedSnapshotHistoryContext) {
+    return selectedApplicationText();
+  }
+  const applicationLabel = selectedSnapshotHistoryContext.applicationName || selectedSnapshotHistoryContext.applicationId;
+  return `${valueOrAbsence(selectedSnapshotHistoryContext.projectName || selectedSnapshotHistoryContext.projectId, 'Project source absence')} · ${valueOrAbsence(applicationLabel, 'Application source absence')} · ${valueOrAbsence(selectedSnapshotHistoryContext.applicationId, 'Application id source absence')}`;
+}
+
+function snapshotHistoryReadyText(events, markers) {
+  const applicationId = events && events.applicationId ? events.applicationId : markers && markers.applicationId;
+  const label = selectedSnapshotHistoryContext
+    ? selectedSnapshotHistoryContext.applicationName || selectedSnapshotHistoryContext.applicationId
+    : applicationId;
+  return `${valueOrAbsence(label, 'Application source absence')} · ${valueOrAbsence(applicationId, 'Application id source absence')}`;
+}
+
+function snapshotDetailContextText() {
+  if (!selectedSnapshotDetailContext) {
+    return selectedApplicationText();
+  }
+  return `${valueOrAbsence(selectedSnapshotDetailContext.applicationName || selectedSnapshotDetailContext.applicationId, 'Application source absence')} · ${valueOrAbsence(selectedSnapshotDetailContext.snapshotId, 'Snapshot id source absence')}`;
+}
+
+function snapshotDetailReadyText(detail) {
+  const snapshot = detail.snapshot || {};
+  return `${snapshotDetailContextText()} · ${valueOrAbsence(snapshot.capturedAt, 'capturedAt source absence')}`;
+}
+
+function historyDisplayGeneratedAt(events, markers) {
+  return events && events.generatedAt ? events.generatedAt : markers && markers.generatedAt;
+}
+
 function formatGeneratedAt(generatedAt) {
   if (!generatedAt) {
     return '목록 기준 시각 대기 중';
@@ -3312,6 +5113,34 @@ function formatTrendGeneratedAt(generatedAt) {
     return 'Instance Snapshot Trend 기준 시각 확인 불가';
   }
   return `Instance Snapshot Trend 기준 ${new Intl.DateTimeFormat('ko-KR', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(date)}`;
+}
+
+function formatSnapshotHistoryGeneratedAt(generatedAt) {
+  if (!generatedAt) {
+    return 'Snapshot/History 기준 시각 대기 중';
+  }
+  const date = new Date(generatedAt);
+  if (Number.isNaN(date.getTime())) {
+    return 'Snapshot/History 기준 시각 확인 불가';
+  }
+  return `Snapshot/History 기준 ${new Intl.DateTimeFormat('ko-KR', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(date)}`;
+}
+
+function formatSnapshotDetailGeneratedAt(generatedAt) {
+  if (!generatedAt) {
+    return 'Snapshot Detail 기준 시각 대기 중';
+  }
+  const date = new Date(generatedAt);
+  if (Number.isNaN(date.getTime())) {
+    return 'Snapshot Detail 기준 시각 확인 불가';
+  }
+  return `Snapshot Detail 기준 ${new Intl.DateTimeFormat('ko-KR', {
     dateStyle: 'medium',
     timeStyle: 'short'
   }).format(date)}`;
