@@ -55,7 +55,7 @@ class InstanceSnapshotTrendServiceTest {
                 parser,
                 CLOCK,
                 14);
-        stubMembership();
+        stubCatalogPathConsistency();
     }
 
     @Test
@@ -164,7 +164,7 @@ class InstanceSnapshotTrendServiceTest {
     }
 
     @Test
-    void returnsEmptyWhenApplicationOrInstanceMembershipFails() {
+    void returnsEmptyWhenApplicationOrInstanceCatalogPathMismatch() {
         when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, OTHER_PROJECT_ID))
                 .thenReturn(Optional.empty());
 
@@ -243,7 +243,7 @@ class InstanceSnapshotTrendServiceTest {
                 "InstanceEvidenceReadModelService");
     }
 
-    private void stubMembership() {
+    private void stubCatalogPathConsistency() {
         when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
                 .thenReturn(Optional.of(application()));
         when(applicationInstanceRepository.findByIdAndApplicationId(INSTANCE_ID, APPLICATION_ID))

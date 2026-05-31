@@ -84,12 +84,12 @@ class InstanceEvidenceReadModelServiceTest {
                 endpointEvidenceAggregationService,
                 new ObjectMapper(),
                 CLOCK);
-        stubMembership();
+        stubCatalogPathConsistency();
         stubEmptyEvidence();
     }
 
     @Test
-    void returnsFoundationModelWhenProjectApplicationAndInstanceMembershipMatch() {
+    void returnsFoundationModelWhenProjectApplicationAndInstanceCatalogPathMatches() {
         InstanceEvidenceReadModel evidence = service.getEvidence(PROJECT_ID, APPLICATION_ID, INSTANCE_ID)
                 .orElseThrow();
 
@@ -823,7 +823,7 @@ class InstanceEvidenceReadModelServiceTest {
         assertThat(items.get(0).reason()).isEqualTo("selected_instance_endpoint_observed");
     }
 
-    private void stubMembership() {
+    private void stubCatalogPathConsistency() {
         when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
                 .thenReturn(Optional.of(application()));
         when(applicationInstanceRepository.findByIdAndApplicationId(INSTANCE_ID, APPLICATION_ID))

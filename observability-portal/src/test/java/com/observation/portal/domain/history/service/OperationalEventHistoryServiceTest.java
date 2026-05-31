@@ -99,7 +99,7 @@ class OperationalEventHistoryServiceTest {
     }
 
     @Test
-    void membershipMismatchReturnsEmptyWithoutSnapshotLookup() {
+    void catalogPathMismatchReturnsEmptyWithoutSnapshotLookup() {
         when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID)).thenReturn(Optional.empty());
 
         assertThat(service.getHistory(PROJECT_ID, APPLICATION_ID, "24h", "50")).isEmpty();

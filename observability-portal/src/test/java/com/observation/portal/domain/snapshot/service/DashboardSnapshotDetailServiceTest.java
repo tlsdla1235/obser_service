@@ -87,7 +87,7 @@ class DashboardSnapshotDetailServiceTest {
     }
 
     @Test
-    void missingMembershipOrSnapshotReturnsEmptyWithoutFallbackProjection() {
+    void missingCatalogPathOrSnapshotReturnsEmptyWithoutFallbackProjection() {
         when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID)).thenReturn(Optional.empty());
 
         assertThat(service.getDetail(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID)).isEmpty();

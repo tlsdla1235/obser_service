@@ -117,7 +117,7 @@ class DashboardSnapshotMarkerServiceTest {
     }
 
     @Test
-    void invalidQueryFailsBeforeMembershipLookup() {
+    void invalidQueryFailsBeforeCatalogPathLookup() {
         assertThatThrownBy(() -> service.getMarkers(PROJECT_ID, APPLICATION_ID, "30d", "50"))
                 .isInstanceOf(InvalidSnapshotMarkerQueryException.class);
         assertThatThrownBy(() -> service.getMarkers(PROJECT_ID, APPLICATION_ID, "24h", "0"))
@@ -129,7 +129,7 @@ class DashboardSnapshotMarkerServiceTest {
     }
 
     @Test
-    void membershipMismatchReturnsEmptyWithoutSnapshotLookup() {
+    void catalogPathMismatchReturnsEmptyWithoutSnapshotLookup() {
         when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID)).thenReturn(Optional.empty());
 
         assertThat(service.getMarkers(PROJECT_ID, APPLICATION_ID, "24h", "50")).isEmpty();
