@@ -158,3 +158,63 @@ Heartbeat를 함께 켠 host app은 heartbeat 전용 설정을 따로 둔다. Bu
 observation.heartbeat.portal-base-url=http://localhost:8080
 observation.heartbeat.project-key=${OBSERVATION_SMOKE_PROJECT_KEY}
 ```
+
+## 10. Story 7.3 smoke service 실행
+
+Story 7.3 smoke service는 repo-local `observability-smoke-service` module이다. 이 module은 production portal이나 starter artifact가 아니라 local operator 검증용 host app이다.
+
+`.private/smoke-project.env`에는 starter `X-OBS-Project-Key` 인증에만 사용할 raw project key를 둔다.
+
+```bash
+OBSERVATION_SMOKE_PROJECT_KEY=<key_prefix>.<secret>
+```
+
+Smoke helper scripts는 이 파일을 shell `source`하지 않고 단일 key/value 데이터로만 확인한다. 이 값은 portal resource API의 `Authorization` header로 사용하지 않는다. Portal read API 검증은 계속 `.private/smoke-auth.env`의 JWT-like 3 segment `OBSERVATION_SMOKE_ACCESS_TOKEN`만 사용한다.
+
+Portal을 local smoke profile로 실행한다.
+
+```bash
+./gradlew :observability-portal:bootRun --args='--spring.profiles.active=local-smoke'
+```
+
+다른 터미널에서 smoke service를 local smoke profile로 실행한다.
+
+```bash
+OBSERVATION_PORTAL_BASE_URL=http://localhost:8080 \
+OBSERVATION_SMOKE_PROJECT_KEY=<key_prefix>.<secret> \
+./gradlew :observability-smoke-service:bootRun --args='--spring.profiles.active=local-smoke'
+```
+
+Smoke traffic은 primary green path인 `/smoke/ok`로 만든다. `/smoke/slow`와 `/smoke/error-candidate`는 troubleshooting 후보이며 completion은 이 endpoint들에 의존하지 않는다.
+
+```bash
+OBSERVATION_SMOKE_SERVICE_BASE_URL=http://localhost:8081 \
+OBSERVATION_SMOKE_TRAFFIC_COUNT=12 \
+OBSERVATION_SMOKE_CURL_CONNECT_TIMEOUT=2 \
+OBSERVATION_SMOKE_CURL_MAX_TIME=10 \
+scripts/smoke/run-smoke-traffic.sh
+```
+
+그 다음 30초 bucket closure와 scheduler initial delay를 기다린 뒤 Project -> Application -> Dashboard -> Instance Evidence read API 흐름을 검증한다. 기본 wait는 45초다.
+
+```bash
+OBSERVATION_PORTAL_BASE_URL=http://localhost:8080 \
+OBSERVATION_SMOKE_PROJECT_NAME=local-smoke \
+OBSERVATION_SMOKE_APPLICATION_NAME=observation-smoke-service \
+OBSERVATION_SMOKE_APPLICATION_ENVIRONMENT=local-smoke \
+OBSERVATION_SMOKE_WAIT_SECONDS=45 \
+OBSERVATION_SMOKE_CURL_CONNECT_TIMEOUT=2 \
+OBSERVATION_SMOKE_CURL_MAX_TIME=10 \
+scripts/smoke/verify-smoke-portal-flow.sh
+```
+
+검증 script는 `.private/smoke-auth.env`와 `.private/smoke-project.env`를 shell source하지 않고 단일 key/value 파일로 파싱한다. `.private/smoke-auth.env`가 없거나 access token이 service JWT-like 3 segment shape가 아니면 Bearer 요청을 만들지 않는다. `OBSERVATION_SMOKE_PROJECT_KEY` 또는 `.private/smoke-project.env`가 없으면 starter project key 누락으로 fail-fast하며 raw key 값을 출력하지 않는다. 실패 시 response body 전체를 출력하지 않고 project, application, dashboard, evidence 단계별 shape mismatch만 일반화해서 보고한다.
+
+관찰 단계는 아래처럼 해석한다.
+
+- heartbeat-only 단계에서는 application catalog row가 아직 없으면 read API에 보이지 않을 수 있다. heartbeat를 accepted bucket 생성이나 application health source로 해석하지 않는다.
+- 첫 accepted bucket 이후에는 sample이 부족해 `waiting_first_data`, `unknown`, `idle`, `active` 중 관찰 가능한 초기 상태가 내려올 수 있다.
+- Dashboard는 `application.lastAcceptedBucketAt`, `starterConnection.statusSource=starter_heartbeat`, `starterConnection.lastHeartbeatStatus=received`, `starterConnection.lastHeartbeatAt`, `starterConnection.stateImpact=none`, 계약된 `zeroInsight.reasonCode` 또는 bounded `triageCards` shape를 확인한다.
+- Instance Evidence는 `metricData.statusSource=accepted_bucket`, `starterConnection.statusSource=starter_heartbeat`, `starterConnection.lastHeartbeatStatus=received`, `starterConnection.lastHeartbeatAt`, `starterConnection.stateImpact=none`을 확인한다.
+- Instance Evidence의 starter percentile status는 `missing`, `insufficient`, `available` 중 하나면 충분하다. 이 flow는 새 p95/p99 계산을 만들지 않는다.
+- 성공 문구는 accepted bucket metric axis와 starter heartbeat axis가 같은 local 계약에서 관찰됐다는 뜻이다. 앱 정상 확정, host application down 확정, 복구 완료 확정으로 번역하지 않는다.

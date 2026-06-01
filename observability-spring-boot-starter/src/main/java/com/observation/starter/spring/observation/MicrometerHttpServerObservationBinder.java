@@ -55,6 +55,8 @@ public final class MicrometerHttpServerObservationBinder implements ObservationH
 
     // 관측을 http.server.requests 로 제한
     private static final String HTTP_SERVER_OBSERVATION_NAME = "http.server.requests";
+    private static final String SPRING_SERVER_REQUEST_OBSERVATION_CONTEXT =
+            "org.springframework.http.server.observation.ServerRequestObservationContext";
     private static final String UNKNOWN = "UNKNOWN";
 
     private final ObservationSampleCollector collector;
@@ -100,7 +102,16 @@ public final class MicrometerHttpServerObservationBinder implements ObservationH
 
     @Override
     public boolean supportsContext(Observation.Context context) {
-        return context != null && HTTP_SERVER_OBSERVATION_NAME.equals(context.getName());
+        return context != null
+                && (HTTP_SERVER_OBSERVATION_NAME.equals(context.getName())
+                || isSpringServerRequestObservationContext(context));
+    }
+
+    /**
+     * starter classpath에 Spring Web dependency를 추가하지 않고 실제 MVC server observation context만 인식한다.
+     */
+    private static boolean isSpringServerRequestObservationContext(Observation.Context context) {
+        return SPRING_SERVER_REQUEST_OBSERVATION_CONTEXT.equals(context.getClass().getName());
     }
 
     /**

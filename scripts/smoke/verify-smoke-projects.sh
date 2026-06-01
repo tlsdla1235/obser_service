@@ -35,11 +35,8 @@ if [[ "${auth_line}" != OBSERVATION_SMOKE_ACCESS_TOKEN=* ]]; then
 fi
 
 access_token="${auth_line#OBSERVATION_SMOKE_ACCESS_TOKEN=}"
-if [[ -z "${access_token}" ]]; then
-  fail 'OBSERVATION_SMOKE_ACCESS_TOKEN value is required.'
-fi
-if [[ ! "${access_token}" =~ ^[A-Za-z0-9._~-]+$ ]]; then
-  fail 'OBSERVATION_SMOKE_ACCESS_TOKEN contains unsupported characters.'
+if [[ ! "${access_token}" =~ ^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$ ]]; then
+  fail 'OBSERVATION_SMOKE_ACCESS_TOKEN must be a service access token with JWT-like three-segment shape.'
 fi
 
 response_file="$(mktemp)"

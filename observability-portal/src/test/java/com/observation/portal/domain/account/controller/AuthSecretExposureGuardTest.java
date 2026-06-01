@@ -88,6 +88,41 @@ class AuthSecretExposureGuardTest {
     }
 
     @Test
+    void storySevenThreeSmokeScriptsAvoidUnsafeShellAndProjectKeyBearerBoundary() throws IOException {
+        List<Path> smokeScripts = List.of(
+                Path.of("..", "scripts", "smoke", "run-smoke-traffic.sh"),
+                Path.of("..", "scripts", "smoke", "verify-smoke-portal-flow.sh"));
+
+        for (Path script : smokeScripts) {
+            assertThat(Files.exists(script))
+                    .as("Story 7.3 smoke script must exist: %s", script)
+                    .isTrue();
+            String content = Files.readString(script);
+            assertThat(content)
+                    .as("smoke scripts must not enable shell trace, verbose curl, source auth env, or use project key as Bearer")
+                    .doesNotContain(
+                            "curl -v",
+                            "set -x",
+                            "source .private/smoke-auth.env",
+                            "Authorization: Bearer ${OBSERVATION_SMOKE_PROJECT_KEY}");
+            assertThat(content).contains("command -v", "jq");
+        }
+
+        String portalFlowScript = Files.readString(repoRoot().resolve("scripts/smoke/verify-smoke-portal-flow.sh"));
+        assertThat(portalFlowScript)
+                .contains(
+                        "JWT-like three-segment shape",
+                        "--connect-timeout",
+                        "--max-time",
+                        ".starterConnection.lastHeartbeatStatus == \"received\"",
+                        "no_action_needed",
+                        "observing_recovery");
+
+        String trafficScript = Files.readString(repoRoot().resolve("scripts/smoke/run-smoke-traffic.sh"));
+        assertThat(trafficScript).contains("--connect-timeout", "--max-time", ".private/smoke-project.env");
+    }
+
+    @Test
     void writeSmokeAuthEnvOnlyAcceptsSingleServiceAccessTokenAndFixedPrivatePath() throws Exception {
         Path script = repoRoot().resolve("scripts/smoke/write-smoke-auth-env.sh");
         String serviceAccessToken = "header.payload.signature";
@@ -119,6 +154,15 @@ class AuthSecretExposureGuardTest {
                 Map.of());
         assertThat(metacharRejected.exitCode()).isNotZero();
         assertThat(metacharRejected.combinedOutput()).doesNotContain(serviceAccessToken);
+
+        ScriptResult rawProjectKeyRejected = runScript(
+                script,
+                tempDir,
+                "smoke-key.fixture\n",
+                List.of(),
+                Map.of());
+        assertThat(rawProjectKeyRejected.exitCode()).isNotZero();
+        assertThat(rawProjectKeyRejected.combinedOutput()).doesNotContain("smoke-key.fixture");
 
         ScriptResult accepted = runScript(
                 script,
@@ -188,12 +232,71 @@ class AuthSecretExposureGuardTest {
                 "OBSERVATION_SMOKE_ACCESS_TOKEN=" + serviceAccessToken + "\nEXTRA_KEY=blocked\n",
                 "OBSERVATION_SMOKE_REFRESH_TOKEN=blocked\n",
                 "OBSERVATION_SMOKE_ACCESS_TOKEN=" + serviceAccessToken + ";blocked\n",
+                "OBSERVATION_SMOKE_ACCESS_TOKEN=smoke-key.fixture\n",
                 "client_secret=blocked\n")) {
             Files.writeString(authFile, authContent, StandardCharsets.UTF_8);
             ScriptResult rejected = runScript(script, workDir, "", List.of(), Map.of());
             assertThat(rejected.exitCode()).isNotZero();
-            assertThat(rejected.combinedOutput()).doesNotContain(serviceAccessToken, "blocked");
+            assertThat(rejected.combinedOutput()).doesNotContain(serviceAccessToken, "blocked", "smoke-key.fixture");
         }
+    }
+
+    @Test
+    void verifySmokePortalFlowRequiresJwtTokenProjectKeyAndReceivedHeartbeatShape() throws Exception {
+        Path script = repoRoot().resolve("scripts/smoke/verify-smoke-portal-flow.sh");
+        Path workDir = Files.createDirectory(tempDir.resolve("portal-flow-work"));
+        Path authDir = Files.createDirectory(workDir.resolve(".private"));
+        String serviceAccessToken = "header.payload.signature";
+        String rawProjectKey = "smoke-key.fixture";
+        Files.writeString(
+                authDir.resolve("smoke-auth.env"),
+                "OBSERVATION_SMOKE_ACCESS_TOKEN=" + serviceAccessToken + "\n",
+                StandardCharsets.UTF_8);
+        Files.writeString(
+                authDir.resolve("smoke-project.env"),
+                "OBSERVATION_SMOKE_PROJECT_KEY=" + rawProjectKey + "\n",
+                StandardCharsets.UTF_8);
+
+        Path fakeBin = Files.createDirectory(tempDir.resolve("portal-flow-fake-bin"));
+        writeFakePortalFlowCurl(fakeBin.resolve("curl"));
+        String fakePath = fakeBin + File.pathSeparator + System.getenv("PATH");
+        Map<String, String> baseEnvironment = Map.of(
+                "PATH", fakePath,
+                "OBSERVATION_SMOKE_WAIT_SECONDS", "0");
+
+        ScriptResult success = runScript(script, workDir, "", List.of(), baseEnvironment);
+        assertThat(success.exitCode()).isZero();
+        assertThat(success.combinedOutput()).doesNotContain(serviceAccessToken, rawProjectKey);
+
+        for (String badMode : List.of("missingHeartbeatStatus", "invalidZeroReason", "missingEvidenceHeartbeat")) {
+            ScriptResult rejected = runScript(
+                    script,
+                    workDir,
+                    "",
+                    List.of(),
+                    withEnvironment(baseEnvironment, "SMOKE_FAKE_PORTAL_FLOW_MODE", badMode));
+            assertThat(rejected.exitCode()).isNotZero();
+            assertThat(rejected.combinedOutput()).doesNotContain(serviceAccessToken, rawProjectKey);
+        }
+
+        Files.writeString(
+                authDir.resolve("smoke-auth.env"),
+                "OBSERVATION_SMOKE_ACCESS_TOKEN=" + rawProjectKey + "\n",
+                StandardCharsets.UTF_8);
+        ScriptResult rawKeyAsBearerRejected = runScript(script, workDir, "", List.of(), baseEnvironment);
+        assertThat(rawKeyAsBearerRejected.exitCode()).isNotZero();
+        assertThat(rawKeyAsBearerRejected.combinedOutput()).doesNotContain(rawProjectKey);
+
+        Files.writeString(
+                authDir.resolve("smoke-auth.env"),
+                "OBSERVATION_SMOKE_ACCESS_TOKEN=" + serviceAccessToken + "\n",
+                StandardCharsets.UTF_8);
+        Files.delete(authDir.resolve("smoke-project.env"));
+        ScriptResult missingProjectKeyRejected = runScript(script, workDir, "", List.of(), baseEnvironment);
+        assertThat(missingProjectKeyRejected.exitCode()).isNotZero();
+        assertThat(missingProjectKeyRejected.combinedOutput())
+                .contains("Missing starter project key material")
+                .doesNotContain(serviceAccessToken, rawProjectKey);
     }
 
     private static Path repoRoot() {
@@ -211,8 +314,11 @@ class AuthSecretExposureGuardTest {
                       output_file="$2"
                       shift 2
                       ;;
-                    -w|-H)
+                    -w|-H|--connect-timeout|--max-time)
                       shift 2
+                      ;;
+                    -sS)
+                      shift
                       ;;
                     *)
                       shift
@@ -226,6 +332,88 @@ class AuthSecretExposureGuardTest {
                 printf '200'
                 """, StandardCharsets.UTF_8);
         assertThat(curlPath.toFile().setExecutable(true)).isTrue();
+    }
+
+    private static void writeFakePortalFlowCurl(Path curlPath) throws IOException {
+        Files.writeString(curlPath, """
+                #!/bin/bash
+                set -euo pipefail
+                output_file=""
+                auth_header=""
+                url=""
+                while [[ "$#" -gt 0 ]]; do
+                  case "$1" in
+                    -o)
+                      output_file="$2"
+                      shift 2
+                      ;;
+                    -H)
+                      auth_header="$2"
+                      shift 2
+                      ;;
+                    -w|--connect-timeout|--max-time)
+                      shift 2
+                      ;;
+                    -sS)
+                      shift
+                      ;;
+                    *)
+                      url="$1"
+                      shift
+                      ;;
+                  esac
+                done
+                if [[ -z "${output_file}" ]]; then
+                  exit 2
+                fi
+                if [[ "${auth_header}" != "Authorization: Bearer header.payload.signature" ]]; then
+                  exit 3
+                fi
+                if [[ "${auth_header}" == *"smoke-key.fixture"* ]]; then
+                  exit 4
+                fi
+                mode="${SMOKE_FAKE_PORTAL_FLOW_MODE:-success}"
+                project_id="00000000-0000-0000-0000-000000007201"
+                application_id="00000000-0000-0000-0000-000000007203"
+                case "${url}" in
+                  */api/projects)
+                    printf '{"projects":[{"projectId":"%s","name":"local-smoke","links":{"applications":"/api/projects/%s/applications"}}]}' "${project_id}" "${project_id}" > "${output_file}"
+                    ;;
+                  */api/projects/*/applications)
+                    printf '{"applications":[{"applicationId":"%s","name":"observation-smoke-service","environment":"local-smoke","links":{"dashboard":"/api/projects/%s/applications/%s/dashboard"}}]}' "${application_id}" "${project_id}" "${application_id}" > "${output_file}"
+                    ;;
+                  */dashboard)
+                    if [[ "${mode}" == "missingHeartbeatStatus" ]]; then
+                      printf '{"application":{"lastAcceptedBucketAt":"2026-06-01T01:00:30Z"},"starterConnection":{"statusSource":"starter_heartbeat","lastHeartbeatAt":"2026-06-01T01:00:20Z","stateImpact":"none"},"state":{"code":"active"},"zeroInsight":{"reasonCode":"no_action_needed"},"instances":[{"links":{"evidence":"/api/projects/%s/applications/%s/instances/smoke-instance/evidence"}}]}' "${project_id}" "${application_id}" > "${output_file}"
+                    elif [[ "${mode}" == "invalidZeroReason" ]]; then
+                      printf '{"application":{"lastAcceptedBucketAt":"2026-06-01T01:00:30Z"},"starterConnection":{"statusSource":"starter_heartbeat","lastHeartbeatStatus":"received","lastHeartbeatAt":"2026-06-01T01:00:20Z","stateImpact":"none"},"state":{"code":"active"},"zeroInsight":{"reasonCode":"anything_goes"},"instances":[{"links":{"evidence":"/api/projects/%s/applications/%s/instances/smoke-instance/evidence"}}]}' "${project_id}" "${application_id}" > "${output_file}"
+                    else
+                      printf '{"application":{"lastAcceptedBucketAt":"2026-06-01T01:00:30Z"},"starterConnection":{"statusSource":"starter_heartbeat","lastHeartbeatStatus":"received","lastHeartbeatAt":"2026-06-01T01:00:20Z","stateImpact":"none"},"state":{"code":"active"},"zeroInsight":{"reasonCode":"no_action_needed"},"instances":[{"links":{"evidence":"/api/projects/%s/applications/%s/instances/smoke-instance/evidence"}}]}' "${project_id}" "${application_id}" > "${output_file}"
+                    fi
+                    ;;
+                  */evidence)
+                    if [[ "${mode}" == "missingEvidenceHeartbeat" ]]; then
+                      printf '{"metricData":{"statusSource":"accepted_bucket"},"starterConnection":{"statusSource":"starter_heartbeat","lastHeartbeatAt":"2026-06-01T01:00:20Z","stateImpact":"none"},"starterPercentiles":{"status":"missing"}}' > "${output_file}"
+                    else
+                      printf '{"metricData":{"statusSource":"accepted_bucket"},"starterConnection":{"statusSource":"starter_heartbeat","lastHeartbeatStatus":"received","lastHeartbeatAt":"2026-06-01T01:00:20Z","stateImpact":"none"},"starterPercentiles":{"status":"missing"}}' > "${output_file}"
+                    fi
+                    ;;
+                  *)
+                    exit 5
+                    ;;
+                esac
+                printf '200'
+                """, StandardCharsets.UTF_8);
+        assertThat(curlPath.toFile().setExecutable(true)).isTrue();
+    }
+
+    private static Map<String, String> withEnvironment(
+            Map<String, String> baseEnvironment,
+            String key,
+            String value) {
+        Map<String, String> mergedEnvironment = new java.util.HashMap<>(baseEnvironment);
+        mergedEnvironment.put(key, value);
+        return mergedEnvironment;
     }
 
     private static ScriptResult runScript(

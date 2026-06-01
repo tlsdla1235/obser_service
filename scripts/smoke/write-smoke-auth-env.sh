@@ -28,8 +28,8 @@ validate_access_token() {
   if [[ "${candidate}" =~ (refreshToken|OBSERVATION_SMOKE_REFRESH_TOKEN|providerAccessToken|provider_access_token|providerRawPayload|provider_raw_payload|GITHUB_PROVIDER_TOKEN|GITHUB_TOKEN|GH_TOKEN|github_pat_|gho_|client_id|client-id|clientId|client_secret|client-secret|clientSecret|portal\.auth\.github\.client-id|portal\.auth\.github\.client-secret) ]]; then
     reject_input 'Input contains forbidden token or OAuth credential material.'
   fi
-  if [[ ! "${candidate}" =~ ^[A-Za-z0-9._~-]+$ ]]; then
-    reject_input 'accessToken contains unsupported characters for smoke auth env memo.'
+  if [[ ! "${candidate}" =~ ^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$ ]]; then
+    reject_input 'accessToken must be a service access token with JWT-like three-segment shape.'
   fi
 }
 
