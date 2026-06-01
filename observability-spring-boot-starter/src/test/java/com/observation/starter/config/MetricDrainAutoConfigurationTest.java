@@ -1,6 +1,7 @@
 package com.observation.starter.config;
 
 import com.observation.starter.client.PortalMetricBucketClient;
+import com.observation.starter.client.http.JdkPortalMetricBucketClient;
 import com.observation.starter.model.ingest.IngestEnvelopeCandidate;
 import com.observation.starter.model.metric.AppMetricRollup;
 import com.observation.starter.model.metric.ClosedMetricBucket;
@@ -39,6 +40,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MetricDrainAutoConfigurationTest {
 
+    private static final String PROJECT_KEY_FIXTURE = "fixture-project-key";
+
     @Test
     void autoConfigurationImportsRuntimeDrainWiring() throws Exception {
         List<String> autoConfigurationImports = Files.readAllLines(Path.of(
@@ -60,9 +63,127 @@ class MetricDrainAutoConfigurationTest {
             assertInstanceOf(IngestEnvelopeBuilderService.class, context.getBean(IngestEnvelopeBuilderService.class));
             assertInstanceOf(StarterMetricDrainScheduler.class, context.getBean(StarterMetricDrainScheduler.class));
             assertSame(ingestService, context.getBean(ObservationSampleCollector.class));
+            assertTrue(context.getBeansOfType(PortalMetricBucketClient.class).isEmpty());
             assertFalse(context.containsBean("metricBucketFlushWorker"));
             assertTrue(context.getBeansOfType(MetricBucketFlushWorker.class).isEmpty());
         }
+    }
+
+    @Test
+    void metricFlushConnectionSettingsCreateDefaultHttpClientAndWorker() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("test", Map.of(
+                    "observation.metric-flush.project-id", "project-123",
+                    "observation.metric-flush.application-name", "orders-api",
+                    "observation.metric-flush.environment", "prod",
+                    "observation.metric-flush.instance", "instance-1",
+                    "observation.metric-flush.portal-base-url", "http://127.0.0.1:8080/",
+                    "observation.metric-flush.project-key", PROJECT_KEY_FIXTURE,
+                    "observation.metric-flush.timeout-millis", "750")));
+            context.register(RouteAttributionAutoConfiguration.class, MetricDrainAutoConfiguration.class);
+            context.refresh();
+
+            MetricDrainProperties properties = context.getBean(MetricDrainProperties.class);
+            PortalMetricBucketClient client = context.getBean(PortalMetricBucketClient.class);
+
+            assertInstanceOf(JdkPortalMetricBucketClient.class, client);
+            assertInstanceOf(MetricBucketFlushWorker.class, context.getBean(MetricBucketFlushWorker.class));
+            assertTrue(properties.hasPortalConnectionSettings());
+            assertEquals("http://127.0.0.1:8080/api/ingest/v1/buckets",
+                    properties.bucketIngestUri().toString());
+            assertEquals(750, properties.getTimeoutMillis());
+        }
+    }
+
+    @Test
+    void heartbeatConnectionSettingsDoNotEnableMetricBucketClientFallback() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("test", Map.of(
+                    "observation.heartbeat.portal-base-url", "http://127.0.0.1:8080",
+                    "observation.heartbeat.project-key", PROJECT_KEY_FIXTURE)));
+            context.register(RouteAttributionAutoConfiguration.class, MetricDrainAutoConfiguration.class);
+            context.refresh();
+
+            MetricDrainProperties properties = context.getBean(MetricDrainProperties.class);
+
+            assertFalse(properties.hasPortalConnectionSettings());
+            assertTrue(context.getBeansOfType(PortalMetricBucketClient.class).isEmpty());
+            assertTrue(context.getBeansOfType(MetricBucketFlushWorker.class).isEmpty());
+        }
+    }
+
+    @Test
+    void customPortalMetricBucketClientOverridesDefaultHttpClient() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("test", Map.of(
+                    "observation.metric-flush.project-id", "project-123",
+                    "observation.metric-flush.application-name", "orders-api",
+                    "observation.metric-flush.environment", "prod",
+                    "observation.metric-flush.instance", "instance-1",
+                    "observation.metric-flush.portal-base-url", "http://127.0.0.1:8080",
+                    "observation.metric-flush.project-key", PROJECT_KEY_FIXTURE)));
+            context.register(FakePortalClientConfiguration.class, MetricDrainAutoConfiguration.class);
+            context.refresh();
+
+            Map<String, PortalMetricBucketClient> clients = context.getBeansOfType(PortalMetricBucketClient.class);
+
+            assertEquals(1, clients.size());
+            assertSame(context.getBean(CapturingPortalMetricBucketClient.class), clients.values().iterator().next());
+            assertInstanceOf(MetricBucketFlushWorker.class, context.getBean(MetricBucketFlushWorker.class));
+        }
+    }
+
+    @Test
+    void defaultHttpClientWithGenericIdentityFailsContextBeforeWorkerCanSendDefaults() {
+        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
+        context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("test", Map.of(
+                "observation.metric-flush.portal-base-url", "http://127.0.0.1:8080",
+                "observation.metric-flush.project-key", PROJECT_KEY_FIXTURE)));
+        context.register(RouteAttributionAutoConfiguration.class, MetricDrainAutoConfiguration.class);
+
+        RuntimeException exception = assertThrows(RuntimeException.class, context::refresh);
+
+        assertTrue(rootCauseMessage(exception).contains("observation.metric-flush.project-id"));
+        context.close();
+    }
+
+    @Test
+    void partialMetricFlushConnectionSettingsFailFastInsteadOfDisablingClientSilently() {
+        AnnotationConfigApplicationContext missingProjectKey = new AnnotationConfigApplicationContext();
+        missingProjectKey.getEnvironment().getPropertySources().addFirst(new MapPropertySource("test", Map.of(
+                "observation.metric-flush.portal-base-url", "http://127.0.0.1:8080")));
+        missingProjectKey.register(RouteAttributionAutoConfiguration.class, MetricDrainAutoConfiguration.class);
+
+        RuntimeException missingProjectKeyException = assertThrows(RuntimeException.class, missingProjectKey::refresh);
+
+        assertTrue(rootCauseMessage(missingProjectKeyException).contains("observation.metric-flush.project-key"));
+        missingProjectKey.close();
+
+        AnnotationConfigApplicationContext missingPortalBaseUrl = new AnnotationConfigApplicationContext();
+        missingPortalBaseUrl.getEnvironment().getPropertySources().addFirst(new MapPropertySource("test", Map.of(
+                "observation.metric-flush.project-key", PROJECT_KEY_FIXTURE)));
+        missingPortalBaseUrl.register(RouteAttributionAutoConfiguration.class, MetricDrainAutoConfiguration.class);
+
+        RuntimeException missingPortalBaseUrlException = assertThrows(
+                RuntimeException.class,
+                missingPortalBaseUrl::refresh);
+
+        assertTrue(rootCauseMessage(missingPortalBaseUrlException).contains("observation.metric-flush.portal-base-url"));
+        missingPortalBaseUrl.close();
+    }
+
+    @Test
+    void metricFlushPropertiesNormalizeBucketIngestUriAndRejectInvalidTimeout() {
+        MetricDrainProperties properties = new MetricDrainProperties();
+        properties.setPortalBaseUrl("http://localhost:8080/");
+        properties.setProjectKey(PROJECT_KEY_FIXTURE);
+
+        assertEquals("http://localhost:8080/api/ingest/v1/buckets", properties.bucketIngestUri().toString());
+
+        properties.setPortalBaseUrl("http://localhost:8080");
+
+        assertEquals("http://localhost:8080/api/ingest/v1/buckets", properties.bucketIngestUri().toString());
+        assertThrows(IllegalArgumentException.class, () -> properties.setTimeoutMillis(0));
     }
 
     @Test

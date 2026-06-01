@@ -5,6 +5,8 @@ import com.observation.starter.queue.MetricQueueDropPolicy;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.core.env.Environment;
 
+import java.net.URI;
+import java.time.Duration;
 import java.util.Optional;
 
 /**
@@ -21,6 +23,7 @@ public class MetricDrainProperties {
     static final String DEFAULT_APPLICATION_NAME = "application";
     static final String DEFAULT_ENVIRONMENT = "default";
     static final String DEFAULT_INSTANCE = "local-instance";
+    private static final String BUCKET_INGEST_PATH = "/api/ingest/v1/buckets";
 
     private int queueCapacity = 1024;
     private MetricQueueDropPolicy dropPolicy = MetricQueueDropPolicy.DROP_NEWEST;
@@ -28,6 +31,9 @@ public class MetricDrainProperties {
     private String applicationName = DEFAULT_APPLICATION_NAME;
     private String environment = DEFAULT_ENVIRONMENT;
     private String instance = DEFAULT_INSTANCE;
+    private String portalBaseUrl;
+    private String projectKey;
+    private int timeoutMillis = 1000;
 
     /**
      * runtime bounded queue capacity를 반환한다.
@@ -120,6 +126,104 @@ public class MetricDrainProperties {
     }
 
     /**
+     * bucket ingest API가 붙을 portal base URL 설정값을 반환한다.
+     */
+    public String getPortalBaseUrl() {
+        return portalBaseUrl;
+    }
+
+    /**
+     * metric bucket flush 전용 portal base URL을 저장한다. Heartbeat 설정으로 fallback하지 않는다.
+     */
+    public void setPortalBaseUrl(String portalBaseUrl) {
+        this.portalBaseUrl = trimToNull(portalBaseUrl);
+    }
+
+    /**
+     * bucket ingest `X-OBS-Project-Key` header에 사용할 raw project key를 반환한다.
+     *
+     * <p>{@code project-id}는 Idempotency-Key 구성요소이고, 이 값은 portal 인증용 raw key다.
+     * 두 값을 로그, 문서, 테스트에서 혼동하면 안 된다.</p>
+     */
+    public String getProjectKey() {
+        return projectKey;
+    }
+
+    /**
+     * metric bucket flush 전용 raw project key를 저장한다. 로그나 exception message에 노출하면 안 된다.
+     */
+    public void setProjectKey(String projectKey) {
+        this.projectKey = trimToNull(projectKey);
+    }
+
+    /**
+     * bucket ingest HTTP connect/request timeout milliseconds를 반환한다.
+     */
+    public int getTimeoutMillis() {
+        return timeoutMillis;
+    }
+
+    /**
+     * bucket ingest HTTP timeout은 host app 보호를 위해 양수 bounded 값만 허용한다.
+     */
+    public void setTimeoutMillis(int timeoutMillis) {
+        if (timeoutMillis <= 0) {
+            throw new IllegalArgumentException(PREFIX + ".timeout-millis must be positive");
+        }
+        this.timeoutMillis = timeoutMillis;
+    }
+
+    /**
+     * default bucket ingest HTTP client를 만들 수 있는 metric flush 전용 연결 설정이 있는지 확인한다.
+     */
+    public boolean hasPortalConnectionSettings() {
+        return portalBaseUrl != null && projectKey != null;
+    }
+
+    /**
+     * metric flush 전용 portal 연결 설정이 일부만 들어온 경우 starter가 조용히 비활성화되지 않도록 막는다.
+     */
+    public void validatePortalConnectionSettings(Environment springEnvironment) {
+        Environment requiredEnvironment = java.util.Objects.requireNonNull(
+                springEnvironment,
+                "springEnvironment must not be null");
+        if (!hasAnyPortalConnectionSetting(requiredEnvironment)) {
+            return;
+        }
+        if (portalBaseUrl == null) {
+            throw new IllegalStateException(PREFIX + ".portal-base-url must be configured with " + PREFIX + ".project-key");
+        }
+        if (projectKey == null) {
+            throw new IllegalStateException(PREFIX + ".project-key must be configured with " + PREFIX + ".portal-base-url");
+        }
+        bucketIngestUri();
+    }
+
+    /**
+     * connect timeout과 request timeout에 함께 사용할 bounded duration으로 변환한다.
+     */
+    public Duration timeout() {
+        return Duration.ofMillis(timeoutMillis);
+    }
+
+    /**
+     * portal base URL 뒤에 bucket ingest API path를 붙여 최종 endpoint URI를 만든다.
+     */
+    public URI bucketIngestUri() {
+        if (portalBaseUrl == null) {
+            throw new IllegalStateException(PREFIX + ".portal-base-url must be configured");
+        }
+        String base = portalBaseUrl.endsWith("/")
+                ? portalBaseUrl.substring(0, portalBaseUrl.length() - 1)
+                : portalBaseUrl;
+        try {
+            return URI.create(base + BUCKET_INGEST_PATH);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException(PREFIX + ".portal-base-url must be a valid URI", exception);
+        }
+    }
+
+    /**
      * builder가 사용할 local identity tuple로 변환한다.
      */
     public IngestEnvelopeIdentity ingestEnvelopeIdentity() {
@@ -187,9 +291,23 @@ public class MetricDrainProperties {
         }
     }
 
+    private boolean hasAnyPortalConnectionSetting(Environment springEnvironment) {
+        return portalBaseUrl != null
+                || projectKey != null
+                || springEnvironment.containsProperty(PREFIX + ".portal-base-url")
+                || springEnvironment.containsProperty(PREFIX + ".project-key");
+    }
+
     private static String requireText(String value, String name) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(name + " must not be blank");
+        }
+        return value.trim();
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
         }
         return value.trim();
     }

@@ -1,6 +1,7 @@
 package com.observation.starter.service;
 
 import com.observation.starter.client.PortalMetricBucketClient;
+import com.observation.starter.client.PortalMetricBucketFailure;
 import com.observation.starter.model.ingest.IngestEnvelopeCandidate;
 import com.observation.starter.model.metric.ClosedMetricBucket;
 import com.observation.starter.queue.BoundedMetricQueue;
@@ -18,6 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class MetricBucketFlushWorker implements AutoCloseable {
 
     private static final String WORKER_THREAD_NAME = "observation-metric-flush-worker";
+    private static final String ENDPOINT_ALIAS = "portal-metric-bucket-ingest";
     private static final Duration MIN_POLL_INTERVAL = Duration.ofMillis(1);
     private static final Duration DEFAULT_POLL_INTERVAL = Duration.ofMillis(100);
     private static final Duration SHUTDOWN_JOIN_TIMEOUT = Duration.ofSeconds(1);
@@ -28,7 +30,9 @@ public final class MetricBucketFlushWorker implements AutoCloseable {
     private final MetricFlushRetryPolicy retryPolicy;
     private final MetricFlushBackoff backoff;
     private final Duration pollInterval;
+    private final MetricBucketFailureReporter failureReporter;
     private final AtomicBoolean running = new AtomicBoolean();
+    private String lastWarnedFailureCategory;
     private volatile Thread workerThread;
 
     /**
@@ -43,7 +47,8 @@ public final class MetricBucketFlushWorker implements AutoCloseable {
                 client,
                 MetricFlushRetryPolicy.defaults(),
                 MetricFlushBackoff.threadSleep(),
-                DEFAULT_POLL_INTERVAL);
+                DEFAULT_POLL_INTERVAL,
+                MetricBucketFailureReporter.logger());
     }
 
     /**
@@ -56,12 +61,33 @@ public final class MetricBucketFlushWorker implements AutoCloseable {
             MetricFlushRetryPolicy retryPolicy,
             MetricFlushBackoff backoff,
             Duration pollInterval) {
+        this(queue,
+                envelopeBuilder,
+                client,
+                retryPolicy,
+                backoff,
+                pollInterval,
+                MetricBucketFailureReporter.logger());
+    }
+
+    /**
+     * 테스트와 설정 확장을 위해 failure reporter까지 명시해 flush worker를 만든다.
+     */
+    MetricBucketFlushWorker(
+            BoundedMetricQueue queue,
+            IngestEnvelopeBuilderService envelopeBuilder,
+            PortalMetricBucketClient client,
+            MetricFlushRetryPolicy retryPolicy,
+            MetricFlushBackoff backoff,
+            Duration pollInterval,
+            MetricBucketFailureReporter failureReporter) {
         this.queue = Objects.requireNonNull(queue, "queue must not be null");
         this.envelopeBuilder = Objects.requireNonNull(envelopeBuilder, "envelopeBuilder must not be null");
         this.client = Objects.requireNonNull(client, "client must not be null");
         this.retryPolicy = Objects.requireNonNull(retryPolicy, "retryPolicy must not be null");
         this.backoff = Objects.requireNonNull(backoff, "backoff must not be null");
         this.pollInterval = Objects.requireNonNull(pollInterval, "pollInterval must not be null");
+        this.failureReporter = Objects.requireNonNull(failureReporter, "failureReporter must not be null");
         if (pollInterval.compareTo(MIN_POLL_INTERVAL) < 0) {
             throw new IllegalArgumentException("pollInterval must be at least 1ms");
         }
@@ -108,14 +134,40 @@ public final class MetricBucketFlushWorker implements AutoCloseable {
         for (int attempt = 1; attempt <= retryPolicy.maxAttempts(); attempt++) {
             try {
                 client.flush(candidate);
+                resetFailureWindow();
                 return true;
             } catch (RuntimeException exception) {
-                if (attempt >= retryPolicy.maxAttempts() || !sleepBeforeRetry()) {
+                boolean retryAvailable = attempt < retryPolicy.maxAttempts();
+                warnFirstFailureForCategory(failureCategory(exception), retryAvailable);
+                if (!retryAvailable || !sleepBeforeRetry()) {
                     return false;
                 }
             }
         }
         return false;
+    }
+
+    private void warnFirstFailureForCategory(String failureCategory, boolean retryAvailable) {
+        if (failureCategory.equals(lastWarnedFailureCategory)) {
+            return;
+        }
+        lastWarnedFailureCategory = failureCategory;
+        failureReporter.warn(new MetricBucketFailureReporter.Warning(
+                ENDPOINT_ALIAS,
+                failureCategory,
+                retryAvailable,
+                retryAvailable ? retryPolicy.backoff() : Duration.ZERO));
+    }
+
+    private void resetFailureWindow() {
+        lastWarnedFailureCategory = null;
+    }
+
+    private static String failureCategory(RuntimeException exception) {
+        if (exception instanceof PortalMetricBucketFailure metricBucketFailure) {
+            return metricBucketFailure.failureCategoryLogValue();
+        }
+        return "unknown";
     }
 
     private boolean sleepBeforeRetry() {

@@ -1,4 +1,4 @@
 /**
- * 향후 포털 수집 전송 구현을 위해 예약된 HTTP 클라이언트 패키지다.
+ * 포털 bucket ingest API로 전송하는 starter infrastructure HTTP 클라이언트 구현을 담는다.
  */
 package com.observation.starter.client.http;

@@ -1,6 +1,8 @@
 package com.observation.starter.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.observation.starter.client.PortalMetricBucketClient;
+import com.observation.starter.client.http.JdkPortalMetricBucketClient;
 import com.observation.starter.queue.BoundedMetricQueue;
 import com.observation.starter.service.IngestEnvelopeBuilderService;
 import com.observation.starter.service.LowCardinalityHttpObservationGuard;
@@ -8,9 +10,11 @@ import com.observation.starter.service.MetricBucketFlushWorker;
 import com.observation.starter.service.MetricBucketRollupService;
 import com.observation.starter.service.StarterMetricIngestService;
 import com.observation.starter.spring.StarterMetricDrainScheduler;
+import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
@@ -66,6 +70,36 @@ public class MetricDrainAutoConfiguration {
             MetricDrainProperties properties,
             Environment environment) {
         return new IngestEnvelopeBuilderService(properties.ingestEnvelopeIdentity(environment));
+    }
+
+    /**
+     * metric flush 연결 설정이 일부만 들어온 경우 no-op처럼 지나가지 않고 local configuration error로 닫는다.
+     */
+    @Bean
+    @ConditionalOnMissingBean(name = "metricFlushPortalConnectionSettingsGuard")
+    public SmartInitializingSingleton metricFlushPortalConnectionSettingsGuard(
+            MetricDrainProperties properties,
+            Environment environment) {
+        return () -> properties.validatePortalConnectionSettings(environment);
+    }
+
+    /**
+     * metric flush 전용 portal 연결 설정이 있을 때만 default JDK bucket ingest client를 등록한다.
+     *
+     * <p>connection 설정이 없으면 no-op client를 만들지 않아 worker가 잘못 시작되지 않게 한다. 사용자가
+     * custom {@link PortalMetricBucketClient} bean을 제공하면 그 bean이 항상 우선한다.</p>
+     */
+    @Bean
+    @ConditionalOnMissingBean(PortalMetricBucketClient.class)
+    @ConditionalOnProperty(
+            prefix = MetricDrainProperties.PREFIX,
+            name = {"portal-base-url", "project-key"})
+    public PortalMetricBucketClient portalMetricBucketClient(MetricDrainProperties properties) {
+        return new JdkPortalMetricBucketClient(
+                properties.bucketIngestUri(),
+                properties.getProjectKey(),
+                properties.timeout(),
+                new ObjectMapper());
     }
 
     /**

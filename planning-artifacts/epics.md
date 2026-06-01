@@ -3,8 +3,8 @@ artifactType: epics
 projectName: Spring Boot 운영 첫 화면 포털
 architectureStyle: Traditional MVC
 sourcePolicy: 기존 Lightweight Hexagonal 산출물의 제품/계약 의미를 Traditional MVC로 재해석
-status: dashboard-alignment-updated
-date: 2026-05-25
+status: real-smoke-planning-updated
+date: 2026-06-01
 ---
 
 # Epics - Traditional MVC 기준 재산출
@@ -219,6 +219,41 @@ Epic 6은 Epic 5 read model/API를 소비하는 사용자-facing UX epic이다. 
    - `/api/projects/{projectId}/applications` 및 후속 `/api/projects/{projectId}/applications/**` resource API는 active account-project membership이 없으면 정보 노출을 줄이기 위해 `404`로 fail-closed한다.
    - Epic 5의 project/application/instance membership은 catalog path 정합성이고, Story 6.10의 membership은 account-project authorization임을 분리한다.
    - Project creation, project key issuance/rotation, invite/team/org management, billing/tenant model은 포함하지 않는다.
+
+## Epic 7. Real GitHub and Starter Smoke Verification
+
+목표: Epic 6 완료 후 실제 GitHub OAuth 계정, local smoke project seed, starter가 포함된 Spring Boot smoke service로 portal ingest와 dashboard read flow가 같은 계약 위에서 통신되는지 검증한다.
+
+Epic 7은 production onboarding/product feature를 여는 epic이 아니라 local/operator smoke validation epic이다. Project creation UI, public project creation API, browser token persistence, invite/admin/team/billing surface는 열지 않는다.
+
+### Stories
+
+1. Real GitHub OAuth smoke seed and operator runbook
+   - `.private/github-oauth.properties` 기반 local GitHub OAuth App 설정과 portal 실행 절차를 문서화한다.
+   - 사용자는 브라우저에서 실제 GitHub OAuth 로그인을 수동으로 완료하고, portal이 발급한 service `accessToken`/`refreshToken` JSON만 smoke 검증에 사용한다.
+   - 테스트 자동화를 위해 local smoke profile 또는 operator script는 로그인 완료 후 service `accessToken`만 `.private/smoke-auth.env`의 `OBSERVATION_SMOKE_ACCESS_TOKEN`으로 메모할 수 있다.
+   - Token memo file은 Git 추적 대상이 아닌 `.private/` 아래에만 두고, 가능하면 owner-only 권한으로 만들며, token 만료 시 다시 로그인해 갱신하는 ephemeral helper로 취급한다.
+   - GitHub provider token, provider raw payload, OAuth credential, service access/refresh token은 repository 문서, log, response snapshot, test fixture에 남기지 않는다.
+   - `refreshToken`, GitHub provider token, provider raw payload, OAuth credential은 token memo file에 저장하지 않는다.
+   - local-only smoke seed는 로그인으로 생성된 `external_identities` row의 `display_name` 또는 `provider_subject`를 기준으로 내부 account를 찾고, smoke project, BCrypt project key hash, active `account_project_memberships` row를 명시적으로 연결한다.
+   - Seed는 raw project key를 migration, DB row, log, exception, response body, repository lookup surface에 남기지 않고, `.private/` 또는 operator shell env에만 둔다.
+   - `GET /api/projects`는 Bearer account의 active membership project를 반환하고, membership mismatch project-scoped API는 기존처럼 `404` fail-closed를 유지한다.
+   - 이 story는 public project creation, project key issuance/rotation UI, login 직후 자동 project 생성, GitHub 외 provider, local password, token browser persistence를 만들지 않는다.
+2. Starter bucket ingest HTTP client
+   - `PortalMetricBucketClient`의 기본 HTTP 구현 또는 auto-configuration을 추가해 smoke host app이 custom bean 없이 `POST /api/ingest/v1/buckets`로 accepted bucket을 전송할 수 있게 한다.
+   - Client는 `X-OBS-Project-Key`, `Idempotency-Key`, JSON body, bounded timeout을 사용하고 raw project key를 log/error/exception message에 노출하지 않는다.
+   - Bucket flush는 기존 `MetricBucketFlushWorker` background boundary 안에서만 수행되며 host request path에서 network call을 하지 않는다.
+   - Heartbeat `POST /api/ingest/v1/heartbeat`와 bucket ingest `POST /api/ingest/v1/buckets`는 의미와 retry/idempotency를 계속 분리한다.
+   - Client configuration은 local smoke service와 일반 host app 모두에서 명확하게 설정 가능해야 하며, generic default identity로 portal flush가 시작되지 않도록 기존 guard를 유지한다.
+   - Tests는 success, non-2xx, timeout/transport failure, idempotency header, secret redaction, no request-path blocking boundary를 검증한다.
+3. Smoke Spring Boot service and portal communication verification
+   - repo 안에 smoke 전용 Spring Boot service module 또는 sample runtime을 추가하되 production portal/starter runtime과 배포 artifact를 혼동하지 않게 한다.
+   - Smoke service는 `observability-spring-boot-starter`를 실제 dependency로 사용하고, smoke application/environment/instance identity와 portal URL/project key를 local config 또는 env로 받는다.
+   - `/smoke/ok`, `/smoke/slow`, `/smoke/error-candidate` 같은 최소 traffic endpoint로 accepted bucket을 만들 수 있게 하되, primary completion path는 green/no-triage baseline이다.
+   - Operator runbook 또는 script는 portal, smoke service, traffic generation, 30초 bucket closure wait, heartbeat 확인, bucket accepted 확인, `Project -> Application List -> Dashboard -> Instance Evidence` read API 확인 순서로 실행된다.
+   - Dashboard/UI 확인은 service Bearer access token의 in-memory use만 허용하고 `localStorage`, `sessionStorage`, cookie token 저장, URL token parsing을 만들지 않는다.
+   - Verification은 heartbeat-only, first accepted bucket/insufficient sample, active/no-triage baseline 중 관찰 가능한 단계와 실패 시 troubleshooting evidence를 남긴다.
+   - Smoke artifacts는 host application down, 앱 정상 확정, 복구 완료를 단정하지 않고 accepted bucket metric axis와 starter heartbeat axis를 분리해 설명한다.
 
 ## Post-MVP Candidate Backlog
 

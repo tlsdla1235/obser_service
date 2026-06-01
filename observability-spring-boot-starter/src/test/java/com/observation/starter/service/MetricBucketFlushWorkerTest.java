@@ -1,6 +1,7 @@
 package com.observation.starter.service;
 
 import com.observation.starter.client.PortalMetricBucketClient;
+import com.observation.starter.client.http.PortalMetricBucketException;
 import com.observation.starter.model.ingest.IngestEnvelopeCandidate;
 import com.observation.starter.model.ingest.IngestEnvelopeIdentity;
 import com.observation.starter.model.metric.AppMetricRollup;
@@ -11,6 +12,7 @@ import com.observation.starter.queue.BoundedMetricQueue;
 import com.observation.starter.queue.MetricQueueDropPolicy;
 import org.junit.jupiter.api.Test;
 
+import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -23,6 +25,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -64,6 +67,7 @@ class MetricBucketFlushWorkerTest {
     void retriesWithWorkerLocalBackoffBeforeSuccess() {
         AtomicInteger attempts = new AtomicInteger();
         List<Duration> backoffs = new ArrayList<>();
+        List<MetricBucketFailureReporter.Warning> warnings = new ArrayList<>();
         PortalMetricBucketClient flakyClient = candidate -> {
             if (attempts.incrementAndGet() < 3) {
                 throw new IllegalStateException("portal down");
@@ -75,20 +79,27 @@ class MetricBucketFlushWorkerTest {
                 flakyClient,
                 new MetricFlushRetryPolicy(3, Duration.ofMillis(25)),
                 backoffs::add,
-                Duration.ofMillis(10));
+                Duration.ofMillis(10),
+                warnings::add);
 
         assertTrue(worker.flushBucket(bucket("2026-05-08T01:00:00Z")));
 
         assertEquals(3, attempts.get());
         assertEquals(List.of(Duration.ofMillis(25), Duration.ofMillis(25)), backoffs);
+        assertEquals(1, warnings.size());
+        assertEquals("unknown", warnings.get(0).failureCategory());
+        assertTrue(warnings.get(0).message().contains("endpointAlias=portal-metric-bucket-ingest"));
+        assertTrue(warnings.get(0).message().contains("hostApplicationContinues=true"));
+        assertTrue(warnings.get(0).message().contains("retryBackoffApplied=true"));
     }
 
     @Test
     void exhaustsRetryWithoutPropagatingFailureToCaller() {
         AtomicInteger attempts = new AtomicInteger();
+        List<MetricBucketFailureReporter.Warning> warnings = new ArrayList<>();
         PortalMetricBucketClient downClient = candidate -> {
             attempts.incrementAndGet();
-            throw new IllegalStateException("portal down");
+            throw PortalMetricBucketException.forTransportFailure(new HttpTimeoutException("timeout"));
         };
         MetricBucketFlushWorker worker = new MetricBucketFlushWorker(
                 new BoundedMetricQueue(8, MetricQueueDropPolicy.DROP_NEWEST),
@@ -97,11 +108,18 @@ class MetricBucketFlushWorkerTest {
                 new MetricFlushRetryPolicy(2, Duration.ofMillis(5)),
                 duration -> {
                 },
-                Duration.ofMillis(10));
+                Duration.ofMillis(10),
+                warnings::add);
 
         assertDoesNotThrow(() -> worker.flushBucket(bucket("2026-05-08T01:00:00Z")));
 
         assertEquals(2, attempts.get());
+        assertEquals(1, warnings.size());
+        MetricBucketFailureReporter.Warning warning = warnings.get(0);
+        assertEquals("portal-metric-bucket-ingest", warning.endpointAlias());
+        assertEquals("read_timeout", warning.failureCategory());
+        assertTrue(warning.message().contains("nextRetryDelayMillis=5"));
+        assertFalse(warning.message().contains("fixture-project-key"));
     }
 
     @Test
