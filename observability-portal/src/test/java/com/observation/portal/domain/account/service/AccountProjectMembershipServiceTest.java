@@ -1,16 +1,21 @@
 package com.observation.portal.domain.account.service;
 
 import com.observation.portal.domain.account.repository.AccountProjectMembershipRepository;
+import com.observation.portal.domain.account.repository.AccountProjectMembershipEntity;
 import com.observation.portal.domain.catalog.entity.ProjectEntity;
 import com.observation.portal.domain.catalog.model.ProjectKeyCandidate;
 import com.observation.portal.domain.catalog.model.ProjectStatus;
+import com.observation.portal.domain.catalog.model.StarterCredentialStatus;
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -24,7 +29,7 @@ class AccountProjectMembershipServiceTest {
     private final AccountProjectMembershipRepository membershipRepository =
             mock(AccountProjectMembershipRepository.class);
     private final AccountProjectMembershipService service =
-            new AccountProjectMembershipService(membershipRepository);
+            new AccountProjectMembershipService(membershipRepository, Clock.fixed(NOW.toInstant(), NOW.getOffset()));
 
     @Test
     void listsActiveMembershipProjectsAsServiceFacingCandidates() {
@@ -39,7 +44,11 @@ class AccountProjectMembershipServiceTest {
                         "scoped-project",
                         "pk_scoped",
                         "$2a$10$membershiphashmembershiphashmembership12",
-                        ProjectStatus.ACTIVE));
+                        ProjectStatus.ACTIVE,
+                        StarterCredentialStatus.ACTIVE,
+                        NOW,
+                        null,
+                        null));
         verify(membershipRepository).findActiveMembershipProjectsByAccountId(ACCOUNT_ID);
     }
 
@@ -50,6 +59,19 @@ class AccountProjectMembershipServiceTest {
         assertThat(service.hasActiveMembership(ACCOUNT_ID, PROJECT_ID)).isTrue();
 
         verify(membershipRepository).existsActiveMembership(ACCOUNT_ID, PROJECT_ID);
+    }
+
+    @Test
+    void createsActiveMemberMembershipWithServerSideRoleStatusAndTimestamp() {
+        when(membershipRepository.save(any(AccountProjectMembershipEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.createActiveMember(ACCOUNT_ID, PROJECT_ID);
+
+        verify(membershipRepository).save(argThat(membership ->
+                membership.accountId().equals(ACCOUNT_ID)
+                        && membership.projectId().equals(PROJECT_ID)
+                        && membership.isActive()));
     }
 
     private static ProjectEntity project() {

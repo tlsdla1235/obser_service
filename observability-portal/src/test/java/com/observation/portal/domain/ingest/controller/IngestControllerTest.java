@@ -105,6 +105,27 @@ class IngestControllerTest {
     }
 
     @Test
+    void mapsRevokedOrRotatedOldCredentialVerificationFailureTo401Unauthorized() throws Exception {
+        IngestAcceptanceService service = mock(IngestAcceptanceService.class);
+        IngestController controller = new IngestController(service);
+        var request = PortalIngestValidationFixture.goldenRequest();
+        String oldCredentialHeader = "obs_live_old.<shown-once-old>";
+        when(service.accept(
+                oldCredentialHeader,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                request))
+                .thenReturn(IngestAcceptanceResult.unauthorized());
+
+        ResponseEntity<?> response = controller.acceptBucket(
+                oldCredentialHeader,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody()).isEqualTo(IngestErrorResponse.unauthorized());
+    }
+
+    @Test
     void mapsDuplicateIdempotencyKeyRejectTo409Conflict() throws Exception {
         IngestAcceptanceService service = mock(IngestAcceptanceService.class);
         IngestController controller = new IngestController(service);

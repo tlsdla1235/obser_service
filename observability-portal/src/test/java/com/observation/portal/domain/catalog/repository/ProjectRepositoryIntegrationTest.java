@@ -3,6 +3,7 @@ package com.observation.portal.domain.catalog.repository;
 import com.observation.portal.domain.catalog.entity.ProjectEntity;
 import com.observation.portal.domain.catalog.model.ProjectKeyCandidate;
 import com.observation.portal.domain.catalog.model.ProjectStatus;
+import com.observation.portal.domain.catalog.model.StarterCredentialStatus;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.output.MigrateResult;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,7 +29,7 @@ class ProjectRepositoryIntegrationTest {
 
     private static final UUID PROJECT_ID = UUID.fromString("00000000-0000-0000-0000-000000003201");
     private static final String KEY_PREFIX = "pk_repo_lookup";
-    private static final String RAW_PROJECT_KEY = KEY_PREFIX + ".repository-secret";
+    private static final String RAW_PROJECT_KEY = KEY_PREFIX + ".<repository-placeholder>";
     private static final OffsetDateTime FIXED_TIME = OffsetDateTime.parse("2026-05-19T00:00:00Z");
 
     @Container
@@ -69,7 +70,11 @@ class ProjectRepositoryIntegrationTest {
                         "repository-project",
                         KEY_PREFIX,
                         hash,
-                        ProjectStatus.ACTIVE));
+                        ProjectStatus.ACTIVE,
+                        StarterCredentialStatus.ACTIVE,
+                        FIXED_TIME,
+                        null,
+                        null));
         assertThat(candidate.orElseThrow().toString()).doesNotContain(RAW_PROJECT_KEY);
     }
 

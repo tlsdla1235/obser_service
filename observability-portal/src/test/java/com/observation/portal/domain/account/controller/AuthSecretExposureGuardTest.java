@@ -13,9 +13,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
@@ -299,8 +301,103 @@ class AuthSecretExposureGuardTest {
                 .doesNotContain(serviceAccessToken, rawProjectKey);
     }
 
+    @Test
+    void dashboardReadModelSnapshotHistoryAndInstanceSourcesDoNotExposeCredentialOrTokenFields() throws IOException {
+        List<Path> sourceRoots = List.of(
+                Path.of("src/main/java/com/observation/portal/domain/dashboard"),
+                Path.of("src/main/java/com/observation/portal/domain/history"),
+                Path.of("src/main/java/com/observation/portal/domain/snapshot"),
+                Path.of("src/main/java/com/observation/portal/domain/instance"));
+        List<String> forbidden = List.of(
+                "starterCredential",
+                "displayValue",
+                "projectKeyHash",
+                "project_key_hash",
+                "accessToken",
+                "refreshToken",
+                "providerAccessToken");
+
+        for (Path root : sourceRoots) {
+            try (Stream<Path> files = Files.walk(root)) {
+                List<String> leaks = files
+                        .filter(Files::isRegularFile)
+                        .filter(path -> path.getFileName().toString().endsWith(".java"))
+                        .sorted(Comparator.comparing(Path::toString))
+                        .flatMap(path -> forbidden.stream()
+                                .filter(snippet -> containsSnippet(path, snippet))
+                                .map(snippet -> path + " -> " + snippet))
+                        .toList();
+
+                assertThat(leaks)
+                        .as("dashboard/read model/snapshot/history/instance response sources must not expose secret fields")
+                        .isEmpty();
+            }
+        }
+    }
+
+    @Test
+    void staticDashboardAllowsOneTimeDisplayButNoBrowserPersistenceOrRawCredentialAttributes() throws IOException {
+        String page = Files.readString(Path.of("src/main/resources/static/dashboard/index.html"))
+                + Files.readString(Path.of("src/main/resources/static/dashboard/app.js"));
+
+        assertThat(page)
+                .contains("starterCredential.displayValue", "navigator.clipboard.writeText(displayValue)")
+                .doesNotContain(
+                        "localStorage",
+                        "sessionStorage",
+                        "document.cookie",
+                        "window.location.hash",
+                        "window.location.search",
+                        "URLSearchParams",
+                        "type=\"hidden\"",
+                        "data-starter-credential",
+                        "data-credential-value",
+                        "aria-label=\"${escapeAttribute(displayValue)}\"",
+                        "title=\"${escapeAttribute(displayValue)}\"",
+                        "console.log(displayValue)");
+    }
+
+    @Test
+    void catalogLifecycleSourcesAndFixturesDoNotKeepRealisticRawCredentialSnippets() throws IOException {
+        List<Path> sourceRoots = List.of(
+                Path.of("src/main/java/com/observation/portal/domain/catalog"),
+                Path.of("src/test/java/com/observation/portal/domain/catalog"),
+                Path.of("src/test/java/com/observation/portal/domain/ingest"));
+        List<String> forbidden = List.of(
+                "repository-" + "secret",
+                "obs_live_existing" + "." + "secret",
+                "pk_live" + "." + "secret",
+                "secret-part-kept-out-of-" + "results",
+                "\"." + "secret\"");
+
+        List<String> leaks = new ArrayList<>();
+        for (Path root : sourceRoots) {
+            try (Stream<Path> files = Files.walk(root)) {
+                files.filter(Files::isRegularFile)
+                        .filter(path -> path.getFileName().toString().endsWith(".java"))
+                        .sorted(Comparator.comparing(Path::toString))
+                        .forEach(path -> forbidden.stream()
+                                .filter(snippet -> containsSnippet(path, snippet))
+                                .map(snippet -> path + " -> " + snippet)
+                                .forEach(leaks::add));
+            }
+        }
+
+        assertThat(leaks)
+                .as("catalog lifecycle source/test fixtures should use placeholders, not realistic raw credentials")
+                .isEmpty();
+    }
+
     private static Path repoRoot() {
         return Path.of("..").toAbsolutePath().normalize();
+    }
+
+    private static boolean containsSnippet(Path path, String snippet) {
+        try {
+            return Files.readString(path).contains(snippet);
+        } catch (IOException exception) {
+            throw new IllegalStateException("failed to read " + path, exception);
+        }
     }
 
     private static void writeFakeCurl(Path curlPath) throws IOException {

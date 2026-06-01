@@ -13,6 +13,12 @@ const selectedProjectLabel = document.querySelector('#selected-project-label');
 const dashboardDetail = document.querySelector('#dashboard-detail');
 const dashboardGeneratedAtLabel = document.querySelector('#dashboard-generated-at');
 const selectedApplicationLabel = document.querySelector('#selected-application-label');
+const registrationForm = document.querySelector('#project-registration-form');
+const projectNameInput = document.querySelector('#project-name-input');
+const registrationSubmitButton = document.querySelector('#project-registration-submit');
+const registrationStatus = document.querySelector('#project-registration-status');
+const starterCredentialOneTime = document.querySelector('#starter-credential-onetime');
+const credentialLifecyclePanel = document.querySelector('#credential-lifecycle-panel');
 
 const VIEW_STATE = Object.freeze({
   LOADING: 'loading',
@@ -161,6 +167,8 @@ let selectedSnapshotDetailContext = null;
 let loadedSnapshotDetail = null;
 let currentSnapshotDetailViewState = SNAPSHOT_DETAIL_VIEW_STATE.AUTH_REQUIRED;
 let snapshotDetailRequestSequence = 0;
+let registrationRequestSequence = 0;
+let credentialLifecycleRequestSequence = 0;
 
 window.observationPortalAuth = Object.freeze({
   setAccessToken(accessToken) {
@@ -172,6 +180,8 @@ window.observationPortalAuth = Object.freeze({
     instanceSnapshotTrendRequestSequence += 1;
     snapshotHistoryRequestSequence += 1;
     snapshotDetailRequestSequence += 1;
+    registrationRequestSequence += 1;
+    credentialLifecycleRequestSequence += 1;
     clearProjectSnapshot({ resetFilter: true });
     clearApplicationSnapshot({ resetFilter: true, resetSelection: true });
     clearDashboardSnapshot({ resetSelection: true });
@@ -179,6 +189,7 @@ window.observationPortalAuth = Object.freeze({
     clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
     clearSnapshotHistorySnapshot({ resetSelection: true });
     clearSnapshotDetailSnapshot({ resetSelection: true });
+    clearCredentialUi();
     if (!serviceAccessToken) {
       renderAuthorizationRequired();
       renderApplicationAuthorizationRequired();
@@ -272,7 +283,7 @@ function renderProjects() {
     setProjectViewState(VIEW_STATE.EMPTY);
     projectList.innerHTML = `
       <div class="empty-state">
-        <p><strong>Project가 아직 없습니다.</strong>local/internal seed 또는 admin bootstrap decision이 필요합니다.</p>
+        <p><strong>Project가 아직 없습니다.</strong>아래 등록 폼으로 새 project를 만든 뒤 서버가 준 membership project 목록을 다시 불러옵니다.</p>
       </div>
     `;
     return;
@@ -328,6 +339,9 @@ function projectMarkup(project) {
       </div>
       <div class="project-actions">
         <button class="link-button" type="button" data-action-state="${actionState}" data-project-id="${escapeAttribute(project.projectId)}" data-project-name="${escapeAttribute(project.name)}" data-applications-link="${escapeAttribute(exposedApplicationsLink)}" aria-label="${escapeAttribute(actionLabel)}" title="${escapeAttribute(actionLabel)}">Applications</button>
+        <button class="link-button" type="button" data-credential-action="metadata" data-project-id="${escapeAttribute(project.projectId)}" data-project-name="${escapeAttribute(project.name)}">Credential</button>
+        <button class="link-button" type="button" data-credential-action="rotate" data-project-id="${escapeAttribute(project.projectId)}" data-project-name="${escapeAttribute(project.name)}">Rotate</button>
+        <button class="link-button danger" type="button" data-credential-action="revoke" data-project-id="${escapeAttribute(project.projectId)}" data-project-name="${escapeAttribute(project.name)}">Revoke</button>
       </div>
     </article>
   `;
@@ -339,6 +353,15 @@ function safeApplicationsLink(project) {
 }
 
 function handleProjectListClick(event) {
+  const credentialAction = event.target.closest('[data-credential-action]');
+  if (credentialAction) {
+    handleCredentialLifecycleAction({
+      action: credentialAction.dataset.credentialAction,
+      projectId: credentialAction.dataset.projectId,
+      projectName: credentialAction.dataset.projectName
+    });
+    return;
+  }
   const action = event.target.closest('[data-applications-link]');
   if (!action) {
     return;
@@ -4700,6 +4723,262 @@ function projectRequestHeaders() {
   return headers;
 }
 
+function projectMutationHeaders() {
+  return {
+    ...projectRequestHeaders(),
+    'Content-Type': 'application/json'
+  };
+}
+
+async function handleProjectRegistrationSubmit(event) {
+  event.preventDefault();
+  const requestId = ++registrationRequestSequence;
+  if (!serviceAccessToken) {
+    setRegistrationStatus('GitHub 로그인 후 Project를 등록할 수 있습니다.');
+    return;
+  }
+  const projectName = String(projectNameInput.value ?? '').trim();
+  if (projectName.length === 0) {
+    setRegistrationStatus('Project name을 입력해 주세요.');
+    return;
+  }
+  renderRegistrationLoading();
+  try {
+    const response = await fetch('/api/projects', {
+      method: 'POST',
+      cache: 'no-store',
+      headers: projectMutationHeaders(),
+      body: JSON.stringify({ name: projectName })
+    });
+    if (!isLatestRegistrationRequest(requestId)) {
+      return;
+    }
+    if (response.status === 401) {
+      handleAuthorizationLoss();
+      return;
+    }
+    if (!response.ok) {
+      renderRegistrationFailure(response.status);
+      return;
+    }
+    const data = await response.json();
+    if (!isLatestRegistrationRequest(requestId)) {
+      return;
+    }
+    if (!isValidOneTimeCredentialResponse(data)) {
+      throw new Error('registration_payload_malformed');
+    }
+    const displayValue = data.starterCredential.displayValue;
+    projectNameInput.value = '';
+    setRegistrationStatus('Project가 등록되었습니다. 서버 기준 목록을 다시 불러옵니다.');
+    renderOneTimeCredentialSuccess('registration', data.project && data.project.name, displayValue, data.starterCredential);
+    loadProjects();
+  } catch (error) {
+    if (!isLatestRegistrationRequest(requestId)) {
+      return;
+    }
+    renderRegistrationFailure();
+  }
+}
+
+async function handleCredentialLifecycleAction(context) {
+  const requestId = ++credentialLifecycleRequestSequence;
+  if (!serviceAccessToken) {
+    renderCredentialLifecycleMessage('GitHub 로그인 후 credential lifecycle을 사용할 수 있습니다.');
+    return;
+  }
+  if (!isValidProjectActionContext(context)) {
+    renderCredentialLifecycleMessage('Project credential endpoint를 확인할 수 없습니다.');
+    return;
+  }
+  renderCredentialLifecycleLoading(context);
+  try {
+    const response = await fetch(starterCredentialActionPath(context.projectId, context.action), {
+      method: context.action === 'metadata' ? 'GET' : 'POST',
+      cache: 'no-store',
+      headers: context.action === 'metadata' ? projectRequestHeaders() : projectMutationHeaders()
+    });
+    if (!isLatestCredentialLifecycleRequest(requestId)) {
+      return;
+    }
+    if (response.status === 401) {
+      handleAuthorizationLoss();
+      return;
+    }
+    if (response.status === 404) {
+      renderCredentialLifecycleMessage('Project credential 정보를 확인할 수 없습니다.');
+      return;
+    }
+    if (!response.ok) {
+      renderCredentialLifecycleMessage('Credential lifecycle 요청을 완료하지 못했습니다.');
+      return;
+    }
+    const data = await response.json();
+    if (!isLatestCredentialLifecycleRequest(requestId)) {
+      return;
+    }
+    if (context.action === 'rotate') {
+      if (!isValidOneTimeCredentialResponse(data)) {
+        throw new Error('rotation_payload_malformed');
+      }
+      const displayValue = data.starterCredential.displayValue;
+      renderOneTimeCredentialSuccess('rotation', context.projectName, displayValue, data.starterCredential);
+      renderCredentialMetadata(data, context.projectName, 'Rotation 완료. 이전 starter credential은 즉시 폐기되었습니다.');
+      return;
+    }
+    if (!isValidCredentialMetadataResponse(data)) {
+      throw new Error('credential_metadata_payload_malformed');
+    }
+    const message = context.action === 'revoke'
+      ? 'Revocation 완료. Project는 목록에 남지만 starter ingest credential 검증은 실패합니다.'
+      : 'Credential metadata는 raw value나 hash 없이 표시됩니다.';
+    renderCredentialMetadata(data, context.projectName, message);
+  } catch (error) {
+    if (!isLatestCredentialLifecycleRequest(requestId)) {
+      return;
+    }
+    renderCredentialLifecycleMessage('Credential lifecycle 요청을 완료하지 못했습니다.');
+  }
+}
+
+function renderRegistrationLoading() {
+  registrationSubmitButton.disabled = true;
+  setRegistrationStatus('Project를 등록하는 중');
+}
+
+function renderRegistrationFailure(status) {
+  registrationSubmitButton.disabled = false;
+  if (status === 409) {
+    setRegistrationStatus('이미 사용 중인 Project name입니다.');
+    return;
+  }
+  if (status === 400) {
+    setRegistrationStatus('Project name은 소문자, 숫자, 하이픈 조합으로 입력해 주세요.');
+    return;
+  }
+  setRegistrationStatus('Project 등록을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+}
+
+function renderOneTimeCredentialSuccess(source, projectName, displayValue, starterCredential) {
+  registrationSubmitButton.disabled = false;
+  const label = source === 'rotation' ? '새 starter credential' : 'starter credential';
+  const issuedAt = formatTimestamp(starterCredential && starterCredential.issuedAt, 'issuedAt source absence');
+  starterCredentialOneTime.innerHTML = `
+    <div class="one-time-card">
+      <p><strong>${escapeText(label)}은 이 화면에서 한 번만 표시됩니다.</strong>복사 후 확인하면 이 화면에서도 지워지며, 나중에 다시 볼 수 없고 필요하면 rotation으로 새 credential을 발급받아야 합니다.</p>
+      <p class="credential-context">${escapeText(projectName || 'Project')} · issuedAt ${escapeText(issuedAt)}</p>
+      <code class="credential-display" id="starter-credential-display">${escapeText(displayValue)}</code>
+      <div class="credential-actions">
+        <button class="icon-button" type="button" id="copy-starter-credential">복사</button>
+        <button class="icon-button primary" type="button" id="confirm-starter-credential">복사했음</button>
+      </div>
+      <p id="starter-credential-copy-status" class="lifecycle-status" aria-live="polite"></p>
+    </div>
+  `;
+  const copyButton = document.querySelector('#copy-starter-credential');
+  const confirmButton = document.querySelector('#confirm-starter-credential');
+  copyButton.addEventListener('click', () => copyStarterCredential(displayValue));
+  confirmButton.addEventListener('click', () => clearOneTimeCredentialDisplay('복사 확인됨. 이 화면에서 credential 표시를 지웠습니다.'));
+}
+
+async function copyStarterCredential(displayValue) {
+  const copyStatus = document.querySelector('#starter-credential-copy-status');
+  try {
+    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+      throw new Error('clipboard_unavailable');
+    }
+    await navigator.clipboard.writeText(displayValue);
+    copyStatus.textContent = '복사 완료. starter 설정에 붙여 넣은 뒤 확인해 주세요.';
+  } catch (error) {
+    copyStatus.textContent = '클립보드 복사를 완료하지 못했습니다. 표시된 값을 직접 선택해 복사해 주세요.';
+  }
+}
+
+function clearOneTimeCredentialDisplay(message) {
+  starterCredentialOneTime.innerHTML = `
+    <p>${escapeText(message)}</p>
+    <p>credential은 다시 표시되지 않습니다. 필요하면 선택한 Project에서 rotation을 실행해 새 값을 발급받으세요.</p>
+  `;
+}
+
+function renderCredentialLifecycleLoading(context) {
+  const actionLabel = context.action === 'rotate'
+    ? 'rotation'
+    : context.action === 'revoke' ? 'revocation' : 'metadata';
+  renderCredentialLifecycleMessage(`${valueOrAbsence(context.projectName, context.projectId)} credential ${actionLabel} 요청 중`);
+}
+
+function renderCredentialMetadata(data, projectName, message) {
+  const credential = data.starterCredential || {};
+  credentialLifecyclePanel.innerHTML = `
+    <div class="metadata-grid">
+      <p><strong>${escapeText(message)}</strong></p>
+      ${keyValueMarkup('Project', projectName || data.projectId)}
+      ${keyValueMarkup('Prefix', credential.keyPrefix)}
+      ${keyValueMarkup('Status', credential.status)}
+      ${keyValueMarkup('Issued at', credential.issuedAt)}
+      ${keyValueMarkup('Rotated at', credential.rotatedAt || 'rotation 없음')}
+      ${keyValueMarkup('Revoked at', credential.revokedAt || 'revocation 없음')}
+    </div>
+  `;
+}
+
+function renderCredentialLifecycleMessage(message) {
+  credentialLifecyclePanel.innerHTML = `<p>${escapeText(message)}</p>`;
+}
+
+function setRegistrationStatus(message) {
+  registrationStatus.textContent = message;
+}
+
+function clearCredentialUi() {
+  registrationSubmitButton.disabled = false;
+  setRegistrationStatus('');
+  starterCredentialOneTime.innerHTML = '<p>credential은 생성/회전 성공 직후에만 표시됩니다. 화면을 떠나면 다시 볼 수 없고 필요하면 새로 회전해야 합니다.</p>';
+  credentialLifecyclePanel.innerHTML = '<p>Project card에서 credential metadata, rotation, revocation을 선택할 수 있습니다.</p>';
+}
+
+function starterCredentialActionPath(projectId, action) {
+  const basePath = `/api/projects/${encodeURIComponent(projectId)}/starter-credential`;
+  if (action === 'rotate') {
+    return `${basePath}/rotations`;
+  }
+  if (action === 'revoke') {
+    return `${basePath}/revocations`;
+  }
+  return basePath;
+}
+
+function isValidProjectActionContext(context) {
+  return Boolean(context
+    && ['metadata', 'rotate', 'revoke'].includes(context.action)
+    && hasRequiredText(context.projectId));
+}
+
+function isValidOneTimeCredentialResponse(data) {
+  const credential = data && data.starterCredential;
+  return Boolean(isObjectValue(data)
+    && isObjectValue(credential)
+    && hasRequiredText(data.projectId || data.project && data.project.projectId)
+    && hasRequiredText(credential.displayValue)
+    && hasRequiredText(credential.keyPrefix)
+    && credential.visibleOnce === true
+    && hasRequiredText(credential.issuedAt)
+    && !Object.prototype.hasOwnProperty.call(credential, 'projectKeyHash'));
+}
+
+function isValidCredentialMetadataResponse(data) {
+  const credential = data && data.starterCredential;
+  return Boolean(isObjectValue(data)
+    && hasRequiredText(data.projectId)
+    && isObjectValue(credential)
+    && hasRequiredText(credential.keyPrefix)
+    && ['active', 'revoked'].includes(String(credential.status ?? ''))
+    && hasRequiredText(credential.issuedAt)
+    && !Object.prototype.hasOwnProperty.call(credential, 'displayValue')
+    && !Object.prototype.hasOwnProperty.call(credential, 'projectKeyHash'));
+}
+
 async function startGithubEntry() {
   setAuthStatus('');
   githubButton.disabled = true;
@@ -4732,6 +5011,8 @@ function handleAuthorizationLoss() {
   instanceSnapshotTrendRequestSequence += 1;
   snapshotHistoryRequestSequence += 1;
   snapshotDetailRequestSequence += 1;
+  registrationRequestSequence += 1;
+  credentialLifecycleRequestSequence += 1;
   clearProjectSnapshot({ resetFilter: true });
   clearApplicationSnapshot({ resetFilter: true, resetSelection: true });
   clearDashboardSnapshot({ resetSelection: true });
@@ -4739,6 +5020,7 @@ function handleAuthorizationLoss() {
   clearInstanceSnapshotTrendSnapshot({ resetSelection: true });
   clearSnapshotHistorySnapshot({ resetSelection: true });
   clearSnapshotDetailSnapshot({ resetSelection: true });
+  clearCredentialUi();
   renderAuthorizationRequired();
   renderApplicationAuthorizationRequired();
   renderDashboardAuthorizationRequired();
@@ -4970,6 +5252,14 @@ function isLatestSnapshotHistoryRequest(requestId) {
 
 function isLatestSnapshotDetailRequest(requestId) {
   return requestId === snapshotDetailRequestSequence;
+}
+
+function isLatestRegistrationRequest(requestId) {
+  return requestId === registrationRequestSequence;
+}
+
+function isLatestCredentialLifecycleRequest(requestId) {
+  return requestId === credentialLifecycleRequestSequence;
 }
 
 function selectedProjectText() {
@@ -5207,6 +5497,7 @@ dashboardDetail.addEventListener('click', handleDashboardDetailClick);
 applicationFilterInput.addEventListener('input', handleApplicationFilterInput);
 applicationReloadButton.addEventListener('click', loadApplicationsForSelectedProject);
 githubButton.addEventListener('click', startGithubEntry);
+registrationForm.addEventListener('submit', handleProjectRegistrationSubmit);
 renderAuthorizationRequired();
 renderApplicationAuthorizationRequired();
 renderDashboardAuthorizationRequired();

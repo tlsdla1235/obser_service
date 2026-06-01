@@ -14,6 +14,46 @@ class ProjectEntryUiContractTest {
     private static final Path STATIC_DASHBOARD = Path.of("src/main/resources/static/dashboard");
 
     @Test
+    void productIntroExplainsStarterFirstOnboardingFlowWithoutMarketingOverreach() throws IOException {
+        String indexHtml = Files.readString(STATIC_DASHBOARD.resolve("index.html"));
+
+        assertThat(indexHtml).contains(
+                "Spring Boot 앱에 starter를 붙이면 project, application, instance 단위로 수집 연결과 운영 상태를 확인합니다.",
+                "starter-first observability dashboard",
+                "Starter 연결",
+                "Project 등록",
+                "Dashboard 확인",
+                "Application Dashboard가 primary first-screen",
+                "Project Entry는 운영 판단 화면이 아니라 scope 선택 화면");
+        assertThat(indexHtml).doesNotContain(
+                "APM",
+                "alerting",
+                "trace/log",
+                "full monitoring",
+                "host application 정상",
+                "앱 정상 확정",
+                "복구 완료");
+    }
+
+    @Test
+    void onboardingEntryKeepsGithubOAuthAndBearerResourceBoundaryVisible() throws IOException {
+        String indexHtml = Files.readString(STATIC_DASHBOARD.resolve("index.html"));
+
+        assertThat(indexHtml).contains(
+                "GitHub OAuth only",
+                "service access token",
+                "JSON 응답",
+                "Authorization: Bearer",
+                "브라우저 저장소나 URL token 전달을 요구하지 않습니다");
+        assertThat(indexHtml).doesNotContain(
+                "email/password",
+                "magic link",
+                "Google",
+                "anonymous",
+                "cookie server session");
+    }
+
+    @Test
     void staticDashboardProjectEntryConsumesNavigationReadModelWithoutFrontendBuildStack() throws IOException {
         Path index = STATIC_DASHBOARD.resolve("index.html");
         Path script = STATIC_DASHBOARD.resolve("app.js");
@@ -44,7 +84,58 @@ class ProjectEntryUiContractTest {
                 "#refresh_token",
                 "access_token=",
                 "refresh_token=");
-        assertThat(indexHtml + appJs).doesNotContain("Create Project", "POST /api/projects");
+        assertThat(indexHtml + appJs).doesNotContain("Create Project");
+    }
+
+    @Test
+    void projectEntrySupportsRegistrationOneTimeDisplayAndCredentialLifecycleWithoutSeedShortcut() throws IOException {
+        String page = Files.readString(STATIC_DASHBOARD.resolve("index.html"))
+                + Files.readString(STATIC_DASHBOARD.resolve("app.js"));
+
+        assertThat(page).contains(
+                "id=\"project-registration-form\"",
+                "fetch('/api/projects'",
+                "method: 'POST'",
+                "renderOneTimeCredentialSuccess",
+                "copyStarterCredential",
+                "복사했음",
+                "credential은 생성/회전 성공 직후에만 표시됩니다",
+                "starterCredentialActionPath",
+                "starter-credential",
+                "/rotations",
+                "/revocations",
+                "loadProjects();");
+        assertThat(page).doesNotContain(
+                "Create Project",
+                "fetch(\"/api/projects\", { method: \"POST\"",
+                "seed",
+                "starter key 발급",
+                "service token 예시");
+    }
+
+    @Test
+    void oneTimeCredentialUiAvoidsBrowserPersistenceAndLongLivedRawAttributes() throws IOException {
+        String page = Files.readString(STATIC_DASHBOARD.resolve("index.html"))
+                + Files.readString(STATIC_DASHBOARD.resolve("app.js"));
+
+        assertThat(page).contains(
+                "navigator.clipboard.writeText(displayValue)",
+                "clearOneTimeCredentialDisplay",
+                "starterCredential.displayValue",
+                "credential-display");
+        assertThat(page).doesNotContain(
+                "localStorage",
+                "sessionStorage",
+                "document.cookie",
+                "window.location.hash",
+                "window.location.search",
+                "URLSearchParams",
+                "type=\"hidden\"",
+                "data-starter-credential",
+                "data-credential-value",
+                "aria-label=\"${escapeAttribute(displayValue)}\"",
+                "title=\"${escapeAttribute(displayValue)}\"",
+                "console.log(displayValue)");
     }
 
     @Test
@@ -54,13 +145,13 @@ class ProjectEntryUiContractTest {
 
         assertThat(page).contains("auth-status");
         assertThat(page).contains("GitHub 로그인을 시작할 수 없습니다. 잠시 후 다시 시도해 주세요.");
-        assertThat(page).doesNotContain(
+        String githubEntrySource = sliceFunction(page, "startGithubEntry");
+        assertThat(githubEntrySource).doesNotContain(
                 "client_secret",
                 "client-secret",
                 "portal.auth.github.client-secret",
                 "providerAccessToken",
                 "gho_",
-                "credential",
                 "설정되지");
     }
 
@@ -69,11 +160,9 @@ class ProjectEntryUiContractTest {
         String appJs = Files.readString(STATIC_DASHBOARD.resolve("app.js"));
 
         assertThat(appJs).contains("loadedProjects.length === 0");
-        assertThat(appJs).contains("local/internal seed 또는 admin bootstrap decision이 필요합니다.");
+        assertThat(appJs).contains("아래 등록 폼으로 새 project를 만든 뒤 서버가 준 membership project 목록을 다시 불러옵니다.");
         assertThat(appJs).doesNotContain(
                 "Create Project",
-                "POST /api/projects",
-                "fetch('/api/projects', { method: 'POST'",
                 "fetch(\"/api/projects\", { method: \"POST\"");
     }
 
@@ -99,6 +188,8 @@ class ProjectEntryUiContractTest {
         assertThat(page).contains("com.sst:observability-spring-boot-starter:0.1.0-SNAPSHOT");
         assertThat(page).contains("observation.heartbeat.portal-base-url");
         assertThat(page).contains("observation.heartbeat.project-key");
+        assertThat(page).contains("X-OBS-Project-Key-placeholder");
+        assertThat(page).contains("Authorization: Bearer token과 분리된 starter ingest credential");
         assertThat(page).contains("observation.metric-flush.environment");
         assertThat(page).doesNotContain(
                 "observation.metric-flush.project-id",
@@ -143,5 +234,24 @@ class ProjectEntryUiContractTest {
                 "diagnosis",
                 "recompute");
         assertThat(appJs).contains("lifecycleBadge.source", "lifecycleBadge.code", "lifecycleBadge.label");
+    }
+
+    private static String sliceFunction(String source, String functionName) {
+        int start = source.indexOf("function " + functionName + "(");
+        assertThat(start).as("function start: %s", functionName).isGreaterThanOrEqualTo(0);
+        int brace = source.indexOf('{', start);
+        int depth = 0;
+        for (int index = brace; index < source.length(); index += 1) {
+            char character = source.charAt(index);
+            if (character == '{') {
+                depth += 1;
+            } else if (character == '}') {
+                depth -= 1;
+                if (depth == 0) {
+                    return source.substring(start, index + 1);
+                }
+            }
+        }
+        throw new AssertionError("function not closed: " + functionName);
     }
 }

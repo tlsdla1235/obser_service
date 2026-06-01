@@ -21,14 +21,20 @@ MVP API surface는 first-screen delivery에 필요한 것만 둔다.
 
 Epic 5/6 dashboard flow 기준으로 dashboard UI query surface는 Project Entry, Application List, Application Dashboard, Instance Detail, Instance Snapshot Trend, Snapshot/History 순서로 사용된다. Project/Application navigation은 scope 선택과 light summary를 위한 surface이며, Application Dashboard가 primary first-screen이다.
 
-Project resource API는 `Authorization: Bearer <access_token>`으로 인증된 account id와 `account_project_memberships.status='active'` account-project membership을 함께 확인한다. no-token/invalid-token/expired-token은 `401 Unauthorized`와 `WWW-Authenticate: Bearer`로 처리하고, membership mismatch는 project 존재 여부를 드러내지 않도록 `404 Not Found`로 fail-closed한다.
+Project resource API는 `Authorization: Bearer <access_token>`으로 인증된 account id를 기준으로 동작한다.
+`GET /api/projects` collection read는 path project id가 없으므로 account-scoped active membership project 목록만 반환하고,
+public onboarding `POST /api/projects`는 membership을 새로 만드는 생성 경로다. `/api/projects/{projectId}/...` project-scoped
+resource API는 인증된 account id와 `account_project_memberships.status='active'` membership을 함께 확인한다.
+no-token/invalid-token/expired-token은 `401 Unauthorized`와 `WWW-Authenticate: Bearer`로 처리하고, membership mismatch는
+project 존재 여부를 드러내지 않도록 `404 Not Found`로 fail-closed한다.
 
 Bootstrap surface:
 
 - project key와 application metadata를 만들 수 있는 경로는 필요하다.
-- public onboarding API를 MVP 제품 surface로 열지는 아직 open decision이다.
-- 결정 전 기본 후보는 local/dev seed 또는 internal admin API다.
+- Story 9.2 Stage 1부터 public onboarding project registration API를 연다.
+- local/dev seed 또는 internal admin API는 operator smoke/bootstrap 경로로 유지하고 public onboarding API와 섞지 않는다.
 - 사용자 계정 생성은 public project creation API와 별개이며, MVP에서는 GitHub OAuth 성공을 통해서만 내부 account를 만들거나 연결한다.
+- Resource API 인증은 `Authorization: Bearer <access_token>` service token 기준이고, starter ingest 인증은 `X-OBS-Project-Key` starter credential 기준이다.
 
 MVC 기준에서 controller는 모두 `controller` package에 속한다. Controller는 request/response 변환과 HTTP status mapping만 수행하고 service에 위임한다.
 
@@ -534,20 +540,21 @@ Boundary:
 
 ### 5.1 필요 여부 판단
 
-MVP ingest에는 project key가 필요하므로 bootstrap 경로는 필요하다. 다만 사용자-facing project creation API를 MVP 제품 surface로 열지는 아직 open decision이다.
+MVP ingest에는 project key가 필요하므로 bootstrap 경로는 필요하다. Story 9.2 Stage 1에서는 GitHub OAuth로 생성된 service access token을 가진 account가 public onboarding API로 project를 등록하고 starter credential을 1회 표시로 발급받을 수 있다.
 
 권장 순서:
 
-1. local/dev seed로 `projects`와 project key hash를 만든다.
-2. application과 instance는 첫 accepted bucket ingest에서 `ApplicationCatalogService`가 upsert한다.
-3. dashboard가 project/application 선택 목록이 필요해지면 read-only project list와 application list API를 추가한다.
-4. public project creation/onboarding API는 open decision이 닫힌 뒤 포함 여부를 결정한다.
+1. public onboarding은 `POST /api/projects`로 active project, active member membership, starter credential hash/prefix metadata를 만든다.
+2. local/dev seed는 operator smoke path로 유지하며 public onboarding API의 우회 경로가 아니다.
+3. application과 instance는 첫 accepted bucket ingest에서 `ApplicationCatalogService`가 upsert한다.
+4. dashboard는 read-only project list와 application list API로 scope를 선택한다.
 
 Heartbeat는 bootstrap catalog 생성 경로가 아니다. project key와 metadata shape 검증은 할 수 있지만 application/instance row 생성은 첫 accepted bucket 기준으로 유지한다.
 
 ### 5.2 Internal Admin API 후보
 
-seed만으로 demo가 불편하면 internal/admin profile에서만 아래 API를 둘 수 있다.
+Story 9.2 이후 일반 사용자의 project 생성은 public onboarding `POST /api/projects`가 담당한다. 아래 internal/admin API는
+MVP public product scope가 아니며, local/internal profile에서 운영자가 별도 bootstrap이 필요하다고 결정할 때만 후보로 둔다.
 
 ```http
 POST /api/admin/projects
@@ -563,14 +570,18 @@ Content-Type: application/json
 ```json
 {
   "projectId": "0fcf1d62-c5f2-43bd-85f7-2dd6c9e458b1",
-  "projectKey": "obs_live_xxx",
-  "keyPrefix": "obs_live"
+  "starterCredential": {
+    "displayValue": "<shown-once>",
+    "keyPrefix": "obs_live_xxxxx",
+    "visibleOnce": true
+  }
 }
 ```
 
 주의:
 
-- raw `projectKey`는 생성 응답에서만 보여주고 DB에는 hash만 저장한다.
+- raw value는 public API와 동일하게 `starterCredential.displayValue` 1회 표시 field로만 보여주고 DB에는 hash/prefix metadata만 저장한다.
+- secret-bearing response에는 `Cache-Control: no-store`를 둔다.
 - 이 API는 MVP public product scope가 아니다.
 - 인증/권한 체계를 크게 만들지 않는다. local/internal profile 또는 운영자-only 경로로 제한한다.
 
@@ -639,9 +650,117 @@ Boundary:
 - membership이 없거나 active project가 없으면 `200 OK`와 `projects=[]`를 반환한다.
 - UI는 server response를 렌더링하고 hidden project를 추론하거나 probing하지 않는다.
 - detailed triage, endpoint priority, p95/p99, snapshot/history marker는 포함하지 않는다.
-- Project 생성 API를 public onboarding으로 열지 local/internal seed로 둘지는 open decision이며, Story 6.10은 public create flow를 만들지 않는다.
+- Story 9.2부터 Project 생성 API는 public onboarding `POST /api/projects`로 열린다. Story 6.10은 public create flow를 만들지 않았고,
+  local/internal seed는 operator smoke/bootstrap 경로로만 남는다.
 
-### 5.5 Instance Evidence API 후보
+### 5.5 Public Project Registration API
+
+```http
+POST /api/projects
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+Request는 project name 같은 non-secret 입력만 허용한다.
+
+```json
+{
+  "name": "orders-prod"
+}
+```
+
+성공 response는 secret-bearing response이므로 `Cache-Control: no-store`를 포함한다. Raw starter credential은 `starterCredential.displayValue` 1회 표시 field에만 나타난다.
+
+```json
+{
+  "project": {
+    "projectId": "0fcf1d62-c5f2-43bd-85f7-2dd6c9e458b1",
+    "name": "orders-prod",
+    "links": {
+      "applications": "/api/projects/0fcf1d62-c5f2-43bd-85f7-2dd6c9e458b1/applications"
+    }
+  },
+  "starterCredential": {
+    "displayValue": "<shown-once>",
+    "keyPrefix": "obs_live_xxxxx",
+    "visibleOnce": true,
+    "issuedAt": "2026-06-01T00:00:00Z"
+  }
+}
+```
+
+Boundary:
+
+- No-token/invalid-token/expired-token은 `401 Unauthorized`와 `WWW-Authenticate: Bearer`다.
+- Client-supplied account id, role/status, key prefix, hash, raw credential은 반영하지 않는다.
+- Normalized project name 중복 또는 invalid name은 sanitized `400`/`409`로 fail-closed한다.
+- 성공 시 새 `projects.status='active'` row와 현재 account의 `account_project_memberships.role='member', status='active'` row를 함께 만든다.
+- DB에는 `project_key_hash`, `key_prefix`, `starter_credential_status`, `starter_credential_issued_at`, `starter_credential_rotated_at`, `starter_credential_revoked_at` 같은 non-secret metadata만 저장한다.
+- `GET /api/projects`, Application List, Dashboard, Snapshot/History response에는 raw starter credential이나 hash를 포함하지 않는다.
+- `domain.admin.service.SmokeProjectSeedService`, `portal.smoke.seed.*`, `.private/smoke-*`는 public registration API dependency가 아니다.
+
+### 5.6 Starter Credential Lifecycle API
+
+Credential metadata는 raw value/hash 없이 prefix/status/timestamps만 반환한다.
+
+```http
+GET /api/projects/{projectId}/starter-credential
+Authorization: Bearer <access_token>
+Accept: application/json
+```
+
+```json
+{
+  "projectId": "0fcf1d62-c5f2-43bd-85f7-2dd6c9e458b1",
+  "starterCredential": {
+    "keyPrefix": "obs_live_xxxxx",
+    "status": "active",
+    "issuedAt": "2026-06-01T00:00:00Z",
+    "rotatedAt": null,
+    "revokedAt": null
+  }
+}
+```
+
+Rotation은 기존 starter credential을 즉시 폐기하고 새 raw value를 1회 표시 response로만 반환한다. Secret-bearing response이므로 `Cache-Control: no-store`를 포함한다.
+
+```http
+POST /api/projects/{projectId}/starter-credential/rotations
+Authorization: Bearer <access_token>
+```
+
+```json
+{
+  "projectId": "0fcf1d62-c5f2-43bd-85f7-2dd6c9e458b1",
+  "starterCredential": {
+    "displayValue": "<shown-once>",
+    "keyPrefix": "obs_live_yyyyy",
+    "status": "active",
+    "visibleOnce": true,
+    "issuedAt": "2026-06-01T00:05:00Z",
+    "rotatedAt": "2026-06-01T00:05:00Z"
+  }
+}
+```
+
+Revocation은 project visibility를 숨기지 않고 starter ingest credential만 `revoked`로 바꾼다. Raw value는 반환하지 않는다.
+
+```http
+POST /api/projects/{projectId}/starter-credential/revocations
+Authorization: Bearer <access_token>
+```
+
+Boundary:
+
+- No-token/invalid-token/expired-token은 `401 Unauthorized`와 `WWW-Authenticate: Bearer`다.
+- active account-project membership이 없는 account는 metadata/rotation/revocation 모두 body 없는 `404 Not Found`로 fail-closed한다.
+- Membership mismatch response는 project name, application count, credential prefix/status, snapshot/history 존재 여부를 드러내지 않는다.
+- Rotation 후 old credential은 prefix/hash 후보에서 사라지거나 active credential 상태를 통과하지 못해 bucket ingest와 heartbeat에서 `401`이다.
+- Revocation 후 project는 `GET /api/projects`에 남을 수 있지만 bucket ingest와 heartbeat project key verification은 `401`이다.
+- Metadata/revocation response는 raw value/hash를 포함하지 않는다. Raw value는 create/rotation success response의 `starterCredential.displayValue`에서만 허용한다.
+- Public lifecycle API는 `domain.admin.service.SmokeProjectSeedService`, `portal.smoke.seed.*`, `.private/smoke-*`를 사용하지 않는다.
+
+### 5.7 Instance Evidence API 후보
 
 Instance Detail이 dashboard response에 포함된 summary보다 깊은 bounded evidence를 필요로 하면 read-only API를 둔다.
 
@@ -703,9 +822,11 @@ Authorization: Bearer <access-token>
 
 - MVP 인증은 cookie 기반 server session을 사용하지 않는다.
 - API 요청 인증은 `Authorization: Bearer <access_token>` header를 사용한다.
-- Project resource API authorization은 Bearer account id와 active account-project membership 기준이다.
-- `/api/projects` collection endpoint는 path project id가 없으므로 account id만으로 scoped project list를 만든다.
+- Project resource API authorization은 Bearer account id 기준이며, project-scoped endpoint는 active account-project membership도 함께 확인한다.
+- `GET /api/projects` collection endpoint는 path project id가 없으므로 account id만으로 scoped project list를 만든다.
+- `POST /api/projects` public onboarding endpoint는 active account를 인증한 뒤 새 project와 membership을 함께 만든다.
 - `/api/projects/{projectId}/applications/**` endpoint는 account id와 path project id의 active membership을 먼저 확인한 뒤 catalog path 정합성을 확인한다.
+- `/api/projects/{projectId}/starter-credential/**` lifecycle endpoint도 resource lookup 전에 active membership을 확인하고 mismatch는 body 없는 `404`로 닫는다.
 - Access Token은 stateless하게 검증 가능한 짧은 만료 JWT다.
 - GitHub OAuth token과 우리 서비스 access token/refresh token을 구분한다.
 - MVP에서 GitHub API 호출이 필요 없다면 GitHub OAuth token을 저장하지 않는다.

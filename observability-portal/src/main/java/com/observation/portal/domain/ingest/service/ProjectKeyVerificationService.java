@@ -58,6 +58,9 @@ public class ProjectKeyVerificationService {
         if (!project.isActive()) {
             return ProjectKeyVerificationResult.unauthorized();
         }
+        if (!project.hasActiveStarterCredential()) {
+            return ProjectKeyVerificationResult.unauthorized();
+        }
         if (!keyHashVerifier.matches(projectKeyInput.rawProjectKey(), project.projectKeyHash())) {
             return ProjectKeyVerificationResult.unauthorized();
         }

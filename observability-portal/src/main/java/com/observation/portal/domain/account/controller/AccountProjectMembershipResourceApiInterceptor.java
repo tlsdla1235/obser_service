@@ -3,6 +3,7 @@ package com.observation.portal.domain.account.controller;
 import com.observation.portal.domain.account.service.AccountProjectMembershipService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.HandlerMapping;
@@ -40,6 +41,7 @@ public class AccountProjectMembershipResourceApiInterceptor implements HandlerIn
         Optional<UUID> projectId = projectIdFrom(request);
         if (projectId.isEmpty() || !membershipService.hasActiveMembership(accountId, projectId.orElseThrow())) {
             response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
             return false;
         }
         return true;

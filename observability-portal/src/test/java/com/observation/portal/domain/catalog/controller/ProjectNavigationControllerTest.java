@@ -132,12 +132,12 @@ class ProjectNavigationControllerTest {
     }
 
     @Test
-    void projectCollectionDoesNotExposePostRoute() throws Exception {
+    void projectCollectionPostRouteIsOwnedByRegistrationController() throws Exception {
         mockMvc.perform(post("/api/projects"))
                 .andExpect(status().isMethodNotAllowed());
         assertThat(publicProjectCreationRoutes())
-                .as("Story 5.1 keeps public project creation as an open decision")
-                .isEmpty();
+                .as("Story 9.2 opens public project registration through the dedicated controller")
+                .containsExactly("com.observation.portal.domain.catalog.controller.ProjectRegistrationController#registerProject /api/projects");
     }
 
     @Test

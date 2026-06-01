@@ -6,11 +6,17 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommand;
 import com.observation.portal.domain.bucket.repository.MetricBucketRepository;
+import com.observation.portal.domain.catalog.entity.ProjectEntity;
+import com.observation.portal.domain.catalog.model.ProjectStatus;
+import com.observation.portal.domain.catalog.model.StarterCredentialStatus;
+import com.observation.portal.domain.catalog.repository.ProjectRepository;
 import com.observation.portal.domain.ingest.dto.IngestErrorResponse;
 import com.observation.portal.domain.ingest.model.IngestEnvelopeRequest;
+import com.observation.portal.security.ProjectKeyHashVerifier;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.crypto.bcrypt.BCrypt;
 
 import java.time.OffsetDateTime;
 import java.util.Optional;
@@ -179,6 +185,23 @@ class IngestAcceptanceServiceTest {
         assertThat(result.acceptedReceipt()).isEmpty();
         assertThat(result.errors()).isEmpty();
         verify(projectKeyVerificationService).verify(PortalIngestValidationFixture.PROJECT_KEY_HEADER);
+        verifyNoInteractions(metricBucketRepository);
+    }
+
+    @Test
+    void rejectsRevokedCredentialThroughRealProjectKeyVerificationBeforeBucketWrite() throws Exception {
+        ProjectKeyVerificationService projectKeyVerificationService = revokedProjectKeyService();
+        MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        IngestAcceptanceService service = newService(projectKeyVerificationService, metricBucketRepository);
+
+        IngestAcceptanceResult result = service.accept(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                PortalIngestValidationFixture.goldenRequest());
+
+        assertThat(result.isUnauthorized()).isTrue();
+        assertThat(result.acceptedCandidate()).isEmpty();
+        assertThat(result.acceptedReceipt()).isEmpty();
         verifyNoInteractions(metricBucketRepository);
     }
 
@@ -499,6 +522,27 @@ class IngestAcceptanceServiceTest {
         when(projectKeyVerificationService.verify(PortalIngestValidationFixture.PROJECT_KEY_HEADER))
                 .thenReturn(ProjectKeyVerificationResult.verified(PortalIngestValidationFixture.VERIFIED_PROJECT));
         return projectKeyVerificationService;
+    }
+
+    private static ProjectKeyVerificationService revokedProjectKeyService() {
+        ProjectRepository repository = mock(ProjectRepository.class);
+        String rawCredential = PortalIngestValidationFixture.PROJECT_KEY_HEADER;
+        String keyPrefix = rawCredential.substring(0, rawCredential.indexOf('.'));
+        OffsetDateTime timestamp = OffsetDateTime.parse("2026-06-01T10:00:00Z");
+        ProjectEntity project = new ProjectEntity(
+                PortalIngestValidationFixture.VERIFIED_PROJECT.projectId(),
+                "checkout",
+                keyPrefix,
+                BCrypt.hashpw(rawCredential, BCrypt.gensalt()),
+                ProjectStatus.ACTIVE.databaseValue(),
+                StarterCredentialStatus.REVOKED.databaseValue(),
+                timestamp,
+                null,
+                timestamp,
+                timestamp,
+                timestamp);
+        when(repository.findByKeyPrefix(keyPrefix)).thenReturn(Optional.of(project));
+        return new ProjectKeyVerificationService(repository, new ProjectKeyHashVerifier());
     }
 
     private static void assertInvalid(IngestAcceptanceResult result, String field, String code) {

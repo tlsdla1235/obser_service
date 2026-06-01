@@ -37,7 +37,7 @@ class CatalogSchemaMigrationIntegrationTest {
     void appliesMigrationsToCleanDatabase() throws SQLException {
         MigrateResult result = cleanAndMigrate();
 
-        assertThat(result.migrationsExecuted).isEqualTo(11);
+        assertThat(result.migrationsExecuted).isEqualTo(12);
         assertThat(tableExists("projects")).isTrue();
         assertThat(tableExists("applications")).isTrue();
         assertThat(tableExists("application_instances")).isTrue();
@@ -490,7 +490,7 @@ class CatalogSchemaMigrationIntegrationTest {
 
         MigrateResult result = migrateRemaining();
 
-        assertThat(result.migrationsExecuted).isEqualTo(5);
+        assertThat(result.migrationsExecuted).isEqualTo(6);
         assertThat(dashboardSnapshotCount(applicationId)).isEqualTo(1);
         assertThat(dashboardSnapshotExists(stateChangeId)).isTrue();
         assertThat(constraintExists(
@@ -505,7 +505,18 @@ class CatalogSchemaMigrationIntegrationTest {
         Map<String, List<String>> expectedColumnsByTable = Map.ofEntries(
                 Map.entry(
                         "projects",
-                        List.of("id", "name", "key_prefix", "project_key_hash", "status", "created_at", "updated_at")),
+                        List.of(
+                                "id",
+                                "name",
+                                "key_prefix",
+                                "project_key_hash",
+                                "status",
+                                "starter_credential_status",
+                                "starter_credential_issued_at",
+                                "starter_credential_rotated_at",
+                                "starter_credential_revoked_at",
+                                "created_at",
+                                "updated_at")),
                 Map.entry(
                         "applications",
                         List.of(

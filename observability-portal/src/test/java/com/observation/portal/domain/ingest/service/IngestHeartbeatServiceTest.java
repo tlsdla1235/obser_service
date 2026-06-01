@@ -3,12 +3,17 @@ package com.observation.portal.domain.ingest.service;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommand;
 import com.observation.portal.domain.bucket.repository.MetricBucketRepository;
 import com.observation.portal.domain.catalog.entity.ApplicationEntity;
+import com.observation.portal.domain.catalog.entity.ProjectEntity;
+import com.observation.portal.domain.catalog.model.ProjectStatus;
 import com.observation.portal.domain.catalog.repository.ApplicationRepository;
+import com.observation.portal.domain.catalog.repository.ProjectRepository;
 import com.observation.portal.domain.ingest.model.IngestHeartbeatRequest;
 import com.observation.portal.domain.ingest.model.StarterHeartbeatTelemetryCommand;
 import com.observation.portal.domain.ingest.repository.StarterHeartbeatTelemetryRepository;
+import com.observation.portal.security.ProjectKeyHashVerifier;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.security.crypto.bcrypt.BCrypt;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -27,7 +32,7 @@ import static org.mockito.Mockito.when;
 
 class IngestHeartbeatServiceTest {
 
-    private static final String PROJECT_KEY = "pk_live.secret";
+    private static final String PROJECT_KEY = "pk_live.<test-placeholder>";
     private static final UUID APPLICATION_ID = UUID.fromString("00000000-0000-0000-0000-00000000a441");
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-05-24T08:31:00Z"), ZoneOffset.UTC);
 
@@ -132,6 +137,26 @@ class IngestHeartbeatServiceTest {
         assertThat(result.receipt()).isEmpty();
         assertThat(result.errors()).isEmpty();
         assertThat(result.toString()).doesNotContain(PROJECT_KEY);
+        verifyNoInteractions(applicationRepository, metricBucketRepository, heartbeatTelemetryRepository);
+    }
+
+    @Test
+    void revokedCredentialIsRejectedByRealProjectKeyVerificationBeforeHeartbeatPersistence() {
+        ProjectKeyVerificationService projectKeyVerificationService = revokedProjectKeyService();
+        ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
+        MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository = mock(StarterHeartbeatTelemetryRepository.class);
+        IngestHeartbeatService service = newService(
+                projectKeyVerificationService,
+                applicationRepository,
+                metricBucketRepository,
+                heartbeatTelemetryRepository);
+
+        IngestHeartbeatResult result = service.receive(PROJECT_KEY, validRequest());
+
+        assertThat(result.isUnauthorized()).isTrue();
+        assertThat(result.receipt()).isEmpty();
+        assertThat(result.errors()).isEmpty();
         verifyNoInteractions(applicationRepository, metricBucketRepository, heartbeatTelemetryRepository);
     }
 
@@ -266,6 +291,26 @@ class IngestHeartbeatServiceTest {
         when(projectKeyVerificationService.verify(PROJECT_KEY))
                 .thenReturn(ProjectKeyVerificationResult.verified(PortalIngestValidationFixture.VERIFIED_PROJECT));
         return projectKeyVerificationService;
+    }
+
+    private static ProjectKeyVerificationService revokedProjectKeyService() {
+        ProjectRepository repository = mock(ProjectRepository.class);
+        String keyPrefix = PROJECT_KEY.substring(0, PROJECT_KEY.indexOf('.'));
+        OffsetDateTime timestamp = OffsetDateTime.parse("2026-06-01T10:00:00Z");
+        ProjectEntity project = new ProjectEntity(
+                PortalIngestValidationFixture.VERIFIED_PROJECT.projectId(),
+                "checkout",
+                keyPrefix,
+                BCrypt.hashpw(PROJECT_KEY, BCrypt.gensalt()),
+                ProjectStatus.ACTIVE.databaseValue(),
+                "revoked",
+                timestamp,
+                null,
+                timestamp,
+                timestamp,
+                timestamp);
+        when(repository.findByKeyPrefix(keyPrefix)).thenReturn(Optional.of(project));
+        return new ProjectKeyVerificationService(repository, new ProjectKeyHashVerifier());
     }
 
     private static IngestHeartbeatRequest validRequest() {

@@ -40,6 +40,10 @@ public class BearerResourceApiWebConfig implements WebMvcConfigurer {
         registry.addInterceptor(bearerInterceptor)
                 .addPathPatterns("/api/projects", "/api/projects/**");
         registry.addInterceptor(membershipInterceptor)
-                .addPathPatterns("/api/projects/*/applications", "/api/projects/*/applications/**");
+                .addPathPatterns(
+                        "/api/projects/*/applications",
+                        "/api/projects/*/applications/**",
+                        "/api/projects/*/starter-credential",
+                        "/api/projects/*/starter-credential/**");
     }
 }

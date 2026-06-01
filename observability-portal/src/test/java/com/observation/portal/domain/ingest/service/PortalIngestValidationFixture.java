@@ -14,7 +14,7 @@ import java.util.function.Consumer;
  */
 public final class PortalIngestValidationFixture {
 
-    public static final String PROJECT_KEY_HEADER = "pk_live_checkout.secret-part-kept-out-of-results";
+    public static final String PROJECT_KEY_HEADER = "pk_live_checkout.<test-placeholder>";
     public static final VerifiedProject VERIFIED_PROJECT = new VerifiedProject(
             UUID.fromString("00000000-0000-0000-0000-000000003201"),
             "checkout",

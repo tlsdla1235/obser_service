@@ -77,6 +77,21 @@ class IngestHeartbeatControllerTest {
         assertThat(response.getBody()).isEqualTo(IngestErrorResponse.unauthorized());
     }
 
+    @Test
+    void mapsRevokedOrRotatedOldCredentialVerificationFailureTo401Unauthorized() {
+        IngestHeartbeatService service = mock(IngestHeartbeatService.class);
+        IngestHeartbeatController controller = new IngestHeartbeatController(service);
+        IngestHeartbeatRequest request = validRequest();
+        String oldCredentialHeader = "obs_live_old.<shown-once-old>";
+        when(service.receive(oldCredentialHeader, request))
+                .thenReturn(IngestHeartbeatResult.unauthorized());
+
+        ResponseEntity<?> response = controller.receiveHeartbeat(oldCredentialHeader, request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody()).isEqualTo(IngestErrorResponse.unauthorized());
+    }
+
     private static IngestHeartbeatRequest validRequest() {
         return new IngestHeartbeatRequest(
                 "1.0",

@@ -24,7 +24,7 @@ class ProjectKeyVerificationServiceTest {
     private static final UUID PROJECT_ID = UUID.fromString("00000000-0000-0000-0000-000000003101");
     private static final String PROJECT_NAME = "checkout";
     private static final String KEY_PREFIX = "pk_live_checkout";
-    private static final String RAW_PROJECT_KEY = KEY_PREFIX + ".secret-part-kept-out-of-results";
+    private static final String RAW_PROJECT_KEY = KEY_PREFIX + ".<test-placeholder>";
     private static final OffsetDateTime FIXED_TIME = OffsetDateTime.parse("2026-05-19T00:00:00Z");
 
     @Test
@@ -67,9 +67,9 @@ class ProjectKeyVerificationServiceTest {
         ProjectRepository repository = mock(ProjectRepository.class);
         ProjectKeyVerificationService service = service(repository);
 
-        assertThat(service.verify(".secret").isVerified()).isFalse();
+        assertThat(service.verify(".<test-placeholder>").isVerified()).isFalse();
         assertThat(service.verify("prefix.").isVerified()).isFalse();
-        assertThat(service.verify("a".repeat(33) + ".secret").isVerified()).isFalse();
+        assertThat(service.verify("a".repeat(33) + ".<test-placeholder>").isVerified()).isFalse();
 
         verifyNoInteractions(repository);
     }
@@ -130,6 +130,45 @@ class ProjectKeyVerificationServiceTest {
     }
 
     @Test
+    void rejectsInactiveStarterCredentialEvenWhenProjectAndHashAreActive() {
+        ProjectRepository repository = repositoryReturning(entity(
+                KEY_PREFIX,
+                BCrypt.hashpw(RAW_PROJECT_KEY, BCrypt.gensalt()),
+                ProjectStatus.ACTIVE,
+                "revoked"));
+        ProjectKeyVerificationService service = service(repository);
+
+        ProjectKeyVerificationResult result = service.verify(RAW_PROJECT_KEY);
+
+        assertThat(result.isVerified()).isFalse();
+        assertThat(result.verifiedProject()).isEmpty();
+    }
+
+    @Test
+    void rejectsRotatedOldCredentialBecauseOldPrefixNoLongerHasLookupCandidate() {
+        String oldPrefix = KEY_PREFIX;
+        String oldRawProjectKey = RAW_PROJECT_KEY;
+        String newPrefix = "pk_live_rotated";
+        String newRawProjectKey = newPrefix + ".<test-placeholder-new>";
+        ProjectRepository repository = mock(ProjectRepository.class);
+        when(repository.findByKeyPrefix(oldPrefix)).thenReturn(Optional.empty());
+        when(repository.findByKeyPrefix(newPrefix)).thenReturn(Optional.of(entity(
+                newPrefix,
+                BCrypt.hashpw(newRawProjectKey, BCrypt.gensalt()),
+                ProjectStatus.ACTIVE,
+                "active")));
+        ProjectKeyVerificationService service = service(repository);
+
+        ProjectKeyVerificationResult oldResult = service.verify(oldRawProjectKey);
+        ProjectKeyVerificationResult newResult = service.verify(newRawProjectKey);
+
+        assertThat(oldResult.isVerified()).isFalse();
+        assertThat(newResult.isVerified()).isTrue();
+        verify(repository).findByKeyPrefix(oldPrefix);
+        verify(repository).findByKeyPrefix(newPrefix);
+    }
+
+    @Test
     void returnsVerifiedProjectContextForActiveProjectWithMatchingHash() {
         ProjectRepository repository = repositoryReturning(entity(
                 KEY_PREFIX,
@@ -179,12 +218,24 @@ class ProjectKeyVerificationServiceTest {
     }
 
     private static ProjectEntity entity(String keyPrefix, String projectKeyHash, ProjectStatus status) {
+        return entity(keyPrefix, projectKeyHash, status, "active");
+    }
+
+    private static ProjectEntity entity(
+            String keyPrefix,
+            String projectKeyHash,
+            ProjectStatus status,
+            String starterCredentialStatus) {
         return new ProjectEntity(
                 PROJECT_ID,
                 PROJECT_NAME,
                 keyPrefix,
                 projectKeyHash,
                 status.databaseValue(),
+                starterCredentialStatus,
+                FIXED_TIME,
+                null,
+                starterCredentialStatus.equals("revoked") ? FIXED_TIME : null,
                 FIXED_TIME,
                 FIXED_TIME);
     }

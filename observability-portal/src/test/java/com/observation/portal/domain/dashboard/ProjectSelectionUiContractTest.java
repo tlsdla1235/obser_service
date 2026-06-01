@@ -59,7 +59,7 @@ class ProjectSelectionUiContractTest {
         assertThat(appJs).contains("filterInput.addEventListener('input', handleFilterInput)");
         assertThat(projectSelectionSource).contains("filterProjects");
         assertThat(projectSelectionSource).contains("표시할 Project가 없습니다.");
-        assertThat(appJs).containsOnlyOnce("fetch('/api/projects'");
+        assertThat(sliceFunction(appJs, "loadProjects")).contains("fetch('/api/projects'");
         assertThat(projectSelectionSource).doesNotContain(
                 "sort(",
                 "rank",
@@ -326,16 +326,18 @@ class ProjectSelectionUiContractTest {
     @Test
     void projectRequestsRequireInMemoryAccessTokenBeforeFetch() throws IOException {
         String appJs = Files.readString(STATIC_DASHBOARD.resolve("app.js"));
+        String loadProjectsSource = sliceFunction(appJs, "loadProjects");
 
-        assertThat(appJs).contains(
+        assertThat(loadProjectsSource).contains(
                 "if (!serviceAccessToken) {\n"
                         + "    clearProjectSnapshot({ resetFilter: true });\n"
                         + "    renderAuthorizationRequired();\n"
                         + "    return;\n"
                         + "  }\n"
-                        + "  renderLoadingState();",
-                "githubButton.addEventListener('click', startGithubEntry);\n"
-                        + "renderAuthorizationRequired();");
+                        + "  renderLoadingState();");
+        assertThat(appJs).contains(
+                "githubButton.addEventListener('click', startGithubEntry);",
+                "renderAuthorizationRequired();");
         assertThat(appJs).doesNotContain("githubButton.addEventListener('click', startGithubEntry);\nloadProjects();");
     }
 
@@ -378,7 +380,7 @@ class ProjectSelectionUiContractTest {
 
         assertThat(projectSelectionSource).contains(
                 "GitHub 로그인 후 Project 목록을 볼 수 있습니다.",
-                "local/internal seed 또는 admin bootstrap decision이 필요합니다.",
+                "아래 등록 폼으로 새 project를 만든 뒤 서버가 준 membership project 목록을 다시 불러옵니다.",
                 "Project 목록을 불러오지 못했습니다.",
                 "Connection/setup candidates",
                 "최근 concern 없음");
@@ -419,14 +421,14 @@ class ProjectSelectionUiContractTest {
 
     @Test
     void setupGuideRemainsLimitedToStorySixOneStarterProperties() throws IOException {
-        String indexHtml = Files.readString(STATIC_DASHBOARD.resolve("index.html"));
+        String setupGuide = setupGuideSource(Files.readString(STATIC_DASHBOARD.resolve("index.html")));
 
-        assertThat(indexHtml).contains(
+        assertThat(setupGuide).contains(
                 "com.sst:observability-spring-boot-starter:0.1.0-SNAPSHOT",
                 "observation.heartbeat.portal-base-url",
                 "observation.heartbeat.project-key",
                 "observation.metric-flush.environment");
-        assertThat(indexHtml).doesNotContain(
+        assertThat(setupGuide).doesNotContain(
                 "project-id",
                 "application-name",
                 "instance",
@@ -474,6 +476,12 @@ class ProjectSelectionUiContractTest {
 
     private static String decodeURIComponentLike(String value) {
         return URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8);
+    }
+
+    private static String setupGuideSource(String source) {
+        int start = source.indexOf("<aside class=\"panel setup-panel\"");
+        assertThat(start).as("setup guide section should exist").isGreaterThanOrEqualTo(0);
+        return source.substring(start);
     }
 
     private static String sliceFunction(String source, String functionName) {

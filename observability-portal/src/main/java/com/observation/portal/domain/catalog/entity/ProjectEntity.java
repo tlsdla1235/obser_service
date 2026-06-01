@@ -2,6 +2,7 @@ package com.observation.portal.domain.catalog.entity;
 
 import com.observation.portal.domain.catalog.model.ProjectKeyCandidate;
 import com.observation.portal.domain.catalog.model.ProjectStatus;
+import com.observation.portal.domain.catalog.model.StarterCredentialStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -36,6 +37,18 @@ public class ProjectEntity {
     @Column(name = "status", nullable = false, length = 32)
     private String status;
 
+    @Column(name = "starter_credential_status", nullable = false, length = 32)
+    private String starterCredentialStatus;
+
+    @Column(name = "starter_credential_issued_at", nullable = false)
+    private OffsetDateTime starterCredentialIssuedAt;
+
+    @Column(name = "starter_credential_rotated_at")
+    private OffsetDateTime starterCredentialRotatedAt;
+
+    @Column(name = "starter_credential_revoked_at")
+    private OffsetDateTime starterCredentialRevokedAt;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
@@ -59,11 +72,46 @@ public class ProjectEntity {
             String status,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt) {
+        this(
+                id,
+                name,
+                keyPrefix,
+                projectKeyHash,
+                status,
+                StarterCredentialStatus.ACTIVE.databaseValue(),
+                createdAt,
+                null,
+                null,
+                createdAt,
+                updatedAt);
+    }
+
+    /**
+     * starter credential lifecycle metadata까지 명시해 project persistence row를 만든다.
+     */
+    public ProjectEntity(
+            UUID id,
+            String name,
+            String keyPrefix,
+            String projectKeyHash,
+            String status,
+            String starterCredentialStatus,
+            OffsetDateTime starterCredentialIssuedAt,
+            OffsetDateTime starterCredentialRotatedAt,
+            OffsetDateTime starterCredentialRevokedAt,
+            OffsetDateTime createdAt,
+            OffsetDateTime updatedAt) {
         this.id = Objects.requireNonNull(id, "id must not be null");
         this.name = requireText(name, "name");
         this.keyPrefix = requireText(keyPrefix, "keyPrefix");
         this.projectKeyHash = requireText(projectKeyHash, "projectKeyHash");
         this.status = requireText(status, "status");
+        this.starterCredentialStatus = requireText(starterCredentialStatus, "starterCredentialStatus");
+        this.starterCredentialIssuedAt = Objects.requireNonNull(
+                starterCredentialIssuedAt,
+                "starterCredentialIssuedAt must not be null");
+        this.starterCredentialRotatedAt = starterCredentialRotatedAt;
+        this.starterCredentialRevokedAt = starterCredentialRevokedAt;
         this.createdAt = Objects.requireNonNull(createdAt, "createdAt must not be null");
         this.updatedAt = Objects.requireNonNull(updatedAt, "updatedAt must not be null");
     }
@@ -77,7 +125,37 @@ public class ProjectEntity {
                 name,
                 keyPrefix,
                 projectKeyHash,
-                ProjectStatus.fromDatabaseValue(status));
+                ProjectStatus.fromDatabaseValue(status),
+                StarterCredentialStatus.fromDatabaseValue(starterCredentialStatus),
+                starterCredentialIssuedAt,
+                starterCredentialRotatedAt,
+                starterCredentialRevokedAt);
+    }
+
+    /**
+     * starter credential rotation 성공 시 새 prefix/hash와 lifecycle metadata로 현재 credential을 교체한다.
+     *
+     * <p>기존 raw credential은 별도 저장소에 없고, 이 변경으로 이전 prefix/hash는 즉시 검증 후보에서 사라진다.</p>
+     */
+    public void rotateStarterCredential(String newKeyPrefix, String newProjectKeyHash, OffsetDateTime rotatedAt) {
+        OffsetDateTime requiredRotatedAt = Objects.requireNonNull(rotatedAt, "rotatedAt must not be null");
+        this.keyPrefix = requireText(newKeyPrefix, "newKeyPrefix");
+        this.projectKeyHash = requireText(newProjectKeyHash, "newProjectKeyHash");
+        this.starterCredentialStatus = StarterCredentialStatus.ACTIVE.databaseValue();
+        this.starterCredentialIssuedAt = requiredRotatedAt;
+        this.starterCredentialRotatedAt = requiredRotatedAt;
+        this.starterCredentialRevokedAt = null;
+        this.updatedAt = requiredRotatedAt;
+    }
+
+    /**
+     * project 표시 상태는 유지하면서 starter ingest credential만 폐기한다.
+     */
+    public void revokeStarterCredential(OffsetDateTime revokedAt) {
+        OffsetDateTime requiredRevokedAt = Objects.requireNonNull(revokedAt, "revokedAt must not be null");
+        this.starterCredentialStatus = StarterCredentialStatus.REVOKED.databaseValue();
+        this.starterCredentialRevokedAt = requiredRevokedAt;
+        this.updatedAt = requiredRevokedAt;
     }
 
     private static String requireText(String value, String fieldName) {

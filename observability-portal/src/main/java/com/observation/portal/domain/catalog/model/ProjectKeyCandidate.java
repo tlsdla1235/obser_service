@@ -1,5 +1,6 @@
 package com.observation.portal.domain.catalog.model;
 
+import java.time.OffsetDateTime;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -13,7 +14,32 @@ public record ProjectKeyCandidate(
         String projectName,
         String keyPrefix,
         String projectKeyHash,
-        ProjectStatus status) {
+        ProjectStatus status,
+        StarterCredentialStatus starterCredentialStatus,
+        OffsetDateTime starterCredentialIssuedAt,
+        OffsetDateTime starterCredentialRotatedAt,
+        OffsetDateTime starterCredentialRevokedAt) {
+
+    /**
+     * 기존 project key 검증 후보를 active starter credential metadata와 함께 만든다.
+     */
+    public ProjectKeyCandidate(
+            UUID projectId,
+            String projectName,
+            String keyPrefix,
+            String projectKeyHash,
+            ProjectStatus status) {
+        this(
+                projectId,
+                projectName,
+                keyPrefix,
+                projectKeyHash,
+                status,
+                StarterCredentialStatus.ACTIVE,
+                null,
+                null,
+                null);
+    }
 
     /**
      * repository row를 service가 검증 가능한 형태로 정규화한다.
@@ -24,6 +50,7 @@ public record ProjectKeyCandidate(
         keyPrefix = requireText(keyPrefix, "keyPrefix");
         projectKeyHash = requireText(projectKeyHash, "projectKeyHash");
         Objects.requireNonNull(status, "status must not be null");
+        Objects.requireNonNull(starterCredentialStatus, "starterCredentialStatus must not be null");
     }
 
     /**
@@ -33,10 +60,17 @@ public record ProjectKeyCandidate(
         return status == ProjectStatus.ACTIVE;
     }
 
+    /**
+     * starter ingest credential이 현재 검증에 사용할 수 있는 상태인지 확인한다.
+     */
+    public boolean hasActiveStarterCredential() {
+        return starterCredentialStatus == StarterCredentialStatus.ACTIVE;
+    }
+
     @Override
     public String toString() {
-        return "ProjectKeyCandidate[projectId=%s, projectName=%s, keyPrefix=%s, status=%s]"
-                .formatted(projectId, projectName, keyPrefix, status);
+        return "ProjectKeyCandidate[projectId=%s, projectName=%s, keyPrefix=%s, status=%s, starterCredentialStatus=%s]"
+                .formatted(projectId, projectName, keyPrefix, status, starterCredentialStatus);
     }
 
     private static String requireText(String value, String fieldName) {
