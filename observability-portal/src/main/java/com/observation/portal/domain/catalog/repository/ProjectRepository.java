@@ -17,4 +17,9 @@ public interface ProjectRepository extends JpaRepository<ProjectEntity, UUID> {
      * DB unique constraint가 보장하는 `projects.key_prefix` 단일 후보를 조회한다.
      */
     Optional<ProjectEntity> findByKeyPrefix(String keyPrefix);
+
+    /**
+     * local smoke seed가 project name 중복을 만들지 않기 위해 기존 row를 조회한다.
+     */
+    Optional<ProjectEntity> findByName(String name);
 }

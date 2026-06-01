@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-06-01T01:11:47+0900
+# last_updated: 2026-06-01T10:18:00+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -47,9 +47,12 @@
 # - Snapshot marker와 bounded instance summary의 세부 shape는 Epic 5 Story 5.8 child stories에서 닫는다.
 # - Story 5.9는 pre-story contract decision 기준으로 5-9-a API/source/response skeleton과 5-9-b promotion/dedup/suppression/period folding으로 나눈다.
 # - Epic 4는 종료됐다. Story 4.0 -> 4.4와 bridge story 4.0.1/4.0.2 및 retrospective는 accepted bucket metric axis와 starter heartbeat control-plane axis 분리 기준으로 done이다.
+# - Epic 7은 Epic 6 완료 후 실제 GitHub OAuth 계정, local smoke seed, starter 포함 Spring Boot smoke service로 portal 통신을 검증하는 local/operator smoke validation epic이다.
+# - Epic 7은 public project creation, project key issuance/rotation UI, browser token persistence, invite/admin/team/billing surface를 열지 않는다.
+# - Epic 7 token memo는 Git 추적 대상이 아닌 `.private/smoke-auth.env`의 ephemeral access token으로 제한하고 refresh/provider token은 저장하지 않는다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-06-01T01:11:47+0900
+last_updated: 2026-06-01T10:18:00+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -114,3 +117,9 @@ development_status:
   6-9-failure-recovery-path-demo-hardening: done
   6-10-account-project-membership-and-scoped-project-entry: done
   epic-6-retrospective: done
+
+  epic-7: in-progress
+  7-1-real-github-oauth-smoke-seed-and-operator-runbook: done
+  7-2-starter-bucket-ingest-http-client: backlog
+  7-3-smoke-spring-boot-service-and-portal-communication-verification: backlog
+  epic-7-retrospective: optional

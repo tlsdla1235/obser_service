@@ -67,6 +67,41 @@ public class AccountProjectMembershipEntity {
         this.updatedAt = Objects.requireNonNull(updatedAt, "updatedAt must not be null");
     }
 
+    /**
+     * membership 기본키를 반환한다.
+     */
+    public UUID id() {
+        return id;
+    }
+
+    /**
+     * 연결된 account 기본키를 반환한다.
+     */
+    public UUID accountId() {
+        return accountId;
+    }
+
+    /**
+     * 연결된 project 기본키를 반환한다.
+     */
+    public UUID projectId() {
+        return projectId;
+    }
+
+    /**
+     * authorization에 사용할 membership 상태 값을 반환한다.
+     */
+    public String status() {
+        return status;
+    }
+
+    /**
+     * active membership인지 확인한다.
+     */
+    public boolean isActive() {
+        return "active".equals(status);
+    }
+
     private static String requireText(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + " must not be blank");

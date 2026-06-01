@@ -52,10 +52,31 @@ public class AccountEntity {
     }
 
     /**
+     * local/test fixture에서 비활성 account row를 명시적으로 만들 때 사용한다.
+     */
+    public static AccountEntity disabled(UUID id, OffsetDateTime now) {
+        return new AccountEntity(id, "disabled", now, now);
+    }
+
+    /**
      * account 기본키를 반환한다.
      */
     public UUID id() {
         return id;
+    }
+
+    /**
+     * account lifecycle 상태 값을 반환한다.
+     */
+    public String status() {
+        return status;
+    }
+
+    /**
+     * smoke seed와 resource API가 사용할 수 있는 active account인지 확인한다.
+     */
+    public boolean isActive() {
+        return "active".equals(status);
     }
 
     private static String requireText(String value, String fieldName) {

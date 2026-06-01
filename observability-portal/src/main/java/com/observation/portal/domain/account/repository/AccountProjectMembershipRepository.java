@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -28,6 +29,11 @@ public interface AccountProjectMembershipRepository extends JpaRepository<Accoun
             order by project.name asc
             """)
     List<ProjectEntity> findActiveMembershipProjectsByAccountId(@Param("accountId") UUID accountId);
+
+    /**
+     * local smoke seed가 기존 membership을 idempotent하게 재사용하거나 disabled 상태를 fail-closed하기 위해 조회한다.
+     */
+    Optional<AccountProjectMembershipEntity> findByAccountIdAndProjectId(UUID accountId, UUID projectId);
 
     /**
      * Bearer account가 path project에 대한 active membership을 가진 경우에만 true를 반환한다.

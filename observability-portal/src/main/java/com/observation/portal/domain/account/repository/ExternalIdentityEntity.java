@@ -135,6 +135,13 @@ public class ExternalIdentityEntity {
         return email;
     }
 
+    /**
+     * GitHub profile metadata display name을 반환한다.
+     */
+    public String displayName() {
+        return displayName;
+    }
+
     private static String requireText(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + " must not be blank");

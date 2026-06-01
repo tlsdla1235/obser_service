@@ -6,6 +6,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -19,6 +20,11 @@ public interface ExternalIdentityJpaRepository extends JpaRepository<ExternalIde
      * provider와 provider subject 조합으로 기존 external identity를 찾는다.
      */
     Optional<ExternalIdentityEntity> findByProviderAndProviderSubject(String provider, String providerSubject);
+
+    /**
+     * local smoke seed의 보조 selector로 display name이 정확히 하나인지 확인하기 위해 조회한다.
+     */
+    List<ExternalIdentityEntity> findByProviderAndDisplayName(String provider, String displayName);
 
     /**
      * 동시 첫 로그인 race에서 unique violation 대신 이미 생성된 identity로 수렴하도록 insert-if-absent를 수행한다.
