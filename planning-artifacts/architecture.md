@@ -211,7 +211,7 @@ MVP에서는 별도 `OperationalEventRepository`를 만들지 않는다. Operati
 
 1. host app request와 runtime signal이 Micrometer로 관측된다.
 2. starter spring integration이 observation을 starter service로 전달한다.
-3. starter service는 route normalization과 low-cardinality guard를 적용한다. 이때 `http.route`/framework route template을 최우선으로 사용하고, route template이 없을 때만 raw path candidate를 query 폐기 후 configured allowlist matcher의 일시 입력으로 사용한다. 반환값은 framework template, allowlist template, 또는 `UNKNOWN`뿐이며 raw path/query/high-cardinality tag는 ingest envelope와 rollup key에 남지 않는다.
+3. starter service는 `planning-artifacts/contracts/route-attribution-policy.md`에 따라 route normalization과 low-cardinality guard를 적용한다. `http.route`를 먼저 정규화하고, 그 결과가 `UNKNOWN`이면 low-cardinality `uri`/`path` raw 후보를 query key/value 폐기 후 allowlist exact-one match와 safe prefix collapse에만 사용할 수 있다. normalized route는 policy가 허용한 safe template, safe prefix collapse 결과, allowlist template, `UNKNOWN` 중 하나이며 raw path/query/high-cardinality tag는 ingest envelope와 rollup key에 남지 않는다.
 4. starter는 30초 UTC bucket으로 app summary와 endpoint histogram bucket을 만든다.
 5. background worker가 ingest envelope를 만들고 HTTPS POST를 수행한다.
 6. portal `IngestController`는 payload를 request DTO로 받는다.

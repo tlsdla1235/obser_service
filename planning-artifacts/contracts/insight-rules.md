@@ -24,7 +24,7 @@ Insight rule은 원인 확정 엔진이 아니라 첫 확인 지점을 제안하
 
 guard를 통과하지 못한 rule은 candidate를 만들지 않거나 confidence를 낮춘다.
 
-Route attribution이 `UNKNOWN`인 endpoint-level rule은 actionability를 낮게 보거나 candidate 생성을 제한할 수 있다. `allowlist_path_match`는 configured policy를 통과한 normalized route이므로 endpoint evidence로 사용할 수 있으나, raw path/query detail은 evidence에 포함하지 않는다.
+Route attribution이 `UNKNOWN`인 endpoint-level rule은 actionability를 낮게 보거나 candidate 생성을 제한할 수 있다. `route-attribution-policy.md`를 통과한 normalized route는 endpoint evidence로 사용할 수 있으나, raw path/query detail은 evidence에 포함하지 않는다.
 
 ## 3. Candidate Shape
 

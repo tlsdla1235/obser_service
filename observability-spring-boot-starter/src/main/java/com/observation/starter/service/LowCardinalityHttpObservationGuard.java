@@ -5,7 +5,6 @@ import com.observation.starter.model.metric.LowCardinalityHttpServerObservation;
 import com.observation.starter.model.route.NormalizedRoute;
 
 import java.util.Objects;
-import java.util.Optional;
 
 /**
  * Story 2.1 HTTP 관측 입력을 route/tag guard를 통과한 starter 내부 모델로 변환한다.
@@ -41,10 +40,7 @@ public final class LowCardinalityHttpObservationGuard {
 
         NormalizedRoute normalizedRoute;
         try {
-            Optional<String> rawPathCandidate = input.routePattern().isPresent()
-                    ? Optional.empty()
-                    : input.rawPathCandidate();
-            normalizedRoute = routeNormalizationService.normalize(input.routePattern(), rawPathCandidate);
+            normalizedRoute = routeNormalizationService.normalize(input.routePattern(), input.rawPathCandidate());
         } catch (RuntimeException ignored) {
             normalizedRoute = NormalizedRoute.unknown();
         }

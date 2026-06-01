@@ -9,6 +9,10 @@ changeTrigger: MVP route attribution policy A-to-B adjustment
 
 # Sprint Change Proposal - Route Attribution B안 전환
 
+## Superseded Note - 2026-06-01
+
+이 문서는 2026-05-14 Route Attribution B안 결정 기록으로 보존한다. 현재 route normalization 정책은 `planning-artifacts/contracts/route-attribution-policy.md`를 source of truth로 따른다.
+
 ## 1. Issue Summary
 
 현재 MVP route attribution 정책은 `http.route` 또는 framework route template이 없으면 endpoint를 안전하게 식별하지 못하고 `GET UNKNOWN` 같은 단일 fallback으로 수렴한다. 이 정책은 privacy와 cardinality safety 측면에서는 안전하지만, `http.route`가 제공되지 않는 query-string 기반 API나 일부 framework/instrumentation 조합에서 endpoint-level triage 가치가 급격히 약해진다.

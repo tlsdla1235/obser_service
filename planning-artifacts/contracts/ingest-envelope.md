@@ -153,8 +153,8 @@ MVP `schemaVersion: "1.0"`은 JVM/datasource runtime ratio를 latest sample shap
 - `bucket.durationSeconds`는 `30`만 허용한다.
 - `bucket.startUtc`와 `bucket.endUtc`는 UTC이고 30초 boundary에 맞아야 한다.
 - `application.name`, `environment`, `instance`는 비어 있으면 안 된다.
-- endpoint `route`는 framework route template, configured allowlist template, 또는 `UNKNOWN`이어야 한다.
-- raw path candidate, query string, query key/value, high-cardinality tag, attribution source raw detail은 지원 payload shape에 존재할 수 없다.
+- endpoint `route`는 `route-attribution-policy.md`가 허용한 safe route template, safe prefix collapse 결과, configured allowlist template, 또는 `UNKNOWN`이어야 한다.
+- raw path candidate, 실제 query string/key/value, high-cardinality tag, attribution source raw detail은 지원 payload shape에 존재할 수 없다.
 - endpoint 항목은 이미 정규화된 route 기준의 bounded top-N 또는 허용 route set 안에 있어야 한다. 이 제한은 출력 cardinality cap이며 route attribution fallback으로 사용하지 않는다.
 - histogram bucket은 cumulative count를 사용한다.
 - `localPercentiles`가 존재하면 `scope=instance_bucket`, `source=starter_local`, `mergeable=false`, envelope와 동일한 30초 boundary를 만족해야 한다.
@@ -166,7 +166,7 @@ MVP `schemaVersion: "1.0"`은 JVM/datasource runtime ratio를 latest sample shap
 
 Portal ingest는 forward compatibility를 위해 JSON unknown field를 거부하지 않고 무시한다. 예를 들어 `customMetrics`, `tags`, `rawTimeseries`, 또는 future unsupported field가 포함되어도 지원 envelope field가 유효하면 request는 counting/acceptance 대상으로 남는다.
 
-무시된 field는 metric taxonomy 확장, aggregation 입력, route attribution, idempotency payload identity, persisted accepted metric 후보에 반영하지 않는다. 즉, unknown field를 받는 것은 semantic acceptance가 아니라 "지원하지 않는 입력을 읽지 않고 버린다"는 boundary 정책이다. 지원 field 자체가 잘못된 경우, 예를 들어 `schemaVersion`이 `1.0`이 아니거나 endpoint `route`에 query string/raw identifier가 남아 있는 경우에는 기존 validation rule대로 reject한다.
+무시된 field는 metric taxonomy 확장, aggregation 입력, route attribution, idempotency payload identity, persisted accepted metric 후보에 반영하지 않는다. 즉, unknown field를 받는 것은 semantic acceptance가 아니라 "지원하지 않는 입력을 읽지 않고 버린다"는 boundary 정책이다. 지원 field 자체가 잘못된 경우, 예를 들어 `schemaVersion`이 `1.0`이 아니거나 endpoint `route`에 실제 query key/value, unsupported query suffix, raw identifier가 남아 있는 경우에는 기존 validation rule대로 reject한다. `?...`는 route attribution policy가 허용한 bounded omission marker일 때만 query string으로 보지 않는다.
 
 `localPercentiles`는 unknown field가 아니라 지원 후보 field다. 이 field가 유효하면 request는 accepted bucket 후보로 남고, field 자체가 잘못됐을 때만 payload validation 실패로 다룬다.
 
@@ -207,7 +207,7 @@ portal idempotency는 재전송/duplicate 안전망이지, starter duplicate flu
 
 - pull exposition format 지원
 - arbitrary query를 위한 raw metric 저장
-- allowlist matching의 임시 입력으로 사용된 raw path/query 저장
+- route attribution raw 후보로 사용된 `uri`/`path`나 query 저장
 - ignored unknown field 저장 또는 metric taxonomy 반영
 - high-cardinality label 검색
 - user-defined custom metric ingestion

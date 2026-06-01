@@ -12,7 +12,10 @@ public record NormalizedRoute(String value) {
     private static final String UNKNOWN_VALUE = "UNKNOWN";
 
     /**
-     * route 값을 query string 없는 bounded route 문자열로 정리한다.
+     * route 값을 query key/value 없는 bounded route 문자열로 정리한다.
+     *
+     * <p>{@code ?...}는 raw query가 아니라 route omission marker이므로 보존하고, 그 외
+     * {@code ?key=value} suffix는 route 값에 남기지 않는다.</p>
      */
     public NormalizedRoute {
         value = normalize(value);
@@ -57,10 +60,24 @@ public record NormalizedRoute(String value) {
     }
 
     private static String stripQueryString(String value) {
-        int queryStart = value.indexOf('?');
+        int queryStart = actualQueryStart(value);
         if (queryStart < 0) {
             return value;
         }
         return value.substring(0, queryStart);
+    }
+
+    private static int actualQueryStart(String value) {
+        for (int index = 0; index < value.length(); index++) {
+            if (value.charAt(index) != '?') {
+                continue;
+            }
+            if (value.startsWith("...", index + 1)) {
+                index += 3;
+                continue;
+            }
+            return index;
+        }
+        return -1;
     }
 }

@@ -53,23 +53,23 @@ Portal ingest request에 `tags` 같은 unknown field가 포함되더라도 forwa
 
 ## 4. Route Attribution Policy
 
-MVP route attribution precedence는 아래 순서다.
+Route normalization의 source of truth는 [route-attribution-policy.md](route-attribution-policy.md)다. 다른 요약이 이 문서와 충돌하면 route attribution policy를 우선한다.
 
-1. framework가 제공한 `http.route` 또는 route template을 low-cardinality route candidate로 우선 사용한다.
-2. framework route candidate에 query string이 있으면 starter는 query를 폐기한 뒤 route template contract를 검증할 수 있다.
-3. query 폐기 후 final payload route contract를 만족하면 그 값을 normalized route로 사용한다.
-4. query 폐기 후에도 absolute URL, slash 없는 path, trailing slash, double slash, raw identifier candidate, malformed template, wildcard 등 invalid shape이면 `UNKNOWN`으로 수렴한다.
-5. `http.route`가 없거나 blank/`UNKNOWN`일 때만 raw path candidate를 query 폐기 후 configured allowlist matcher의 임시 입력으로 사용한다.
-6. 정확히 하나의 allowlist template이 매칭되면 해당 configured template을 사용한다.
-7. 그 외 모든 경우 `UNKNOWN`
+현재 route attribution 요약은 아래와 같다.
 
-query string은 정규화하지 않는다. 이는 query key/value를 route, tag, metric key, payload, 로그, rollup key, read model로 해석하거나 보존하지 않는다는 뜻이다. framework route candidate와 raw path candidate 모두에서 `?` 이후를 버릴 수 있지만, 이는 query 정규화가 아니라 query 폐기다. framework route는 query 폐기 후에도 route template contract를 통과해야 하고, raw path는 `http.route` 부재/blank/`UNKNOWN` 상황에서 allowlist matching의 임시 입력으로만 사용할 수 있다.
+1. low-cardinality `http.route`를 최우선 source로 사용하고, safe template, `?...` bounded omission marker, 실제 query suffix strip, safe prefix collapse를 순서대로 시도한다.
+2. `http.route` 처리 결과가 `UNKNOWN`이면 low-cardinality `uri`/`path` raw 후보를 볼 수 있다.
+3. raw 후보는 첫 `?` 뒤 query key/value를 버린 뒤 allowlist exact-one match를 먼저 시도하고, 실패하면 safe prefix collapse를 시도한다.
+4. normalized route는 route attribution policy가 허용한 safe route template, safe prefix collapse 결과, allowlist template, `UNKNOWN` 중 하나다.
+5. `http.url`, high-cardinality `http.route`/`uri`/`path`, context custom value, arbitrary tag map은 route 후보가 될 수 없다.
+
+query string은 정규화하지 않는다. 이는 query key/value를 route, tag, metric key, payload, 로그, rollup key, read model로 해석하거나 보존하지 않는다는 뜻이다. `?...`는 route attribution policy가 허용한 bounded omission marker일 때만 normalized route 안에 남을 수 있으며, raw query 값 보존이 아니다.
 
 MVP route allowlist는 starter configuration으로 선언하며 namespace는 `observation.route-attribution.allowlist`다. Allowlist 항목은 `/orders/{orderId}` 같은 route template이며 query string, absolute URL, 실제 사용자/주문/세션 식별자 값을 포함할 수 없다. Annotation 기반 endpoint 표시명, route/display masking, query dimension opt-in은 post-MVP 후보이며 MVP attribution guard를 우회할 수 없다.
 
-final ingest payload에는 query string, raw path, query key/value, high-cardinality tag가 남을 수 없다. Portal validation은 final payload route에 query string이 있으면 reject하며, starter-side query 폐기로 safe normalized template이 만들어진 경우만 허용한다.
+final ingest payload에는 raw path, 실제 query key/value, high-cardinality tag, `http.url`에서 되살린 path가 남을 수 없다. Portal validation은 final payload route에 실제 query suffix, raw identifier, unsupported marker가 남아 있으면 reject한다.
 
-Allowlist 작성 규칙, concrete identifier heuristic, ambiguous match 처리, invalid `http.route` fallback 금지는 [route-attribution-policy.md](route-attribution-policy.md)를 따른다.
+Allowlist 작성 규칙, concrete identifier heuristic, ambiguous match 처리, invalid `http.route` 이후 raw 후보 fallback 허용 범위는 [route-attribution-policy.md](route-attribution-policy.md)를 따른다.
 
 ## 5. Extension Policy
 

@@ -15,6 +15,10 @@ stepsCompleted:
 
 # Implementation Readiness Review - Epic 2
 
+## Superseded Note - 2026-06-01
+
+Route Attribution B안 관련 판단은 당시 readiness record로 보존한다. 현재 route normalization 정책은 `planning-artifacts/contracts/route-attribution-policy.md`를 source of truth로 따른다.
+
 ## 판정
 
 **Pass with fixes.**

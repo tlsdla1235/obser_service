@@ -51,6 +51,34 @@ class LowCardinalityHttpObservationGuardTest {
     }
 
     @Test
+    void preservesBoundedOmissionMarkerAcrossInputAndGuardBoundary() {
+        LowCardinalityHttpObservationGuard guard = new LowCardinalityHttpObservationGuard(
+                new RouteNormalizationService(List.of("/users/{userId}/posts")));
+        HttpServerObservationInput input = httpInput("GET",
+                Optional.of("/{userId}?.../posts"),
+                Optional.of("/users/123/posts?debug=true"));
+
+        LowCardinalityHttpServerObservation guarded = guard.guard(input);
+
+        assertEquals(Optional.of("/{userId}?.../posts"), input.routePattern());
+        assertEquals("/{userId}?.../posts", guarded.normalizedRoute().value());
+        assertEquals("GET /{userId}?.../posts", guarded.endpointKey().value());
+    }
+
+    @Test
+    void rawFallbackIsAvailableWhenRoutePatternNormalizesToUnknown() {
+        LowCardinalityHttpObservationGuard guard = new LowCardinalityHttpObservationGuard(
+                new RouteNormalizationService(List.of("/orders/{orderId}")));
+        HttpServerObservationInput input = httpInput("GET",
+                Optional.of("/orders/{orderId"),
+                Optional.of("/orders/123?debug=true"));
+
+        LowCardinalityHttpServerObservation guarded = guard.guard(input);
+
+        assertEquals("GET /orders/{orderId}", guarded.endpointKey().value());
+    }
+
+    @Test
     void rawPathCandidateCanMatchConfiguredAllowlistWhenFrameworkRouteIsAbsent() {
         LowCardinalityHttpObservationGuard guard = new LowCardinalityHttpObservationGuard(
                 new RouteNormalizationService(List.of("/search", "/orders/{orderId}")));
@@ -129,8 +157,8 @@ class LowCardinalityHttpObservationGuardTest {
         LowCardinalityHttpObservationGuard guard = new LowCardinalityHttpObservationGuard(
                 new RouteNormalizationService());
         HttpServerObservationInput input = httpInput("GET",
-                Optional.empty(),
-                Optional.of("https://example.test/sessions/abc?token=secret"));
+                Optional.of("https://example.test/sessions/{sessionId}"),
+                Optional.empty());
 
         LowCardinalityHttpServerObservation guarded = assertDoesNotThrow(() -> guard.guard(input));
 
