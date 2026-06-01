@@ -52,7 +52,7 @@
 # - Epic 7 token memo는 Git 추적 대상이 아닌 `.private/smoke-auth.env`의 ephemeral access token으로 제한하고 refresh/provider token은 저장하지 않는다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-06-01T11:34:11+0900
+last_updated: 2026-06-01T13:12:57+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -118,7 +118,7 @@ development_status:
   6-10-account-project-membership-and-scoped-project-entry: done
   epic-6-retrospective: done
 
-  epic-7: in-progress
+  epic-7: done
   7-1-real-github-oauth-smoke-seed-and-operator-runbook: done
   7-2-starter-bucket-ingest-http-client: done
   7-3-smoke-spring-boot-service-and-portal-communication-verification: done
