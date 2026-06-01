@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Bean;
  * Route Attribution B안에 필요한 allowlist 설정과 guard service를 연결한다.
  *
  * <p>host application은 {@code observation.route-attribution.allowlist}에 route template만
- * 선언할 수 있으며, 이 값은 {@code http.route} 부재 시 raw path candidate matching에만 사용된다.</p>
+ * 선언할 수 있으며, 이 값은 {@code http.route} 부재 또는 실패 시 raw path candidate matching에만 사용된다.</p>
  */
 @AutoConfiguration
 @EnableConfigurationProperties(RouteAttributionProperties.class)

@@ -57,7 +57,7 @@ class MicrometerHttpServerObservationBinderTest {
     }
 
     @Test
-    void frameworkRouteTemplateHasPriorityAndRawPathCandidateIsNotStored() {
+    void frameworkRouteTemplateAndLowCardinalityRawCandidateAreBothStoredForGuardDecision() {
         RecordingCollector collector = new RecordingCollector();
         AtomicLong nanos = new AtomicLong(1L);
         ObservationRegistry registry = ObservationRegistry.create();
@@ -75,12 +75,12 @@ class MicrometerHttpServerObservationBinderTest {
 
         HttpServerObservationInput input = collector.onlyHttp();
         assertEquals(Optional.of("/orders/{orderId}"), input.routePattern());
-        assertTrue(input.rawPathCandidate().isEmpty(),
-                "http.route가 있으면 raw path candidate를 input boundary에 저장하지 않는다");
+        assertEquals(Optional.of("/orders/123"), input.rawPathCandidate(),
+                "guard가 http.route 성공 여부를 판단할 수 있도록 low-cardinality raw 후보를 함께 넘긴다");
     }
 
     @Test
-    void invalidPresentHttpRouteDoesNotFallbackToAllowlistMatchableRawPath() {
+    void invalidPresentHttpRouteKeepsLowCardinalityRawCandidateForServiceFallback() {
         RecordingCollector collector = new RecordingCollector();
         AtomicLong nanos = new AtomicLong(1L);
         ObservationRegistry registry = ObservationRegistry.create();
@@ -97,15 +97,40 @@ class MicrometerHttpServerObservationBinderTest {
         observation.stop();
 
         HttpServerObservationInput input = collector.onlyHttp();
-        assertTrue(input.routePattern().isEmpty());
-        assertTrue(input.rawPathCandidate().isEmpty(),
-                "invalid http.route가 present이면 uri/path allowlist fallback으로 우회하지 않는다");
+        assertEquals(Optional.of("https://example.test/orders/{orderId}"), input.routePattern());
+        assertEquals(Optional.of("/orders/123"), input.rawPathCandidate(),
+                "invalid http.route가 present여도 low-cardinality uri/path 후보를 보존한다");
 
         LowCardinalityHttpObservationGuard guard = new LowCardinalityHttpObservationGuard(
                 new RouteNormalizationService(List.of("/orders/{orderId}")));
         LowCardinalityHttpServerObservation guarded = guard.guard(input);
-        assertEquals("UNKNOWN", guarded.normalizedRoute().value());
-        assertEquals("GET UNKNOWN", guarded.endpointKey().value());
+        assertEquals("/orders/{orderId}", guarded.normalizedRoute().value());
+        assertEquals("GET /orders/{orderId}", guarded.endpointKey().value());
+    }
+
+    @Test
+    void preservesBoundedOmissionMarkerRoutePatternFromLowCardinalityHttpRoute() {
+        RecordingCollector collector = new RecordingCollector();
+        AtomicLong nanos = new AtomicLong(1L);
+        ObservationRegistry registry = ObservationRegistry.create();
+        registry.observationConfig()
+                .observationHandler(new MicrometerHttpServerObservationBinder(collector, nanos::get));
+
+        Observation observation = Observation.start("http.server.requests", registry)
+                .lowCardinalityKeyValue("method", "GET")
+                .lowCardinalityKeyValue("status", "200")
+                .lowCardinalityKeyValue("http.route", "/{userId}?.../posts")
+                .lowCardinalityKeyValue("uri", "/users/123/posts?debug=true");
+
+        nanos.addAndGet(5_000_000L);
+        observation.stop();
+
+        HttpServerObservationInput input = collector.onlyHttp();
+        LowCardinalityHttpServerObservation guarded = new LowCardinalityHttpObservationGuard().guard(input);
+
+        assertEquals(Optional.of("/{userId}?.../posts"), input.routePattern());
+        assertEquals("/{userId}?.../posts", guarded.normalizedRoute().value());
+        assertEquals("GET /{userId}?.../posts", guarded.endpointKey().value());
     }
 
     @Test
@@ -200,6 +225,31 @@ class MicrometerHttpServerObservationBinderTest {
         assertTrue(input.routePattern().isEmpty());
         assertEquals(Optional.of("/orders/123"), input.rawPathCandidate(),
                 "low-cardinality path만 raw path candidate가 되며 http.url/userId는 무시된다");
+    }
+
+    @Test
+    void lowCardinalityUriTakesPriorityOverPathRawCandidate() {
+        RecordingCollector collector = new RecordingCollector();
+        AtomicLong nanos = new AtomicLong(1L);
+        ObservationRegistry registry = ObservationRegistry.create();
+        registry.observationConfig()
+                .observationHandler(new MicrometerHttpServerObservationBinder(collector, nanos::get));
+
+        Observation observation = Observation.start("http.server.requests", registry)
+                .lowCardinalityKeyValue("method", "GET")
+                .lowCardinalityKeyValue("status", "200")
+                .lowCardinalityKeyValue("uri", "/orders/123?debug=true")
+                .lowCardinalityKeyValue("path", "/payments/999?debug=true");
+
+        nanos.addAndGet(5_000_000L);
+        observation.stop();
+
+        HttpServerObservationInput input = collector.onlyHttp();
+        LowCardinalityHttpServerObservation guarded = new LowCardinalityHttpObservationGuard(
+                new RouteNormalizationService(List.of("/orders/{orderId}", "/payments/{paymentId}"))).guard(input);
+
+        assertEquals(Optional.of("/orders/123"), input.rawPathCandidate());
+        assertEquals("GET /orders/{orderId}", guarded.endpointKey().value());
     }
 
     @Test

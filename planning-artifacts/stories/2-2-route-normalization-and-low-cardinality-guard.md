@@ -54,12 +54,16 @@ date: 2026-05-10
 - Story 2.3 must roll up only normalized endpoint keys.
 - Story 2.5 must serialize only data that passed this guard.
 
+## Story 8.1 Route Policy Note
+
+현재 route normalization source of truth는 `planning-artifacts/contracts/route-attribution-policy.md`다. 이 story의 2026-05-14 B안 세부 규칙이 Story 8.1 정책과 충돌하면 Story 8.1 source-of-truth를 우선한다.
+
 ## Implementation Notes
 
 - 허용 식별자는 `application`, `environment`, `instance`, `method`, `normalized route`다.
-- route source precedence는 framework route pattern/template, `http.route` 부재 시 configured allowlist exact-one match, `UNKNOWN` 순서로 둔다.
-- 안전한 normalized route를 얻지 못하면 raw path를 사용하지 않고 `UNKNOWN`으로 처리한다.
-- query string은 matcher 입력 전에 폐기하며 route/tag/key/payload/log/read model에 남기지 않는다.
+- route source precedence와 fallback 허용 범위는 `route-attribution-policy.md`를 따른다. low-cardinality `http.route`를 먼저 정규화하고, 그 결과가 `UNKNOWN`이면 low-cardinality `uri`/`path` raw 후보를 볼 수 있다.
+- 안전한 normalized route를 얻지 못하면 raw path 원문을 사용하지 않고 `UNKNOWN`으로 처리한다. 단 policy가 허용한 safe prefix collapse 결과는 bounded normalized route로 사용할 수 있다.
+- 실제 query key/value는 matcher 입력 전에 폐기하며 route/tag/key/payload/log/read model에 남기지 않는다. `?...`는 policy가 허용한 bounded omission marker일 때만 보존한다.
 - raw path values like `/orders/12345`, `/users/alice`, `/sessions/abc` must not become endpoint keys.
 - arbitrary label map을 도입하지 않는다.
 - endpoint list의 bounded top-N은 이미 정규화된 endpoint 출력 수 제한이며 route attribution fallback으로 사용하지 않는다.
@@ -68,11 +72,11 @@ date: 2026-05-10
 ## Acceptance Criteria
 
 1. route normalization service는 raw request path 대신 normalized route를 반환한다.
-2. framework route template 또는 `http.route`가 있으면 이를 항상 최우선으로 사용하고 raw path candidate는 무시한다.
-3. framework route template이 없을 때만 raw path candidate를 configured allowlist matcher의 일시 입력으로 사용할 수 있다.
+2. framework/custom `http.route` 후보를 항상 먼저 정규화한다.
+3. `http.route` 처리 결과가 `UNKNOWN`이면 low-cardinality raw path candidate를 configured allowlist matcher와 safe prefix collapse의 입력으로 사용할 수 있다.
 4. raw path candidate의 query string은 matcher 입력 전에 폐기한다. query key/value는 route, tag, metric key, payload, 로그, rollup key, read model에 남기지 않는다.
 5. allowlist에 정확히 하나의 template이 매칭되는 경우에만 해당 allowlist template을 normalized route로 사용한다.
-6. allowlist miss, ambiguous match, invalid path, absolute URL, decoding failure는 모두 `UNKNOWN`으로 수렴한다.
+6. allowlist miss는 safe prefix collapse를 시도한 뒤 policy가 허용한 bounded route 또는 `UNKNOWN`으로 수렴한다. ambiguous match, absolute URL raw 후보, decoding failure, 첫 segment unsafe 후보는 `UNKNOWN`으로 수렴한다.
 7. `userId`, `tenantId`, `sessionId`, `traceId`, arbitrary label은 starter payload 후보에 남지 않는다.
 8. Story 2.3 rollup input은 normalized route만 받는다.
 9. Story 2.5 envelope builder가 raw path/query/high-cardinality tag를 직렬화할 수 없도록 model 경계가 고정된다.
@@ -93,9 +97,9 @@ date: 2026-05-10
 
 ## Test Requirements
 
-- raw path candidate query 폐기 테스트
+- raw path candidate query key/value 폐기 테스트
 - allowlist exact-one match와 ambiguous match `UNKNOWN` 테스트
-- allowlist miss, invalid path, absolute URL, decoding failure `UNKNOWN` 테스트
+- safe prefix collapse, invalid path, absolute URL, decoding failure `UNKNOWN` 테스트
 - framework route template 우선순위 테스트
 - high-cardinality tag rejection/sanitization 테스트
 - endpoint key boundedness 테스트
@@ -105,9 +109,9 @@ date: 2026-05-10
 ## Developer Guardrails
 
 - raw path를 endpoint key, payload, rollup key, metric tag, read model, 로그에 넣지 않는다.
-- raw path candidate는 `http.route` 부재 시 configured allowlist matching의 일시 입력으로만 사용한다.
-- query string은 정규화하지 않고 폐기한다. `?` 이후 key/value는 어떤 산출물에도 남기지 않는다.
-- allowlist 없는 자동 raw path 추론은 MVP에서 구현하지 않는다.
+- raw path candidate는 route attribution source-of-truth가 허용한 low-cardinality `uri`/`path` 후보로만 사용하며, payload/rollup/read model에 원문을 남기지 않는다.
+- query string은 정규화하지 않는다. `?` 이후 key/value는 어떤 산출물에도 남기지 않으며, `?...`는 bounded omission marker일 때만 허용한다.
+- allowlist 없는 임의 template 추론은 MVP에서 구현하지 않는다. Safe prefix collapse는 raw 값을 template 변수로 추론하지 않고 unsafe suffix를 `/...`로 접는 bounded fallback이다.
 - arbitrary tag map을 starter model 또는 envelope 후보에 추가하지 않는다.
 - tenant/user/session/trace 식별자를 MVP metric tag로 허용하지 않는다.
 - query parameter opt-in이나 route/display masking annotation을 MVP guard 우회 경로로 추가하지 않는다.
@@ -133,7 +137,7 @@ date: 2026-05-10
 ### Implementation Plan
 
 - Story 2.1의 `HttpServerObservationInput` shape를 유지하고, 그 다음 단계 모델을 새로 만들어 raw path/high-cardinality tag가 이어지지 않게 한다.
-- `model.route`에 `NormalizedRoute`를 추가하고, `service.RouteNormalizationService`에서 framework route template, `http.route` 부재 시 allowlist exact-one match, `UNKNOWN` 순서로 정규화한다.
+- `model.route`에 `NormalizedRoute`를 추가하고, `service.RouteNormalizationService`에서 source-of-truth route attribution policy에 맞춰 `http.route`, low-cardinality raw 후보 fallback, allowlist, safe prefix collapse, `UNKNOWN` 경계를 닫는다.
 - `LowCardinalityHttpObservationGuard`가 `HttpServerObservationInput`을 받아 `LowCardinalityHttpServerObservation`으로 변환하게 하여 Story 2.3 rollup input과 Story 2.5 envelope builder 후보를 normalized route 경계로 고정한다.
 - `LowCardinalityTagKey` enum과 `EndpointKey` value object로 허용 식별자와 endpoint key 구성을 코드에 고정한다.
 
@@ -149,19 +153,19 @@ date: 2026-05-10
 ### Completion Notes
 
 - raw request path를 endpoint key나 starter payload 후보로 넘기지 않도록 `LowCardinalityHttpServerObservation` 출력 모델에는 `NormalizedRoute`만 보관한다.
-- framework route template은 최우선으로 사용하고 raw path candidate는 무시한다.
-- allowlist match는 `http.route` 부재 시 raw path candidate를 query 폐기 후 일시적으로 template에 매칭할 때만 사용하며, 정확히 하나가 매칭된 경우에만 allowlist template을 반환한다.
-- allowlist miss, ambiguous match, invalid path, absolute URL, decoding failure는 모두 `UNKNOWN`으로 수렴한다.
+- Story 8.1 이후 framework/custom `http.route` 후보는 최우선으로 정규화하되, 처리 결과가 `UNKNOWN`이면 low-cardinality raw 후보 fallback을 볼 수 있다.
+- allowlist match는 raw path candidate를 query key/value 폐기 후 template에 매칭하며, 정확히 하나가 매칭된 경우에만 allowlist template을 반환한다.
+- allowlist miss는 safe prefix collapse를 시도할 수 있고, ambiguous match, unsafe 후보, absolute URL, decoding failure는 `UNKNOWN`으로 수렴한다.
 - endpoint key와 metric tag 식별자는 `method + normalized route`로만 생성되며 user/tenant/session/trace/arbitrary label은 key나 출력 모델에 포함하지 않는다.
 - `LowCardinalityHttpServerObservation` 출력 모델은 `statusCode`, `error`, `errorType`을 endpoint 식별자가 아닌 bounded metric signal로 보관한다.
 - route normalization 실패 또는 untrusted URL/raw path 후보는 host request failure로 전파하지 않고 `UNKNOWN` route로 sanitize한다.
 - Prometheus/scrape/query UI 경로, bucket rollup, queue/flush worker, HTTP ingest client, envelope builder, portal ingest validation/persistence는 추가하지 않았다.
-- 2026-05-14 B안 보정으로 raw path candidate는 `http.route` 부재 시 allowlist exact-one matching의 임시 입력으로만 사용하고, C안 자동 raw path 추론은 구현하지 않는다.
+- 2026-05-14 B안 보정 기록은 Story 8.1 source-of-truth note로 superseded됐다.
 
 ### Review Closure - 2026-05-18
 
-- Route Attribution B안 기준으로 AC, Tasks/Subtasks, Dev Agent Record, Completion Notes를 구현 결과와 재대조했다.
-- 남은 review finding은 없다. `RouteNormalizationService`는 framework route/http.route 우선순위, raw path candidate allowlist exact-one fallback, query 폐기, miss/ambiguous/invalid/absolute URL/percent decoding failure의 `UNKNOWN` 수렴을 구현하고 테스트한다.
+- Route Attribution B안 기준 review closure 기록은 당시 구현 결과와 재대조한 historical record다. 현재 정책 판단은 Story 8.1 source-of-truth note를 따른다.
+- 남은 review finding은 없다. 현재 `RouteNormalizationService` 정책 설명은 `planning-artifacts/contracts/route-attribution-policy.md`와 Story 8.1 기록을 따른다.
 - `LowCardinalityHttpObservationGuard`, `MetricBucketRollupService`, `IngestEnvelopeBuilderService` 경계는 raw path/query/high-cardinality tag를 다음 산출 모델, rollup key, envelope payload로 승격하지 않고 normalized route만 소비한다.
 - starter main source에는 Prometheus/scrape/query UI 경로, portal ingest validation/persistence, idempotency repository를 추가하지 않았다.
 
@@ -199,6 +203,7 @@ date: 2026-05-10
 
 - 2026-05-13: Story 2.2 implementation started and completed; route normalization, low-cardinality guard model/service, tag policy, endpoint key, and guard tests added.
 - 2026-05-14: Route Attribution B안 승인 기준에 맞춰 `http.route` 우선, allowlist exact-one fallback, query 폐기, `UNKNOWN` 수렴 정책과 starter allowlist 설정을 반영했다.
+- 2026-06-01: Story 8.1 route normalization source-of-truth 기준으로 current planning/AC/guardrail 문구를 정렬했다.
 
 ## Status
 

@@ -11,13 +11,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class RouteNormalizationServiceTest {
 
     @Test
-    void removesRawPathParametersAndUsesUnknownFallbackWhenNoTemplateOrAllowlistMatches() {
+    void appliesSafePrefixCollapseWhenRawIdentifierSuffixHasNoAllowlistMatch() {
         RouteNormalizationService service = new RouteNormalizationService();
 
         NormalizedRoute route = service.normalize(Optional.empty(), Optional.of("/orders/12345"));
 
-        assertEquals(NormalizedRoute.unknown(), route);
-        assertEquals("UNKNOWN", route.value());
+        assertEquals("/orders/...", route.value());
     }
 
     @Test
@@ -33,6 +32,25 @@ class RouteNormalizationServiceTest {
 
         assertEquals("/orders/{orderId}", frameworkRoute.value());
         assertEquals("/orders/{orderId}", allowlistRoute.value());
+    }
+
+    @Test
+    void preservesBoundedOmissionMarkerFromFrameworkRoute() {
+        RouteNormalizationService service = new RouteNormalizationService();
+
+        NormalizedRoute route = service.normalize(Optional.of("/{userId}?.../posts"), Optional.empty());
+
+        assertEquals("/{userId}?.../posts", route.value());
+    }
+
+    @Test
+    void collapsesUnsafeFrameworkRouteSuffixWithoutReturningRawIdentifier() {
+        RouteNormalizationService service = new RouteNormalizationService();
+
+        assertEquals("/posts/...",
+                service.normalize(Optional.of("/posts/deadbeef/comments/9"), Optional.empty()).value());
+        assertEquals("/api/v1/orders/...",
+                service.normalize(Optional.of("/api/v1/orders/33/items/9"), Optional.empty()).value());
     }
 
     @Test
@@ -57,13 +75,36 @@ class RouteNormalizationServiceTest {
     }
 
     @Test
-    void frameworkRouteRejectCandidatesConvergeToUnknownBeforeEnvelopeBuild() {
+    void malformedFrameworkTemplateMarkerFallsBackToRawAllowlistCandidate() {
+        RouteNormalizationService service = new RouteNormalizationService(List.of("/orders/{orderId}"));
+
+        NormalizedRoute route = service.normalize(
+                Optional.of("/orders/{orderId"),
+                Optional.of("/orders/12345"));
+
+        assertEquals("/orders/{orderId}", route.value());
+    }
+
+    @Test
+    void absoluteAndInvalidFrameworkRoutesCanUseLowCardinalityRawFallback() {
+        RouteNormalizationService service = new RouteNormalizationService(List.of("/orders/{orderId}"));
+
+        assertEquals("/orders/{orderId}",
+                service.normalize(
+                        Optional.of("https://example.test/orders/{orderId}"),
+                        Optional.of("/orders/12345?debug=true")).value());
+        assertEquals("/orders/{orderId}",
+                service.normalize(
+                        Optional.of("/orders/%ZZ"),
+                        Optional.of("/orders/12345")).value());
+    }
+
+    @Test
+    void frameworkRouteRejectCandidatesWithoutRawFallbackConvergeToUnknown() {
         RouteNormalizationService service = new RouteNormalizationService(List.of("/orders/{orderId}"));
         List<String> rejectCandidates = List.of(
                 "/orders/",
                 "/orders//{orderId}",
-                "/orders/12345",
-                "/assets/deadbeef",
                 "/orders/{1}",
                 "/orders/{order-id}",
                 "/orders/{orderId",
@@ -71,7 +112,7 @@ class RouteNormalizationServiceTest {
 
         for (String candidate : rejectCandidates) {
             assertEquals(NormalizedRoute.unknown(),
-                    service.normalize(Optional.of(candidate), Optional.of("/orders/12345")),
+                    service.normalize(Optional.of(candidate), Optional.empty()),
                     () -> candidate + " must converge to UNKNOWN");
         }
     }
@@ -101,6 +142,8 @@ class RouteNormalizationServiceTest {
                 service.normalize(Optional.empty(), Optional.of("orders/123")));
         assertEquals(NormalizedRoute.unknown(),
                 service.normalize(Optional.empty(), Optional.of("/orders/%ZZ")));
+        assertEquals(NormalizedRoute.unknown(),
+                service.normalize(Optional.empty(), Optional.of("/33/posts")));
     }
 
     @Test
@@ -112,10 +155,13 @@ class RouteNormalizationServiceTest {
     }
 
     @Test
-    void absoluteFrameworkRouteConvergesToUnknown() {
-        RouteNormalizationService service = new RouteNormalizationService(List.of("/orders/{orderId}"));
+    void rawQueryValueIsNotResurrectedAsRoute() {
+        RouteNormalizationService service = new RouteNormalizationService();
 
-        assertEquals(NormalizedRoute.unknown(),
-                service.normalize(Optional.of("https://example.test/orders/{orderId}"), Optional.of("/orders/123")));
+        NormalizedRoute route = service.normalize(
+                Optional.empty(),
+                Optional.of("/orders/33?next=/payments/99&token=abc"));
+
+        assertEquals("/orders/...", route.value());
     }
 }

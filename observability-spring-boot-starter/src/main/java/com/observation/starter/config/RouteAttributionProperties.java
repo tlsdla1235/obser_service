@@ -12,7 +12,7 @@ import java.util.Objects;
  *
  * <p>{@code observation.route-attribution.allowlist}에는 raw path가 아니라
  * {@code /orders/{orderId}} 같은 route template만 둘 수 있다. 이 목록은
- * {@code http.route}가 없을 때 raw path candidate를 일시적으로 매칭하는 데만 쓰인다.</p>
+ * {@code http.route}가 없거나 실패했을 때 raw path candidate를 일시적으로 매칭하는 데만 쓰인다.</p>
  * <p>application.yml</p>
  * <p>→ RouteAttributionProperties가 설정값 바인딩</p>
  * <p>→ RouteAttributionAutoConfiguration이 이 값을 Bean에 주입</p>
@@ -47,13 +47,13 @@ public class RouteAttributionProperties {
      * 설정값이 MVP allowlist에 들어갈 수 있는 route template인지 확인한다.
      */
     public static boolean isValidAllowlistTemplate(String template) {
-        return RouteTemplateContract.isValidTemplate(template);
+        return RouteTemplateContract.isValidPathTemplate(template);
     }
 
     /**
      * route template을 정리하고 query string, absolute URL, 실제 ID 값처럼 보이는 segment를 거부한다.
      */
     public static String normalizeAllowlistTemplate(String template) {
-        return RouteTemplateContract.normalizeTemplate(template);
+        return RouteTemplateContract.normalizePathTemplate(template);
     }
 }

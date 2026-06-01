@@ -82,7 +82,7 @@ date: 2026-05-18
 4. blank application name, environment, or instance is rejected.
 5. negative counts, `errorCount > requestCount`, non-monotonic cumulative histogram buckets, or invalid ratio range is rejected.
 6. endpoint method/route/count/histogram fields follow `metric-taxonomy` and `ingest-envelope` rules.
-7. final payload route with query string, absolute URL, raw identifier candidate, or non-normalized shape is rejected where the MVP contract can detect it. Starter-side framework route query discard is allowed only when the resulting normalized route satisfies the portal route contract.
+7. final payload route with actual query key/value, unsupported query suffix, absolute URL, raw identifier candidate, or non-normalized shape is rejected where the MVP contract can detect it. `?...` is allowed only when it is the bounded omission marker permitted by `route-attribution-policy.md`.
 8. unsupported unknown fields such as free-form tags, arbitrary custom metric maps, raw timeseries arrays, and future extension fields are ignored rather than rejected; ignored fields do not affect metric taxonomy, aggregation, route attribution, or persisted accepted metrics.
 9. invalid project key result from Story 3.1 maps to unauthorized acceptance result.
 10. this story does not write `accepted_metric_buckets` or create dashboard snapshots.
@@ -115,7 +115,7 @@ date: 2026-05-18
 - starter payload를 신뢰만 하고 저장하지 않는다. Portal validation은 starter contract를 mirror한다.
 - schemaVersion `1.1` runtime aggregate 후보를 MVP validation에 섞지 않는다.
 - raw path/query/high-cardinality tag를 "나중에 쓸 수 있게" 보관하지 않는다.
-- framework `http.route`에 붙은 query string은 starter가 final payload 생성 전에 폐기할 수 있지만, portal validation은 약화하지 않는다. final payload route에 query string이 남아 있으면 reject한다.
+- framework `http.route`에 붙은 실제 query key/value는 starter가 final payload 생성 전에 폐기할 수 있지만, portal validation은 약화하지 않는다. final payload route에 실제 query key/value나 unsupported query suffix가 남아 있으면 reject한다. `?...`는 route attribution policy가 허용한 bounded omission marker일 때만 예외다.
 - accepted bucket repository, duplicate conflict, dashboard read model을 이 story에서 끝까지 구현하려고 범위를 넓히지 않는다.
 - controller가 repository를 직접 호출하지 않는다.
 
@@ -172,8 +172,8 @@ date: 2026-05-18
 - invalid project key는 `ProjectKeyVerificationResult.unauthorized()`를 받아 payload validation 전에 `IngestAcceptanceResult.unauthorized()`로 닫는다.
 - schemaVersion은 `1.0`만 허용하며, `bucket.durationSeconds = 30`, `[startUtc, endUtc)` 30초 간격, UTC `Z` timestamp, 30초 boundary 정렬을 검증한다.
 - application name/environment/instance blank, 음수 count, `errorCount > requestCount`, empty/non-monotonic cumulative histogram, requestCount 초과 histogram count, `0.0..1.0` 밖 JVM/datasource ratio를 거부한다.
-- endpoint method는 bounded uppercase HTTP method로 제한하고, endpoint route는 `UNKNOWN` 또는 normalized route template만 허용한다. Portal은 final payload route에 남은 query string, absolute URL, numeric/UUID/long-hex identifier segment, trailing slash, double slash, malformed template shape를 거부한다.
-- framework `http.route`의 query discard는 starter-side normalization 정책이다. query 폐기 후 final normalized route가 portal contract를 만족하는 경우는 허용하지만, portal final payload validation 자체는 query string을 계속 reject한다.
+- endpoint method는 bounded uppercase HTTP method로 제한하고, endpoint route는 route attribution policy가 허용한 normalized route 또는 `UNKNOWN`만 허용한다. Portal은 final payload route에 남은 실제 query key/value, unsupported query suffix, absolute URL, numeric/UUID/long-hex identifier segment, trailing slash, double slash, malformed template shape를 거부한다.
+- framework `http.route`의 실제 query key/value discard는 starter-side normalization 정책이다. query 폐기 후 final normalized route가 portal contract를 만족하는 경우는 허용하지만, portal final payload validation 자체는 raw query value를 계속 reject한다. `?...`는 bounded omission marker일 때만 허용한다.
 - `Idempotency-Key`는 5개 component와 header-safe 문자 집합을 검증하고, application/environment/instance/bucket-start component가 payload와 일치해야 한다.
 - request model은 unknown field를 무시해 free tag map, arbitrary custom metric map, raw timeseries array, future extension field가 service validation을 막지 않게 한다. 무시된 field는 metric taxonomy, aggregation, route attribution, persisted accepted metric 후보에 반영되지 않는다.
 - invalid result/error model과 `toString()`은 raw project key, raw route/query 값을 보관하거나 출력하지 않는다.

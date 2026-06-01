@@ -2,19 +2,26 @@ package com.observation.starter.service;
 
 import com.observation.starter.config.RouteAttributionProperties;
 import com.observation.starter.model.route.NormalizedRoute;
+import com.observation.starter.model.route.RouteTemplateContract;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
- * framework route template 우선, configured allowlist fallback 순서로 route를 정규화한다.
+ * framework route template 우선, configured allowlist와 safe prefix collapse fallback 순서로 route를 정규화한다.
  *
- * <p>raw request path는 {@code http.route}가 없을 때 allowlist template과 매칭하는 동안만
- * 일시적으로 사용한다. 반환값은 framework template, allowlist template, {@code UNKNOWN}뿐이다.</p>
+ * <p>raw request path는 low-cardinality {@code uri}/{@code path} 후보에서만 일시적으로 사용한다.
+ * 반환값은 safe template, allowlist template, safe prefix collapse marker, {@code UNKNOWN}뿐이다.</p>
  */
 public final class RouteNormalizationService {
+
+    private static final Pattern UUID_SEGMENT = Pattern.compile(
+            "(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
+    private static final Pattern LONG_HEX_SEGMENT = Pattern.compile("(?i)[0-9a-f]{8,}");
+    private static final Pattern LITERAL_ROUTE_SEGMENT = Pattern.compile("[A-Za-z0-9._~-]+");
 
     private final List<AllowedRoute> allowlist;
 
@@ -45,17 +52,21 @@ public final class RouteNormalizationService {
     /**
      * route source precedence에 따라 정규화된 route를 반환한다.
      *
-     * <p>framework template이 있으면 가장 먼저 사용한다. framework template이 없을 때만 raw path
-     * 후보의 query를 폐기한 뒤 allowlist exact-one matching에 사용한다. miss, ambiguous match,
-     * invalid path, absolute URL, decoding failure는 모두 {@code UNKNOWN}으로 수렴한다.</p>
+     * <p>framework template이 있으면 가장 먼저 사용하되, 처리 결과가 {@code UNKNOWN}이면 low-cardinality
+     * raw 후보의 allowlist exact-one matching과 safe prefix collapse fallback을 이어서 시도한다.
+     * absolute URL, malformed marker, invalid percent encoding 같은 실패는 host 요청 경로로 예외를
+     * 전파하지 않고 bounded route 또는 {@code UNKNOWN}으로 수렴한다.</p>
      */
     public NormalizedRoute normalize(Optional<String> frameworkRouteTemplate, Optional<String> rawPathCandidate) {
         try {
             Optional<String> frameworkCandidate = frameworkCandidate(frameworkRouteTemplate);
             if (frameworkCandidate.isPresent()) {
-                return normalizeFrameworkRoute(frameworkCandidate).orElseGet(NormalizedRoute::unknown);
+                NormalizedRoute frameworkRoute = normalizeFrameworkRoute(frameworkCandidate.get());
+                if (!frameworkRoute.isUnknown()) {
+                    return frameworkRoute;
+                }
             }
-            return normalizeAllowlistMatch(rawPathCandidate).orElseGet(NormalizedRoute::unknown);
+            return normalizeRawCandidate(rawPathCandidate).orElseGet(NormalizedRoute::unknown);
         } catch (RuntimeException ignored) {
             return NormalizedRoute.unknown();
         }
@@ -67,15 +78,30 @@ public final class RouteNormalizationService {
                 .filter(value -> !value.isEmpty())
                 .filter(value -> !value.equalsIgnoreCase("UNKNOWN"));
     }
-    // /orders/{orderId}?debug=true는 query를 제거해서 /orders/{orderId}가 된다
-    private Optional<NormalizedRoute> normalizeFrameworkRoute(Optional<String> frameworkCandidate) {
-        return frameworkCandidate
-                .map(RouteNormalizationService::stripQueryString)
-                .map(String::trim)
-                .flatMap(RouteNormalizationService::normalizeRouteTemplate);
+
+    /**
+     * {@code http.route} 후보를 safe template, omission marker template, safe prefix collapse 순서로 평가한다.
+     */
+    private NormalizedRoute normalizeFrameworkRoute(String frameworkCandidate) {
+        String candidate = stripActualQueryString(frameworkCandidate).trim();
+        if (!isRouteShaped(candidate)) {
+            return NormalizedRoute.unknown();
+        }
+
+        Optional<NormalizedRoute> routeTemplate = normalizeRouteTemplate(candidate);
+        if (routeTemplate.isPresent()) {
+            return routeTemplate.get();
+        }
+        if (hasTemplateSyntax(candidate)) {
+            return NormalizedRoute.unknown();
+        }
+        return safePrefixCollapse(candidate).orElseGet(NormalizedRoute::unknown);
     }
-    // http.route가 없을 때 raw path 후보를 allowlist에 매칭합니다.
-    private Optional<NormalizedRoute> normalizeAllowlistMatch(Optional<String> rawPathCandidate) {
+
+    /**
+     * low-cardinality raw 후보를 query 없는 path로 줄인 뒤 allowlist exact-one, prefix collapse 순서로 평가한다.
+     */
+    private Optional<NormalizedRoute> normalizeRawCandidate(Optional<String> rawPathCandidate) {
         String rawPath = safeOptional(rawPathCandidate)
                 .map(RouteNormalizationService::stripQueryString)
                 .map(String::trim)
@@ -89,11 +115,13 @@ public final class RouteNormalizationService {
                 .filter(allowedRoute -> allowedRoute.matches(rawPath))
                 .map(AllowedRoute::normalizedRoute)
                 .toList();
-        //매칭 결과가 정확히 하나여야한다.
-        if (matches.size() != 1) {
-            return Optional.empty();
+        if (matches.size() == 1) {
+            return Optional.of(matches.get(0));
         }
-        return Optional.of(matches.get(0));
+        if (matches.size() > 1) {
+            return Optional.of(NormalizedRoute.unknown());
+        }
+        return safePrefixCollapse(rawPath);
     }
 
     private static Optional<String> safeOptional(Optional<String> value) {
@@ -108,6 +136,8 @@ public final class RouteNormalizationService {
                 && !value.startsWith("//")
                 && !value.startsWith("http://")
                 && !value.startsWith("https://")
+                && !value.contains("//")
+                && (value.length() == 1 || !value.endsWith("/"))
                 && !containsControlCharacter(value)
                 && hasValidPercentEncoding(value);
     }
@@ -116,20 +146,60 @@ public final class RouteNormalizationService {
         if (!isRouteShaped(value)) {
             return false;
         }
-        return !hasTemplateMarker(value);
+        return !hasTemplateSyntax(value);
     }
 
     private static Optional<NormalizedRoute> normalizeRouteTemplate(String candidate) {
         try {
-            return Optional.of(NormalizedRoute.of(RouteAttributionProperties.normalizeAllowlistTemplate(candidate)));
+            return Optional.of(NormalizedRoute.of(RouteTemplateContract.normalizeTemplate(candidate)));
         } catch (IllegalArgumentException ignored) {
             return Optional.empty();
         }
     }
 
-    private static boolean hasTemplateMarker(String value) {
-        return value.contains("{") && value.contains("}")
-                || value.contains("*");
+    private static Optional<NormalizedRoute> safePrefixCollapse(String candidate) {
+        if (!isRouteShaped(candidate) || hasTemplateSyntax(candidate)) {
+            return Optional.empty();
+        }
+
+        List<String> safePrefix = new ArrayList<>();
+        for (String segment : candidate.split("/", -1)) {
+            if (segment.isBlank()) {
+                continue;
+            }
+            if (isSafeLiteralSegment(segment)) {
+                safePrefix.add(segment);
+                continue;
+            }
+            if (safePrefix.isEmpty()) {
+                return Optional.empty();
+            }
+            return Optional.of(NormalizedRoute.of("/" + String.join("/", safePrefix) + "/..."));
+        }
+        return Optional.empty();
+    }
+
+    private static boolean hasTemplateSyntax(String value) {
+        return value.contains("{")
+                || value.contains("}")
+                || value.contains("*")
+                || value.contains(":")
+                || value.contains("[")
+                || value.contains("]")
+                || value.contains("(")
+                || value.contains(")");
+    }
+
+    private static boolean isSafeLiteralSegment(String segment) {
+        return LITERAL_ROUTE_SEGMENT.matcher(segment).matches()
+                && !looksLikeConcreteIdentifier(segment)
+                && !"...".equals(segment);
+    }
+
+    private static boolean looksLikeConcreteIdentifier(String segment) {
+        return segment.matches("[0-9]+")
+                || UUID_SEGMENT.matcher(segment).matches()
+                || LONG_HEX_SEGMENT.matcher(segment).matches();
     }
 
     private static String stripQueryString(String value) {
@@ -141,6 +211,31 @@ public final class RouteNormalizationService {
             return value;
         }
         return value.substring(0, queryStart);
+    }
+
+    private static String stripActualQueryString(String value) {
+        if (value == null) {
+            return "";
+        }
+        int queryStart = actualQueryStart(value);
+        if (queryStart < 0) {
+            return value;
+        }
+        return value.substring(0, queryStart);
+    }
+
+    private static int actualQueryStart(String value) {
+        for (int index = 0; index < value.length(); index++) {
+            if (value.charAt(index) != '?') {
+                continue;
+            }
+            if (value.startsWith("...", index + 1)) {
+                index += 3;
+                continue;
+            }
+            return index;
+        }
+        return -1;
     }
 
     private static boolean containsControlCharacter(String value) {

@@ -41,7 +41,7 @@ public final class MicrometerHttpServerObservationBinder implements ObservationH
         method     GET, POST 같은 HTTP method
         status     200, 404, 500 같은 응답 코드
         http.route /users/{id} 같은 프레임워크 라우트 템플릿 후보
-        uri        /users/123 같은 원본 경로가 들어올 수 있어 http.route 부재 시 allowlist matching의 임시 후보로만 사용
+        uri        /users/123 같은 원본 경로가 들어올 수 있어 service fallback의 임시 후보로만 사용
         path       /users/123 같은 원본 경로가 들어올 수 있어 uri와 같은 제한으로만 사용
         outcome    SUCCESS, CLIENT_ERROR, SERVER_ERROR 등
         error      예외 클래스명 또는 none
@@ -116,8 +116,7 @@ public final class MicrometerHttpServerObservationBinder implements ObservationH
 
     /**
      Micrometer의 Observation.Context에서 우리가 필요한 값만 뽑아내는 함수
-     우선순위는 routePattern의 http.route가 높음
-     http.route가 없다면 정규화 처리를 목적으로 candidate를 추출함
+     http.route와 low-cardinality uri/path 후보를 함께 넘기고 최종 source precedence는 guard/service가 판단함
      */
     private static HttpServerObservationInput toInput(Observation.Context context, Duration duration) {
         Integer statusCode = lowCardinalityValue(context, "status")
@@ -140,31 +139,22 @@ public final class MicrometerHttpServerObservationBinder implements ObservationH
 
     private static Optional<String> routePattern(Observation.Context context) {
         return lowCardinalityValue(context, "http.route")
-                .filter(MicrometerHttpServerObservationBinder::isUsableFrameworkRoute);
+                .filter(value -> !UNKNOWN.equalsIgnoreCase(value));
     }
 
     /**
-     * {@code http.route}가 없거나 blank/UNKNOWN일 때만 low-cardinality {@code uri}/{@code path} 값을
-     * allowlist matching 전용 raw path candidate로 넘긴다.
+     * low-cardinality {@code uri}/{@code path} 값을 route service의 fallback 후보로 넘긴다.
      *
      * <p>query string은 input boundary에 보관하지 않기 위해 즉시 폐기하며,
-     * {@code http.url}과 high-cardinality tag는 후보로 승격하지 않는다.</p>
+     * {@code http.url}과 high-cardinality tag는 후보로 승격하지 않는다. {@code http.route}
+     * 성공 여부와 raw 후보 사용 여부는 {@link com.observation.starter.service.RouteNormalizationService}가
+     * 최종 결정한다.</p>
      */
     private static Optional<String> rawPathCandidate(Observation.Context context) {
-        if (!httpRouteAllowsRawPathFallback(context)) {
-            return Optional.empty();
-        }
-
         return lowCardinalityValue(context, "uri")
                 .or(() -> lowCardinalityValue(context, "path"))
                 .map(MicrometerHttpServerObservationBinder::stripQueryString)
                 .filter(MicrometerHttpServerObservationBinder::isRawPathCandidate);
-    }
-
-    private static boolean isUsableFrameworkRoute(String value) {
-        return !UNKNOWN.equalsIgnoreCase(value)
-                && !value.startsWith("http://")
-                && !value.startsWith("https://");
     }
 
     private static boolean isRawPathCandidate(String value) {
@@ -173,27 +163,6 @@ public final class MicrometerHttpServerObservationBinder implements ObservationH
                 && !value.startsWith("//")
                 && !value.startsWith("http://")
                 && !value.startsWith("https://");
-    }
-
-    /**
-     * {@code http.route}가 실제로 부재하거나 blank/UNKNOWN인 경우에만 raw path allowlist fallback을 허용한다.
-     *
-     * <p>값이 present지만 absolute URL 같은 invalid shape이면 routePattern으로 채택하지 않더라도
-     * raw path로 우회하지 않고 이후 guard에서 {@code UNKNOWN}으로 수렴해야 한다.</p>
-     */
-    private static boolean httpRouteAllowsRawPathFallback(Observation.Context context) {
-        for (KeyValue keyValue : context.getLowCardinalityKeyValues()) {
-            if (!"http.route".equals(keyValue.getKey())) {
-                continue;
-            }
-
-            String value = keyValue.getValue();
-            if (value == null || value.isBlank() || UNKNOWN.equalsIgnoreCase(value.trim())) {
-                continue;
-            }
-            return false;
-        }
-        return true;
     }
 
     /**
