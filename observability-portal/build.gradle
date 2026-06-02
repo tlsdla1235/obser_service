@@ -1,6 +1,7 @@
 plugins {
     id 'java'
     id 'org.springframework.boot'
+    id 'com.github.node-gradle.node'
 }
 
 description = 'Observability portal runtime'
@@ -27,6 +28,37 @@ dependencies {
     testImplementation "org.testcontainers:testcontainers-junit-jupiter:${testcontainersVersion}"
     testImplementation "org.testcontainers:testcontainers-postgresql:${testcontainersVersion}"
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+node {
+    nodeProjectDir = file("$rootDir/frontend")
+    npmInstallCommand = 'ci'
+}
+
+tasks.register('frontendBuild', com.github.gradle.node.npm.task.NpmTask) {
+    dependsOn tasks.named('npmInstall')
+    args = ['run', 'build']
+
+    inputs.files(
+            file("$rootDir/frontend/package.json"),
+            file("$rootDir/frontend/package-lock.json")
+    )
+    inputs.files(fileTree("$rootDir/frontend/src"))
+    inputs.files(fileTree("$rootDir/frontend") {
+        include 'index.html'
+        include 'vite.config.ts'
+        include 'tsconfig*.json'
+        include 'default_shadcn_theme.css'
+        include 'postcss.config.mjs'
+    })
+    outputs.dir(file("$rootDir/frontend/dist"))
+}
+
+tasks.named('processResources') {
+    dependsOn tasks.named('frontendBuild')
+    from(file("$rootDir/frontend/dist")) {
+        into 'static'
+    }
 }
 
 tasks.named('bootJar') {
