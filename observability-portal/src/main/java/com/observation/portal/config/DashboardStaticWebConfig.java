@@ -5,20 +5,21 @@ import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
- * static dashboard entry route를 product homepage URL과 맞춰 등록한다.
+ * Vite SPA의 client route를 Spring MVC에서 정적 root index로 연결한다.
  *
- * <p>GitHub OAuth App homepage와 runbook이 `/dashboard/`를 기준으로 삼으므로, directory URL이 실제
- * `index.html`을 열도록 MVC forward를 둔다.</p>
+ * <p>알려진 route만 allow-list로 forward해 API, Vite asset, 확장자 resource 요청이 SPA HTML에 가려지지 않게 한다.</p>
  */
 @Configuration
 public class DashboardStaticWebConfig implements WebMvcConfigurer {
 
     /**
-     * `/dashboard`와 `/dashboard/`가 static dashboard 첫 화면으로 수렴하도록 한다.
+     * 직접 진입과 새로고침이 가능한 client route만 새 SPA index로 보낸다.
      */
     @Override
     public void addViewControllers(ViewControllerRegistry registry) {
-        registry.addRedirectViewController("/dashboard", "/dashboard/");
-        registry.addViewController("/dashboard/").setViewName("forward:/dashboard/index.html");
+        registry.addViewController("/dashboard").setViewName("forward:/index.html");
+        registry.addViewController("/dashboard/").setViewName("forward:/index.html");
+        registry.addViewController("/docs").setViewName("forward:/index.html");
+        registry.addViewController("/docs/").setViewName("forward:/index.html");
     }
 }

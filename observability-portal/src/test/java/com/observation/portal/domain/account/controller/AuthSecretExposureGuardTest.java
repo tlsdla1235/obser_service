@@ -394,12 +394,17 @@ class AuthSecretExposureGuardTest {
     }
 
     @Test
-    void staticDashboardAllowsOneTimeDisplayButNoBrowserPersistenceOrRawCredentialAttributes() throws IOException {
-        String page = Files.readString(Path.of("src/main/resources/static/dashboard/index.html"))
-                + Files.readString(Path.of("src/main/resources/static/dashboard/app.js"));
+    void frontendDashboardAllowsOneTimeDisplayButNoBrowserPersistenceOrRawCredentialAttributes() throws IOException {
+        String page = Files.readString(Path.of(
+                "..",
+                "frontend",
+                "src",
+                "app",
+                "components",
+                "dashboard.tsx"));
 
         assertThat(page)
-                .contains("starterCredential.displayValue", "navigator.clipboard.writeText(displayValue)")
+                .contains("credential.displayValue", "navigator.clipboard.writeText(credential.displayValue)")
                 .doesNotContain(
                         "localStorage",
                         "sessionStorage",

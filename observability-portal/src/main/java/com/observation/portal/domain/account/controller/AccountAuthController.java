@@ -42,8 +42,8 @@ public class AccountAuthController {
     private static final String CALLBACK_RELAY_ENDPOINT = "/api/auth/github/callback/tokens";
     private static final String CALLBACK_MESSAGE_TYPE = "observation-portal.github-oauth-complete";
     private static final String CALLBACK_RELAY_ID_META_NAME = "observation-github-callback-relay-id";
-    private static final String DASHBOARD_ENTRY_URL = "/dashboard/";
-    private static final String DASHBOARD_INDEX_URL = "/dashboard/index.html";
+    private static final String DASHBOARD_ENTRY_URL = "/dashboard";
+    private static final String DASHBOARD_INDEX_URL = "/index.html";
     private static final String NO_REFERRER_POLICY = "no-referrer";
     private static final MediaType CALLBACK_HTML_MEDIA_TYPE =
             MediaType.parseMediaType("text/html;charset=UTF-8");
@@ -231,7 +231,7 @@ public class AccountAuthController {
                           })
                           .then(({ accessToken, dashboardHtml }) => {
                             document.open();
-                            document.write(dashboardHtml.replace('<head>', '<head><base href="/dashboard/">'));
+                            document.write(dashboardHtml);
                             document.close();
                             const applyToken = () => {
                               if (window.observationPortalAuth) {

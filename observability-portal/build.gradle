@@ -56,6 +56,10 @@ tasks.register('frontendBuild', com.github.gradle.node.npm.task.NpmTask) {
 
 tasks.named('processResources') {
     dependsOn tasks.named('frontendBuild')
+    doFirst {
+        delete(file("$buildDir/resources/main/static/dashboard"))
+        delete(file("$buildDir/resources/main/static/dashboard 2"))
+    }
     from(file("$rootDir/frontend/dist")) {
         into 'static'
     }
