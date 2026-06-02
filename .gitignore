@@ -4,3 +4,5 @@
 build/
 */build/
 .private/
+/frontend/node_modules/
+/frontend/dist/
