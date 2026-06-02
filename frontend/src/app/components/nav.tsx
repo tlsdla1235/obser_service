@@ -7,11 +7,12 @@ import { Button } from "./ui/button";
  * GitHub action prop은 Story 10.2의 auth context 연결 지점으로만 사용한다.
  */
 export interface NavProps {
+  githubLoginDisabled?: boolean;
   onGithubLogin?: () => void;
   githubLoginLabel?: string;
 }
 
-export function Nav({ onGithubLogin, githubLoginLabel = "GitHub 로그인" }: NavProps) {
+export function Nav({ githubLoginDisabled = false, onGithubLogin, githubLoginLabel = "GitHub 로그인" }: NavProps) {
   const { pathname } = useLocation();
   const linkCls = (active: boolean) =>
     `inline-flex items-center gap-2 px-3 py-1.5 border ${
@@ -34,7 +35,13 @@ export function Nav({ onGithubLogin, githubLoginLabel = "GitHub 로그인" }: Na
             <BookOpen className="h-4 w-4" strokeWidth={1.5} />
             <span>Docs</span>
           </Link>
-          <Button variant="outline" size="sm" className="ml-3 gap-2 border-neutral-300" onClick={onGithubLogin}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-3 gap-2 border-neutral-300"
+            disabled={githubLoginDisabled}
+            onClick={onGithubLogin}
+          >
             <Github className="h-4 w-4" strokeWidth={1.5} />
             {githubLoginLabel}
           </Button>

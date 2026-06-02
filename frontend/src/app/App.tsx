@@ -3,22 +3,38 @@ import { Nav } from "./components/nav";
 import { Landing } from "./components/landing";
 import { Dashboard } from "./components/dashboard";
 import { Docs } from "./components/docs";
+import { AuthProvider, useAuth } from "./lib/auth";
 
 export default function App() {
-  const handleGithubLogin = () => {
-    // Story 10.2에서 auth context의 GitHub 로그인 action으로 연결한다.
-  };
-
   return (
     <BrowserRouter>
+      <AuthProvider>
+        <AppShell />
+      </AuthProvider>
+    </BrowserRouter>
+  );
+}
+
+/**
+ * Router 안에서 auth context를 읽어 navigation action과 화면 route를 연결한다.
+ */
+function AppShell() {
+  const { githubLoginLabel, loginInProgress, startGithubLogin } = useAuth();
+
+  return (
+    <>
       <div className="min-h-screen bg-white text-neutral-900">
-        <Nav onGithubLogin={handleGithubLogin} />
+        <Nav
+          githubLoginDisabled={loginInProgress}
+          githubLoginLabel={githubLoginLabel}
+          onGithubLogin={startGithubLogin}
+        />
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/docs" element={<Docs />} />
         </Routes>
       </div>
-    </BrowserRouter>
+    </>
   );
 }
