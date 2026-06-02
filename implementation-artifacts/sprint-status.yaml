@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-06-02T14:53:25+0900
+# last_updated: 2026-06-02T15:56:16+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -56,7 +56,7 @@
 # - `* 2.java` duplicate Java file 후보는 Epic 10 build/acceptance verification 전에 해결 또는 known blocker로 명시돼야 한다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-06-02T14:53:25+0900
+last_updated: 2026-06-02T15:56:16+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -131,7 +131,7 @@ development_status:
   epic-10: in-progress
   10-1-adopt-workspace-and-routing: done
   10-2-port-auth-and-fetch-foundation: review
-  10-3-wire-types-adapters-navigation-and-dashboard: backlog
+  10-3-wire-types-adapters-navigation-and-dashboard: done
   10-4-wire-evidence-trend-and-credential-surfaces: backlog
   10-5-integrate-frontend-build-with-gradle: backlog
   10-6-replace-legacy-dashboard-and-clean-residue: backlog

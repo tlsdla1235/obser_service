@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   AlertCircle,
@@ -7,109 +8,262 @@ import {
   History,
   KeyRound,
   ListChecks,
-  Plus,
   Radio,
   RefreshCw,
   Search,
   Server,
 } from "lucide-react";
+import { ApiRequestError, AuthRequiredError, NO_STORE_REQUEST_OPTIONS, READ_MODEL_ENDPOINTS, readJsonResource } from "../lib/api";
+import { type AuthFetch, useAuth } from "../lib/auth";
+import { useApiResource } from "../lib/use-api-resource";
+import {
+  formatCount,
+  formatNullableRatio,
+  formatOptionalDateTime,
+  formatRatio,
+  histogramBarWidth,
+  statusBadgeClassName,
+  toApplicationPresentationItems,
+  toDashboardPresentation,
+  toProjectPresentationItems,
+  validateDashboardPath,
+  validateProjectApplicationsPath,
+  type ApplicationPresentationItem,
+  type DashboardPresentation,
+  type ProjectPresentationItem,
+} from "../lib/read-model-adapters";
+import type {
+  ApplicationDashboardReadModel,
+  EndpointPriorityItem,
+  HistogramWindow,
+  ProjectApplicationNavigationReadModel,
+  ProjectNavigationReadModel,
+  TriageCard,
+} from "../lib/read-model-types";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Separator } from "./ui/separator";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "./ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "./ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
-import {
-  applicationsByProject,
-  dashboardByApplication,
-  projects as projectsSeed,
-} from "./dashboard-data";
 import { InstancePanels, useInstanceView } from "./instance-panels";
 
-function StatusBadge({ children }: { children: React.ReactNode }) {
+type ResourceScope = "applications" | "dashboard" | "projects";
+
+function StatusBadge({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <span className="inline-flex items-center border border-neutral-400 px-1.5 py-0.5 text-[11px] uppercase tracking-wider text-neutral-800">
+    <span className={`inline-flex items-center border px-1.5 py-0.5 text-[11px] uppercase ${className || "border-neutral-400 text-neutral-800"}`}>
       {children}
     </span>
   );
 }
 
-function SectionLabel({ icon: Icon, children }: { icon: any; children: React.ReactNode }) {
+function SectionLabel({ icon: Icon, children }: { icon: LucideIcon; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-1.5 text-neutral-500 text-[11px] uppercase tracking-wider">
+    <div className="flex items-center gap-1.5 text-neutral-500 text-[11px] uppercase">
       <Icon className="h-3.5 w-3.5" strokeWidth={1.5} />
       {children}
     </div>
   );
 }
 
+/**
+ * Project/Application/Dashboard read model을 실제 backend link chain으로 로드하는 운영 첫 화면이다.
+ * 각 resource의 인증, 404, empty, filter-empty 상태를 서로 다른 의미로 유지한다.
+ */
 export function Dashboard() {
-  const [projects] = useState(projectsSeed);
-  const [selectedProject, setSelectedProject] = useState(projects[0].projectId);
-  const apps = applicationsByProject[selectedProject] ?? [];
-  const [selectedApp, setSelectedApp] = useState(apps[0]?.applicationId);
+  const auth = useAuth();
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
   const [projectFilter, setProjectFilter] = useState("");
-  const [appFilter, setAppFilter] = useState("");
-  const inst = useInstanceView();
+  const [applicationFilter, setApplicationFilter] = useState("");
+  const instanceView = useInstanceView();
 
-  const activeApp = useMemo(
-    () => apps.find((a) => a.applicationId === selectedApp) ?? apps[0],
-    [apps, selectedApp],
-  );
-  const dashboard = activeApp ? dashboardByApplication[activeApp.applicationId] : undefined;
+  const requestProjects = useCallback(async ({ authFetch, signal }: { authFetch: AuthFetch; signal: AbortSignal }) => {
+    const response = await authFetch(READ_MODEL_ENDPOINTS.projects, {
+      ...NO_STORE_REQUEST_OPTIONS,
+      signal,
+    });
+    return readJsonResource<ProjectNavigationReadModel>(response);
+  }, []);
 
-  const filteredProjects = projects.filter((p) =>
-    p.name.toLowerCase().includes(projectFilter.toLowerCase()),
+  const projectsResource = useApiResource<ProjectNavigationReadModel>({
+    request: requestProjects,
+  });
+
+  const projects = useMemo(
+    () => (projectsResource.data ? toProjectPresentationItems(projectsResource.data) : []),
+    [projectsResource.data],
   );
-  const filteredApps = apps.filter((a) =>
-    a.name.toLowerCase().includes(appFilter.toLowerCase()),
+
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.projectId === selectedProjectId) ?? null,
+    [projects, selectedProjectId],
   );
+
+  useEffect(() => {
+    const nextProjectId = projects.find((project) => project.projectId === selectedProjectId)?.projectId ?? projects[0]?.projectId ?? null;
+    if (nextProjectId !== selectedProjectId) {
+      setSelectedProjectId(nextProjectId);
+    }
+  }, [projects, selectedProjectId]);
+
+  useEffect(() => {
+    setSelectedApplicationId(null);
+  }, [selectedProjectId]);
+
+  const applicationsResourceKey = selectedProject
+    ? `${selectedProject.projectId}|${selectedProject.applicationsLink}`
+    : "applications:none";
+
+  const requestApplications = useCallback(
+    async ({ authFetch, signal }: { authFetch: AuthFetch; signal: AbortSignal }) => {
+      if (!selectedProject) {
+        throw new ApiRequestError("project_not_selected");
+      }
+      const applicationsPath = validateProjectApplicationsPath(selectedProject.applicationsLink, selectedProject.projectId);
+      const response = await authFetch(applicationsPath, {
+        ...NO_STORE_REQUEST_OPTIONS,
+        signal,
+      });
+      const model = await readJsonResource<ProjectApplicationNavigationReadModel>(response);
+      if (model.project.projectId !== selectedProject.projectId) {
+        throw new ApiRequestError("application_context_mismatch");
+      }
+      return model;
+    },
+    [selectedProject],
+  );
+
+  const applicationsResource = useApiResource<ProjectApplicationNavigationReadModel>({
+    dependencies: [applicationsResourceKey],
+    enabled: Boolean(selectedProject),
+    request: requestApplications,
+    resourceKey: applicationsResourceKey,
+  });
+
+  const applicationsResourceCurrent = applicationsResource.resourceKey === applicationsResourceKey;
+  const applicationsLoading = Boolean(selectedProject) && (!applicationsResourceCurrent || applicationsResource.loading);
+  const applicationsError = applicationsResourceCurrent ? applicationsResource.error : null;
+
+  const applications = useMemo(() => {
+    if (!applicationsResourceCurrent || !applicationsResource.data || !selectedProject) {
+      return [];
+    }
+    if (applicationsResource.data.project.projectId !== selectedProject.projectId) {
+      return [];
+    }
+    return toApplicationPresentationItems(applicationsResource.data);
+  }, [applicationsResource.data, applicationsResourceCurrent, selectedProject]);
+
+  const selectedApplication = useMemo(
+    () => applications.find((application) => application.applicationId === selectedApplicationId) ?? null,
+    [applications, selectedApplicationId],
+  );
+
+  useEffect(() => {
+    const nextApplicationId =
+      applications.find((application) => application.applicationId === selectedApplicationId)?.applicationId ??
+      applications[0]?.applicationId ??
+      null;
+    if (nextApplicationId !== selectedApplicationId) {
+      setSelectedApplicationId(nextApplicationId);
+    }
+  }, [applications, selectedApplicationId]);
+
+  const dashboardResourceKey = selectedProject && selectedApplication
+    ? `${selectedProject.projectId}|${selectedApplication.applicationId}|${selectedApplication.dashboardLink}`
+    : "dashboard:none";
+
+  const requestDashboard = useCallback(
+    async ({ authFetch, signal }: { authFetch: AuthFetch; signal: AbortSignal }) => {
+      if (!selectedProject || !selectedApplication) {
+        throw new ApiRequestError("application_not_selected");
+      }
+      const dashboardPath = validateDashboardPath(
+        selectedApplication.dashboardLink,
+        selectedProject.projectId,
+        selectedApplication.applicationId,
+      );
+      const response = await authFetch(dashboardPath, {
+        ...NO_STORE_REQUEST_OPTIONS,
+        signal,
+      });
+      const model = await readJsonResource<ApplicationDashboardReadModel>(response);
+      if (
+        model.application.projectId !== selectedProject.projectId ||
+        model.application.applicationId !== selectedApplication.applicationId
+      ) {
+        throw new ApiRequestError("dashboard_context_mismatch");
+      }
+      return model;
+    },
+    [selectedApplication, selectedProject],
+  );
+
+  const dashboardResource = useApiResource<ApplicationDashboardReadModel>({
+    dependencies: [dashboardResourceKey],
+    enabled: Boolean(selectedProject && selectedApplication),
+    request: requestDashboard,
+    resourceKey: dashboardResourceKey,
+  });
+
+  const dashboardResourceCurrent = dashboardResource.resourceKey === dashboardResourceKey;
+  const dashboardLoading = Boolean(selectedProject && selectedApplication) && (!dashboardResourceCurrent || dashboardResource.loading);
+  const dashboardError = dashboardResourceCurrent ? dashboardResource.error : null;
+
+  const dashboard = useMemo(() => {
+    if (!dashboardResourceCurrent || !dashboardResource.data || !selectedProject || !selectedApplication) {
+      return null;
+    }
+    if (
+      dashboardResource.data.application.projectId !== selectedProject.projectId ||
+      dashboardResource.data.application.applicationId !== selectedApplication.applicationId
+    ) {
+      return null;
+    }
+    return toDashboardPresentation(dashboardResource.data);
+  }, [dashboardResource.data, dashboardResourceCurrent, selectedApplication, selectedProject]);
+
+  const filteredProjects = useMemo(() => {
+    const query = projectFilter.trim().toLowerCase();
+    return query ? projects.filter((project) => project.name.toLowerCase().includes(query)) : projects;
+  }, [projectFilter, projects]);
+
+  const filteredApplications = useMemo(() => {
+    const query = applicationFilter.trim().toLowerCase();
+    return query
+      ? applications.filter((application) =>
+          `${application.name} ${application.environment}`.toLowerCase().includes(query),
+        )
+      : applications;
+  }, [applicationFilter, applications]);
+
+  const authStatusText =
+    auth.errorMessage || auth.statusMessage || (auth.authenticated ? "GitHub 인증됨" : "GitHub 로그인 필요");
 
   return (
     <TooltipProvider delayDuration={150}>
       <div className="bg-neutral-50 min-h-[calc(100vh-56px)]">
-        {/* App shell top bar */}
         <div className="border-b border-neutral-200 bg-white">
           <div className="mx-auto max-w-[1400px] px-6 h-12 flex items-center justify-between text-[13px]">
-            <div className="flex items-center gap-2 text-neutral-600">
+            <div className="flex min-w-0 items-center gap-2 text-neutral-600">
               <span>Projects</span>
-              <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.5} />
-              <span className="text-neutral-900">
-                {projects.find((p) => p.projectId === selectedProject)?.name}
-              </span>
-              {activeApp && (
+              <ChevronRight className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
+              <span className="truncate text-neutral-900">{selectedProject?.name ?? "선택 대기"}</span>
+              {selectedApplication && (
                 <>
-                  <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.5} />
-                  <span className="text-neutral-900">{activeApp.name}</span>
-                  <span className="text-neutral-500">· {activeApp.environment}</span>
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
+                  <span className="truncate text-neutral-900">{selectedApplication.name}</span>
+                  <span className="shrink-0 text-neutral-500">· {selectedApplication.environment}</span>
                 </>
               )}
             </div>
             <div className="flex items-center gap-3 text-neutral-600">
-              <span className="text-[12px]">
-                token: <span className="text-neutral-900">acct@github · exp 24m</span>
-              </span>
-              <Button variant="outline" size="sm" className="gap-2 border-neutral-300">
+              <span className="hidden max-w-[360px] truncate text-[12px] md:inline">{authStatusText}</span>
+              <Button variant="outline" size="sm" className="gap-2 border-neutral-300" onClick={() => {
+                projectsResource.reload();
+                applicationsResource.reload();
+                dashboardResource.reload();
+              }}>
                 <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.5} /> Reload
               </Button>
             </div>
@@ -117,539 +271,754 @@ export function Dashboard() {
         </div>
 
         <div className="mx-auto max-w-[1400px] grid grid-cols-12 gap-0">
-          {/* Project rail */}
           <aside className="col-span-12 lg:col-span-2 border-r border-neutral-200 bg-white min-h-[calc(100vh-104px)]">
             <div className="p-3 border-b border-neutral-200">
               <SectionLabel icon={ListChecks}>Projects</SectionLabel>
               <div className="relative mt-2">
-                <Search
-                  className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-400"
-                  strokeWidth={1.5}
-                />
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-400" strokeWidth={1.5} />
                 <Input
                   value={projectFilter}
-                  onChange={(e) => setProjectFilter(e.target.value)}
+                  onChange={(event) => setProjectFilter(event.target.value)}
                   placeholder="검색"
                   className="h-8 pl-7 border-neutral-300 bg-white"
                 />
               </div>
             </div>
-            <ul>
-              {filteredProjects.map((p) => {
-                const active = p.projectId === selectedProject;
-                return (
-                  <li key={p.projectId}>
-                    <button
-                      onClick={() => {
-                        setSelectedProject(p.projectId);
-                        const first = applicationsByProject[p.projectId]?.[0];
-                        setSelectedApp(first?.applicationId);
-                      }}
-                      className={`w-full text-left px-3 py-2.5 border-l-2 ${
-                        active
-                          ? "border-neutral-900 bg-neutral-50"
-                          : "border-transparent hover:bg-neutral-50"
-                      }`}
-                    >
-                      <div className="text-[13px] text-neutral-900">{p.name}</div>
-                      <div className="mt-1 flex items-center gap-2 text-[11px] text-neutral-500">
-                        <span>{p.applicationCount} apps</span>
-                        {p.setupConnectionIssueCount > 0 && (
-                          <span className="text-neutral-800">
-                            · {p.setupConnectionIssueCount} issue
-                          </span>
-                        )}
-                      </div>
-                      {p.recentConcern && (
-                        <div className="mt-1 text-[11px] text-neutral-600 truncate">
-                          {p.recentConcern}
-                        </div>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+            <ProjectRail
+              error={projectsResource.error}
+              filteredProjects={filteredProjects}
+              loading={projectsResource.loading}
+              onReload={projectsResource.reload}
+              onSelectProject={(projectId) => setSelectedProjectId(projectId)}
+              projectFilter={projectFilter}
+              projects={projects}
+              selectedProjectId={selectedProjectId}
+            />
             <div className="p-3 border-t border-neutral-200">
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="sm" className="w-full gap-2 border-neutral-300">
-                    <Plus className="h-3.5 w-3.5" strokeWidth={1.5} /> Project 등록
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>새 Project 등록</DialogTitle>
-                    <DialogDescription>
-                      Project 생성 후 starter credential이 1회만 표시됩니다. 다시 볼 수 없으니
-                      안전한 곳에 보관하세요. 필요하면 rotate 하세요.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-2">
-                    <label className="text-[12px] text-neutral-600">Project name</label>
-                    <Input placeholder="orders-platform" />
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline">취소</Button>
-                    <Button className="bg-neutral-900 hover:bg-neutral-800 text-white">
-                      생성
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+              <Button variant="outline" size="sm" className="w-full gap-2 border-neutral-300" disabled>
+                <KeyRound className="h-3.5 w-3.5" strokeWidth={1.5} /> Project 등록 대기
+              </Button>
             </div>
           </aside>
 
-          {/* Application list */}
           <aside className="col-span-12 lg:col-span-3 border-r border-neutral-200 bg-white">
             <div className="p-3 border-b border-neutral-200">
               <SectionLabel icon={Server}>Applications</SectionLabel>
               <div className="relative mt-2">
-                <Search
-                  className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-400"
-                  strokeWidth={1.5}
-                />
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-400" strokeWidth={1.5} />
                 <Input
-                  value={appFilter}
-                  onChange={(e) => setAppFilter(e.target.value)}
+                  value={applicationFilter}
+                  onChange={(event) => setApplicationFilter(event.target.value)}
                   placeholder="검색"
                   className="h-8 pl-7 border-neutral-300"
                 />
               </div>
             </div>
-            <ul>
-              {filteredApps.map((a) => {
-                const active = a.applicationId === activeApp?.applicationId;
-                return (
-                  <li key={a.applicationId}>
-                    <button
-                      onClick={() => setSelectedApp(a.applicationId)}
-                      className={`w-full text-left p-3 border-b border-neutral-100 ${
-                        active ? "bg-neutral-50" : "hover:bg-neutral-50"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="text-[13px] text-neutral-900">
-                          {a.name}
-                          <span className="text-neutral-500"> · {a.environment}</span>
-                        </div>
-                        <StatusBadge>{a.lifecycleBadge}</StatusBadge>
-                      </div>
-                      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
-                        <div className="border border-neutral-200 p-1.5">
-                          <SectionLabel icon={Activity}>metric data</SectionLabel>
-                          <div className="text-neutral-800 mt-0.5">{a.metricData.freshnessLabel}</div>
-                          <div className="text-neutral-500">{a.metricData.statusSource}</div>
-                        </div>
-                        <div className="border border-neutral-200 p-1.5">
-                          <SectionLabel icon={Radio}>starter</SectionLabel>
-                          <div className="text-neutral-800 mt-0.5">
-                            {a.starterConnection.heartbeatStatus} · {a.starterConnection.freshnessLabel}
-                          </div>
-                          <div className="text-neutral-500 truncate">
-                            {a.starterConnection.connectionMeaning}
-                          </div>
-                        </div>
-                      </div>
-                      {a.topConcern && (
-                        <div className="mt-2 text-[11px] text-neutral-700 border-l-2 border-neutral-800 pl-2">
-                          {a.topConcern}
-                        </div>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-              {filteredApps.length === 0 && (
-                <li className="p-6 text-[12px] text-neutral-500">application이 없습니다.</li>
-              )}
-            </ul>
+            <ApplicationRail
+              applications={applications}
+              error={applicationsError}
+              filteredApplications={filteredApplications}
+              loading={applicationsLoading}
+              onReload={applicationsResource.reload}
+              onSelectApplication={(applicationId) => setSelectedApplicationId(applicationId)}
+              selectedApplicationId={selectedApplicationId}
+              selectedProject={selectedProject}
+              applicationFilter={applicationFilter}
+            />
           </aside>
 
-          {/* Main + right panel */}
           <main className="col-span-12 lg:col-span-7">
-            {dashboard && activeApp ? (
-              <div className="grid grid-cols-12">
-                <div className="col-span-12 xl:col-span-8 p-5 space-y-4">
-                  {/* Context rail */}
-                  <div className="border border-neutral-200 bg-white p-4">
-                    <div className="flex items-start justify-between gap-4 flex-wrap">
-                      <div>
-                        <div className="text-[12px] text-neutral-500">
-                          {projects.find((p) => p.projectId === selectedProject)?.name} /{" "}
-                          {dashboard.application.name}
-                        </div>
-                        <div className="text-neutral-900 mt-0.5">
-                          {dashboard.application.name}
-                          <span className="text-neutral-500">
-                            {" "}
-                            · {dashboard.application.environment}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-[12px] text-neutral-600 text-right">
-                        <div>
-                          window <span className="text-neutral-900">
-                            {dashboard.application.currentWindowEndUtc}
-                          </span>
-                        </div>
-                        <div>
-                          baseline <span className="text-neutral-700">
-                            {dashboard.application.baselineWindowEndUtc}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* State strip */}
-                  <div className="border border-neutral-900 bg-white p-4">
-                    <div className="flex items-center justify-between">
-                      <SectionLabel icon={Gauge}>Metric state</SectionLabel>
-                      <StatusBadge>{dashboard.state.label}</StatusBadge>
-                    </div>
-                    <div className="mt-2 text-neutral-900">{dashboard.state.rationale}</div>
-                    <div className="mt-1 text-[12px] text-neutral-600">
-                      {dashboard.state.recommendedAction}
-                    </div>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className="mt-2 text-[11px] text-neutral-500 underline decoration-dotted underline-offset-2 cursor-help inline-block">
-                          freshness: {dashboard.application.freshness}
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent>accepted bucket 기반 metric data freshness</TooltipContent>
-                    </Tooltip>
-                  </div>
-
-                  {/* Starter connection strip — separate band */}
-                  <div className="border border-neutral-300 bg-white p-4">
-                    <div className="flex items-center justify-between">
-                      <SectionLabel icon={Radio}>Starter connection</SectionLabel>
-                      <StatusBadge>{dashboard.starterConnection.lastHeartbeatStatus}</StatusBadge>
-                    </div>
-                    <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3 text-[12px]">
-                      <div>
-                        <div className="text-neutral-500">source</div>
-                        <div className="text-neutral-900">
-                          {dashboard.starterConnection.statusSource}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-neutral-500">last heartbeat</div>
-                        <div className="text-neutral-900">
-                          {dashboard.starterConnection.lastHeartbeatAt}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-neutral-500">meaning</div>
-                        <div className="text-neutral-900">
-                          {dashboard.starterConnection.connectionMeaning}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-neutral-500">state impact</div>
-                        <div className="text-neutral-900">
-                          {dashboard.starterConnection.stateImpact}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Recovery copy */}
-                  {dashboard.recovery?.isRecovering && (
-                    <Alert className="border-neutral-400">
-                      <History className="h-4 w-4" strokeWidth={1.5} />
-                      <AlertTitle>회복 관찰 중</AlertTitle>
-                      <AlertDescription>{dashboard.recovery.note}</AlertDescription>
-                    </Alert>
-                  )}
-
-                  {/* Headline metrics */}
-                  <div className="grid grid-cols-3 gap-0 border border-neutral-200 bg-white">
-                    <div className="p-4 border-r border-neutral-200">
-                      <div className="text-[11px] uppercase tracking-wider text-neutral-500">
-                        requests
-                      </div>
-                      <div className="text-neutral-900 mt-1">
-                        {dashboard.metrics.requestCount.toLocaleString()}
-                      </div>
-                    </div>
-                    <div className="p-4 border-r border-neutral-200">
-                      <div className="text-[11px] uppercase tracking-wider text-neutral-500">
-                        errors
-                      </div>
-                      <div className="text-neutral-900 mt-1">
-                        {dashboard.metrics.errorCount.toLocaleString()}
-                      </div>
-                    </div>
-                    <div className="p-4">
-                      <div className="text-[11px] uppercase tracking-wider text-neutral-500">
-                        error rate
-                      </div>
-                      <div className="text-neutral-900 mt-1">{dashboard.metrics.errorRate}</div>
-                    </div>
-                  </div>
-
-                  {/* Source-scoped percentiles */}
-                  <div className="border border-neutral-200 bg-white">
-                    <div className="px-4 py-3 border-b border-neutral-200">
-                      <SectionLabel icon={Gauge}>Source-scoped percentiles</SectionLabel>
-                    </div>
-                    {dashboard.sourceScopedPercentiles.items.length === 0 ? (
-                      <div className="p-4 text-[12px] text-neutral-500">
-                        현재 윈도우에 percentile point가 없습니다.
-                      </div>
-                    ) : (
-                      <table className="w-full text-[12px]">
-                        <thead>
-                          <tr className="text-left text-neutral-500">
-                            <th className="px-4 py-2">source</th>
-                            <th className="px-4 py-2">scope</th>
-                            <th className="px-4 py-2">p95</th>
-                            <th className="px-4 py-2">p99</th>
-                            <th className="px-4 py-2">instance</th>
-                            <th className="px-4 py-2">bucket boundary</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {dashboard.sourceScopedPercentiles.items.map((it, i) => (
-                            <tr key={i} className="border-t border-neutral-100">
-                              <td className="px-4 py-2 text-neutral-800">{it.source}</td>
-                              <td className="px-4 py-2 text-neutral-800">{it.scope}</td>
-                              <td className="px-4 py-2 text-neutral-900">{it.p95Ms} ms</td>
-                              <td className="px-4 py-2 text-neutral-900">{it.p99Ms} ms</td>
-                              <td className="px-4 py-2 text-neutral-700">{it.instance}</td>
-                              <td className="px-4 py-2 text-neutral-500">{it.bucketBoundary}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-
-                  {/* Triage / zero insight */}
-                  <div className="border border-neutral-200 bg-white">
-                    <div className="px-4 py-3 border-b border-neutral-200">
-                      <SectionLabel icon={AlertCircle}>Triage</SectionLabel>
-                    </div>
-                    {dashboard.triageCards.length === 0 ? (
-                      <div className="p-4 text-[12px] text-neutral-600">
-                        {dashboard.zeroInsight ?? "특이 사항 없음 · 관찰 유지"}
-                      </div>
-                    ) : (
-                      <ul>
-                        {dashboard.triageCards.map((t, i) => (
-                          <li key={i} className="px-4 py-3 border-b border-neutral-100 last:border-b-0">
-                            <div className="text-neutral-900 text-[13px]">{t.title}</div>
-                            <div className="text-[12px] text-neutral-700 mt-0.5">{t.detail}</div>
-                            <div className="text-[11px] text-neutral-500 mt-1">
-                              evidence: {t.evidence}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  {/* Endpoint priority */}
-                  <div className="border border-neutral-200 bg-white">
-                    <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between">
-                      <SectionLabel icon={ListChecks}>먼저 확인할 endpoint</SectionLabel>
-                      <span className="text-[11px] text-neutral-500">Next check</span>
-                    </div>
-                    {dashboard.endpointPriority.length === 0 ? (
-                      <div className="p-4 text-[12px] text-neutral-500">
-                        엔드포인트 후보가 없습니다.
-                      </div>
-                    ) : (
-                      <ol>
-                        {dashboard.endpointPriority.map((e, i) => (
-                          <li
-                            key={i}
-                            className="px-4 py-2.5 border-b border-neutral-100 last:border-b-0 flex items-center justify-between"
-                          >
-                            <div className="flex items-center gap-3">
-                              <span className="text-neutral-400 text-[12px] tabular-nums">
-                                {String(i + 1).padStart(2, "0")}
-                              </span>
-                              <span className="text-neutral-900 text-[13px]">{e.route}</span>
-                              <span className="text-neutral-600 text-[12px]">· {e.reason}</span>
-                            </div>
-                            <span className="text-neutral-500 text-[11px]">{e.lastSeen}</span>
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-                  </div>
-                </div>
-
-                {/* Right contextual panel */}
-                <aside className="col-span-12 xl:col-span-4 border-l border-neutral-200 bg-white p-5 space-y-4">
-                  {/* Credential lifecycle */}
-                  <div className="border border-neutral-200">
-                    <div className="px-3 py-2.5 border-b border-neutral-200 flex items-center justify-between">
-                      <SectionLabel icon={KeyRound}>Starter credential</SectionLabel>
-                      <StatusBadge>ACTIVE</StatusBadge>
-                    </div>
-                    <div className="p-3 text-[12px] space-y-1.5">
-                      <div className="flex justify-between">
-                        <span className="text-neutral-500">key prefix</span>
-                        <span className="text-neutral-900">obs_live_***a7f3</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-neutral-500">issued</span>
-                        <span className="text-neutral-800">2026-05-20T10:00:00Z</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-neutral-500">last rotated</span>
-                        <span className="text-neutral-800">2026-05-30T12:00:00Z</span>
-                      </div>
-                    </div>
-                    <div className="px-3 py-2 border-t border-neutral-200 flex gap-2">
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="outline" size="sm" className="flex-1 border-neutral-300">
-                            Rotate
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Credential을 회전합니까?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              회전 직후 새 raw credential이 1회 표시됩니다. 다시 볼 수 없으므로
-                              안전한 곳에 즉시 보관하세요. 기존 key는 무효화됩니다.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>취소</AlertDialogCancel>
-                            <AlertDialogAction className="bg-neutral-900 hover:bg-neutral-800">
-                              회전
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="outline" size="sm" className="flex-1 border-neutral-300">
-                            Revoke
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Credential을 폐기합니까?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              폐기 즉시 starter connection은 차단됩니다. heartbeat와 bucket
-                              ingest가 모두 차단됩니다.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>취소</AlertDialogCancel>
-                            <AlertDialogAction className="bg-neutral-900 hover:bg-neutral-800">
-                              폐기
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  </div>
-
-                  {/* Instance handoff */}
-                  <div className="border border-neutral-200">
-                    <div className="px-3 py-2.5 border-b border-neutral-200">
-                      <SectionLabel icon={Server}>Instances</SectionLabel>
-                    </div>
-                    {dashboard.instances.length === 0 ? (
-                      <div className="p-3 text-[12px] text-neutral-500">
-                        contributing instance가 없습니다.
-                      </div>
-                    ) : (
-                      <ul>
-                        {dashboard.instances.map((i) => (
-                          <li
-                            key={i.instanceId}
-                            className="px-3 py-2.5 border-b border-neutral-100 last:border-b-0"
-                          >
-                            <div className="text-[13px] text-neutral-900">{i.name}</div>
-                            <div className="text-[11px] text-neutral-500 mt-0.5">
-                              {i.firstSeen} → {i.lastSeen}
-                            </div>
-                            <div className="text-[12px] text-neutral-700 mt-1">
-                              {i.contribution}
-                            </div>
-                            <div className="mt-2 flex gap-3 text-[11px] text-neutral-700">
-                              <button
-                                onClick={() => inst.openEvidence(i.instanceId)}
-                                className="underline underline-offset-2 hover:text-neutral-900"
-                              >
-                                evidence
-                              </button>
-                              <button
-                                onClick={() => inst.openTrend(i.instanceId)}
-                                className="underline underline-offset-2 hover:text-neutral-900"
-                              >
-                                snapshot trend
-                              </button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  {/* Snapshot history */}
-                  <div className="border border-neutral-200">
-                    <div className="px-3 py-2.5 border-b border-neutral-200 flex items-center justify-between">
-                      <SectionLabel icon={History}>Snapshot / events</SectionLabel>
-                      <Tabs defaultValue="markers">
-                        <TabsList className="h-7">
-                          <TabsTrigger value="markers" className="text-[11px] px-2">
-                            markers
-                          </TabsTrigger>
-                          <TabsTrigger value="events" className="text-[11px] px-2">
-                            events
-                          </TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="markers" />
-                        <TabsContent value="events" />
-                      </Tabs>
-                    </div>
-                    <div className="p-3 text-[12px] space-y-1.5">
-                      <div className="flex justify-between">
-                        <span className="text-neutral-500">last captured</span>
-                        <span className="text-neutral-800">{dashboard.snapshot.lastCapturedAt}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-neutral-500">markers (24h)</span>
-                        <span className="text-neutral-800">{dashboard.snapshot.markerCount}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-neutral-500">events (24h)</span>
-                        <span className="text-neutral-800">{dashboard.snapshot.eventCount}</span>
-                      </div>
-                    </div>
-                    <Separator />
-                    <div className="p-2 text-[11px] text-neutral-500">
-                      source: dashboard_snapshots · current state not recalculated
-                    </div>
-                  </div>
-                </aside>
-              </div>
-            ) : (
-              <div className="p-10 text-[13px] text-neutral-500">
-                application을 선택하세요.
-              </div>
-            )}
+            <DashboardMain
+              dashboard={dashboard}
+              error={dashboardError}
+              loading={dashboardLoading}
+              onOpenEvidence={instanceView.openEvidence}
+              onOpenTrend={instanceView.openTrend}
+              onReload={dashboardResource.reload}
+              selectedApplication={selectedApplication}
+              selectedProject={selectedProject}
+            />
           </main>
         </div>
 
         <InstancePanels
-          view={inst.view}
-          onClose={inst.close}
-          onOpenTrend={inst.openTrend}
-          onOpenEvidence={inst.openEvidence}
+          view={instanceView.view}
+          onClose={instanceView.close}
+          onOpenTrend={instanceView.openTrend}
+          onOpenEvidence={instanceView.openEvidence}
         />
       </div>
     </TooltipProvider>
   );
+}
+
+function ProjectRail({
+  error,
+  filteredProjects,
+  loading,
+  onReload,
+  onSelectProject,
+  projectFilter,
+  projects,
+  selectedProjectId,
+}: {
+  error: Error | null;
+  filteredProjects: ProjectPresentationItem[];
+  loading: boolean;
+  onReload: () => void;
+  onSelectProject: (projectId: string) => void;
+  projectFilter: string;
+  projects: ProjectPresentationItem[];
+  selectedProjectId: string | null;
+}) {
+  if (loading) {
+    return <ResourceMessage title="Project 로딩 중" body="계정에 연결된 project navigation read model을 불러오는 중입니다." />;
+  }
+  if (error) {
+    return <ResourceErrorMessage scope="projects" error={error} onReload={onReload} />;
+  }
+  if (projects.length === 0) {
+    return (
+      <ResourceMessage
+        title="표시할 Project 없음"
+        body="현재 GitHub 계정의 active membership project가 없습니다. 인증 상태나 application 상태로 해석하지 않습니다."
+      />
+    );
+  }
+  if (filteredProjects.length === 0) {
+    return <ResourceMessage title="검색 결과 없음" body={`"${projectFilter}" 필터와 일치하는 loaded project가 없습니다.`} />;
+  }
+  return (
+    <ul>
+      {filteredProjects.map((project) => {
+        const active = project.projectId === selectedProjectId;
+        return (
+          <li key={project.projectId}>
+            <button
+              onClick={() => onSelectProject(project.projectId)}
+              className={`w-full text-left px-3 py-2.5 border-l-2 ${active ? "border-neutral-900 bg-neutral-50" : "border-transparent hover:bg-neutral-50"}`}
+            >
+              <div className="text-[13px] text-neutral-900">{project.name}</div>
+              <div className="mt-1 flex items-center gap-2 text-[11px] text-neutral-500">
+                <span>{project.applicationCount} apps</span>
+                {project.setupConnectionIssueCount > 0 && (
+                  <span className="text-neutral-800">· {project.setupConnectionIssueCount} setup signal</span>
+                )}
+              </div>
+              <div className="mt-1 truncate text-[11px] text-neutral-600">{project.recentConcernDisplay}</div>
+              <div className="mt-0.5 truncate text-[10px] text-neutral-400">{project.recentConcernMeta}</div>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function ApplicationRail({
+  applicationFilter,
+  applications,
+  error,
+  filteredApplications,
+  loading,
+  onReload,
+  onSelectApplication,
+  selectedApplicationId,
+  selectedProject,
+}: {
+  applicationFilter: string;
+  applications: ApplicationPresentationItem[];
+  error: Error | null;
+  filteredApplications: ApplicationPresentationItem[];
+  loading: boolean;
+  onReload: () => void;
+  onSelectApplication: (applicationId: string) => void;
+  selectedApplicationId: string | null;
+  selectedProject: ProjectPresentationItem | null;
+}) {
+  if (!selectedProject) {
+    return <ResourceMessage title="Project 선택 대기" body="Project 목록이 로드되면 application link를 통해 다음 목록을 불러옵니다." />;
+  }
+  if (loading) {
+    return <ResourceMessage title="Application 로딩 중" body="선택한 project의 server-provided applications link를 호출하는 중입니다." />;
+  }
+  if (error) {
+    return <ResourceErrorMessage scope="applications" error={error} onReload={onReload} />;
+  }
+  if (applications.length === 0) {
+    return (
+      <ResourceMessage
+        title="Application 목록 없음"
+        body="이 project의 catalog application 또는 첫 accepted bucket source가 아직 없습니다. 정상/장애 상태를 단정하지 않습니다."
+      />
+    );
+  }
+  if (filteredApplications.length === 0) {
+    return <ResourceMessage title="검색 결과 없음" body={`"${applicationFilter}" 필터와 일치하는 loaded application이 없습니다.`} />;
+  }
+  return (
+    <ul>
+      {filteredApplications.map((application) => {
+        const active = application.applicationId === selectedApplicationId;
+        return (
+          <li key={application.applicationId}>
+            <button
+              onClick={() => onSelectApplication(application.applicationId)}
+              className={`w-full text-left p-3 border-b border-neutral-100 ${active ? "bg-neutral-50" : "hover:bg-neutral-50"}`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 text-[13px] text-neutral-900">
+                  <span className="truncate">{application.name}</span>
+                  <span className="text-neutral-500"> · {application.environment}</span>
+                </div>
+                <StatusBadge className={application.lifecycleBadgeClassName}>{application.lifecycleBadgeDisplay}</StatusBadge>
+              </div>
+              <div className="mt-1 text-[10px] text-neutral-400">{application.lifecycleBadgeMeta}</div>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+                <div className="border border-neutral-200 p-1.5">
+                  <SectionLabel icon={Activity}>metric data</SectionLabel>
+                  <div className="mt-0.5 text-neutral-800">{application.metricData.freshnessLabel}</div>
+                  <div className="text-neutral-500">{application.metricData.statusSource}</div>
+                  <div className="truncate text-neutral-400">{application.metricLastAcceptedBucketDisplay}</div>
+                </div>
+                <div className="border border-neutral-200 p-1.5">
+                  <SectionLabel icon={Radio}>starter</SectionLabel>
+                  <div className="mt-0.5 text-neutral-800">
+                    {application.starterConnection.heartbeatStatus} · {application.starterConnection.freshnessLabel}
+                  </div>
+                  <div className="truncate text-neutral-500">{application.starterConnection.connectionMeaning}</div>
+                  <div className="truncate text-neutral-400">{application.starterLastHeartbeatDisplay}</div>
+                </div>
+              </div>
+              <div className="mt-2 border-l-2 border-neutral-300 pl-2 text-[11px] text-neutral-700">
+                {application.topConcernDisplay}
+              </div>
+              <div className="mt-0.5 pl-2 text-[10px] text-neutral-400">{application.topConcernMeta}</div>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function DashboardMain({
+  dashboard,
+  error,
+  loading,
+  onOpenEvidence,
+  onOpenTrend,
+  onReload,
+  selectedApplication,
+  selectedProject,
+}: {
+  dashboard: DashboardPresentation | null;
+  error: Error | null;
+  loading: boolean;
+  onOpenEvidence: ReturnType<typeof useInstanceView>["openEvidence"];
+  onOpenTrend: ReturnType<typeof useInstanceView>["openTrend"];
+  onReload: () => void;
+  selectedApplication: ApplicationPresentationItem | null;
+  selectedProject: ProjectPresentationItem | null;
+}) {
+  if (!selectedProject) {
+    return <MainMessage title="Project를 선택하세요" body="Project read model이 로드된 뒤 server link로 application 목록을 불러옵니다." />;
+  }
+  if (!selectedApplication) {
+    return <MainMessage title="Application 선택 대기" body="선택한 project의 application 목록이 비어 있거나 아직 로드 중입니다." />;
+  }
+  if (loading) {
+    return <MainMessage title="Dashboard 로딩 중" body="선택한 application의 server-provided dashboard link를 호출하는 중입니다." />;
+  }
+  if (error) {
+    return <ResourceErrorMessage scope="dashboard" error={error} onReload={onReload} roomy />;
+  }
+  if (!dashboard) {
+    return <MainMessage title="Dashboard 선택 대기" body="Application을 선택하면 dashboard read model을 불러옵니다." />;
+  }
+  return (
+    <div className="grid grid-cols-12">
+      <div className="col-span-12 xl:col-span-8 p-5 space-y-4">
+        <DashboardContext selectedProject={selectedProject} dashboard={dashboard} />
+        <MetricStateStrip dashboard={dashboard} />
+        <StarterConnectionStrip dashboard={dashboard} />
+        <RecoveryNotice dashboard={dashboard} />
+        <MetricScalars dashboard={dashboard} />
+        <SourceScopedPercentilesPanel dashboard={dashboard} />
+        <HistogramPanel dashboard={dashboard} />
+        <TriagePanel dashboard={dashboard} />
+        <EndpointPriorityPanel items={dashboard.endpointPriority} />
+      </div>
+      <aside className="col-span-12 xl:col-span-4 border-l border-neutral-200 bg-white p-5 space-y-4">
+        <CredentialPendingPanel />
+        <InstancesPanel dashboard={dashboard} onOpenEvidence={onOpenEvidence} onOpenTrend={onOpenTrend} />
+        <SnapshotHandoffPanel dashboard={dashboard} />
+      </aside>
+    </div>
+  );
+}
+
+function DashboardContext({ dashboard, selectedProject }: { dashboard: DashboardPresentation; selectedProject: ProjectPresentationItem }) {
+  return (
+    <div className="border border-neutral-200 bg-white p-4">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <div className="text-[12px] text-neutral-500">{selectedProject.name} / {dashboard.application.name}</div>
+          <div className="mt-0.5 text-neutral-900">
+            {dashboard.application.name}
+            <span className="text-neutral-500"> · {dashboard.application.environment}</span>
+          </div>
+        </div>
+        <div className="text-[12px] text-neutral-600 text-right">
+          <div>generated <span className="text-neutral-900">{dashboard.generatedAtDisplay}</span></div>
+          <div>current <span className="text-neutral-900">{dashboard.currentWindowDisplay}</span></div>
+          <div>baseline <span className="text-neutral-700">{dashboard.baselineWindowDisplay}</span></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MetricStateStrip({ dashboard }: { dashboard: DashboardPresentation }) {
+  return (
+    <div className="border border-neutral-900 bg-white p-4">
+      <div className="flex items-center justify-between gap-3">
+        <SectionLabel icon={Gauge}>Metric state</SectionLabel>
+        <StatusBadge className={dashboard.metricStateClassName}>{dashboard.state.label}</StatusBadge>
+      </div>
+      <div className="mt-2 text-neutral-900">{dashboard.state.rationale}</div>
+      <div className="mt-1 text-[12px] text-neutral-600">{dashboard.state.recommendedAction}</div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-neutral-600 md:grid-cols-4">
+        <InfoCell label="scope" value={dashboard.state.scope} />
+        <InfoCell label="last bucket" value={dashboard.lastAcceptedBucketDisplay} />
+        <InfoCell label="stale at" value={formatOptionalDateTime(dashboard.application.freshness.staleAt)} />
+        <InfoCell label="down at" value={formatOptionalDateTime(dashboard.application.freshness.downAt)} />
+      </div>
+    </div>
+  );
+}
+
+function StarterConnectionStrip({ dashboard }: { dashboard: DashboardPresentation }) {
+  return (
+    <div className="border border-neutral-300 bg-white p-4">
+      <div className="flex items-center justify-between gap-3">
+        <SectionLabel icon={Radio}>Starter connection</SectionLabel>
+        <StatusBadge className={statusBadgeClassName(dashboard.starterConnection.lastHeartbeatStatus)}>
+          {dashboard.starterConnection.lastHeartbeatStatus}
+        </StatusBadge>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-3 text-[12px] md:grid-cols-4">
+        <InfoCell label="source" value={dashboard.starterConnection.statusSource} />
+        <InfoCell label="last heartbeat" value={dashboard.starterLastHeartbeatDisplay} />
+        <InfoCell label="meaning" value={dashboard.starterConnection.connectionMeaning} />
+        <InfoCell label="state impact" value={dashboard.starterConnection.stateImpact} />
+      </div>
+    </div>
+  );
+}
+
+function RecoveryNotice({ dashboard }: { dashboard: DashboardPresentation }) {
+  if (!dashboard.recovery.isRecovering) {
+    return null;
+  }
+  return (
+    <Alert className="border-neutral-400">
+      <History className="h-4 w-4" strokeWidth={1.5} />
+      <AlertTitle>회복 관찰 중</AlertTitle>
+      <AlertDescription>
+        {dashboard.recovery.recommendedAction ?? "회복 여부를 확정하지 말고 다음 accepted bucket까지 관찰하세요."}
+        {dashboard.recovery.retryAfterSeconds !== null && (
+          <span className="ml-1 text-neutral-500">다음 판단 대기 {dashboard.recovery.retryAfterSeconds}s</span>
+        )}
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+function MetricScalars({ dashboard }: { dashboard: DashboardPresentation }) {
+  return (
+    <div className="grid grid-cols-3 gap-0 border border-neutral-200 bg-white">
+      <MetricCell label="requests" value={formatCount(dashboard.metrics.requestCount)} />
+      <MetricCell label="errors" value={formatCount(dashboard.metrics.errorCount)} />
+      <MetricCell label="error rate" value={formatRatio(dashboard.metrics.errorRate)} last />
+    </div>
+  );
+}
+
+function SourceScopedPercentilesPanel({ dashboard }: { dashboard: DashboardPresentation }) {
+  const source = dashboard.sourceScopedPercentiles;
+  return (
+    <div className="border border-neutral-200 bg-white">
+      <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between gap-3">
+        <SectionLabel icon={Gauge}>Source-scoped percentiles</SectionLabel>
+        <StatusBadge className={statusBadgeClassName(source.status)}>{source.status}</StatusBadge>
+      </div>
+      <div className="grid grid-cols-2 gap-2 border-b border-neutral-100 px-4 py-3 text-[11px] text-neutral-600 md:grid-cols-4">
+        <InfoCell label="source" value={source.source} />
+        <InfoCell label="scope" value={source.scope} />
+        <InfoCell label="display policy" value={source.displayPolicy} />
+        <InfoCell label="aggregate policy" value={source.aggregatePolicy} />
+      </div>
+      {source.items.length === 0 ? (
+        <div className="p-4 text-[12px] text-neutral-600">
+          {source.status === "missing" || source.status === "insufficient"
+            ? source.reason ?? "source evidence 부족"
+            : dashboard.sourceScopedReasonDisplay}
+        </div>
+      ) : (
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="text-left text-neutral-500">
+              <th className="px-4 py-2">source</th>
+              <th className="px-4 py-2">instance</th>
+              <th className="px-4 py-2">requests</th>
+              <th className="px-4 py-2">p95</th>
+              <th className="px-4 py-2">p99</th>
+              <th className="px-4 py-2">bucket</th>
+            </tr>
+          </thead>
+          <tbody>
+            {source.items.map((item) => (
+              <tr key={`${item.instance}-${item.bucketEndUtc}`} className="border-t border-neutral-100">
+                <td className="px-4 py-2 text-neutral-800">{item.source}</td>
+                <td className="px-4 py-2 text-neutral-700">{item.instance}</td>
+                <td className="px-4 py-2 text-neutral-700">{formatCount(item.requestCount)}</td>
+                <td className="px-4 py-2 text-neutral-900">{item.p95Ms} ms</td>
+                <td className="px-4 py-2 text-neutral-900">{item.p99Ms} ms</td>
+                <td className="px-4 py-2 text-neutral-500">{`${item.bucketStartUtc} -> ${item.bucketEndUtc}`}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function HistogramPanel({ dashboard }: { dashboard: DashboardPresentation }) {
+  return (
+    <div className="border border-neutral-200 bg-white">
+      <div className="px-4 py-3 border-b border-neutral-200">
+        <SectionLabel icon={Activity}>Histogram distribution evidence</SectionLabel>
+      </div>
+      <div className="grid grid-cols-1 gap-0 md:grid-cols-2">
+        <HistogramWindowCard label="current" window={dashboard.histogramDistribution.current} />
+        <HistogramWindowCard label="baseline" window={dashboard.histogramDistribution.baseline} />
+      </div>
+      <div className="border-t border-neutral-100 px-4 py-2 text-[11px] text-neutral-500">
+        {dashboard.histogramDistribution.aggregatePolicy}
+      </div>
+    </div>
+  );
+}
+
+function HistogramWindowCard({ label, window }: { label: string; window: HistogramWindow }) {
+  return (
+    <div className="border-b border-neutral-100 p-4 md:border-b-0 md:border-r md:last:border-r-0">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] uppercase text-neutral-500">{label}</div>
+        <StatusBadge className={statusBadgeClassName(window.status)}>{window.status}</StatusBadge>
+      </div>
+      <div className="mt-1 text-[11px] text-neutral-500">total {formatCount(window.totalCount)} · {window.reason ?? "reason 없음"}</div>
+      {window.buckets.length === 0 ? (
+        <div className="mt-3 text-[12px] text-neutral-500">bucket evidence가 없습니다.</div>
+      ) : (
+        <div className="mt-3 space-y-1.5">
+          {window.buckets.map((bucket) => (
+            <div key={bucket.leMs} className="flex items-center gap-2 text-[11px]">
+              <span className="w-20 text-neutral-500 tabular-nums">≤ {bucket.leMs} ms</span>
+              <div className="h-3 flex-1 border border-neutral-200 bg-neutral-100">
+                <div className="h-full bg-neutral-800" style={{ width: histogramBarWidth(bucket.count, window) }} />
+              </div>
+              <span className="w-16 text-right text-neutral-700 tabular-nums">{formatCount(bucket.count)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TriagePanel({ dashboard }: { dashboard: DashboardPresentation }) {
+  return (
+    <div className="border border-neutral-200 bg-white">
+      <div className="px-4 py-3 border-b border-neutral-200">
+        <SectionLabel icon={AlertCircle}>Triage</SectionLabel>
+      </div>
+      {dashboard.triageCards.length === 0 ? (
+        <ZeroInsightBlock dashboard={dashboard} />
+      ) : (
+        <ul>
+          {dashboard.triageCards.map((card) => (
+            <TriageCardItem card={card} key={card.ruleId} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function ZeroInsightBlock({ dashboard }: { dashboard: DashboardPresentation }) {
+  if (!dashboard.zeroInsight) {
+    return <div className="p-4 text-[12px] text-neutral-600">zeroInsight 응답을 확인할 수 없습니다.</div>;
+  }
+  return (
+    <div className="p-4 text-[12px] text-neutral-700">
+      <div className="text-neutral-900">{dashboard.zeroInsight.message}</div>
+      <div className="mt-1">{dashboard.zeroInsight.recommendedAction}</div>
+      <div className="mt-2 text-[11px] text-neutral-500">{dashboard.zeroInsight.reasonCode}</div>
+    </div>
+  );
+}
+
+function TriageCardItem({ card }: { card: TriageCard }) {
+  return (
+    <li className="px-4 py-3 border-b border-neutral-100 last:border-b-0">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[13px] text-neutral-900">{card.title}</div>
+          <div className="mt-0.5 text-[12px] text-neutral-700">{card.summary}</div>
+          <div className="mt-1 text-[12px] text-neutral-600">{card.recommendation}</div>
+        </div>
+        <StatusBadge className={statusBadgeClassName(card.severity)}>{card.severity}</StatusBadge>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500 md:grid-cols-4">
+        <InfoCell label="rule" value={card.ruleId} />
+        <InfoCell label="score" value={String(card.score)} />
+        <InfoCell label="confidence" value={formatNullableRatio(card.confidence)} />
+        <InfoCell label="endpoint" value={card.affectedEndpoint ?? "endpoint 없음"} />
+        <InfoCell label="requests" value={formatOptionalNumber(card.evidence.requestCount)} />
+        <InfoCell label="errors" value={formatOptionalNumber(card.evidence.currentErrorCount)} />
+        <InfoCell label="error rate" value={formatNullableRatio(card.evidence.currentErrorRate)} />
+        <InfoCell label="freshness reason" value={card.evidence.freshnessStatusReason ?? "reason 없음"} />
+      </div>
+    </li>
+  );
+}
+
+function EndpointPriorityPanel({ items }: { items: EndpointPriorityItem[] }) {
+  return (
+    <div className="border border-neutral-200 bg-white">
+      <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between">
+        <SectionLabel icon={ListChecks}>먼저 확인할 endpoint</SectionLabel>
+        <span className="text-[11px] text-neutral-500">server order</span>
+      </div>
+      {items.length === 0 ? (
+        <div className="p-4 text-[12px] text-neutral-500">서버가 제공한 next-check endpoint 후보가 없습니다.</div>
+      ) : (
+        <ol>
+          {items.map((item) => (
+            <EndpointPriorityRow item={item} key={`${item.rank}-${item.endpointKey}`} />
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+function EndpointPriorityRow({ item }: { item: EndpointPriorityItem }) {
+  return (
+    <li className="px-4 py-3 border-b border-neutral-100 last:border-b-0">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-3">
+            <span className="text-neutral-400 text-[12px] tabular-nums">{String(item.rank).padStart(2, "0")}</span>
+            <span className="truncate text-[13px] text-neutral-900">{item.endpointKey}</span>
+          </div>
+          <div className="mt-1 text-[12px] text-neutral-700">{item.recommendedAction}</div>
+          <div className="mt-1 text-[11px] text-neutral-500">{item.reason} · {item.ruleIds.join(", ")}</div>
+        </div>
+        <StatusBadge className={statusBadgeClassName(item.freshness.status)}>{item.freshness.status}</StatusBadge>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500 md:grid-cols-4">
+        <InfoCell label="requests" value={formatCount(item.evidence.requestCount)} />
+        <InfoCell label="errors" value={formatCount(item.evidence.errorCount)} />
+        <InfoCell label="error rate" value={formatRatio(item.evidence.errorRate)} />
+        <InfoCell label="bucket source" value={item.evidence.bucketDistributionSource} />
+        <InfoCell label="freshness at" value={item.freshness.lastObservedAt} />
+        <InfoCell label="source window" value={item.freshness.sourceWindow} />
+        <InfoCell label="error evidence" value={item.evidence.errorEvidenceStatus} />
+        <InfoCell label="latency evidence" value={item.evidence.latencyEvidenceStatus} />
+      </div>
+    </li>
+  );
+}
+
+function CredentialPendingPanel() {
+  return (
+    <div className="border border-neutral-200">
+      <div className="px-3 py-2.5 border-b border-neutral-200 flex items-center justify-between">
+        <SectionLabel icon={KeyRound}>Starter credential</SectionLabel>
+        <StatusBadge>pending</StatusBadge>
+      </div>
+      <div className="p-3 text-[12px] text-neutral-600">
+        Credential lifecycle wiring은 이 story 범위가 아니므로 token, key, provider secret 값을 표시하지 않습니다.
+      </div>
+      <div className="px-3 py-2 border-t border-neutral-200 flex gap-2">
+        <Button variant="outline" size="sm" className="flex-1 border-neutral-300" disabled>Rotate</Button>
+        <Button variant="outline" size="sm" className="flex-1 border-neutral-300" disabled>Revoke</Button>
+      </div>
+    </div>
+  );
+}
+
+function InstancesPanel({
+  dashboard,
+  onOpenEvidence,
+  onOpenTrend,
+}: {
+  dashboard: DashboardPresentation;
+  onOpenEvidence: ReturnType<typeof useInstanceView>["openEvidence"];
+  onOpenTrend: ReturnType<typeof useInstanceView>["openTrend"];
+}) {
+  return (
+    <div className="border border-neutral-200">
+      <div className="px-3 py-2.5 border-b border-neutral-200">
+        <SectionLabel icon={Server}>Instances</SectionLabel>
+      </div>
+      {dashboard.instances.length === 0 ? (
+        <div className="p-3 text-[12px] text-neutral-500">bounded instance handoff entry가 없습니다.</div>
+      ) : (
+        <ul>
+          {dashboard.instances.map((instance) => {
+            const target = {
+              evidenceLink: instance.links.evidence,
+              instanceId: instance.instanceId,
+              instanceName: instance.instanceName,
+            };
+            return (
+              <li key={instance.instanceId} className="px-3 py-2.5 border-b border-neutral-100 last:border-b-0">
+                <div className="text-[13px] text-neutral-900">{instance.instanceName}</div>
+                <div className="mt-0.5 text-[11px] text-neutral-500">last seen {formatOptionalDateTime(instance.lastSeenAt)}</div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="mt-1 truncate text-[10px] text-neutral-400">{instance.links.evidence}</div>
+                  </TooltipTrigger>
+                  <TooltipContent>Story 10.4 evidence handoff link</TooltipContent>
+                </Tooltip>
+                <div className="mt-2 flex gap-3 text-[11px] text-neutral-700">
+                  <button onClick={() => onOpenEvidence(target)} className="underline underline-offset-2 hover:text-neutral-900">evidence</button>
+                  <button onClick={() => onOpenTrend(target)} className="underline underline-offset-2 hover:text-neutral-900">trend</button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function SnapshotHandoffPanel({ dashboard }: { dashboard: DashboardPresentation }) {
+  return (
+    <div className="border border-neutral-200">
+      <div className="px-3 py-2.5 border-b border-neutral-200">
+        <SectionLabel icon={History}>Snapshot / events</SectionLabel>
+      </div>
+      <div className="p-3 text-[12px] text-neutral-600">
+        {dashboard.snapshot === null
+          ? "현재 dashboard response의 snapshot은 null입니다. Detail/history API는 호출하지 않습니다."
+          : "snapshot object가 수신됐지만 detail/history wiring은 Story 10.4 범위로 보존합니다."}
+      </div>
+    </div>
+  );
+}
+
+function MetricCell({ label, last = false, value }: { label: string; last?: boolean; value: string }) {
+  return (
+    <div className={`p-4 ${last ? "" : "border-r border-neutral-200"}`}>
+      <div className="text-[11px] uppercase text-neutral-500">{label}</div>
+      <div className="mt-1 text-neutral-900">{value}</div>
+    </div>
+  );
+}
+
+function InfoCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-neutral-500">{label}</div>
+      <div className="truncate text-neutral-900">{value}</div>
+    </div>
+  );
+}
+
+function MainMessage({ body, title }: { body: string; title: string }) {
+  return (
+    <div className="p-10">
+      <div className="border border-neutral-200 bg-white p-5 text-[13px]">
+        <div className="text-neutral-900">{title}</div>
+        <div className="mt-1 text-neutral-500">{body}</div>
+      </div>
+    </div>
+  );
+}
+
+function ResourceMessage({ body, title }: { body: string; title: string }) {
+  return (
+    <div className="p-4 text-[12px]">
+      <div className="text-neutral-900">{title}</div>
+      <div className="mt-1 text-neutral-500">{body}</div>
+    </div>
+  );
+}
+
+function ResourceErrorMessage({
+  error,
+  onReload,
+  roomy = false,
+  scope,
+}: {
+  error: Error;
+  onReload: () => void;
+  roomy?: boolean;
+  scope: ResourceScope;
+}) {
+  const copy = resourceErrorCopy(scope, error);
+  const content = (
+    <div className="border border-neutral-200 bg-white p-4 text-[12px]">
+      <div className="text-neutral-900">{copy.title}</div>
+      <div className="mt-1 text-neutral-500">{copy.body}</div>
+      <Button variant="outline" size="sm" className="mt-3 gap-2 border-neutral-300" onClick={onReload}>
+        <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.5} /> 다시 시도
+      </Button>
+    </div>
+  );
+  return roomy ? <div className="p-10">{content}</div> : <div className="p-4">{content}</div>;
+}
+
+function resourceErrorCopy(scope: ResourceScope, error: Error): { title: string; body: string } {
+  if (error instanceof AuthRequiredError) {
+    return {
+      title: "인증 필요",
+      body: error.message,
+    };
+  }
+  if (error instanceof ApiRequestError && error.status === 404) {
+    if (scope === "applications") {
+      return {
+        title: "Application scope 확인 필요",
+        body: "선택한 project scope가 없거나 membership이 맞지 않아 fail-closed로 처리됐습니다. application 상태나 host down으로 해석하지 않습니다.",
+      };
+    }
+    if (scope === "dashboard") {
+      return {
+        title: "Dashboard scope 확인 필요",
+        body: "선택한 application scope가 없거나 membership이 맞지 않을 수 있습니다. application down/deleted/healthy로 단정하지 않습니다.",
+      };
+    }
+  }
+  if (error instanceof ApiRequestError && error.status === 401) {
+    return {
+      title: "인증 필요",
+      body: "인증이 만료되었습니다. 다시 GitHub 로그인 후 시도해 주세요.",
+    };
+  }
+  return {
+    title: "Resource 로드 실패",
+    body: "read model을 불러오지 못했습니다. token, provider payload, 내부 응답 내용은 표시하지 않습니다.",
+  };
+}
+
+function formatOptionalNumber(value: number | null | undefined): string {
+  return value === null || value === undefined || !Number.isFinite(value) ? "source 없음" : formatCount(value);
 }

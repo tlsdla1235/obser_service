@@ -131,23 +131,23 @@ export function Landing() {
                     state
                   </div>
                   <span className="text-[11px] border border-neutral-400 px-1.5 py-0.5">
-                    DEGRADED
+                    degraded
                   </span>
                 </div>
                 <div className="mt-1.5 text-neutral-900">
-                  p99 increased on /orders/{`{orderId}`}
+                  source-scoped signal on /orders/{`{orderId}`}
                 </div>
                 <div className="text-neutral-500 text-[12px]">
                   먼저 확인할 endpoint · 3건
                 </div>
               </div>
               <div className="border border-neutral-200 bg-white p-3">
-                <div className="text-neutral-500 text-[11px] uppercase tracking-wider">p95</div>
-                <div className="mt-1.5 text-neutral-900">412 ms</div>
+                <div className="text-neutral-500 text-[11px] uppercase tracking-wider">source</div>
+                <div className="mt-1.5 text-neutral-900">starter_local</div>
               </div>
               <div className="border border-neutral-200 bg-white p-3">
-                <div className="text-neutral-500 text-[11px] uppercase tracking-wider">p99</div>
-                <div className="mt-1.5 text-neutral-900">1,180 ms</div>
+                <div className="text-neutral-500 text-[11px] uppercase tracking-wider">scope</div>
+                <div className="mt-1.5 text-neutral-900">instance_bucket</div>
               </div>
             </div>
           </div>

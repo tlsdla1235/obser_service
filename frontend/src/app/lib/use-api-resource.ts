@@ -13,6 +13,7 @@ export interface UseApiResourceOptions<TData> {
   enabled?: boolean;
   initialData?: TData | null;
   request: (context: ApiResourceRequestContext) => Promise<TData>;
+  resourceKey?: string;
 }
 
 export interface ApiResourceState<TData> {
@@ -20,6 +21,7 @@ export interface ApiResourceState<TData> {
   error: Error | null;
   loading: boolean;
   reload: () => void;
+  resourceKey: string;
   sequence: number;
 }
 
@@ -32,6 +34,7 @@ export function useApiResource<TData>({
   enabled = true,
   initialData = null,
   request,
+  resourceKey = "",
 }: UseApiResourceOptions<TData>): ApiResourceState<TData> {
   const { authFetch, authGeneration, authenticated } = useAuth();
   const [reloadSequence, setReloadSequence] = useState(0);
@@ -40,6 +43,7 @@ export function useApiResource<TData>({
     data: initialData,
     error: null,
     loading: false,
+    resourceKey,
     sequence: 0,
   });
 
@@ -52,7 +56,7 @@ export function useApiResource<TData>({
     requestSequenceRef.current = sequence;
 
     if (!enabled) {
-      setState({ data: initialData, error: null, loading: false, sequence });
+      setState({ data: initialData, error: null, loading: false, resourceKey, sequence });
       return () => {
         requestSequenceRef.current += 1;
       };
@@ -63,6 +67,7 @@ export function useApiResource<TData>({
         data: initialData,
         error: new AuthRequiredError(),
         loading: false,
+        resourceKey,
         sequence,
       });
       return () => {
@@ -73,7 +78,7 @@ export function useApiResource<TData>({
     const abortController = new AbortController();
     let active = true;
 
-    setState({ data: initialData, error: null, loading: true, sequence });
+    setState({ data: initialData, error: null, loading: true, resourceKey, sequence });
 
     request({ authFetch, sequence, signal: abortController.signal })
       .then((data) => {
@@ -81,7 +86,7 @@ export function useApiResource<TData>({
           return;
         }
 
-        setState({ data, error: null, loading: false, sequence });
+        setState({ data, error: null, loading: false, resourceKey, sequence });
       })
       .catch((error: unknown) => {
         if (!active || abortController.signal.aborted || requestSequenceRef.current !== sequence) {
@@ -92,6 +97,7 @@ export function useApiResource<TData>({
           data: initialData,
           error: normalizeResourceError(error),
           loading: false,
+          resourceKey,
           sequence,
         });
       });
@@ -103,7 +109,7 @@ export function useApiResource<TData>({
         requestSequenceRef.current += 1;
       }
     };
-  }, [authFetch, authGeneration, authenticated, enabled, initialData, reloadSequence, request, ...dependencies]);
+  }, [authFetch, authGeneration, authenticated, enabled, initialData, reloadSequence, request, resourceKey, ...dependencies]);
 
   return {
     ...state,
