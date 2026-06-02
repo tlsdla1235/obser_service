@@ -14,9 +14,10 @@
 GitHub OAuth App을 만들고 local portal URL을 맞춘다.
 
 - Homepage URL: `http://localhost:8080/dashboard/`
-- Authorization callback URL: `http://localhost:8080/api/auth/github/callback`
+- Product/dashboard Authorization callback URL: `http://localhost:8080/api/auth/github/callback`
+- Operator smoke token capture URL, only when a JSON token pair is intentionally needed: `http://localhost:8080/api/auth/github/callback/token`
 
-callback URL은 portal의 기존 `GET /api/auth/github/callback` JSON endpoint와 정확히 같아야 한다.
+기본 dashboard callback은 token pair JSON을 화면에 렌더링하지 않는 HTML relay flow다. Smoke 자동화가 service access token을 local-only 파일에 넣어야 할 때만 GitHub OAuth App redirect URI를 explicit JSON endpoint로 별도 설정한다.
 
 ## 2. local secret 파일 작성
 
@@ -32,6 +33,8 @@ portal.auth.github.homepage-url=http://localhost:8080/dashboard/
 portal.auth.service-token.signing-key=<local-service-token-signing-key>
 portal.auth.oauth-state.signing-key=<local-oauth-state-signing-key>
 ```
+
+Smoke token capture가 필요한 짧은 작업에서는 `portal.auth.github.redirect-uri`를 `http://localhost:8080/api/auth/github/callback/token`으로 바꾸고, 작업 후 다시 dashboard callback URL로 되돌린다.
 
 `.private/smoke-seed.properties`:
 
@@ -64,17 +67,17 @@ AUTH_URL="$(curl -sS http://localhost:8080/api/auth/github/authorize | jq -r '.a
 open "${AUTH_URL}"
 ```
 
-브라우저에서 GitHub OAuth를 완료하면 portal callback JSON이 반환된다.
+브라우저에서 GitHub OAuth를 완료하면 기본 dashboard callback에서는 token JSON이 화면에 보이지 않는다. Smoke token capture URL을 명시적으로 사용한 경우에만 JSON endpoint가 응답한다.
 
 ## 5. service access token만 memo
 
-callback JSON에는 portal service `accessToken`과 `refreshToken`이 보일 수 있다. smoke 자동화 파일에는 `accessToken`만 저장한다.
+explicit JSON endpoint response에는 portal service token pair가 포함된다. smoke 자동화 파일에는 service access token만 저장한다.
 
 ```bash
 scripts/smoke/write-smoke-auth-env.sh
 ```
 
-helper prompt에 callback JSON의 `accessToken` 값만 붙여 넣는다. `.private/smoke-auth.env`에는 아래 한 줄만 남아야 한다.
+helper prompt에는 explicit JSON endpoint response의 `accessToken` 값만 붙여 넣는다. `.private/smoke-auth.env`에는 아래 한 줄만 남아야 한다.
 
 ```bash
 OBSERVATION_SMOKE_ACCESS_TOKEN=<service-access-token>

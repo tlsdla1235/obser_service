@@ -1,6 +1,8 @@
 package com.observation.portal.domain.account.controller;
 
+import com.observation.portal.domain.account.model.AccountAuthResult;
 import com.observation.portal.domain.account.model.GithubOAuthCallbackCommand;
+import com.observation.portal.domain.account.model.ServiceTokenPair;
 import com.observation.portal.domain.account.service.AccountAuthException;
 import com.observation.portal.domain.account.service.AccountAuthService;
 import org.junit.jupiter.api.Test;
@@ -13,10 +15,12 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 import static org.hamcrest.Matchers.containsString;
@@ -24,12 +28,18 @@ import static org.hamcrest.Matchers.not;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class AuthSecretExposureGuardTest {
+
+    private static final UUID ACCOUNT_ID = UUID.fromString("00000000-0000-0000-0000-000000006101");
+    private static final OffsetDateTime ACCESS_EXPIRES_AT = OffsetDateTime.parse("2026-05-28T10:18:00Z");
+    private static final OffsetDateTime REFRESH_EXPIRES_AT = OffsetDateTime.parse("2026-06-27T10:03:00Z");
 
     private final AccountAuthService authService = mock(AccountAuthService.class);
     private final MockMvc mockMvc = MockMvcBuilders
@@ -63,6 +73,54 @@ class AuthSecretExposureGuardTest {
                 .andExpect(content().string(not(containsString("gho_raw_provider_token"))))
                 .andExpect(content().string(not(containsString("raw-client-secret"))))
                 .andExpect(content().string(not(containsString("access_denied"))));
+    }
+
+    @Test
+    void browserGithubCallbackPageDoesNotRenderServiceTokenPairOrProviderInputs() throws Exception {
+        when(authService.completeGithubCallback(new GithubOAuthCallbackCommand(
+                "oauth-code-should-not-render",
+                "browser-state",
+                null)))
+                .thenReturn(new AccountAuthResult(
+                        ACCOUNT_ID,
+                        "github",
+                        new ServiceTokenPair(
+                                "Bearer",
+                                "access.jwt.value",
+                                ACCESS_EXPIRES_AT,
+                                "refresh-token-value",
+                                REFRESH_EXPIRES_AT)));
+
+        mockMvc.perform(get("/api/auth/github/callback")
+                        .param("code", "oauth-code-should-not-render")
+                        .param("state", "browser-state")
+                        .param("providerAccessToken", "gho_raw_provider_token")
+                        .param("client_secret", "raw-client-secret"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("Pragma", "no-cache"))
+                .andExpect(content().string(containsString("GitHub 로그인 완료")))
+                .andExpect(content().string(not(containsString("access.jwt.value"))))
+                .andExpect(content().string(not(containsString("refresh-token-value"))))
+                .andExpect(content().string(not(containsString("oauth-code-should-not-render"))))
+                .andExpect(content().string(not(containsString("browser-state"))))
+                .andExpect(content().string(not(containsString("gho_raw_provider_token"))))
+                .andExpect(content().string(not(containsString("raw-client-secret"))))
+                .andExpect(content().string(not(containsString("\"refreshToken\""))));
+    }
+
+    @Test
+    void callbackRelayFailureDoesNotEchoRelayInputOrTokenLikePayload() throws Exception {
+        mockMvc.perform(post("/api/auth/github/callback/tokens")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"relayId\":\"oauth-code-should-not-leak.gho_raw_provider_token.raw-client-secret\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("Pragma", "no-cache"))
+                .andExpect(content().string(containsString("GitHub OAuth를 완료할 수 없습니다.")))
+                .andExpect(content().string(not(containsString("oauth-code-should-not-leak"))))
+                .andExpect(content().string(not(containsString("gho_raw_provider_token"))))
+                .andExpect(content().string(not(containsString("raw-client-secret"))));
     }
 
     @Test

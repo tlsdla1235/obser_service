@@ -42,7 +42,7 @@ class ProjectEntryUiContractTest {
         assertThat(indexHtml).contains(
                 "GitHub OAuth only",
                 "service access token",
-                "JSON 응답",
+                "dashboard memory",
                 "Authorization: Bearer",
                 "브라우저 저장소나 URL token 전달을 요구하지 않습니다");
         assertThat(indexHtml).doesNotContain(
@@ -71,6 +71,15 @@ class ProjectEntryUiContractTest {
         assertThat(indexHtml).contains("/api/auth/github/authorize");
         assertThat(appJs).contains("fetch('/api/projects'");
         assertThat(appJs).contains("Authorization", "Bearer", "observationPortalAuth");
+        assertThat(appJs).contains(
+                "window.open",
+                "window.addEventListener('message', handleGithubOAuthMessage)",
+                "observation-portal.github-oauth-complete",
+                "consumeGithubCallbackRelay",
+                "githubCallbackRelayIdFromWindow",
+                "authorizationRedirectOrigin",
+                "referrerPolicy: 'no-referrer'",
+                "setAccessToken");
         assertThat(appJs).contains("links.applications");
         assertThat(indexHtml + appJs).doesNotContain("React", "Vite", "TypeScript");
         assertThat(indexHtml + appJs).doesNotContain(

@@ -86,7 +86,7 @@ local smoke operator는 실제 GitHub OAuth 로그인을 완료한 portal accoun
 - 실제 GitHub OAuth App과 local portal 실행 절차를 다루는 operator runbook
 - `.private/github-oauth.properties` 기반 local GitHub OAuth App 설정 안내
 - 실제 브라우저에서 GitHub OAuth authorize/callback을 수동 완료하는 절차
-- callback JSON의 service `accessToken`만 `.private/smoke-auth.env`에 ephemeral memo하는 helper 또는 명확한 runbook 절차
+- 기본 dashboard callback은 token JSON을 렌더링하지 않고, operator smoke가 필요할 때만 explicit JSON callback endpoint의 service access token을 `.private/smoke-auth.env`에 ephemeral memo하는 helper 또는 명확한 runbook 절차
 - `.private/smoke-auth.env`는 `OBSERVATION_SMOKE_ACCESS_TOKEN`만 저장하고 가능하면 owner-only 권한으로 만든다
 - local-only smoke seed command 또는 runner로 기존 `external_identities` row에서 account를 찾아 smoke project와 active `account_project_memberships` row를 연결
 - smoke project의 `projects.project_key_hash`는 operator가 제공한 raw project key를 BCrypt hash로 저장
@@ -127,9 +127,9 @@ local smoke operator는 실제 GitHub OAuth 로그인을 완료한 portal accoun
 8. `.private/github-oauth.properties`는 `portal.auth.github.client-id`, `portal.auth.github.client-secret`, `portal.auth.github.redirect-uri`, `portal.auth.github.homepage-url` 설정 key를 사용한다.
 9. GitHub OAuth App callback URL은 local portal callback endpoint와 일치해야 한다.
 10. GitHub OAuth start는 기존 `GET /api/auth/github/authorize` JSON boundary를 사용하고 email/password 또는 다른 provider start route를 만들지 않는다.
-11. GitHub OAuth callback은 기존 `GET /api/auth/github/callback` JSON boundary를 사용한다.
-12. Callback JSON에서 operator가 smoke 자동화에 memo할 수 있는 값은 service `accessToken`뿐이다.
-13. Callback JSON의 `refreshToken`은 화면에서 보이더라도 `.private/smoke-auth.env`, script output, runbook 예시, test fixture에 저장하지 않는다.
+11. GitHub OAuth 기본 callback은 `GET /api/auth/github/callback` browser-facing HTML relay boundary를 사용하고 token pair JSON을 화면에 렌더링하지 않는다.
+12. Operator smoke가 explicit JSON endpoint를 별도 redirect URI로 사용할 때 memo할 수 있는 값은 service `accessToken`뿐이다.
+13. Explicit JSON endpoint의 `refreshToken`은 `.private/smoke-auth.env`, script output, runbook 예시, test fixture에 저장하지 않는다.
 14. `.private/smoke-auth.env`는 `OBSERVATION_SMOKE_ACCESS_TOKEN=<service-access-token>` 형식만 허용한다.
 15. Token memo helper가 추가되면 기존 파일 권한을 가능한 범위에서 owner-only로 만들고, token 값을 stdout/stderr에 출력하지 않는다.
 16. Token memo helper는 `OBSERVATION_SMOKE_REFRESH_TOKEN`, GitHub provider token, provider raw payload, OAuth credential key를 쓰거나 보존하지 않는다.
@@ -182,7 +182,7 @@ local smoke operator는 실제 GitHub OAuth 로그인을 완료한 portal accoun
   - [x] `implementation-artifacts/real-github-oauth-smoke-runbook.md` 또는 동등한 implementation artifact를 추가한다.
   - [x] GitHub OAuth App local callback/homepage 설정과 `.private/github-oauth.properties` placeholder를 문서화한다.
   - [x] `GET /api/auth/github/authorize` response의 `authorizationUrl`을 브라우저에서 여는 절차를 문서화한다.
-  - [x] callback JSON에서 `accessToken`만 `.private/smoke-auth.env`에 메모하고 `refreshToken`은 저장하지 않는 절차를 문서화한다.
+  - [x] 기본 dashboard callback과 explicit JSON smoke callback을 분리하고, smoke에서는 `accessToken`만 `.private/smoke-auth.env`에 메모하며 `refreshToken`은 저장하지 않는 절차를 문서화한다.
   - [x] access token 만료 시 refresh token memo 대신 재로그인 절차로 갱신하도록 안내한다.
   - [x] service Bearer token, GitHub provider token, starter project key의 인증 경계를 분리해 설명한다.
 
@@ -227,7 +227,7 @@ local smoke operator는 실제 GitHub OAuth 로그인을 완료한 portal accoun
 - `GithubOAuthAppProperties`는 `portal.auth.github.client-id`, `client-secret`, `redirect-uri`, `homepage-url`을 필수 key로 읽는다.
 - `HttpGithubOAuthClient`는 GitHub authorization URL을 만들고 `code`를 provider access token으로 교환한 뒤 `/user` profile에서 GitHub user id를 provider subject로 사용한다.
 - `HttpGithubOAuthClient`는 GitHub provider access token을 user id 조회 직후 폐기하고 저장소/response model에 싣지 않는 경계를 이미 갖고 있다.
-- `AccountAuthController` callback response는 service `accessToken`과 `refreshToken`을 JSON body로 반환한다. Story 7.1 memo file에는 `accessToken`만 허용한다.
+- `AccountAuthController` 기본 callback response는 token pair JSON 대신 browser-facing HTML relay를 반환한다. Explicit JSON callback endpoint를 operator smoke에 사용할 수 있지만 memo file에는 `accessToken`만 허용한다.
 - `OAuthStateSigner`는 server session 없이 signed expiring state와 nonce hash를 만든다. Story 7.1은 이 boundary를 재사용하고 cookie session을 추가하지 않는다.
 - `ServiceTokenIssuer`는 HS256 JWT access token과 SHA-256 hash 저장용 refresh token을 발급/검증한다.
 - `BearerResourceApiInterceptor`는 `/api/projects`와 `/api/projects/**`에서 `Authorization: Bearer <access_token>`을 검증하고 account id request attribute를 남긴다.
@@ -279,7 +279,7 @@ If `.private/smoke-seed.properties`를 지원하려면 `spring.config.import`에
 3. local PostgreSQL과 portal을 `local-smoke` profile로 실행한다.
 4. `GET /api/auth/github/authorize`를 호출해 `authorizationUrl`을 얻는다.
 5. 브라우저에서 authorization URL을 열고 실제 GitHub OAuth를 완료한다.
-6. callback JSON에서 `accessToken`만 `.private/smoke-auth.env`로 memo한다.
+6. operator smoke용 explicit JSON callback endpoint를 사용한 경우 `accessToken`만 `.private/smoke-auth.env`로 memo한다.
 7. DB의 `external_identities`에서 provider subject 또는 unique display name을 확인한다.
 8. local-only smoke seed command를 실행해 project, BCrypt project key hash, active account-project membership을 만든다.
 9. `.private/smoke-auth.env`를 source하고 `GET /api/projects`를 Bearer header로 호출한다.
@@ -287,7 +287,7 @@ If `.private/smoke-seed.properties`를 지원하려면 `spring.config.import`에
 
 ### Latest Technical Notes
 
-- GitHub OAuth Apps official docs는 browser-based standard app에는 web application flow를 사용한다고 설명하고, implicit grant는 지원하지 않는다고 명시한다. 현재 `GET /api/auth/github/authorize` -> browser -> callback JSON flow는 이 전제와 맞는다.
+- GitHub OAuth Apps official docs는 browser-based standard app에는 web application flow를 사용한다고 설명하고, implicit grant는 지원하지 않는다고 명시한다. 현재 `GET /api/auth/github/authorize` -> browser -> HTML relay callback flow는 이 전제와 맞으며 token을 URL fragment로 전달하지 않는다.
 - GitHub token exchange endpoint는 `client_id`, `client_secret`, `code`를 요구한다. 따라서 `.private/github-oauth.properties`에는 credential이 필요하지만 repository와 runbook output에는 실제 값을 남기면 안 된다.
 - GitHub docs는 `state` parameter가 추측 불가능한 값이어야 하며 request forgery 방지에 쓰인다고 설명한다. 기존 `OAuthStateSigner`와 `oauth_state_nonces` hash 저장 경계를 재사용한다.
 - Spring Boot external config docs는 `spring.config.import=optional:file:...`를 지원한다. local smoke properties를 추가하더라도 optional import로 두어 일반 app start를 깨지 않게 한다.

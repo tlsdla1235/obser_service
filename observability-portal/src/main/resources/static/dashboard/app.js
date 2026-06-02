@@ -135,7 +135,19 @@ const SNAPSHOT_MARKER_TYPES = Object.freeze([
   'stored_snapshot'
 ]);
 
+const GITHUB_OAUTH_CALLBACK_MESSAGE = 'observation-portal.github-oauth-complete';
+const GITHUB_OAUTH_CALLBACK_RELAY_META = 'observation-github-callback-relay-id';
+const GITHUB_OAUTH_RELAY_ENDPOINT = '/api/auth/github/callback/tokens';
+const GITHUB_OAUTH_POPUP_NAME = 'observationPortalGithubOAuth';
+const GITHUB_OAUTH_POPUP_FEATURES = 'width=520,height=720';
+const GITHUB_OAUTH_WATCH_INTERVAL_MS = 500;
+const GITHUB_OAUTH_WATCH_TIMEOUT_MS = 120000;
+
 let serviceAccessToken = null;
+let githubAuthWindow = null;
+let githubAuthWatchTimer = null;
+let githubAuthWatchStartedAt = 0;
+let githubAuthRelayInFlight = false;
 let loadedProjects = [];
 let loadedGeneratedAt = null;
 let currentViewState = VIEW_STATE.LOADING;
@@ -4982,6 +4994,7 @@ function isValidCredentialMetadataResponse(data) {
 async function startGithubEntry() {
   setAuthStatus('');
   githubButton.disabled = true;
+  const authWindow = openGithubAuthWindow();
   try {
     const response = await fetch(githubButton.dataset.authUrl, {
       cache: 'no-store',
@@ -4994,12 +5007,161 @@ async function startGithubEntry() {
     if (!data.authorizationUrl) {
       throw new Error('auth_unavailable');
     }
+    if (authWindow && shouldUsePopupAuthFlow(data.authorizationUrl)) {
+      authWindow.location.assign(data.authorizationUrl);
+      watchGithubAuthWindow(authWindow);
+      setAuthStatus('GitHub 인증 창에서 로그인을 완료해 주세요.');
+      return;
+    }
+    closeGithubAuthWindow(authWindow);
+    setAuthStatus('GitHub 인증 화면으로 이동합니다.');
     window.location.assign(data.authorizationUrl);
   } catch (error) {
+    closeGithubAuthWindow(authWindow);
     setAuthStatus('GitHub 로그인을 시작할 수 없습니다. 잠시 후 다시 시도해 주세요.');
   } finally {
     githubButton.disabled = false;
   }
+}
+
+function openGithubAuthWindow() {
+  if (typeof window.open !== 'function') {
+    return null;
+  }
+  const authWindow = window.open('', GITHUB_OAUTH_POPUP_NAME, GITHUB_OAUTH_POPUP_FEATURES);
+  if (authWindow) {
+    githubAuthWindow = authWindow;
+  }
+  return authWindow;
+}
+
+function shouldUsePopupAuthFlow(authorizationUrl) {
+  const redirectOrigin = authorizationRedirectOrigin(authorizationUrl);
+  return redirectOrigin.length === 0 || redirectOrigin === dashboardOrigin();
+}
+
+function authorizationRedirectOrigin(authorizationUrl) {
+  try {
+    const redirectUri = new URL(authorizationUrl).searchParams.get('redirect_uri');
+    return redirectUri ? new URL(redirectUri).origin : '';
+  } catch (error) {
+    return '';
+  }
+}
+
+function closeGithubAuthWindow(authWindow) {
+  try {
+    if (authWindow && !authWindow.closed) {
+      authWindow.close();
+    }
+  } catch (error) {
+    // 브라우저가 popup 제어를 막아도 auth state 정리는 계속 진행한다.
+  }
+  if (githubAuthWindow === authWindow) {
+    githubAuthWindow = null;
+  }
+  clearGithubAuthWatcher();
+}
+
+async function handleGithubOAuthMessage(event) {
+  if (!isTrustedGithubOAuthMessage(event)) {
+    return;
+  }
+  await consumeGithubCallbackRelay(event.data.relayId);
+}
+
+function isTrustedGithubOAuthMessage(event) {
+  return Boolean(event
+    && event.origin === dashboardOrigin()
+    && isObjectValue(event.data)
+    && event.data.type === GITHUB_OAUTH_CALLBACK_MESSAGE
+    && hasRequiredText(event.data.relayId));
+}
+
+function watchGithubAuthWindow(authWindow) {
+  clearGithubAuthWatcher();
+  githubAuthWatchStartedAt = Date.now();
+  githubAuthWatchTimer = window.setInterval(() => {
+    if (githubAuthRelayInFlight) {
+      return;
+    }
+    if (!authWindow || authWindow.closed) {
+      clearGithubAuthWatcher();
+      if (!serviceAccessToken) {
+        setAuthStatus('GitHub 인증 창이 닫혔습니다. 로그인을 다시 시도해 주세요.');
+      }
+      return;
+    }
+    const relayId = githubCallbackRelayIdFromWindow(authWindow);
+    if (relayId) {
+      consumeGithubCallbackRelay(relayId);
+      return;
+    }
+    if (Date.now() - githubAuthWatchStartedAt > GITHUB_OAUTH_WATCH_TIMEOUT_MS) {
+      clearGithubAuthWatcher();
+      setAuthStatus('GitHub 로그인 완료를 확인하지 못했습니다. 다시 시도해 주세요.');
+    }
+  }, GITHUB_OAUTH_WATCH_INTERVAL_MS);
+}
+
+function clearGithubAuthWatcher() {
+  if (githubAuthWatchTimer !== null) {
+    window.clearInterval(githubAuthWatchTimer);
+    githubAuthWatchTimer = null;
+  }
+  githubAuthWatchStartedAt = 0;
+}
+
+function githubCallbackRelayIdFromWindow(authWindow) {
+  try {
+    const marker = authWindow.document
+      && authWindow.document.querySelector(`meta[name="${GITHUB_OAUTH_CALLBACK_RELAY_META}"]`);
+    return marker && hasRequiredText(marker.content) ? marker.content.trim() : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function consumeGithubCallbackRelay(relayId) {
+  const normalizedRelayId = normalizeRelayId(relayId);
+  if (!normalizedRelayId || githubAuthRelayInFlight) {
+    return;
+  }
+  githubAuthRelayInFlight = true;
+  try {
+    const response = await fetch(GITHUB_OAUTH_RELAY_ENDPOINT, {
+      method: 'POST',
+      cache: 'no-store',
+      referrerPolicy: 'no-referrer',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ relayId: normalizedRelayId })
+    });
+    if (!response.ok) {
+      throw new Error('callback_relay_failed');
+    }
+    const data = await response.json();
+    const token = normalizeAccessToken(data && data.accessToken);
+    if (!token) {
+      throw new Error('callback_relay_malformed');
+    }
+    window.observationPortalAuth.setAccessToken(token);
+    setAuthStatus('GitHub 로그인이 완료되었습니다.');
+    closeGithubAuthWindow(githubAuthWindow);
+  } catch (error) {
+    setAuthStatus('GitHub 로그인을 완료할 수 없습니다. 다시 시도해 주세요.');
+  } finally {
+    githubAuthRelayInFlight = false;
+  }
+}
+
+function dashboardOrigin() {
+  if (!window.location || typeof window.location.origin !== 'string') {
+    return '';
+  }
+  return window.location.origin;
 }
 
 function handleAuthorizationLoss() {
@@ -5485,6 +5647,11 @@ function normalizeAccessToken(value) {
   return token.length === 0 ? null : token;
 }
 
+function normalizeRelayId(value) {
+  const relayId = String(value ?? '').trim();
+  return relayId.length === 0 ? null : relayId;
+}
+
 function escapeAttribute(value) {
   return escapeText(value);
 }
@@ -5498,6 +5665,9 @@ applicationFilterInput.addEventListener('input', handleApplicationFilterInput);
 applicationReloadButton.addEventListener('click', loadApplicationsForSelectedProject);
 githubButton.addEventListener('click', startGithubEntry);
 registrationForm.addEventListener('submit', handleProjectRegistrationSubmit);
+if (typeof window.addEventListener === 'function') {
+  window.addEventListener('message', handleGithubOAuthMessage);
+}
 renderAuthorizationRequired();
 renderApplicationAuthorizationRequired();
 renderDashboardAuthorizationRequired();
