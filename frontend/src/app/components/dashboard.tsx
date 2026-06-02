@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   AlertCircle,
+  Check,
   ChevronRight,
+  Copy,
   Gauge,
   History,
   KeyRound,
@@ -12,16 +14,31 @@ import {
   RefreshCw,
   Search,
   Server,
+  X,
 } from "lucide-react";
-import { ApiRequestError, AuthRequiredError, NO_STORE_REQUEST_OPTIONS, READ_MODEL_ENDPOINTS, readJsonResource } from "../lib/api";
+import {
+  ApiRequestError,
+  AuthRequiredError,
+  CREDENTIAL_LIFECYCLE_REQUEST_OPTIONS,
+  JSON_BODY_HEADERS,
+  NO_STORE_REQUEST_OPTIONS,
+  READ_MODEL_ENDPOINTS,
+  SECRET_BEARING_REQUEST_OPTIONS,
+  readJsonResource,
+} from "../lib/api";
 import { type AuthFetch, useAuth } from "../lib/auth";
 import { useApiResource } from "../lib/use-api-resource";
 import {
+  buildSnapshotHistoryPaths,
+  buildStarterCredentialMetadataPath,
+  buildStarterCredentialRevocationPath,
+  buildStarterCredentialRotationPath,
   formatCount,
   formatNullableRatio,
   formatOptionalDateTime,
   formatRatio,
   histogramBarWidth,
+  HISTORY_PRESET_QUERY,
   statusBadgeClassName,
   toApplicationPresentationItems,
   toDashboardPresentation,
@@ -34,10 +51,18 @@ import {
 } from "../lib/read-model-adapters";
 import type {
   ApplicationDashboardReadModel,
+  DashboardSnapshotMarkerReadModel,
   EndpointPriorityItem,
+  HistoryHorizon,
+  HistoryPreset,
   HistogramWindow,
+  OneTimeStarterCredential,
+  OperationalEventHistoryReadModel,
+  ProjectRegistrationResponse,
   ProjectApplicationNavigationReadModel,
   ProjectNavigationReadModel,
+  StarterCredentialMetadataResponse,
+  StarterCredentialRotationResponse,
   TriageCard,
 } from "../lib/read-model-types";
 import { Button } from "./ui/button";
@@ -45,6 +70,7 @@ import { Input } from "./ui/input";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { InstancePanels, useInstanceView } from "./instance-panels";
+import { SnapshotDetailSurface, type SnapshotDetailTarget } from "./snapshot-detail-surface";
 
 type ResourceScope = "applications" | "dashboard" | "projects";
 
@@ -75,6 +101,7 @@ export function Dashboard() {
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
   const [projectFilter, setProjectFilter] = useState("");
   const [applicationFilter, setApplicationFilter] = useState("");
+  const [pendingProjectSelectionId, setPendingProjectSelectionId] = useState<string | null>(null);
   const instanceView = useInstanceView();
 
   const requestProjects = useCallback(async ({ authFetch, signal }: { authFetch: AuthFetch; signal: AbortSignal }) => {
@@ -107,8 +134,23 @@ export function Dashboard() {
   }, [projects, selectedProjectId]);
 
   useEffect(() => {
+    if (!pendingProjectSelectionId) {
+      return;
+    }
+    const registeredProject = projects.find((project) => project.projectId === pendingProjectSelectionId);
+    if (registeredProject) {
+      setSelectedProjectId(registeredProject.projectId);
+      setPendingProjectSelectionId(null);
+    }
+  }, [pendingProjectSelectionId, projects]);
+
+  useEffect(() => {
     setSelectedApplicationId(null);
   }, [selectedProjectId]);
+
+  useEffect(() => {
+    instanceView.close();
+  }, [selectedApplicationId, selectedProjectId]);
 
   const applicationsResourceKey = selectedProject
     ? `${selectedProject.projectId}|${selectedProject.applicationsLink}`
@@ -295,9 +337,12 @@ export function Dashboard() {
               selectedProjectId={selectedProjectId}
             />
             <div className="p-3 border-t border-neutral-200">
-              <Button variant="outline" size="sm" className="w-full gap-2 border-neutral-300" disabled>
-                <KeyRound className="h-3.5 w-3.5" strokeWidth={1.5} /> Project 등록 대기
-              </Button>
+              <ProjectRegistrationPanel
+                onRegistered={(projectId) => {
+                  setPendingProjectSelectionId(projectId);
+                  projectsResource.reload();
+                }}
+              />
             </div>
           </aside>
 
@@ -550,9 +595,9 @@ function DashboardMain({
         <EndpointPriorityPanel items={dashboard.endpointPriority} />
       </div>
       <aside className="col-span-12 xl:col-span-4 border-l border-neutral-200 bg-white p-5 space-y-4">
-        <CredentialPendingPanel />
+        <CredentialLifecyclePanel selectedProject={selectedProject} />
         <InstancesPanel dashboard={dashboard} onOpenEvidence={onOpenEvidence} onOpenTrend={onOpenTrend} />
-        <SnapshotHandoffPanel dashboard={dashboard} />
+        <SnapshotHistoryPanel dashboard={dashboard} selectedApplication={selectedApplication} selectedProject={selectedProject} />
       </aside>
     </div>
   );
@@ -844,22 +889,417 @@ function EndpointPriorityRow({ item }: { item: EndpointPriorityItem }) {
   );
 }
 
-function CredentialPendingPanel() {
+function ProjectRegistrationPanel({ onRegistered }: { onRegistered: (projectId: string) => void }) {
+  const { authFetch } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [projectName, setProjectName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const [oneTimeCredential, setOneTimeCredential] = useState<OneTimeStarterCredential | null>(null);
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  const openRef = useRef(false);
+  const registrationSequenceRef = useRef(0);
+
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      registrationSequenceRef.current += 1;
+    };
+  }, []);
+
+  const clearRegistrationCredential = useCallback((message: string | null = null) => {
+    setOneTimeCredential(null);
+    setCopyStatus(message);
+  }, []);
+
+  const toggleRegistrationPanel = useCallback(() => {
+    if (open) {
+      registrationSequenceRef.current += 1;
+      setLoading(false);
+      clearRegistrationCredential(null);
+    }
+    setOpen((current) => !current);
+  }, [clearRegistrationCredential, open]);
+
+  const submitRegistration = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      clearRegistrationCredential(null);
+      const name = projectName.trim();
+      if (!name) {
+        setError(new ApiRequestError("project_name_required", 400));
+        return;
+      }
+
+      const requestSequence = registrationSequenceRef.current + 1;
+      registrationSequenceRef.current = requestSequence;
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await authFetch(READ_MODEL_ENDPOINTS.projects, {
+          ...SECRET_BEARING_REQUEST_OPTIONS,
+          method: "POST",
+          headers: JSON_BODY_HEADERS,
+          body: JSON.stringify({ name }),
+        });
+        const model = await readJsonResource<ProjectRegistrationResponse>(response);
+        if (!isRegistrationRequestCurrent(requestSequence, registrationSequenceRef, mountedRef, openRef)) {
+          return;
+        }
+        setOneTimeCredential(model.starterCredential);
+        setProjectName("");
+        onRegistered(model.project.projectId);
+      } catch (caught) {
+        if (!isRegistrationRequestCurrent(requestSequence, registrationSequenceRef, mountedRef, openRef)) {
+          return;
+        }
+        setError(caught instanceof Error ? caught : new ApiRequestError("project_registration_failed"));
+      } finally {
+        if (isRegistrationRequestCurrent(requestSequence, registrationSequenceRef, mountedRef, openRef)) {
+          setLoading(false);
+        }
+      }
+    },
+    [authFetch, clearRegistrationCredential, onRegistered, projectName],
+  );
+
+  return (
+    <div className="border border-neutral-200">
+      <button
+        className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-[12px] text-neutral-800 hover:bg-neutral-50"
+        onClick={toggleRegistrationPanel}
+      >
+        <span className="flex items-center gap-1.5">
+          <KeyRound className="h-3.5 w-3.5" strokeWidth={1.5} /> Project 등록
+        </span>
+        <span className="text-[10px] uppercase text-neutral-500">{open ? "close" : "open"}</span>
+      </button>
+      {open && (
+        <div className="border-t border-neutral-200 p-3">
+          <form className="space-y-2" onSubmit={submitRegistration}>
+            <Input
+              value={projectName}
+              onChange={(event) => setProjectName(event.target.value)}
+              placeholder="Project name"
+              className="h-8 border-neutral-300"
+            />
+            {error && <div className="text-[11px] text-rose-700">{registrationErrorCopy(error)}</div>}
+            {copyStatus && <div className="text-[11px] text-neutral-600">{copyStatus}</div>}
+            <Button type="submit" size="sm" className="w-full gap-2" disabled={loading}>
+              {loading ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" strokeWidth={1.5} />
+              ) : (
+                <Check className="h-3.5 w-3.5" strokeWidth={1.5} />
+              )}
+              등록
+            </Button>
+          </form>
+          {oneTimeCredential && (
+            <OneTimeCredentialPanel
+              credential={oneTimeCredential}
+              onCleared={(message) => {
+                clearRegistrationCredential(message);
+              }}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CredentialLifecyclePanel({ selectedProject }: { selectedProject: ProjectPresentationItem | null }) {
+  const { authFetch, authGeneration } = useAuth();
+  const [operationError, setOperationError] = useState<Error | null>(null);
+  const [operationLoading, setOperationLoading] = useState<"revoke" | "rotate" | null>(null);
+  const [oneTimeCredential, setOneTimeCredential] = useState<OneTimeStarterCredential | null>(null);
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const [revokeConfirm, setRevokeConfirm] = useState(false);
+  const projectId = selectedProject?.projectId ?? null;
+  const credentialResourceKey = projectId ? `credential:${projectId}` : "credential:none";
+  const mountedRef = useRef(true);
+  const credentialMutationSequenceRef = useRef(0);
+  const currentCredentialScopeRef = useRef({ authGeneration, projectId });
+  currentCredentialScopeRef.current = { authGeneration, projectId };
+
+  useEffect(() => {
+    currentCredentialScopeRef.current = { authGeneration, projectId };
+  }, [authGeneration, projectId]);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      credentialMutationSequenceRef.current += 1;
+    };
+  }, []);
+
+  const requestCredential = useCallback(
+    async ({ authFetch, signal }: { authFetch: AuthFetch; signal: AbortSignal }) => {
+      if (!projectId) {
+        throw new ApiRequestError("project_not_selected");
+      }
+      const response = await authFetch(buildStarterCredentialMetadataPath(projectId), {
+        ...CREDENTIAL_LIFECYCLE_REQUEST_OPTIONS,
+        signal,
+      });
+      const model = await readJsonResource<StarterCredentialMetadataResponse>(response);
+      if (model.projectId !== projectId) {
+        throw new ApiRequestError("credential_context_mismatch");
+      }
+      return model;
+    },
+    [projectId],
+  );
+
+  const credentialResource = useApiResource<StarterCredentialMetadataResponse>({
+    dependencies: [credentialResourceKey],
+    enabled: Boolean(projectId),
+    request: requestCredential,
+    resourceKey: credentialResourceKey,
+  });
+
+  const credentialCurrent = credentialResource.resourceKey === credentialResourceKey;
+  const credential = credentialCurrent ? credentialResource.data?.starterCredential ?? null : null;
+  const credentialError = credentialCurrent ? credentialResource.error : null;
+  const credentialLoading = Boolean(projectId) && (!credentialCurrent || credentialResource.loading);
+
+  useEffect(() => {
+    credentialMutationSequenceRef.current += 1;
+    setOperationError(null);
+    setOperationLoading(null);
+    setOneTimeCredential(null);
+    setCopyStatus(null);
+    setRevokeConfirm(false);
+  }, [authGeneration, projectId]);
+
+  const rotateCredential = useCallback(async () => {
+    if (!projectId) {
+      return;
+    }
+    const requestProjectId = projectId;
+    const requestAuthGeneration = authGeneration;
+    const requestSequence = credentialMutationSequenceRef.current + 1;
+    credentialMutationSequenceRef.current = requestSequence;
+    setOperationLoading("rotate");
+    setOperationError(null);
+    setCopyStatus(null);
+    setOneTimeCredential(null);
+    try {
+      const response = await authFetch(buildStarterCredentialRotationPath(requestProjectId), {
+        ...CREDENTIAL_LIFECYCLE_REQUEST_OPTIONS,
+        method: "POST",
+      });
+      const model = await readJsonResource<StarterCredentialRotationResponse>(response);
+      if (model.projectId !== requestProjectId) {
+        throw new ApiRequestError("credential_rotation_context_mismatch");
+      }
+      if (!isCredentialMutationCurrent(requestSequence, requestProjectId, requestAuthGeneration, credentialMutationSequenceRef, currentCredentialScopeRef, mountedRef)) {
+        return;
+      }
+      setOneTimeCredential(model.starterCredential);
+      credentialResource.reload();
+    } catch (caught) {
+      if (!isCredentialMutationCurrent(requestSequence, requestProjectId, requestAuthGeneration, credentialMutationSequenceRef, currentCredentialScopeRef, mountedRef)) {
+        return;
+      }
+      setOperationError(caught instanceof Error ? caught : new ApiRequestError("credential_rotation_failed"));
+    } finally {
+      if (isCredentialMutationCurrent(requestSequence, requestProjectId, requestAuthGeneration, credentialMutationSequenceRef, currentCredentialScopeRef, mountedRef)) {
+        setOperationLoading(null);
+      }
+    }
+  }, [authFetch, authGeneration, credentialResource, projectId]);
+
+  const revokeCredential = useCallback(async () => {
+    if (!projectId) {
+      return;
+    }
+    if (!revokeConfirm) {
+      setRevokeConfirm(true);
+      return;
+    }
+    const requestProjectId = projectId;
+    const requestAuthGeneration = authGeneration;
+    const requestSequence = credentialMutationSequenceRef.current + 1;
+    credentialMutationSequenceRef.current = requestSequence;
+    setOperationLoading("revoke");
+    setOperationError(null);
+    setCopyStatus(null);
+    setOneTimeCredential(null);
+    try {
+      const response = await authFetch(buildStarterCredentialRevocationPath(requestProjectId), {
+        ...CREDENTIAL_LIFECYCLE_REQUEST_OPTIONS,
+        method: "POST",
+      });
+      const model = await readJsonResource<StarterCredentialMetadataResponse>(response);
+      if (model.projectId !== requestProjectId) {
+        throw new ApiRequestError("credential_revocation_context_mismatch");
+      }
+      if (!isCredentialMutationCurrent(requestSequence, requestProjectId, requestAuthGeneration, credentialMutationSequenceRef, currentCredentialScopeRef, mountedRef)) {
+        return;
+      }
+      setRevokeConfirm(false);
+      credentialResource.reload();
+    } catch (caught) {
+      if (!isCredentialMutationCurrent(requestSequence, requestProjectId, requestAuthGeneration, credentialMutationSequenceRef, currentCredentialScopeRef, mountedRef)) {
+        return;
+      }
+      setOperationError(caught instanceof Error ? caught : new ApiRequestError("credential_revocation_failed"));
+    } finally {
+      if (isCredentialMutationCurrent(requestSequence, requestProjectId, requestAuthGeneration, credentialMutationSequenceRef, currentCredentialScopeRef, mountedRef)) {
+        setOperationLoading(null);
+      }
+    }
+  }, [authFetch, authGeneration, credentialResource, projectId, revokeConfirm]);
+
+  if (!selectedProject) {
+    return (
+      <div className="border border-neutral-200">
+        <div className="px-3 py-2.5 border-b border-neutral-200">
+          <SectionLabel icon={KeyRound}>Starter credential</SectionLabel>
+        </div>
+        <div className="p-3 text-[12px] text-neutral-500">Project를 선택하면 credential metadata를 no-store로 조회합니다.</div>
+      </div>
+    );
+  }
+
   return (
     <div className="border border-neutral-200">
       <div className="px-3 py-2.5 border-b border-neutral-200 flex items-center justify-between">
         <SectionLabel icon={KeyRound}>Starter credential</SectionLabel>
-        <StatusBadge>pending</StatusBadge>
+        <StatusBadge className={credential ? statusBadgeClassName(credential.status) : ""}>
+          {credential?.status ?? "loading"}
+        </StatusBadge>
       </div>
       <div className="p-3 text-[12px] text-neutral-600">
-        Credential lifecycle wiring은 이 story 범위가 아니므로 token, key, provider secret 값을 표시하지 않습니다.
+        {credentialLoading && "credential metadata를 불러오는 중입니다."}
+        {credentialError && credentialErrorCopy(credentialError)}
+        {!credentialLoading && !credentialError && credential && (
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2 text-[11px]">
+              <InfoCell label="key prefix" value={credential.keyPrefix} />
+              <InfoCell label="status" value={credential.status} />
+              <InfoCell label="issued" value={formatOptionalDateTime(credential.issuedAt)} />
+              <InfoCell label="rotated" value={formatOptionalDateTime(credential.rotatedAt)} />
+              <InfoCell label="revoked" value={formatOptionalDateTime(credential.revokedAt)} />
+            </div>
+            <div className="text-[11px] text-neutral-500">metadata response는 raw value/hash를 포함하지 않는다는 전제로 표시합니다.</div>
+          </div>
+        )}
+        {operationError && <div className="mt-2 text-[11px] text-rose-700">{credentialErrorCopy(operationError)}</div>}
+        {copyStatus && <div className="mt-2 text-[11px] text-neutral-600">{copyStatus}</div>}
+        {oneTimeCredential && (
+          <OneTimeCredentialPanel
+            credential={oneTimeCredential}
+            onCleared={(message) => {
+              setOneTimeCredential(null);
+              setCopyStatus(message);
+            }}
+          />
+        )}
       </div>
       <div className="px-3 py-2 border-t border-neutral-200 flex gap-2">
-        <Button variant="outline" size="sm" className="flex-1 border-neutral-300" disabled>Rotate</Button>
-        <Button variant="outline" size="sm" className="flex-1 border-neutral-300" disabled>Revoke</Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1 border-neutral-300"
+          disabled={operationLoading !== null}
+          onClick={rotateCredential}
+        >
+          {operationLoading === "rotate" ? "Rotating" : "Rotate"}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1 border-neutral-300"
+          disabled={operationLoading !== null}
+          onClick={revokeCredential}
+        >
+          {operationLoading === "revoke" ? "Revoking" : revokeConfirm ? "Confirm revoke" : "Revoke"}
+        </Button>
       </div>
     </div>
   );
+}
+
+function OneTimeCredentialPanel({
+  credential,
+  onCleared,
+}: {
+  credential: OneTimeStarterCredential;
+  onCleared: (message: string) => void;
+}) {
+  const copyAndClear = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(credential.displayValue);
+      onCleared("credential을 clipboard로 복사했고 화면 state에서 제거했습니다.");
+    } catch {
+      onCleared("clipboard 복사에 실패했지만 raw credential은 화면 state에서 제거했습니다.");
+    }
+  }, [credential.displayValue, onCleared]);
+
+  return (
+    <div className="mt-3 border border-neutral-900 bg-neutral-50 p-3 text-[12px]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-neutral-900">Starter credential 1회 표시</div>
+          <div className="mt-1 text-[11px] text-neutral-600">
+            다시 볼 수 없습니다. 필요하면 rotation으로 새 credential을 발급받아야 합니다.
+          </div>
+        </div>
+        <StatusBadge>{credential.visibleOnce ? "visible once" : "one-time"}</StatusBadge>
+      </div>
+      <code className="mt-2 block break-all border border-neutral-300 bg-white p-2 text-[11px] text-neutral-900">
+        {credential.displayValue}
+      </code>
+      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+        <InfoCell label="key prefix" value={credential.keyPrefix} />
+        <InfoCell label="issued" value={formatOptionalDateTime(credential.issuedAt)} />
+      </div>
+      <div className="mt-3 flex gap-2">
+        <Button type="button" variant="outline" size="sm" className="gap-2 border-neutral-300" onClick={copyAndClear}>
+          <Copy className="h-3.5 w-3.5" strokeWidth={1.5} /> Copy and clear
+        </Button>
+        <Button type="button" variant="outline" size="sm" className="gap-2 border-neutral-300" onClick={() => onCleared("credential 표시를 닫고 화면 state에서 제거했습니다.")}>
+          <X className="h-3.5 w-3.5" strokeWidth={1.5} /> Close
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function registrationErrorCopy(error: Error): string {
+  if (error instanceof AuthRequiredError) {
+    return error.message;
+  }
+  if (error instanceof ApiRequestError && error.status === 400) {
+    return "Project name이 유효하지 않습니다. non-secret 이름만 다시 입력해 주세요.";
+  }
+  if (error instanceof ApiRequestError && error.status === 409) {
+    return "동일하거나 정규화 후 충돌하는 project name이 있을 수 있습니다.";
+  }
+  if (error instanceof ApiRequestError && error.status === 401) {
+    return "인증이 만료되었습니다. 다시 GitHub 로그인 후 시도해 주세요.";
+  }
+  return "Project registration에 실패했습니다. backend body, token, credential 값은 표시하지 않습니다.";
+}
+
+function credentialErrorCopy(error: Error): string {
+  if (error instanceof AuthRequiredError) {
+    return error.message;
+  }
+  if (error instanceof ApiRequestError && error.status === 404) {
+    return "membership mismatch 또는 project scope fail-closed일 수 있습니다. credential revoked/project 없음으로 단정하지 않습니다.";
+  }
+  if (error instanceof ApiRequestError && error.status === 401) {
+    return "인증이 만료되었습니다. 다시 GitHub 로그인 후 시도해 주세요.";
+  }
+  return "credential lifecycle 요청에 실패했습니다. raw value/hash/token은 표시하지 않습니다.";
 }
 
 function InstancesPanel({
@@ -882,9 +1322,11 @@ function InstancesPanel({
         <ul>
           {dashboard.instances.map((instance) => {
             const target = {
+              applicationId: dashboard.application.applicationId,
               evidenceLink: instance.links.evidence,
               instanceId: instance.instanceId,
               instanceName: instance.instanceName,
+              projectId: dashboard.application.projectId,
             };
             return (
               <li key={instance.instanceId} className="px-3 py-2.5 border-b border-neutral-100 last:border-b-0">
@@ -909,19 +1351,340 @@ function InstancesPanel({
   );
 }
 
-function SnapshotHandoffPanel({ dashboard }: { dashboard: DashboardPresentation }) {
+function SnapshotHistoryPanel({
+  dashboard,
+  selectedApplication,
+  selectedProject,
+}: {
+  dashboard: DashboardPresentation;
+  selectedApplication: ApplicationPresentationItem;
+  selectedProject: ProjectPresentationItem;
+}) {
+  const [preset, setPreset] = useState<HistoryPreset>("24h");
+  const [detailTarget, setDetailTarget] = useState<SnapshotDetailTarget | null>(null);
+  const historyResourceKey = `${selectedProject.projectId}|${selectedApplication.applicationId}|${preset}`;
+
+  useEffect(() => {
+    setDetailTarget(null);
+  }, [selectedApplication.applicationId, selectedProject.projectId]);
+
+  const requestHistory = useCallback(
+    async ({ authFetch, signal }: { authFetch: AuthFetch; signal: AbortSignal }) => {
+      const paths = buildSnapshotHistoryPaths(selectedProject.projectId, selectedApplication.applicationId, preset);
+      const [eventsResponse, markersResponse] = await Promise.all([
+        authFetch(paths.events, {
+          ...NO_STORE_REQUEST_OPTIONS,
+          signal,
+        }),
+        authFetch(paths.markers, {
+          ...NO_STORE_REQUEST_OPTIONS,
+          signal,
+        }),
+      ]);
+      const events = await readJsonResource<OperationalEventHistoryReadModel>(eventsResponse);
+      const markers = await readJsonResource<DashboardSnapshotMarkerReadModel>(markersResponse);
+      validateSnapshotHistoryResponse(events, markers, selectedApplication.applicationId, preset);
+      return { events, markers };
+    },
+    [preset, selectedApplication.applicationId, selectedProject.projectId],
+  );
+
+  const resource = useApiResource<{
+    events: OperationalEventHistoryReadModel;
+    markers: DashboardSnapshotMarkerReadModel;
+  }>({
+    dependencies: [historyResourceKey],
+    request: requestHistory,
+    resourceKey: historyResourceKey,
+  });
+
+  const current = resource.resourceKey === historyResourceKey;
+  const loading = !current || resource.loading;
+  const error = current ? resource.error : null;
+  const history = current ? resource.data : null;
+
   return (
     <div className="border border-neutral-200">
-      <div className="px-3 py-2.5 border-b border-neutral-200">
+      <div className="px-3 py-2.5 border-b border-neutral-200 flex items-center justify-between gap-2">
         <SectionLabel icon={History}>Snapshot / events</SectionLabel>
+        <StatusBadge>{preset}</StatusBadge>
       </div>
-      <div className="p-3 text-[12px] text-neutral-600">
-        {dashboard.snapshot === null
-          ? "현재 dashboard response의 snapshot은 null입니다. Detail/history API는 호출하지 않습니다."
-          : "snapshot object가 수신됐지만 detail/history wiring은 Story 10.4 범위로 보존합니다."}
+      <div className="border-b border-neutral-100 p-3">
+        <div className="flex gap-2">
+          {(["24h", "7d", "14d"] as const).map((candidate) => (
+            <Button
+              key={candidate}
+              variant={preset === candidate ? "default" : "outline"}
+              size="sm"
+              className="h-8 flex-1 border-neutral-300"
+              onClick={() => {
+                setPreset(candidate);
+                setDetailTarget(null);
+              }}
+            >
+              {candidate}
+            </Button>
+          ))}
+        </div>
+      </div>
+      <div className="p-3 text-[12px] text-neutral-600 space-y-3">
+        {dashboard.snapshot === null && (
+          <div className="border border-neutral-200 bg-neutral-50 p-2">
+            current dashboard snapshot handoff가 없습니다. history/detail은 별도 stored snapshot API 결과만 사용합니다.
+          </div>
+        )}
+        {loading && <ResourceMessage title="History 로딩 중" body={`${preset} fixed preset으로 event와 marker를 불러오는 중입니다.`} />}
+        {error && <SnapshotHistoryError error={error} onReload={resource.reload} />}
+        {!loading && !error && history && (
+          <SnapshotHistoryReady
+            applicationId={selectedApplication.applicationId}
+            events={history.events}
+            markers={history.markers}
+            onSelectDetail={setDetailTarget}
+            projectId={selectedProject.projectId}
+          />
+        )}
+        <SnapshotDetailSurface
+          applicationId={selectedApplication.applicationId}
+          compact
+          projectId={selectedProject.projectId}
+          target={detailTarget}
+        />
       </div>
     </div>
   );
+}
+
+function SnapshotHistoryReady({
+  applicationId,
+  events,
+  markers,
+  onSelectDetail,
+  projectId,
+}: {
+  applicationId: string;
+  events: OperationalEventHistoryReadModel;
+  markers: DashboardSnapshotMarkerReadModel;
+  onSelectDetail: (target: SnapshotDetailTarget) => void;
+  projectId: string;
+}) {
+  return (
+    <>
+      <div className="border border-neutral-200 bg-white">
+        <div className="border-b border-neutral-100 px-3 py-2 text-[11px] uppercase text-neutral-500">
+          Operational events · {events.source} · {events.horizon.order}
+        </div>
+        {events.events.length === 0 ? (
+          <div className="p-3 text-[12px] text-neutral-500">
+            retention/source absence 또는 event 후보 없음입니다. 현재 문제 없음이나 복구 완료로 표현하지 않습니다.
+          </div>
+        ) : (
+          <ul>
+            {events.events.map((event) => (
+              <li key={event.eventId} className="border-b border-neutral-100 p-3 last:border-b-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-neutral-900">{event.title}</div>
+                    <div className="mt-0.5 text-neutral-600">{event.summary}</div>
+                    <div className="mt-1 text-[11px] text-neutral-500">
+                      {event.type} · {event.stateCode} · occurred {event.occurredAt} · resolved {formatOptionalDateTime(event.resolvedAt)}
+                    </div>
+                  </div>
+                  <StatusBadge className={statusBadgeClassName(event.severity)}>{event.severity}</StatusBadge>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500">
+                  <InfoCell label="event id" value={event.eventId} />
+                  <InfoCell label="confidence" value={formatNullableRatio(event.confidence)} />
+                  <InfoCell label="rule" value={event.evidence.ruleId ?? "rule 없음"} />
+                  <InfoCell label="endpoint" value={event.evidence.endpointKey ?? "endpoint 없음"} />
+                  <InfoCell label="anchor" value={event.evidence.snapshotDetailAnchor ?? "anchor 없음"} />
+                  <InfoCell label="anchor status" value={event.evidence.anchorStatus ?? "source 없음"} />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 gap-2 border-neutral-300"
+                  onClick={() => {
+                    onSelectDetail({
+                      activeAnchor: event.evidence.snapshotDetailAnchor,
+                      snapshotId: event.snapshotId,
+                      snapshotLink: event.links.snapshot,
+                    });
+                  }}
+                >
+                  <History className="h-3.5 w-3.5" strokeWidth={1.5} /> Detail
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="border border-neutral-200 bg-white">
+        <div className="border-b border-neutral-100 px-3 py-2 text-[11px] uppercase text-neutral-500">
+          Snapshot markers · {markers.source} · {markers.horizon.order}
+        </div>
+        {markers.markers.length === 0 ? (
+          <div className="p-3 text-[12px] text-neutral-500">
+            {markers.emptyState?.message ?? "marker source가 없습니다."} {markers.emptyState?.recommendedAction ?? ""}
+          </div>
+        ) : (
+          <ul>
+            {markers.markers.map((marker) => (
+              <li key={marker.markerId} className="border-b border-neutral-100 p-3 last:border-b-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-neutral-900">{marker.title}</div>
+                    <div className="mt-0.5 text-neutral-600">{marker.summary}</div>
+                    <div className="mt-1 text-[11px] text-neutral-500">
+                      {marker.type} · {marker.readMeaning} · {marker.captureReason ?? "opaque reason 없음"}
+                    </div>
+                  </div>
+                  <StatusBadge className={statusBadgeClassName(marker.severity)}>{marker.severity}</StatusBadge>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500">
+                  <InfoCell label="marker id" value={marker.markerId} />
+                  <InfoCell label="captured" value={marker.capturedAt} />
+                  <InfoCell label="stored state" value={marker.storedApplicationStateCode} />
+                  <InfoCell label="confidence" value={formatNullableRatio(marker.confidence)} />
+                  <InfoCell label="rule" value={marker.primaryRuleId ?? "rule 없음"} />
+                  <InfoCell label="endpoint" value={marker.primaryEndpointKey ?? "endpoint 없음"} />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 gap-2 border-neutral-300"
+                  onClick={() => {
+                    onSelectDetail({
+                      snapshotId: marker.snapshotId,
+                      snapshotLink: marker.links.snapshot,
+                    });
+                  }}
+                >
+                  <History className="h-3.5 w-3.5" strokeWidth={1.5} /> Detail
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
+  );
+}
+
+function validateSnapshotHistoryResponse(
+  events: OperationalEventHistoryReadModel,
+  markers: DashboardSnapshotMarkerReadModel,
+  expectedApplicationId: string,
+  expectedPreset: HistoryPreset,
+) {
+  if (
+    events.source !== "dashboard_snapshots" ||
+    markers.source !== "dashboard_snapshots" ||
+    events.applicationId !== expectedApplicationId ||
+    markers.applicationId !== expectedApplicationId ||
+    !historyHorizonMatches(events.horizon, {
+      limit: HISTORY_PRESET_QUERY[expectedPreset].eventLimit,
+      maxLimit: 100,
+      order: "occurredAt_desc",
+      requestedSince: expectedPreset,
+    }) ||
+    !historyHorizonMatches(markers.horizon, {
+      limit: HISTORY_PRESET_QUERY[expectedPreset].markerLimit,
+      maxLimit: 336,
+      order: "capturedAt_asc",
+      requestedSince: expectedPreset,
+    })
+  ) {
+    throw new ApiRequestError("snapshot_history_context_mismatch");
+  }
+}
+
+/**
+ * History/marker 응답은 fixed preset query와 server order metadata가 일치할 때만 화면에 반영한다.
+ * contract drift가 있으면 fail-closed로 처리해 오래된 horizon을 current context처럼 보여주지 않는다.
+ */
+function historyHorizonMatches(
+  horizon: HistoryHorizon,
+  expected: { limit: number; maxLimit: number; order: string; requestedSince: HistoryPreset },
+): boolean {
+  return (
+    horizon.requestedSince === expected.requestedSince &&
+    horizon.defaultSince === "24h" &&
+    horizon.maxSince === "14d" &&
+    horizon.limit === expected.limit &&
+    horizon.maxLimit === expected.maxLimit &&
+    horizon.order === expected.order &&
+    horizonWindowIsValid(horizon)
+  );
+}
+
+function horizonWindowIsValid(horizon: HistoryHorizon): boolean {
+  const since = Date.parse(horizon.since);
+  const until = Date.parse(horizon.until);
+  return Number.isFinite(since) && Number.isFinite(until) && until > since;
+}
+
+function isRegistrationRequestCurrent(
+  requestSequence: number,
+  sequenceRef: React.MutableRefObject<number>,
+  mountedRef: React.MutableRefObject<boolean>,
+  openRef: React.MutableRefObject<boolean>,
+): boolean {
+  return mountedRef.current && openRef.current && sequenceRef.current === requestSequence;
+}
+
+function isCredentialMutationCurrent(
+  requestSequence: number,
+  requestProjectId: string,
+  requestAuthGeneration: number,
+  sequenceRef: React.MutableRefObject<number>,
+  scopeRef: React.MutableRefObject<{ authGeneration: number; projectId: string | null }>,
+  mountedRef: React.MutableRefObject<boolean>,
+): boolean {
+  return (
+    mountedRef.current &&
+    sequenceRef.current === requestSequence &&
+    scopeRef.current.projectId === requestProjectId &&
+    scopeRef.current.authGeneration === requestAuthGeneration
+  );
+}
+
+function SnapshotHistoryError({ error, onReload }: { error: Error; onReload: () => void }) {
+  const copy = snapshotHistoryErrorCopy(error);
+  return (
+    <div className="border border-neutral-200 bg-white p-3 text-[12px]">
+      <div className="text-neutral-900">{copy.title}</div>
+      <div className="mt-1 text-neutral-500">{copy.body}</div>
+      <Button variant="outline" size="sm" className="mt-3 gap-2 border-neutral-300" onClick={onReload}>
+        <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.5} /> 다시 시도
+      </Button>
+    </div>
+  );
+}
+
+function snapshotHistoryErrorCopy(error: Error): { title: string; body: string } {
+  if (error instanceof AuthRequiredError) {
+    return {
+      title: "인증 필요",
+      body: error.message,
+    };
+  }
+  if (error instanceof ApiRequestError && error.status === 404) {
+    return {
+      title: "History scope 확인 필요",
+      body: "membership mismatch, scope mismatch, retention absence일 수 있습니다. application/instance down이나 복구 완료로 해석하지 않습니다.",
+    };
+  }
+  if (error instanceof ApiRequestError && error.status === 400) {
+    return {
+      title: "History 조회 조건 확인 필요",
+      body: "지원하는 fixed preset은 24h, 7d, 14d뿐입니다.",
+    };
+  }
+  return {
+    title: "History 로드 실패",
+    body: "stored snapshot source를 불러오지 못했습니다. backend detail, token, provider payload는 표시하지 않습니다.",
+  };
 }
 
 function MetricCell({ label, last = false, value }: { label: string; last?: boolean; value: string }) {

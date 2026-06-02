@@ -3,6 +3,7 @@ import type {
   ApplicationDashboardReadModel,
   ConcernSummary,
   DashboardWindow,
+  HistoryPreset,
   HistogramWindow,
   LifecycleBadge,
   LifecycleStateCode,
@@ -10,11 +11,38 @@ import type {
   ProjectApplicationNavigationReadModel,
   ProjectNavigationProjectItem,
   ProjectNavigationReadModel,
+  TrendPreset,
 } from "./read-model-types";
 
 const PROJECT_APPLICATIONS_PATH = /^\/api\/projects\/([^/]+)\/applications$/;
 const APPLICATION_DASHBOARD_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/dashboard$/;
+const INSTANCE_EVIDENCE_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/instances\/([^/]+)\/evidence$/;
+const INSTANCE_SNAPSHOT_TREND_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/instances\/([^/]+)\/snapshot-trend$/;
+const SNAPSHOT_DETAIL_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/dashboard\/snapshots\/([^/]+)$/;
 const UNKNOWN_TEXT = "source 없음";
+
+export const TREND_PRESET_QUERY = {
+  "7d": { limit: 168, since: "7d" },
+  "14d": { limit: 336, since: "14d" },
+} as const satisfies Record<TrendPreset, { limit: number; since: TrendPreset }>;
+
+export const HISTORY_PRESET_QUERY = {
+  "24h": {
+    eventLimit: 50,
+    markerLimit: 50,
+    since: "24h",
+  },
+  "7d": {
+    eventLimit: 100,
+    markerLimit: 168,
+    since: "7d",
+  },
+  "14d": {
+    eventLimit: 100,
+    markerLimit: 336,
+    since: "14d",
+  },
+} as const satisfies Record<HistoryPreset, { eventLimit: number; markerLimit: number; since: HistoryPreset }>;
 
 /**
  * backend DTO를 화면 표시 모델로 옮기는 adapter 모음이다.
@@ -106,6 +134,114 @@ export function validateDashboardPath(link: string, expectedProjectId: string, e
     throw new ApiRequestError("dashboard_link_invalid");
   }
   return path;
+}
+
+export function validateInstanceEvidencePath(
+  link: string,
+  expectedProjectId: string,
+  expectedApplicationId: string,
+  expectedInstanceId: string,
+): string {
+  const path = internalApiPath(link, "instance_evidence_link_invalid");
+  const match = INSTANCE_EVIDENCE_PATH.exec(path);
+  if (
+    !match ||
+    match[1] !== expectedProjectId ||
+    match[2] !== expectedApplicationId ||
+    match[3] !== expectedInstanceId
+  ) {
+    throw new ApiRequestError("instance_evidence_link_invalid");
+  }
+  return path;
+}
+
+export function validateInstanceSnapshotTrendPath(
+  link: string,
+  expectedProjectId: string,
+  expectedApplicationId: string,
+  expectedInstanceId: string,
+): string {
+  const path = internalApiPath(link, "instance_snapshot_trend_link_invalid");
+  const match = INSTANCE_SNAPSHOT_TREND_PATH.exec(path);
+  if (
+    !match ||
+    match[1] !== expectedProjectId ||
+    match[2] !== expectedApplicationId ||
+    match[3] !== expectedInstanceId
+  ) {
+    throw new ApiRequestError("instance_snapshot_trend_link_invalid");
+  }
+  return path;
+}
+
+export function validateSnapshotDetailPath(
+  link: string,
+  expectedProjectId: string,
+  expectedApplicationId: string,
+  expectedSnapshotId?: string,
+): string {
+  const path = internalApiPath(link, "snapshot_detail_link_invalid");
+  const match = SNAPSHOT_DETAIL_PATH.exec(path);
+  if (
+    !match ||
+    match[1] !== expectedProjectId ||
+    match[2] !== expectedApplicationId ||
+    (expectedSnapshotId && match[3] !== expectedSnapshotId)
+  ) {
+    throw new ApiRequestError("snapshot_detail_link_invalid");
+  }
+  return path;
+}
+
+export function snapshotIdFromDetailPath(path: string): string {
+  const match = SNAPSHOT_DETAIL_PATH.exec(path);
+  if (!match) {
+    throw new ApiRequestError("snapshot_detail_link_invalid");
+  }
+  return match[3];
+}
+
+/**
+ * Trend 직접 진입은 evidence response link가 없을 때만 쓰는 문서화된 fallback이다.
+ * caller가 넘긴 selected context를 path component로만 인코딩하고 임의 URL input은 받지 않는다.
+ */
+export function buildInstanceSnapshotTrendPath(
+  projectId: string,
+  applicationId: string,
+  instanceId: string,
+): string {
+  return `/api/projects/${safePathComponent(projectId)}/applications/${safePathComponent(applicationId)}/instances/${safePathComponent(instanceId)}/snapshot-trend`;
+}
+
+export function trendPathWithPreset(path: string, preset: TrendPreset): string {
+  const query = TREND_PRESET_QUERY[preset];
+  return `${path}?since=${query.since}&limit=${query.limit}`;
+}
+
+export function buildSnapshotHistoryPaths(projectId: string, applicationId: string, preset: HistoryPreset) {
+  const query = HISTORY_PRESET_QUERY[preset];
+  const projectPath = safePathComponent(projectId);
+  const applicationPath = safePathComponent(applicationId);
+  return {
+    events: `/api/projects/${projectPath}/applications/${applicationPath}/operational-events?since=${query.since}&limit=${query.eventLimit}`,
+    markers: `/api/projects/${projectPath}/applications/${applicationPath}/dashboard/snapshot-markers?since=${query.since}&limit=${query.markerLimit}`,
+  };
+}
+
+export function buildSnapshotDetailPath(projectId: string, applicationId: string, snapshotId: string): string {
+  return `/api/projects/${safePathComponent(projectId)}/applications/${safePathComponent(applicationId)}/dashboard/snapshots/${safePathComponent(snapshotId)}`;
+}
+
+export function buildStarterCredentialMetadataPath(projectId: string): string {
+  return `/api/projects/${safePathComponent(projectId)}/starter-credential`;
+}
+
+export function buildStarterCredentialRotationPath(projectId: string): string {
+  return `${buildStarterCredentialMetadataPath(projectId)}/rotations`;
+}
+
+export function buildStarterCredentialRevocationPath(projectId: string): string {
+  return `${buildStarterCredentialMetadataPath(projectId)}/revocations`;
 }
 
 export function formatOptionalDateTime(value: string | null | undefined): string {
@@ -223,4 +359,12 @@ function internalApiPath(link: string, errorCode: string): string {
 
 function browserOrigin(): string {
   return typeof window === "undefined" ? "http://localhost" : window.location.origin;
+}
+
+function safePathComponent(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || /[/?#]/.test(trimmed)) {
+    throw new ApiRequestError("api_path_component_invalid");
+  }
+  return encodeURIComponent(trimmed);
 }
