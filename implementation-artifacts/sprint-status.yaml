@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-06-01T11:34:11+0900
+# last_updated: 2026-06-02T13:41:57+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -50,9 +50,13 @@
 # - Epic 7은 Epic 6 완료 후 실제 GitHub OAuth 계정, local smoke seed, starter 포함 Spring Boot smoke service로 portal 통신을 검증하는 local/operator smoke validation epic이다.
 # - Epic 7은 public project creation, project key issuance/rotation UI, browser token persistence, invite/admin/team/billing surface를 열지 않는다.
 # - Epic 7 token memo는 Git 추적 대상이 아닌 `.private/smoke-auth.env`의 ephemeral access token으로 제한하고 refresh/provider token은 저장하지 않는다.
+# - Epic 10은 Figma Make 산출물을 실서비스 Vite SPA로 인수하는 acceptance/hardening epic이다.
+# - Epic 10은 figma/ -> frontend/ 재배치, routing/typecheck, auth/fetch 이식, server read model 연결, Gradle/Spring 정적 서빙, legacy static dashboard replacement, acceptance 검증을 story 단위로 닫는다.
+# - Epic 10은 새 backend endpoint, Next.js API route, UI-side lifecycle/p95/p99/endpoint priority/snapshot event 계산을 만들지 않는다.
+# - `* 2.java` duplicate Java file 후보는 Epic 10 build/acceptance verification 전에 해결 또는 known blocker로 명시돼야 한다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-06-01T13:12:57+0900
+last_updated: 2026-06-02T13:41:57+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -123,3 +127,13 @@ development_status:
   7-2-starter-bucket-ingest-http-client: done
   7-3-smoke-spring-boot-service-and-portal-communication-verification: done
   epic-7-retrospective: optional
+
+  epic-10: backlog
+  10-1-adopt-workspace-and-routing: backlog
+  10-2-port-auth-and-fetch-foundation: backlog
+  10-3-wire-types-adapters-navigation-and-dashboard: backlog
+  10-4-wire-evidence-trend-and-credential-surfaces: backlog
+  10-5-integrate-frontend-build-with-gradle: backlog
+  10-6-replace-legacy-dashboard-and-clean-residue: backlog
+  10-7-run-acceptance-gate: backlog
+  epic-10-retrospective: optional
