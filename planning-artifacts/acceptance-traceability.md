@@ -44,3 +44,16 @@ date: 2026-05-25
 | portal physical schema는 catalog부터 구현 가능하고 DB comment를 포함한다 | Epic 1 | `database-schema.md` | `repository.catalog`, migration | `MigrationSchemaCommentTest` |
 | controller는 repository를 직접 호출하지 않는다 | Epic 1 | `architecture.md` | controller -> service -> repository | `MvcLayerBoundaryTest` |
 | repository는 controller DTO를 참조하지 않는다 | Epic 1 | `architecture.md` | repository isolation | `MvcLayerBoundaryTest` |
+
+## Epic 10 Acceptance Evidence - 2026-06-02
+
+Story 10.7 acceptance gate는 Spring-served origin `http://127.0.0.1:8080`에서 built jar와 local acceptance PostgreSQL로 검증했다. 새 제품 기능, backend endpoint/controller/service/repository/migration, frontend auth/API/read-model behavior 변경은 수행하지 않았다.
+
+| Evidence Area | Result | Evidence |
+|---|---|---|
+| Command/build/jar | Pass | `npm run typecheck`, `npm run build`, `./gradlew :observability-portal:bootJar --rerun-tasks` 성공. jar에 `BOOT-INF/classes/static/index.html`, `assets/index-132Tghla.js`, `assets/index-C6P2CycU.css` 포함. `BOOT-INF/classes/static/dashboard` 없음. |
+| Spring static route guard | Pass | `/`, `/dashboard`, `/dashboard/`, `/docs`, `/docs/`는 SPA HTML로 수렴. `/api/projects`는 unauthenticated 401 JSON. 실제 JS/CSS asset은 JS/CSS content type. 없는 asset과 `/dashboard/app.js`, `/dashboard/styles.css`는 404 JSON으로 HTML fallback shadow 없음. |
+| Auth/storage/401 | Partial with blocker | GitHub authorize JSON/no-store와 popup open은 확인. 실제 GitHub login 완료, callback relay, token exchange success는 headless browser에 interactive GitHub session이 없어 blocker. Runtime Bearer header와 401 token clear/auth-required UI는 local service JWT로 확인. URL/cookie/localStorage/sessionStorage는 비어 있음. |
+| Read-model/no-recompute | Pass | Project -> Application -> Dashboard -> Evidence -> Snapshot Trend/History는 server links 또는 Story 10.4의 validated endpoint template만 호출. `triageCards=[]`에서 `zeroInsight` reason/action 확인. accepted bucket axis와 starter heartbeat axis 분리 확인. recompute grep은 DTO/server field display match로 분류. |
+| Credential one-time | Pass | Project create와 credential rotation의 `displayValue`는 success 직후 one-time panel에만 표시되고 close 뒤 DOM/UI state/storage에서 제거됨. Metadata/revocation response에는 raw value/hash field 없음. |
+| Endpoint allow-list | Pass | Runtime calls는 existing auth/resource/read-model/credential endpoints로 제한. Dashboard UI에서 `/api/ingest/v1/buckets`, `/api/ingest/v1/heartbeat` 호출 없음. docs/setup의 ingest API 언급은 runtime call이 아님. |

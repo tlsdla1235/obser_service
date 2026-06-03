@@ -1,0 +1,1563 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Observation 프로젝트 오너 가이드</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fb;
+      --surface: #ffffff;
+      --surface-soft: #edf3f7;
+      --ink: #172033;
+      --muted: #5d6b7f;
+      --line: #d8e0ea;
+      --accent: #146c68;
+      --accent-soft: #e3f3f1;
+      --warn: #8a5a00;
+      --warn-soft: #fff4dc;
+      --danger: #a33131;
+      --danger-soft: #fde8e8;
+      --code: #263042;
+      --shadow: 0 16px 44px rgb(23 32 51 / 8%);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.68;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration-thickness: 0.08em;
+      text-underline-offset: 0.18em;
+    }
+
+    code {
+      padding: 0.12rem 0.28rem;
+      border-radius: 4px;
+      background: #eef2f6;
+      color: var(--code);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 0.92em;
+    }
+
+    pre {
+      overflow-x: auto;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #182032;
+      color: #f4f7fb;
+      line-height: 1.55;
+    }
+
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 22px;
+      background: var(--surface);
+      font-size: 0.94rem;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--surface-soft);
+      color: #29354a;
+      font-weight: 800;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+      font-size: clamp(2.1rem, 5vw, 4.4rem);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: clamp(1.5rem, 2.5vw, 2.15rem);
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 28px 0 10px;
+      font-size: 1.2rem;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    h4 {
+      margin: 20px 0 8px;
+      font-size: 1rem;
+      letter-spacing: 0;
+    }
+
+    ul,
+    ol {
+      padding-left: 1.25rem;
+    }
+
+    li + li {
+      margin-top: 6px;
+    }
+
+    .page {
+      display: grid;
+      grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+      gap: 28px;
+      width: min(1480px, calc(100vw - 40px));
+      margin: 0 auto;
+      padding: 28px 0 56px;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 20px;
+      align-self: start;
+      max-height: calc(100vh - 40px);
+      overflow: auto;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .sidebar h2 {
+      margin-bottom: 12px;
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .sidebar ol {
+      margin: 0;
+      padding-left: 1.1rem;
+      font-size: 0.92rem;
+      line-height: 1.45;
+    }
+
+    .content {
+      min-width: 0;
+    }
+
+    .hero,
+    section {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      padding: clamp(28px, 5vw, 54px);
+      margin-bottom: 20px;
+      background:
+        linear-gradient(135deg, rgb(20 108 104 / 9%), rgb(255 255 255 / 0) 52%),
+        var(--surface);
+    }
+
+    .hero p {
+      max-width: 980px;
+      color: var(--muted);
+      font-size: 1.04rem;
+      font-weight: 650;
+    }
+
+    section {
+      padding: clamp(22px, 3vw, 34px);
+      margin-bottom: 20px;
+    }
+
+    .eyebrow {
+      margin-bottom: 8px;
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 850;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .meta-grid,
+    .card-grid,
+    .two-col,
+    .three-col {
+      display: grid;
+      gap: 14px;
+    }
+
+    .meta-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-top: 18px;
+    }
+
+    .card-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .two-col {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .three-col {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .card,
+    .note,
+    .warning,
+    .danger {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fbfcfe;
+    }
+
+    .card h3,
+    .card h4 {
+      margin-top: 0;
+    }
+
+    .card p:last-child,
+    .note p:last-child,
+    .warning p:last-child,
+    .danger p:last-child {
+      margin-bottom: 0;
+    }
+
+    .note {
+      background: var(--accent-soft);
+      border-color: #b9deda;
+    }
+
+    .warning {
+      background: var(--warn-soft);
+      border-color: #efd296;
+    }
+
+    .danger {
+      background: var(--danger-soft);
+      border-color: #f0b8b8;
+    }
+
+    .tag {
+      display: inline-block;
+      margin: 0 4px 4px 0;
+      padding: 2px 7px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #f8fafc;
+      color: #334154;
+      font-size: 0.78rem;
+      font-weight: 750;
+    }
+
+    .source-list {
+      columns: 2;
+      column-gap: 28px;
+      padding-left: 1rem;
+    }
+
+    .source-list li {
+      break-inside: avoid;
+      margin: 0 0 6px;
+    }
+
+    .flow {
+      display: grid;
+      gap: 10px;
+      margin: 14px 0 20px;
+    }
+
+    .flow-step {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+
+    .flow-index {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 900;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .owner-checklist li {
+      margin-top: 8px;
+    }
+
+    @media (max-width: 1120px) {
+      .page {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: static;
+        max-height: none;
+      }
+
+      .meta-grid,
+      .card-grid,
+      .two-col,
+      .three-col {
+        grid-template-columns: 1fr;
+      }
+
+      .source-list {
+        columns: 1;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .page {
+        width: min(100vw - 24px, 1480px);
+        padding-top: 12px;
+      }
+
+      section,
+      .hero {
+        padding: 18px;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <aside class="sidebar" aria-label="문서 목차">
+      <h2>목차</h2>
+      <ol>
+        <li><a href="#summary">오너 요약</a></li>
+        <li><a href="#sources">참고한 원천</a></li>
+        <li><a href="#mental-model">제품 모델</a></li>
+        <li><a href="#glossary">용어 사전</a></li>
+        <li><a href="#modules">모듈과 배포 단위</a></li>
+        <li><a href="#architecture">아키텍처 경계</a></li>
+        <li><a href="#data-model">데이터 모델</a></li>
+        <li><a href="#api">API 표면</a></li>
+        <li><a href="#flows">핵심 흐름</a></li>
+        <li><a href="#logic">세부 로직</a></li>
+        <li><a href="#frontend">Static Dashboard</a></li>
+        <li><a href="#config">설정과 실행</a></li>
+        <li><a href="#tests">검증 전략</a></li>
+        <li><a href="#owner-checklist">오너 체크리스트</a></li>
+        <li><a href="#file-map">파일 지도</a></li>
+      </ol>
+    </aside>
+
+    <main class="content">
+      <header class="hero">
+        <p class="eyebrow">Observation Project Owner Guide</p>
+        <h1>Observation 프로젝트를 책임지기 위한 전체 가이드</h1>
+        <p>
+          이 문서는 Spring Boot starter-first observability dashboard 프로젝트를 처음 보는 사람이
+          구조, 용어, 데이터 흐름, 세부 판정 로직, API, 운영 제약을 설명할 수 있도록 정리한 오너용 기준 문서다.
+          기준일은 2026-06-01이며, 기존 기획 문서와 현재 구현을 함께 확인해 작성했다.
+        </p>
+        <div class="meta-grid">
+          <div class="card">
+            <strong>주요 제품</strong><br>
+            Spring Boot starter가 30초 bucket과 heartbeat를 포털로 보내고, 포털이 dashboard read model을 만든다.
+          </div>
+          <div class="card">
+            <strong>현재 아키텍처</strong><br>
+            Traditional MVC + Service/Repository Layering. 순수 DDD/Hexagonal이 아니다.
+          </div>
+          <div class="card">
+            <strong>원천 DB</strong><br>
+            PostgreSQL + Flyway SQL migration. JPA DDL 자동 생성은 꺼져 있다.
+          </div>
+          <div class="card">
+            <strong>보안 원칙</strong><br>
+            GitHub OAuth account auth, Bearer service JWT, starter credential raw value 1회 표시.
+          </div>
+        </div>
+      </header>
+
+      <section id="summary">
+        <p class="eyebrow">1. Owner Summary</p>
+        <h2>오너가 먼저 잡아야 할 핵심</h2>
+        <div class="warning">
+          <p>
+            이 프로젝트를 책임진다는 것은 “포털 화면이 왜 이 상태를 보여주는지”를 accepted bucket,
+            heartbeat, snapshot, state rule, endpoint evidence까지 역추적할 수 있다는 뜻이다.
+            특히 heartbeat는 control-plane 연결 신호이고, accepted metric bucket은 data-plane 관측 신호다.
+            두 신호를 섞어서 host application의 실제 생존 여부를 단정하면 안 된다.
+          </p>
+        </div>
+        <div class="card-grid">
+          <div class="card">
+            <h3>읽기 모델의 주인</h3>
+            <p>
+              Dashboard 상태, zeroInsight, triage card, endpoint priority는 서버 service가 계산한다.
+              UI, controller, repository는 이 의미를 다시 만들지 않는다.
+            </p>
+          </div>
+          <div class="card">
+            <h3>저장 원칙</h3>
+            <p>
+              PostgreSQL은 accepted 30초 bucket, heartbeat 최신 상태, snapshot read model을 저장한다.
+              Prometheus나 TSDB, 임의 query explorer는 MVP 경로가 아니다.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Percentile 원칙</h3>
+            <p>
+              p95/p99는 starter가 보낸 <code>summary.localPercentiles</code>의
+              <code>starter_local</code>, <code>instance_bucket</code> point만 canonical source다.
+              포털은 histogram으로 p95/p99를 재계산하지 않는다.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Snapshot 원칙</h3>
+            <p>
+              snapshot/history/trend/detail은 저장된 <code>dashboard_snapshots.read_model_json</code>을 projection한다.
+              현재 dashboard나 bucket을 다시 join해 과거를 재계산하지 않는다.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Starter 원칙</h3>
+            <p>
+              host request path에서는 네트워크 호출을 하지 않는다. Micrometer observation은 로컬 guard,
+              rollup, bounded queue까지만 지나고, background worker가 flush한다.
+            </p>
+          </div>
+          <div class="card">
+            <h3>보안 원칙</h3>
+            <p>
+              project key, refresh token, OAuth state nonce 원문은 저장하지 않는다.
+              raw starter credential은 생성/회전 성공 응답에서만 1회 표시한다.
+            </p>
+          </div>
+        </div>
+
+        <h3>현재 구현과 계약 문서의 중요한 차이</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>주제</th>
+              <th>문서/의도</th>
+              <th>현재 구현 기준</th>
+              <th>오너 판단</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Ingest idempotency</td>
+              <td>같은 payload의 duplicate는 200으로 볼 여지가 문서에 남아 있다.</td>
+              <td><code>IngestAcceptanceService</code>는 같은 project의 기존 <code>Idempotency-Key</code>를 발견하면 payload hash 비교 없이 409로 수렴한다.</td>
+              <td>운영/테스트 기대값은 409로 잡아야 한다. 200 재처리를 원하면 service와 contract를 함께 바꿔야 한다.</td>
+            </tr>
+            <tr>
+              <td>Retention</td>
+              <td>accepted bucket 7일, snapshot 14일 horizon이 계약에 있다.</td>
+              <td>snapshot query/scheduler는 <code>portal.dashboard-snapshots.retention-days</code>로 clamp한다. 현재 cleanup package는 예약만 되어 있고 실제 삭제 job은 보이지 않는다.</td>
+              <td>저장소 용량 정책을 운영 요구로 삼으려면 cleanup story가 필요하다.</td>
+            </tr>
+            <tr>
+              <td>Docs 위치</td>
+              <td><code>_bmad</code> config의 project knowledge는 <code>docs</code>를 가리킨다.</td>
+              <td>작성 전 <code>docs/</code> 폴더는 없었고, 실제 원천은 <code>planning-artifacts</code>, <code>implementation-artifacts</code>, <code>_bmad/custom/project-context.md</code>였다.</td>
+              <td>이 파일을 새 기준 문서로 두고 이후 docs 체계를 맞추는 것이 좋다.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="sources">
+        <p class="eyebrow">2. Source Material</p>
+        <h2>참고한 기존 문서와 신뢰 순서</h2>
+        <p>
+          이 가이드는 기존 문서를 단순 요약하지 않고, 문서의 제품 의도와 현재 코드 동작을 함께 대조했다.
+          의사결정이 충돌할 때는 아래 순서로 해석한다.
+        </p>
+        <ol>
+          <li><code>_bmad/custom/project-context.md</code>: 현재 구현 기준, 아키텍처 결정, 금지된 방향.</li>
+          <li><code>planning-artifacts/current-product-source-of-truth.md</code>: 제품 UX와 도메인 모델의 최상위 기준.</li>
+          <li><code>planning-artifacts/contracts/*.md</code>: API/read model/state/rule/time/route 계약.</li>
+          <li><code>observability-portal/src/main/resources/db/migration/*.sql</code>: 물리 schema source of truth.</li>
+          <li>현재 Java/Kotlin/JS/CSS 구현과 테스트: 실제 동작 기준.</li>
+        </ol>
+        <h3>대표 참고 문서</h3>
+        <ul class="source-list">
+          <li><a href="../_bmad/custom/project-context.md">_bmad/custom/project-context.md</a></li>
+          <li><a href="../planning-artifacts/current-product-source-of-truth.md">current-product-source-of-truth.md</a></li>
+          <li><a href="../planning-artifacts/architecture.md">architecture.md</a></li>
+          <li><a href="../planning-artifacts/project-structure.md">project-structure.md</a></li>
+          <li><a href="../planning-artifacts/api-surface.md">api-surface.md</a></li>
+          <li><a href="../planning-artifacts/database-schema.md">database-schema.md</a></li>
+          <li><a href="../planning-artifacts/contracts/ingest-envelope.md">contracts/ingest-envelope.md</a></li>
+          <li><a href="../planning-artifacts/contracts/state-semantics.md">contracts/state-semantics.md</a></li>
+          <li><a href="../planning-artifacts/contracts/read-model-contract.md">contracts/read-model-contract.md</a></li>
+          <li><a href="../planning-artifacts/contracts/insight-rules.md">contracts/insight-rules.md</a></li>
+          <li><a href="../planning-artifacts/contracts/time-buckets.md">contracts/time-buckets.md</a></li>
+          <li><a href="../planning-artifacts/contracts/metric-taxonomy.md">contracts/metric-taxonomy.md</a></li>
+          <li><a href="../planning-artifacts/contracts/route-attribution-policy.md">contracts/route-attribution-policy.md</a></li>
+          <li><a href="../planning-artifacts/contracts/operational-event-history.md">contracts/operational-event-history.md</a></li>
+        </ul>
+      </section>
+
+      <section id="mental-model">
+        <p class="eyebrow">3. Product Model</p>
+        <h2>제품을 이해하는 한 장짜리 모델</h2>
+        <pre><code>Spring Boot host app
+  -> observability-spring-boot-starter
+  -> 30초 accepted metric bucket + 30초 heartbeat
+  -> observability-portal
+  -> PostgreSQL read-side persistence
+  -> Application Dashboard
+  -> Snapshot / History / Instance Evidence drill-down</code></pre>
+
+        <div class="two-col">
+          <div class="card">
+            <h3>Scope 계층</h3>
+            <p>
+              제품의 계층은 <code>project -> application -> instance</code>다.
+              Project Entry와 Application List는 scope 선택 화면이고, 운영 판단의 primary first screen은
+              Application Dashboard다. Instance Evidence와 Snapshot Trend는 근거 drill-down이다.
+            </p>
+          </div>
+          <div class="card">
+            <h3>두 데이터 축</h3>
+            <p>
+              accepted metric bucket은 실제 traffic 관측 data-plane이다.
+              heartbeat는 starter가 살아 있고 포털까지 도달했다는 control-plane telemetry다.
+              dashboard는 둘을 나란히 표시하지만 state freshness 계산은 accepted bucket 기준이다.
+            </p>
+          </div>
+        </div>
+
+        <h3>이 프로젝트가 하지 않는 일</h3>
+        <ul>
+          <li>Prometheus scrape, TSDB, arbitrary query UI를 제공하지 않는다.</li>
+          <li>포털에서 histogram을 합쳐 p95/p99 scalar를 새로 만들지 않는다.</li>
+          <li>heartbeat만으로 host application이 정상/다운이라고 단정하지 않는다.</li>
+          <li>email/password, cookie session, GitHub provider token 저장을 만들지 않는다.</li>
+          <li>route attribution에 raw URL, query string, high-cardinality tag를 사용하지 않는다.</li>
+          <li><code>archive/</code>의 legacy 구현을 현재 기준으로 되살리지 않는다.</li>
+        </ul>
+      </section>
+
+      <section id="glossary">
+        <p class="eyebrow">4. Glossary</p>
+        <h2>프로젝트 용어 사전</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>용어</th>
+              <th>의미</th>
+              <th>주의점</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Project</td>
+              <td>starter credential과 application 묶음의 최상위 scope. DB table은 <code>projects</code>.</td>
+              <td>account membership으로 접근 제어한다. starter credential status와 project status는 분리되어 있다.</td>
+            </tr>
+            <tr>
+              <td>Starter Credential</td>
+              <td><code>&lt;key_prefix&gt;.&lt;secret&gt;</code> 형태의 raw project key. starter가 <code>X-OBS-Project-Key</code>로 보낸다.</td>
+              <td>원문은 저장하지 않고 BCrypt hash만 저장한다. 생성/회전 시 한 번만 보여준다.</td>
+            </tr>
+            <tr>
+              <td>Application</td>
+              <td>project 안의 <code>application.name + environment</code> 조합.</td>
+              <td>heartbeat만으로 catalog를 만들지 않는다. accepted bucket 수용 시 catalog upsert된다.</td>
+            </tr>
+            <tr>
+              <td>Instance</td>
+              <td>application 안의 runtime instance identity.</td>
+              <td>instance evidence는 selected instance scope를 보여주지만 application triage와 함께 읽는다.</td>
+            </tr>
+            <tr>
+              <td>Accepted Metric Bucket</td>
+              <td>검증을 통과해 포털 DB에 저장된 30초 UTC metric 집계.</td>
+              <td>dashboard state의 freshness source다. heartbeat와 별도다.</td>
+            </tr>
+            <tr>
+              <td>Heartbeat</td>
+              <td>starter가 주기적으로 보내는 control-plane telemetry.</td>
+              <td>catalog upsert나 accepted bucket 저장을 하지 않는다. 최신 row만 upsert된다.</td>
+            </tr>
+            <tr>
+              <td>Dashboard Read Model</td>
+              <td>application dashboard 화면이 소비하는 서버 계산 응답.</td>
+              <td>UI가 state, p95/p99, endpoint priority를 재계산하면 안 된다.</td>
+            </tr>
+            <tr>
+              <td>Source-scoped Percentile</td>
+              <td>starter-local instance bucket 단위 p95/p99 point.</td>
+              <td><code>source=starter_local</code>, <code>scope=instance_bucket</code>, <code>mergeable=false</code>만 유효하다.</td>
+            </tr>
+            <tr>
+              <td>Histogram Distribution</td>
+              <td>duration cumulative histogram bucket 분포 evidence.</td>
+              <td>boundary set이 window 안에서 모두 같을 때만 합산한다. percentile 계산용이 아니다.</td>
+            </tr>
+            <tr>
+              <td>Endpoint Key</td>
+              <td><code>METHOD + " " + normalizedRoute</code>.</td>
+              <td><code>UNKNOWN</code> route는 endpoint priority에서 제외된다.</td>
+            </tr>
+            <tr>
+              <td>Freshness</td>
+              <td>마지막 accepted bucket endUtc 기준 current/stale/down 후보.</td>
+              <td>90초 이상 stale, 180초 이상 down 후보. 첫 데이터가 없으면 waiting_first_data.</td>
+            </tr>
+            <tr>
+              <td>Lifecycle State</td>
+              <td><code>waiting_first_data</code>, <code>unknown</code>, <code>idle</code>, <code>active</code>, <code>stale</code>, <code>down</code>, <code>degraded</code>.</td>
+              <td>metric axis와 starter connection axis를 분리해서 결정한다.</td>
+            </tr>
+            <tr>
+              <td>Zero Insight</td>
+              <td>triage card가 없을 때 UI가 보여주는 “지금 왜 조치가 없는지” 설명.</td>
+              <td>상태를 새로 판단하는 기능이 아니라 서버 reasonCode 표시다.</td>
+            </tr>
+            <tr>
+              <td>Triage Card</td>
+              <td>application-level first-check suggestion.</td>
+              <td>root cause engine이 아니다. 최대 3개, confidence 0.65 이상만 노출한다.</td>
+            </tr>
+            <tr>
+              <td>Endpoint Priority</td>
+              <td>우선 확인할 endpoint 후보 ranking.</td>
+              <td>current freshness와 sample sufficient 조건에서만 계산하며 최대 5개다.</td>
+            </tr>
+            <tr>
+              <td>Snapshot</td>
+              <td>특정 시점 dashboard read model JSON을 저장한 coarse-grained row.</td>
+              <td>history/detail/trend의 source다. 과거 상태를 live data로 재계산하지 않는다.</td>
+            </tr>
+            <tr>
+              <td>Operational Event</td>
+              <td>stored snapshot sequence에서 projection한 사건 목록.</td>
+              <td>별도 테이블이 없다. suppression/folding은 projection 단계에서 이뤄진다.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="modules">
+        <p class="eyebrow">5. Modules</p>
+        <h2>모듈과 배포 단위</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>모듈</th>
+              <th>역할</th>
+              <th>주요 의존성</th>
+              <th>오너가 알아야 할 경계</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>observability-spring-boot-starter</code></td>
+              <td>host Spring Boot app에 붙는 starter library.</td>
+              <td>Micrometer observation API, Spring Boot autoconfigure, SLF4J, Jackson, JDK HttpClient.</td>
+              <td>request path에서는 network call을 하지 않는다. route normalization, rollup, queue, background flush/heartbeat만 담당한다.</td>
+            </tr>
+            <tr>
+              <td><code>observability-portal</code></td>
+              <td>ingest API, account/project API, dashboard/snapshot/history read model을 제공하는 Spring Boot app.</td>
+              <td>Spring MVC, Data JPA, Flyway, PostgreSQL, Jackson, Spring Security Crypto, Micrometer.</td>
+              <td>상태/룰/read model 계산의 중심. DB schema source는 Flyway SQL이다.</td>
+            </tr>
+            <tr>
+              <td><code>observability-smoke-service</code></td>
+              <td>starter를 붙여 local green/failure path를 검증하는 smoke host app.</td>
+              <td>Spring Boot web/actuator, starter module.</td>
+              <td><code>/smoke/ok</code>, <code>/smoke/slow</code>, <code>/smoke/error-candidate</code>로 traffic 후보를 만든다.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Gradle 기준</h3>
+        <ul>
+          <li>Root group은 <code>com.sst</code>, version은 <code>0.1.0-SNAPSHOT</code>.</li>
+          <li>Java toolchain은 17.</li>
+          <li>Spring Boot plugin은 root에서 <code>4.0.6</code> 버전을 사용한다.</li>
+          <li><code>settings.gradle</code>가 세 모듈을 include한다.</li>
+        </ul>
+      </section>
+
+      <section id="architecture">
+        <p class="eyebrow">6. Architecture Boundaries</p>
+        <h2>아키텍처와 패키지 경계</h2>
+        <div class="note">
+          <p>
+            현재 구현 기준은 Traditional MVC + Service/Repository Layering이다.
+            <code>domain</code>은 DDD layer가 아니라 feature namespace다.
+            <code>application</code>, <code>port</code>, <code>adapter</code> 같은 Hexagonal package를 새로 만들지 않는 것이 현재 결정이다.
+          </p>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Layer/Package</th>
+              <th>책임</th>
+              <th>하면 안 되는 일</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>controller</code></td>
+              <td>HTTP boundary, status mapping, request/response DTO 변환.</td>
+              <td>state/rule/priority를 계산하지 않는다.</td>
+            </tr>
+            <tr>
+              <td><code>service</code></td>
+              <td>use case orchestration, validation, read model 조립, 정책 판단.</td>
+              <td>raw secret을 로그/response에 누출하지 않는다.</td>
+            </tr>
+            <tr>
+              <td><code>repository</code></td>
+              <td>JPA/native query, DB projection, insert/upsert.</td>
+              <td>lifecycle state, insight rule, endpoint priority를 계산하지 않는다.</td>
+            </tr>
+            <tr>
+              <td><code>model</code>/<code>dto</code></td>
+              <td>service 내부 값, API response shape, contract object.</td>
+              <td>비밀 원문이나 high-cardinality raw path를 보존하지 않는다.</td>
+            </tr>
+            <tr>
+              <td><code>entity</code></td>
+              <td>DB row mapping.</td>
+              <td>Flyway schema와 어긋나는 필드/제약을 임의 추가하지 않는다.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>포털 feature namespace</h3>
+        <p>
+          주요 namespace는 <code>account</code>, <code>catalog</code>, <code>ingest</code>,
+          <code>bucket</code>, <code>dashboard</code>, <code>instance</code>, <code>snapshot</code>,
+          <code>history</code>, <code>state</code>, <code>common.time</code>이다.
+          <code>cleanup</code> namespace는 예약되어 있지만 현재 실질 cleanup service는 없다.
+        </p>
+      </section>
+
+      <section id="data-model">
+        <p class="eyebrow">7. Data Model</p>
+        <h2>DB schema와 저장 의미</h2>
+        <p>
+          물리 schema는 <code>observability-portal/src/main/resources/db/migration</code>의 Flyway SQL이 원천이다.
+          <code>spring.jpa.hibernate.ddl-auto=none</code>이므로 JPA entity가 schema를 자동 생성하지 않는다.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Table</th>
+              <th>핵심 컬럼</th>
+              <th>의미와 제약</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>projects</code></td>
+              <td><code>name</code>, <code>key_prefix</code>, <code>project_key_hash</code>, <code>status</code>, starter credential metadata.</td>
+              <td>project name/key prefix/hash는 unique. status는 active/disabled. starter credential은 active/revoked.</td>
+            </tr>
+            <tr>
+              <td><code>applications</code></td>
+              <td><code>project_id</code>, <code>name</code>, <code>environment</code>, <code>first_seen_at</code>, <code>last_seen_at</code>.</td>
+              <td><code>project_id + name + environment</code> unique. accepted ingest가 catalog source다.</td>
+            </tr>
+            <tr>
+              <td><code>application_instances</code></td>
+              <td><code>application_id</code>, <code>instance_name</code>, <code>first_seen_at</code>, <code>last_seen_at</code>.</td>
+              <td><code>application_id + instance_name</code> unique. dashboard instance list는 lastSeen desc/name asc, 최대 50개.</td>
+            </tr>
+            <tr>
+              <td><code>accepted_metric_buckets</code></td>
+              <td>schema/version, idempotency key, payload hash, bucket time, counts, histogram JSON, local percentile JSON, endpoint JSON, runtime ratios.</td>
+              <td>schema 1.0, duration 30초, count/range JSON check, <code>project_id + idempotency_key</code> unique, <code>application_instance_id + bucket_start_utc</code> unique.</td>
+            </tr>
+            <tr>
+              <td><code>starter_heartbeat_telemetry</code></td>
+              <td>project/application/env/instance, starter version, last sent/received, sequence, interval, status.</td>
+              <td>identity별 최신 heartbeat row를 upsert. catalog source가 아니다.</td>
+            </tr>
+            <tr>
+              <td><code>dashboard_snapshots</code></td>
+              <td>project/application, generated/window times, state code, capture reason, helper columns, <code>read_model_json</code>.</td>
+              <td><code>application_id + current_window_end_utc</code> unique. writer가 priority-aware upsert한다.</td>
+            </tr>
+            <tr>
+              <td><code>accounts</code>, <code>external_identities</code></td>
+              <td>internal account와 GitHub provider subject mapping.</td>
+              <td>GitHub OAuth only. email은 stable identity key가 아니다.</td>
+            </tr>
+            <tr>
+              <td><code>refresh_token_families</code>, <code>refresh_tokens</code></td>
+              <td>family status, token hash, expiration, consumed/revoked/reuse timestamps.</td>
+              <td>refresh token 원문 저장 금지. reuse detection 시 family까지 reuse_detected로 닫는다.</td>
+            </tr>
+            <tr>
+              <td><code>oauth_state_nonces</code></td>
+              <td>nonce hash, status, expires/consumed.</td>
+              <td>OAuth state replay 방지. nonce 원문은 저장하지 않는다.</td>
+            </tr>
+            <tr>
+              <td><code>account_project_memberships</code></td>
+              <td>account_id, project_id, role, status.</td>
+              <td>MVP role은 member만 허용. project-scoped API authorization source다.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="api">
+        <p class="eyebrow">8. API Surface</p>
+        <h2>API 표면과 인증 경계</h2>
+        <h3>공개 ingest API: starter credential 사용</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Endpoint</th>
+              <th>Auth</th>
+              <th>성공</th>
+              <th>실패</th>
+              <th>의미</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>POST /api/ingest/v1/buckets</code></td>
+              <td><code>X-OBS-Project-Key</code>, <code>Idempotency-Key</code></td>
+              <td>201 Created</td>
+              <td>400 invalid, 401 unauthorized, 409 duplicate</td>
+              <td>검증된 30초 metric bucket을 저장하고 catalog를 upsert한다.</td>
+            </tr>
+            <tr>
+              <td><code>POST /api/ingest/v1/heartbeat</code></td>
+              <td><code>X-OBS-Project-Key</code></td>
+              <td>200 received</td>
+              <td>400 invalid, 401 unauthorized</td>
+              <td>starter heartbeat 최신 telemetry를 upsert한다. bucket/catalog/state 계산은 하지 않는다.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Account auth API: 공개 JSON boundary</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Endpoint</th>
+              <th>의미</th>
+              <th>주의</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>GET /api/auth/github/authorize</code></td>
+              <td>signed OAuth state를 만들고 GitHub authorize URL을 JSON으로 반환한다.</td>
+              <td>no-store header. server session/cookie를 만들지 않는다.</td>
+            </tr>
+            <tr>
+              <td><code>GET /api/auth/github/callback</code></td>
+              <td>state nonce를 소비하고 GitHub code를 교환한 뒤 service token pair를 반환한다.</td>
+              <td>GitHub provider token은 user lookup 뒤 저장하지 않는다.</td>
+            </tr>
+            <tr>
+              <td><code>POST /api/auth/token/refresh</code></td>
+              <td>refresh token rotation. 새 access/refresh pair를 반환한다.</td>
+              <td>기존 token은 rotated로 소비된다. 재사용 감지 시 family를 reuse_detected로 닫는다.</td>
+            </tr>
+            <tr>
+              <td><code>POST /api/auth/logout</code></td>
+              <td>refresh token과 family를 revoke한다.</td>
+              <td>204 No Content.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Resource API: Bearer service access token 사용</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Endpoint</th>
+              <th>Scope</th>
+              <th>Authorization</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>GET /api/projects</code></td>
+              <td>account가 active membership을 가진 project 목록.</td>
+              <td>Bearer access token 필요.</td>
+            </tr>
+            <tr>
+              <td><code>POST /api/projects</code></td>
+              <td>project 등록과 starter credential 1회 발급.</td>
+              <td>Bearer access token 필요.</td>
+            </tr>
+            <tr>
+              <td><code>GET /api/projects/{projectId}/applications</code></td>
+              <td>project application list.</td>
+              <td>Bearer + active membership. mismatch/invalid는 body 없는 404.</td>
+            </tr>
+            <tr>
+              <td><code>GET /api/projects/{projectId}/applications/{applicationId}/dashboard</code></td>
+              <td>application dashboard current read model.</td>
+              <td>project/application mismatch는 404.</td>
+            </tr>
+            <tr>
+              <td><code>GET /api/projects/{projectId}/applications/{applicationId}/instances/{instanceId}/evidence</code></td>
+              <td>selected instance current evidence.</td>
+              <td>UUID path 정합성 mismatch는 404.</td>
+            </tr>
+            <tr>
+              <td><code>GET /api/projects/{projectId}/applications/{applicationId}/instances/{instanceId}/snapshot-trend</code></td>
+              <td>stored snapshots에서 selected instance trend projection.</td>
+              <td><code>since=7d|14d</code>, limit 기본 168, 최대 336.</td>
+            </tr>
+            <tr>
+              <td><code>GET /api/projects/{projectId}/applications/{applicationId}/dashboard/snapshot-markers</code></td>
+              <td>stored snapshot marker timeline.</td>
+              <td><code>since=24h|7d|14d</code>, retention과 최대 14일로 clamp.</td>
+            </tr>
+            <tr>
+              <td><code>GET /api/projects/{projectId}/applications/{applicationId}/dashboard/snapshots/{snapshotId}</code></td>
+              <td>stored snapshot detail.</td>
+              <td>invalid UUID 400, missing/expired/path mismatch 404.</td>
+            </tr>
+            <tr>
+              <td><code>GET /api/projects/{projectId}/applications/{applicationId}/operational-events</code></td>
+              <td>stored snapshot 기반 operational event history.</td>
+              <td><code>since</code>는 양의 정수 + h/d, 최대 14일. 별도 event table은 없다.</td>
+            </tr>
+            <tr>
+              <td><code>GET/POST /api/projects/{projectId}/starter-credential...</code></td>
+              <td>starter credential metadata/rotation/revocation.</td>
+              <td>metadata는 raw/hash를 반환하지 않는다. rotation만 raw value 1회 반환.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="flows">
+        <p class="eyebrow">9. End-to-End Flows</p>
+        <h2>핵심 흐름</h2>
+
+        <h3>9.1 Account와 project onboarding</h3>
+        <div class="flow">
+          <div class="flow-step"><span class="flow-index">1</span><div><strong>GitHub authorize 시작</strong><br>포털은 signed state를 만들고 nonce hash를 DB에 저장한다.</div></div>
+          <div class="flow-step"><span class="flow-index">2</span><div><strong>Callback 완료</strong><br>state 서명/만료/nonce를 검증하고 nonce를 consumed 처리한 뒤 GitHub code를 token으로 교환한다.</div></div>
+          <div class="flow-step"><span class="flow-index">3</span><div><strong>Account 연결</strong><br>GitHub provider subject로 기존 identity를 찾거나 account/external_identity를 만든다.</div></div>
+          <div class="flow-step"><span class="flow-index">4</span><div><strong>Service token 발급</strong><br>HS256 access JWT와 32 random byte refresh token을 발급한다. refresh token은 SHA-256 hash만 저장한다.</div></div>
+          <div class="flow-step"><span class="flow-index">5</span><div><strong>Project 등록</strong><br>project name을 lower-case 정규화하고 credential을 생성해 project와 active membership을 함께 만든다.</div></div>
+        </div>
+
+        <h3>9.2 Starter metric bucket ingest</h3>
+        <div class="flow">
+          <div class="flow-step"><span class="flow-index">1</span><div><strong>Micrometer observation</strong><br><code>MicrometerHttpServerObservationBinder</code>가 HTTP server observation의 method/status/error/duration/route 후보를 추출한다.</div></div>
+          <div class="flow-step"><span class="flow-index">2</span><div><strong>Route guard</strong><br><code>LowCardinalityHttpObservationGuard</code>가 raw/high-cardinality 후보를 제거하고 normalized route 또는 <code>UNKNOWN</code>으로 수렴한다.</div></div>
+          <div class="flow-step"><span class="flow-index">3</span><div><strong>30초 rollup</strong><br><code>MetricBucketRollupService</code>가 app/endpoint count, cumulative histogram, local percentile, latest runtime ratio를 bucket별로 모은다.</div></div>
+          <div class="flow-step"><span class="flow-index">4</span><div><strong>Drain과 queue</strong><br>bucket end + 30초 grace가 지난 bucket만 sealed snapshot으로 drain되고 bounded queue에 non-blocking enqueue된다.</div></div>
+          <div class="flow-step"><span class="flow-index">5</span><div><strong>Background flush</strong><br><code>MetricBucketFlushWorker</code>가 envelope와 idempotency key를 만들고 JDK HTTP client로 포털 ingest API에 보낸다.</div></div>
+          <div class="flow-step"><span class="flow-index">6</span><div><strong>Portal acceptance</strong><br>포털은 project key, idempotency key, payload shape, route/count/histogram/localPercentiles를 재검증하고 DB에 저장한다.</div></div>
+        </div>
+
+        <h3>9.3 Heartbeat ingest</h3>
+        <p>
+          Heartbeat는 metric bucket과 완전히 별도 흐름이다. starter의 daemon sender가 interval마다
+          <code>schemaVersion</code>, <code>starterVersion</code>, <code>sentAtUtc</code>, sequence,
+          application identity를 보낸다. 포털은 project key와 metadata를 검증하고
+          <code>starter_heartbeat_telemetry</code>를 upsert한다. response에는 마지막 accepted bucket 시각을 참고 정보로 담을 수 있지만,
+          heartbeat가 catalog를 만들거나 lifecycle state를 직접 바꾸지는 않는다.
+        </p>
+
+        <h3>9.4 Dashboard read model</h3>
+        <div class="flow">
+          <div class="flow-step"><span class="flow-index">1</span><div><strong>Scope 검증</strong><br>application이 project에 속하는지 확인한다. mismatch는 404.</div></div>
+          <div class="flow-step"><span class="flow-index">2</span><div><strong>시간 계산</strong><br>query time을 30초 boundary로 floor한 evaluationAt을 기준으로 current 15분과 baseline 15분을 만든다.</div></div>
+          <div class="flow-step"><span class="flow-index">3</span><div><strong>Evidence 조회</strong><br>latest bucket, aggregate, percentile rows, histogram rows, endpoint rows, gap evidence, recent 5 buckets, runtime ratio, heartbeat를 조회한다.</div></div>
+          <div class="flow-step"><span class="flow-index">4</span><div><strong>서버 계산</strong><br>freshness, sample readiness, lifecycle state, starter connection, source-scoped percentile, histogram distribution, triage, endpoint priority를 조립한다.</div></div>
+          <div class="flow-step"><span class="flow-index">5</span><div><strong>Fallback snapshot</strong><br>dashboard query 후 최근 snapshot이 부족하면 query fallback capture를 시도하되, 실패는 화면 응답을 막지 않는다.</div></div>
+        </div>
+
+        <h3>9.5 Snapshot/history/trend</h3>
+        <p>
+          UTC 정시에 scheduler가 active application 중 retention horizon 안 accepted bucket이 있는 대상을 찾고
+          hourly snapshot capture를 dispatch한다. writer는 같은 <code>application_id + current_window_end_utc</code>에 대해
+          대표 reason priority가 더 높은 경우만 update하고, 같거나 낮으면 no-op한다.
+          Detail, marker, instance trend, operational events는 저장된 snapshot JSON과 helper column만 사용한다.
+        </p>
+      </section>
+
+      <section id="logic">
+        <p class="eyebrow">10. Detailed Logic</p>
+        <h2>세부 로직을 책임질 때 알아야 할 것</h2>
+
+        <h3>10.1 Project key 검증</h3>
+        <ul>
+          <li>Header는 <code>X-OBS-Project-Key</code>이고 형식은 <code>&lt;prefix&gt;.&lt;secret&gt;</code>다.</li>
+          <li>prefix는 32자 이하, 전체 raw key는 BCrypt 입력 한계 때문에 UTF-8 72 bytes 이하여야 한다.</li>
+          <li>repository lookup은 prefix로 하고, BCrypt hash match가 성공해야 verified project가 된다.</li>
+          <li>project가 disabled이거나 starter credential이 revoked면 unauthorized다.</li>
+          <li>검증 결과 모델에는 raw key가 남지 않는다.</li>
+        </ul>
+
+        <h3>10.2 Ingest validation</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>대상</th>
+              <th>검증</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>schema</td>
+              <td><code>schemaVersion=1.0</code>만 허용.</td>
+            </tr>
+            <tr>
+              <td>application identity</td>
+              <td>name/environment/instance는 blank, 앞뒤 공백, control character를 거부.</td>
+            </tr>
+            <tr>
+              <td>bucket</td>
+              <td>start/end는 ISO-8601 UTC instant, 30초 boundary, duration 30초, end가 start보다 뒤.</td>
+            </tr>
+            <tr>
+              <td>counts</td>
+              <td>request/error count는 음수 금지, errorCount는 requestCount 이하.</td>
+            </tr>
+            <tr>
+              <td>histogram</td>
+              <td>비어 있으면 invalid. <code>leMs</code>는 양수 증가, count는 cumulative이고 requestCount 이하.</td>
+            </tr>
+            <tr>
+              <td>runtime ratio</td>
+              <td>CPU/heap/datasource pool ratio는 있으면 0.0 이상 1.0 이하.</td>
+            </tr>
+            <tr>
+              <td>localPercentiles</td>
+              <td>scope/source/bucket boundary/requestCount/p95/p99/mergeable을 모두 검증. p99는 p95 이상.</td>
+            </tr>
+            <tr>
+              <td>endpoints</td>
+              <td>method allowlist, normalized route 안전성, count/histogram 검증.</td>
+            </tr>
+            <tr>
+              <td>Idempotency-Key</td>
+              <td>5 components: project/application/environment/instance/bucketStart. application/env/instance/bucketStart는 payload와 일치해야 한다.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>10.3 Route attribution</h3>
+        <ol>
+          <li><code>http.route</code> low-cardinality framework route가 있으면 먼저 사용한다.</li>
+          <li>safe route template이면 normalize한다. <code>?...</code> omission marker와 안전한 <code>/...</code> collapse marker만 허용한다.</li>
+          <li>template syntax가 있지만 malformed이면 <code>UNKNOWN</code>으로 수렴한다.</li>
+          <li>framework route가 실패하면 low-cardinality <code>uri</code> 또는 <code>path</code> 후보를 query 제거 후 임시 사용한다.</li>
+          <li>raw 후보는 allowlist exact-one match를 먼저 시도한다. ambiguous면 <code>UNKNOWN</code>.</li>
+          <li>allowlist match가 없으면 safe prefix collapse를 시도한다.</li>
+          <li><code>http.url</code>, high-cardinality tag, query string, absolute URL, concrete id-looking segment는 사용하지 않는다.</li>
+        </ol>
+
+        <h3>10.4 Starter rollup과 flush</h3>
+        <ul>
+          <li>기본 histogram upper bound는 <code>50, 100, 250, 500, 1000 ms</code>.</li>
+          <li>local percentile은 instance bucket 전체 duration sample에서 nearest-rank 방식으로 p95/p99를 계산한다.</li>
+          <li>bucket duration은 30초이고 grace도 30초다. <code>bucket.endUtc + 30s &lt;= now</code>일 때 drain된다.</li>
+          <li>drain된 interval은 sealed가 되고 이후 늦게 들어온 sample은 late drop count만 증가한다.</li>
+          <li>queue capacity 기본값은 1024, drop policy 기본값은 <code>DROP_NEWEST</code>.</li>
+          <li><code>DROP_OLDEST</code>를 쓰면 oldest poll 후 새 bucket enqueue를 시도한다.</li>
+          <li>flush worker retry 기본값은 최대 3회, backoff 100ms.</li>
+          <li>metric flush portal connection setting은 <code>observation.metric-flush.portal-base-url</code>과 <code>project-key</code>가 둘 다 있어야 한다.</li>
+          <li>실제 portal flush worker가 뜰 때 generic identity <code>local-project</code>, <code>application</code>, <code>default</code>, <code>local-instance</code>는 거부된다.</li>
+        </ul>
+
+        <h3>10.5 Time window와 freshness</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>항목</th>
+              <th>값</th>
+              <th>의미</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Bucket duration</td>
+              <td>30초</td>
+              <td>epoch boundary 기준 UTC bucket.</td>
+            </tr>
+            <tr>
+              <td>Dashboard current window</td>
+              <td>최근 15분</td>
+              <td>evaluationAt 기준 <code>[evaluationAt - 15m, evaluationAt]</code>.</td>
+            </tr>
+            <tr>
+              <td>Baseline window</td>
+              <td>직전 15분</td>
+              <td>current 직전 구간.</td>
+            </tr>
+            <tr>
+              <td>Stale threshold</td>
+              <td>90초 이상</td>
+              <td>마지막 accepted bucket endUtc 기준.</td>
+            </tr>
+            <tr>
+              <td>Down threshold</td>
+              <td>180초 이상</td>
+              <td>data-plane unreachable 후보. host down 확정이 아니다.</td>
+            </tr>
+            <tr>
+              <td>Heartbeat recent window</td>
+              <td>90초 이하</td>
+              <td>starter connection axis 판정용.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>10.6 Lifecycle state</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>조건</th>
+              <th>State</th>
+              <th>설명</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>accepted bucket이 아직 없음</td>
+              <td><code>waiting_first_data</code></td>
+              <td>첫 bucket 대기.</td>
+            </tr>
+            <tr>
+              <td>freshness stale 후보</td>
+              <td><code>stale</code></td>
+              <td>metric data freshness가 오래됨.</td>
+            </tr>
+            <tr>
+              <td>freshness down 후보</td>
+              <td><code>down</code></td>
+              <td>data-plane 공백이 down threshold에 도달.</td>
+            </tr>
+            <tr>
+              <td>current이지만 requestCount 1~29</td>
+              <td><code>unknown</code></td>
+              <td>판정 sample 부족.</td>
+            </tr>
+            <tr>
+              <td>current이고 requestCount 0</td>
+              <td><code>idle</code></td>
+              <td>traffic idle. sample readiness는 sufficient지만 activity가 idle.</td>
+            </tr>
+            <tr>
+              <td>기존 degraded이고 resolve hysteresis 미통과</td>
+              <td><code>degraded</code></td>
+              <td>회복 확정 전까지 유지.</td>
+            </tr>
+            <tr>
+              <td>degraded enter 조건 통과</td>
+              <td><code>degraded</code></td>
+              <td>rule guard, confidence, recent 5 bucket bad count를 통과.</td>
+            </tr>
+            <tr>
+              <td>그 외 current/sufficient/active traffic</td>
+              <td><code>active</code></td>
+              <td>우선 조치 없음.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>10.7 Zero insight precedence</h3>
+        <p>triage card가 하나라도 있으면 <code>zeroInsight</code>는 null이다. triage card가 없을 때 reason은 아래 우선순위로 선택된다.</p>
+        <ol>
+          <li>recovery 관찰 중이면 <code>observing_recovery</code>.</li>
+          <li>first data 대기 + recent heartbeat면 <code>waiting_first_data</code>.</li>
+          <li>first data 대기 + heartbeat 없음/오래됨이면 <code>telemetry_unreachable</code>.</li>
+          <li>stale/down + recent heartbeat면 <code>metric_data_idle</code>.</li>
+          <li>stale/down + heartbeat 없음/오래됨이면 <code>telemetry_unreachable</code>.</li>
+          <li>sample insufficient면 <code>insufficient_sample</code>.</li>
+          <li>traffic idle이면 <code>metric_data_idle</code>.</li>
+          <li>나머지는 <code>no_action_needed</code>.</li>
+        </ol>
+
+        <h3>10.8 Triage rule thresholds</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Rule</th>
+              <th>Guard</th>
+              <th>노출/상태 영향</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Global error spike</td>
+              <td>current/baseline request >= 30, current error rate >= 5%, delta >= 3%p, relative >= 2x.</td>
+              <td>confidence >= 0.65이면 card. degraded candidate.</td>
+            </tr>
+            <tr>
+              <td>Global latency spike</td>
+              <td>current/baseline request >= 30, 같은 histogram boundary set, 500ms 초과 share >= 20%, delta >= 10%p.</td>
+              <td>confidence >= 0.65이면 card. degraded candidate.</td>
+            </tr>
+            <tr>
+              <td>DB pool high with latency</td>
+              <td>latency candidate + datasource pool usage >= 0.85.</td>
+              <td>INFO hint. degraded candidate는 아니다.</td>
+            </tr>
+            <tr>
+              <td>CPU high with latency</td>
+              <td>latency candidate + CPU usage >= 0.85.</td>
+              <td>INFO hint.</td>
+            </tr>
+            <tr>
+              <td>Heap high hint</td>
+              <td>latency 또는 error candidate + heap usage >= 0.90.</td>
+              <td>INFO hint.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>10.9 Endpoint priority</h3>
+        <ul>
+          <li>application aggregate sample readiness가 insufficient이면 전체 endpoint priority는 빈 배열이다.</li>
+          <li>freshness가 current가 아니면 빈 배열이다.</li>
+          <li>current/baseline endpoint request count가 각각 30 이상이어야 main spike 후보가 된다.</li>
+          <li>error spike와 latency spike threshold는 global rule과 같다.</li>
+          <li>comparative regression은 current/baseline request >= 100, error delta >= 2%p 또는 slow share delta >= 8%p이며 confidence cap은 0.64다.</li>
+          <li>reason priority는 <code>ERROR_AND_LATENCY</code>, <code>ERROR_SPIKE</code>, <code>LATENCY_SPIKE</code>, <code>COMPARATIVE_REGRESSION</code> 순이다.</li>
+          <li>최대 5개만 반환한다.</li>
+        </ul>
+
+        <h3>10.10 Snapshot capture reason priority</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Reason</th>
+              <th>Token</th>
+              <th>Priority</th>
+              <th>조건</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>State change</td>
+              <td><code>state_change</code></td>
+              <td>5</td>
+              <td>latest snapshot state와 현재 read model state가 다름.</td>
+            </tr>
+            <tr>
+              <td>High confidence concern</td>
+              <td><code>high_confidence_concern</code></td>
+              <td>4</td>
+              <td>triage card confidence >= 0.82.</td>
+            </tr>
+            <tr>
+              <td>Short strong spike</td>
+              <td><code>short_strong_spike</code></td>
+              <td>3</td>
+              <td>triage 또는 endpoint priority confidence >= 0.90, recent 5 bucket bad count >= 2.</td>
+            </tr>
+            <tr>
+              <td>Query fallback</td>
+              <td><code>query_fallback</code></td>
+              <td>2</td>
+              <td>dashboard query 중 최근 snapshot이 없거나 오래됨.</td>
+            </tr>
+            <tr>
+              <td>Hourly scheduled</td>
+              <td><code>hourly_scheduled</code></td>
+              <td>1</td>
+              <td>UTC 정시 scheduler.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>10.11 Operational event projection</h3>
+        <ul>
+          <li>source는 <code>dashboard_snapshots</code> row metadata/helper column/read model JSON뿐이다.</li>
+          <li>state transition event는 degraded/stale/down/recovery/state_changed로 projection된다.</li>
+          <li>high-confidence concern threshold는 0.82다.</li>
+          <li>concern resolution threshold는 0.60이다.</li>
+          <li>같은 concern은 60분 suppression window 안에서 반복 promotion하지 않는다.</li>
+          <li>반복 period event는 folding key로 접는다.</li>
+        </ul>
+      </section>
+
+      <section id="frontend">
+        <p class="eyebrow">11. Static Dashboard</p>
+        <h2>정적 dashboard UI가 하는 일과 하지 않는 일</h2>
+        <p>
+          UI 파일은 <code>observability-portal/src/main/resources/static/dashboard</code> 아래에 있다.
+          <code>index.html</code>은 Project Entry, Application List, Dashboard, Setup Guide를 한 화면에 배치한다.
+          <code>app.js</code>는 API 응답을 표시하고, <code>styles.css</code>는 UI 스타일을 담당한다.
+        </p>
+        <div class="two-col">
+          <div class="card">
+            <h3>UI가 하는 일</h3>
+            <ul>
+              <li>GitHub authorize URL을 호출해 로그인 시작.</li>
+              <li>service access token을 메모리에 보관하고 resource API에 Bearer header로 전달.</li>
+              <li>project/application/dashboard/instance/snapshot/history API 응답을 표시.</li>
+              <li>credential rotation 성공 시 raw value를 1회 표시.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>UI가 하지 않는 일</h3>
+            <ul>
+              <li>lifecycle state를 다시 계산하지 않는다.</li>
+              <li>p95/p99를 계산하지 않는다.</li>
+              <li>endpoint priority와 triage confidence를 만들지 않는다.</li>
+              <li>secret을 local storage에 저장하도록 요구하지 않는다.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="config">
+        <p class="eyebrow">12. Configuration</p>
+        <h2>설정과 실행</h2>
+        <h3>Portal 설정</h3>
+        <ul>
+          <li><code>observability-portal/src/main/resources/application.properties</code>는 optional private 파일을 import한다.</li>
+          <li><code>spring.jpa.hibernate.ddl-auto=none</code>이므로 Flyway migration이 schema 원천이다.</li>
+          <li>GitHub OAuth 필수값: <code>portal.auth.github.client-id</code>, <code>client-secret</code>, <code>redirect-uri</code>, <code>homepage-url</code>.</li>
+          <li>service JWT signing key: <code>portal.auth.service-token.signing-key</code>. 비어 있으면 runtime마다 임시 key가 생기므로 재시작 시 access token이 무효화된다.</li>
+          <li>OAuth state signing key: <code>portal.auth.oauth-state.signing-key</code>. 기본 fallback은 service token signing key.</li>
+          <li>token TTL 기본값: access <code>PT15M</code>, refresh <code>P30D</code>, OAuth state <code>PT5M</code>.</li>
+          <li>snapshot retention clamp 기본값: <code>portal.dashboard-snapshots.retention-days=14</code>.</li>
+        </ul>
+
+        <h3>Starter metric flush 설정</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Property</th>
+              <th>Default</th>
+              <th>의미</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>observation.metric-flush.queue-capacity</code></td><td>1024</td><td>bounded queue capacity.</td></tr>
+            <tr><td><code>observation.metric-flush.drop-policy</code></td><td><code>DROP_NEWEST</code></td><td>queue full 시 drop 정책.</td></tr>
+            <tr><td><code>observation.metric-flush.project-id</code></td><td><code>local-project</code></td><td>Idempotency-Key project component. portal credential prefix가 아니다.</td></tr>
+            <tr><td><code>observation.metric-flush.application-name</code></td><td><code>application</code></td><td>envelope application.name. 기본값이면 <code>spring.application.name</code>을 우선 사용.</td></tr>
+            <tr><td><code>observation.metric-flush.environment</code></td><td><code>default</code></td><td>envelope application.environment.</td></tr>
+            <tr><td><code>observation.metric-flush.instance</code></td><td><code>local-instance</code></td><td>instance identity. 기본값이면 <code>POD_NAME</code>, <code>HOSTNAME</code>, Spring instance id를 우선 사용.</td></tr>
+            <tr><td><code>observation.metric-flush.portal-base-url</code></td><td>없음</td><td>bucket ingest API base URL. project-key와 함께 있어야 flush client가 열린다.</td></tr>
+            <tr><td><code>observation.metric-flush.project-key</code></td><td>없음</td><td>raw starter credential. 로그/문서/응답 노출 금지.</td></tr>
+            <tr><td><code>observation.metric-flush.timeout-millis</code></td><td>1000</td><td>JDK HTTP client connect/request timeout.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Starter heartbeat 설정</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Property</th>
+              <th>Default</th>
+              <th>의미</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>observation.heartbeat.enabled</code></td><td>true</td><td>false면 sender thread가 시작되지 않는다.</td></tr>
+            <tr><td><code>observation.heartbeat.portal-base-url</code></td><td>없음</td><td>heartbeat API base URL. metric-flush 설정으로 fallback하지 않는다.</td></tr>
+            <tr><td><code>observation.heartbeat.project-key</code></td><td>없음</td><td>raw starter credential.</td></tr>
+            <tr><td><code>observation.heartbeat.starter-version</code></td><td><code>0.1.0-SNAPSHOT</code></td><td>heartbeat payload metadata.</td></tr>
+            <tr><td><code>observation.heartbeat.interval-seconds</code></td><td>30</td><td>sender interval.</td></tr>
+            <tr><td><code>observation.heartbeat.timeout-millis</code></td><td>1000</td><td>JDK HTTP client timeout.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>로컬 실행 예시</h3>
+        <pre><code># 전체 테스트
+./gradlew test
+
+# 포털 실행
+./gradlew :observability-portal:bootRun
+
+# smoke service 실행
+OBSERVATION_SMOKE_PROJECT_KEY='&lt;starter credential&gt;' \
+./gradlew :observability-smoke-service:bootRun --args='--spring.profiles.active=local-smoke'</code></pre>
+      </section>
+
+      <section id="tests">
+        <p class="eyebrow">13. Verification</p>
+        <h2>검증 전략</h2>
+        <p>
+          테스트는 단순 unit test만이 아니라 architecture guard, contract shape, DB migration/JPA alignment,
+          controller status mapping, snapshot writer integration, UI contract까지 넓게 깔려 있다.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>영역</th>
+              <th>대표 테스트</th>
+              <th>깨질 때 의심할 것</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Architecture</td>
+              <td><code>MvcLayerBoundaryTest</code>, <code>StarterObservationArchitectureTest</code>, <code>NoPrometheusMvpPathTest</code></td>
+              <td>금지 package, Prometheus/TSDB 경로, request path network 호출 침범.</td>
+            </tr>
+            <tr>
+              <td>Ingest</td>
+              <td><code>IngestAcceptanceServiceTest</code>, <code>MetricBucketRepositoryIntegrationTest</code>, <code>IngestEnvelopeContractJsonTest</code></td>
+              <td>schemaVersion, 30초 boundary, idempotency, route/histogram/localPercentiles contract.</td>
+            </tr>
+            <tr>
+              <td>State/Dashboard</td>
+              <td><code>LifecycleStateServiceTest</code>, <code>DashboardReadModelServiceTest</code>, <code>TriageSummaryServiceTest</code>, <code>EndpointPriorityServiceTest</code></td>
+              <td>freshness threshold, sample readiness, triage confidence, endpoint ranking.</td>
+            </tr>
+            <tr>
+              <td>Snapshot/History</td>
+              <td><code>DashboardSnapshotWriterServiceIntegrationTest</code>, <code>OperationalEventHistoryProjectorTest</code>, <code>InstanceSnapshotTrendServiceTest</code></td>
+              <td>stored JSON projection, capture priority, query clamp, period folding/suppression.</td>
+            </tr>
+            <tr>
+              <td>Auth/Security</td>
+              <td><code>AccountAuthControllerTest</code>, <code>AuthSecretExposureGuardTest</code>, <code>ProjectKeyVerificationServiceTest</code></td>
+              <td>secret 노출, Bearer boundary, refresh rotation/reuse detection, OAuth failure generalization.</td>
+            </tr>
+            <tr>
+              <td>UI contract</td>
+              <td><code>ProjectEntryUiContractTest</code>, <code>ApplicationDashboardUiContractTest</code>, <code>RecentHistoryUiContractTest</code></td>
+              <td>서버 read model shape와 UI 표시 계약 불일치.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="owner-checklist">
+        <p class="eyebrow">14. Owner Checklist</p>
+        <h2>변경 전 반드시 확인할 체크리스트</h2>
+        <ol class="owner-checklist">
+          <li>새 API나 read model field를 추가하면 controller/service/model/test/UI contract를 함께 업데이트했는가?</li>
+          <li>state, triage, endpoint priority, zeroInsight 의미를 UI나 repository에 중복 구현하지 않았는가?</li>
+          <li>raw project key, refresh token, OAuth state nonce, GitHub provider token이 저장/로그/응답에 남지 않는가?</li>
+          <li>Flyway migration과 JPA entity가 일치하며, <code>ddl-auto=none</code> 전제를 깨지 않는가?</li>
+          <li>route normalization 변경이 starter, portal ingest validator, read-side endpoint parser 모두에서 일관되는가?</li>
+          <li>p95/p99를 histogram에서 재계산하거나 instance percentile을 merge하지 않았는가?</li>
+          <li>heartbeat를 accepted bucket freshness source로 오해하지 않았는가?</li>
+          <li>snapshot/history/trend가 current dashboard나 raw bucket을 다시 계산하도록 바뀌지 않았는가?</li>
+          <li>starter request path에 network, blocking retry, long sleep, unbounded queue를 넣지 않았는가?</li>
+          <li>membership mismatch가 403이 아니라 body 없는 404 fail-closed로 유지되는가?</li>
+          <li>계약 변경이면 <code>planning-artifacts/contracts</code>와 이 가이드의 용어/threshold도 함께 갱신했는가?</li>
+        </ol>
+      </section>
+
+      <section id="file-map">
+        <p class="eyebrow">15. File Map</p>
+        <h2>코드를 읽을 때의 파일 지도</h2>
+        <h3>Portal 핵심 파일</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>파일/패키지</th>
+              <th>읽어야 하는 이유</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>domain/ingest/service/IngestAcceptanceService.java</code></td><td>bucket ingest validation, idempotency, project key 연결.</td></tr>
+            <tr><td><code>domain/bucket/repository/MetricBucketRepository.java</code></td><td>accepted bucket insert와 dashboard evidence query.</td></tr>
+            <tr><td><code>domain/dashboard/service/DashboardReadModelService.java</code></td><td>dashboard read model orchestration의 중심.</td></tr>
+            <tr><td><code>domain/dashboard/service/TriageSummaryService.java</code></td><td>global triage rule threshold와 degraded input.</td></tr>
+            <tr><td><code>domain/dashboard/service/EndpointPriorityService.java</code></td><td>endpoint ranking logic.</td></tr>
+            <tr><td><code>domain/state/service/LifecycleStateService.java</code></td><td>metric state와 starter connection 분리 판정.</td></tr>
+            <tr><td><code>domain/instance/service/InstanceEvidenceReadModelService.java</code></td><td>selected instance evidence 조립.</td></tr>
+            <tr><td><code>domain/snapshot/service/*</code></td><td>snapshot scheduler/capture/writer/detail/marker 정책.</td></tr>
+            <tr><td><code>domain/history/service/OperationalEventHistoryProjector.java</code></td><td>stored snapshot에서 operational event를 projection하는 logic.</td></tr>
+            <tr><td><code>domain/account/service/AccountAuthService.java</code></td><td>GitHub OAuth, token family, refresh rotation/reuse detection.</td></tr>
+            <tr><td><code>domain/catalog/service/ProjectRegistrationService.java</code></td><td>project onboarding과 credential 1회 발급.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Starter 핵심 파일</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>파일/패키지</th>
+              <th>읽어야 하는 이유</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>spring/observation/MicrometerHttpServerObservationBinder.java</code></td><td>Micrometer observation에서 starter input으로 변환하는 경계.</td></tr>
+            <tr><td><code>service/RouteNormalizationService.java</code></td><td>route source precedence와 safe fallback.</td></tr>
+            <tr><td><code>service/MetricBucketRollupService.java</code></td><td>30초 bucket aggregation, histogram, local percentile, grace/seal 정책.</td></tr>
+            <tr><td><code>queue/BoundedMetricQueue.java</code></td><td>request path 보호용 bounded queue와 drop policy.</td></tr>
+            <tr><td><code>service/IngestEnvelopeBuilderService.java</code></td><td>closed bucket을 ingest envelope와 idempotency key로 변환.</td></tr>
+            <tr><td><code>service/MetricBucketFlushWorker.java</code></td><td>background flush retry/backoff/failure isolation.</td></tr>
+            <tr><td><code>service/StarterHeartbeatService.java</code></td><td>heartbeat payload 생성과 fail-open result.</td></tr>
+            <tr><td><code>service/StarterHeartbeatSender.java</code></td><td>heartbeat daemon loop, failure suppression, backoff.</td></tr>
+            <tr><td><code>config/*AutoConfiguration.java</code></td><td>starter bean wiring과 조건부 activation.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Smoke service</h3>
+        <p>
+          <code>observability-smoke-service/src/main/java/com/observation/smoke/web/SmokeTrafficController.java</code>가
+          local traffic endpoint를 제공한다. smoke service는 starter 내부 경계를 직접 호출하지 않고, Spring MVC 요청을 통해
+          observation path를 자연스럽게 태운다.
+        </p>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
