@@ -101,7 +101,7 @@ scripts/smoke/run-ecc-endpoint-polling.py
 
 검증 범위는 프론트엔드 타입/빌드, Spring MVC controller, service/repository, Flyway 기반 PostgreSQL integration, dashboard read model, starter boundary, smoke traffic까지 이어집니다.
 
-## 포트폴리오 관점의 핵심 구현 포인트
+## 핵심 구현 포인트
 
 Observation Portal은 단순 CRUD가 아니라 수집, 보안, 집계, 상태 판단, UI 표현까지 연결된 end-to-end 제품입니다.
 
