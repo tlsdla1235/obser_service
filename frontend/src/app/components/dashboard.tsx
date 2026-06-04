@@ -34,6 +34,7 @@ import {
   buildStarterCredentialRevocationPath,
   buildStarterCredentialRotationPath,
   formatCount,
+  formatDateRange,
   formatNullableRatio,
   formatOptionalDateTime,
   formatRatio,
@@ -88,6 +89,23 @@ function SectionLabel({ icon: Icon, children }: { icon: LucideIcon; children: Re
       <Icon className="h-3.5 w-3.5" strokeWidth={1.5} />
       {children}
     </div>
+  );
+}
+
+function InlineHelp({ children, label }: { children: React.ReactNode; label: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-neutral-300 text-[10px] leading-none text-neutral-500 hover:border-neutral-500 hover:text-neutral-800"
+        >
+          ?
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs text-[11px] leading-relaxed">{children}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -615,9 +633,9 @@ function DashboardContext({ dashboard, selectedProject }: { dashboard: Dashboard
           </div>
         </div>
         <div className="text-[12px] text-neutral-600 text-right">
-          <div>generated <span className="text-neutral-900">{dashboard.generatedAtDisplay}</span></div>
-          <div>current <span className="text-neutral-900">{dashboard.currentWindowDisplay}</span></div>
-          <div>baseline <span className="text-neutral-700">{dashboard.baselineWindowDisplay}</span></div>
+          <div>생성 시각 <span className="text-neutral-900">{dashboard.generatedAtDisplay}</span></div>
+          <div>현재 구간 <span className="text-neutral-900">{dashboard.currentWindowDisplay}</span></div>
+          <div>비교 기준 <span className="text-neutral-700">{dashboard.baselineWindowDisplay}</span></div>
         </div>
       </div>
     </div>
@@ -628,16 +646,23 @@ function MetricStateStrip({ dashboard }: { dashboard: DashboardPresentation }) {
   return (
     <div className="border border-neutral-900 bg-white p-4">
       <div className="flex items-center justify-between gap-3">
-        <SectionLabel icon={Gauge}>Metric state</SectionLabel>
+        <div className="flex items-center gap-2">
+          <SectionLabel icon={Gauge}>상태 판단</SectionLabel>
+          <InlineHelp label="데이터 지연 기준 설명">
+            <div className="space-y-1">
+              <div>마지막 수집 구간: application 상태 판단의 metric data 기준점입니다.</div>
+              <div>데이터 지연 기준: {formatOptionalDateTime(dashboard.application.freshness.staleAt)}까지 새 metric bucket이 들어오지 않으면 지연으로 볼 수 있습니다.</div>
+              <div>수집 끊김 기준: {formatOptionalDateTime(dashboard.application.freshness.downAt)}까지도 새 metric bucket이 없으면 starter 연결, 트래픽, 수집 경로를 함께 확인합니다.</div>
+            </div>
+          </InlineHelp>
+        </div>
         <StatusBadge className={dashboard.metricStateClassName}>{dashboard.state.label}</StatusBadge>
       </div>
       <div className="mt-2 text-neutral-900">{dashboard.state.rationale}</div>
       <div className="mt-1 text-[12px] text-neutral-600">{dashboard.state.recommendedAction}</div>
-      <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-neutral-600 md:grid-cols-4">
-        <InfoCell label="scope" value={dashboard.state.scope} />
-        <InfoCell label="last bucket" value={dashboard.lastAcceptedBucketDisplay} />
-        <InfoCell label="stale at" value={formatOptionalDateTime(dashboard.application.freshness.staleAt)} />
-        <InfoCell label="down at" value={formatOptionalDateTime(dashboard.application.freshness.downAt)} />
+      <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-neutral-600">
+        <InfoCell label="판단 범위" value={dashboard.state.scope} />
+        <InfoCell label="마지막 수집 구간" value={dashboard.lastAcceptedBucketDisplay} />
       </div>
     </div>
   );
@@ -647,16 +672,22 @@ function StarterConnectionStrip({ dashboard }: { dashboard: DashboardPresentatio
   return (
     <div className="border border-neutral-300 bg-white p-4">
       <div className="flex items-center justify-between gap-3">
-        <SectionLabel icon={Radio}>Starter connection</SectionLabel>
+        <div className="flex items-center gap-2">
+          <SectionLabel icon={Radio}>Starter 연결 상태</SectionLabel>
+          <InlineHelp label="상태 판단 영향 설명">
+            <div className="space-y-1">
+              <div>마지막 heartbeat는 starter가 마지막으로 살아 있다고 알려온 시각입니다.</div>
+              <div>{starterStateImpactText(dashboard.starterConnection.stateImpact)}</div>
+            </div>
+          </InlineHelp>
+        </div>
         <StatusBadge className={statusBadgeClassName(dashboard.starterConnection.lastHeartbeatStatus)}>
-          {dashboard.starterConnection.lastHeartbeatStatus}
+          {statusDisplayText(dashboard.starterConnection.lastHeartbeatStatus)}
         </StatusBadge>
       </div>
-      <div className="mt-2 grid grid-cols-2 gap-3 text-[12px] md:grid-cols-4">
-        <InfoCell label="source" value={dashboard.starterConnection.statusSource} />
-        <InfoCell label="last heartbeat" value={dashboard.starterLastHeartbeatDisplay} />
-        <InfoCell label="meaning" value={dashboard.starterConnection.connectionMeaning} />
-        <InfoCell label="state impact" value={dashboard.starterConnection.stateImpact} />
+      <div className="mt-2 grid grid-cols-2 gap-3 text-[12px]">
+        <InfoCell label="마지막 연결 확인" value={dashboard.starterLastHeartbeatDisplay} />
+        <InfoCell label="연결 의미" value={dashboard.starterConnection.connectionMeaning} />
       </div>
     </div>
   );
@@ -683,9 +714,9 @@ function RecoveryNotice({ dashboard }: { dashboard: DashboardPresentation }) {
 function MetricScalars({ dashboard }: { dashboard: DashboardPresentation }) {
   return (
     <div className="grid grid-cols-3 gap-0 border border-neutral-200 bg-white">
-      <MetricCell label="requests" value={formatCount(dashboard.metrics.requestCount)} />
-      <MetricCell label="errors" value={formatCount(dashboard.metrics.errorCount)} />
-      <MetricCell label="error rate" value={formatRatio(dashboard.metrics.errorRate)} last />
+      <MetricCell label="요청 수" value={formatCount(dashboard.metrics.requestCount)} />
+      <MetricCell label="오류 수" value={formatCount(dashboard.metrics.errorCount)} />
+      <MetricCell label="오류율" value={formatRatio(dashboard.metrics.errorRate)} last />
     </div>
   );
 }
@@ -695,42 +726,51 @@ function SourceScopedPercentilesPanel({ dashboard }: { dashboard: DashboardPrese
   return (
     <div className="border border-neutral-200 bg-white">
       <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between gap-3">
-        <SectionLabel icon={Gauge}>Source-scoped percentiles</SectionLabel>
-        <StatusBadge className={statusBadgeClassName(source.status)}>{source.status}</StatusBadge>
-      </div>
-      <div className="grid grid-cols-2 gap-2 border-b border-neutral-100 px-4 py-3 text-[11px] text-neutral-600 md:grid-cols-4">
-        <InfoCell label="source" value={source.source} />
-        <InfoCell label="scope" value={source.scope} />
-        <InfoCell label="display policy" value={source.displayPolicy} />
-        <InfoCell label="aggregate policy" value={source.aggregatePolicy} />
+        <div className="flex items-center gap-2">
+          <SectionLabel icon={Gauge}>인스턴스별 응답 시간</SectionLabel>
+          <InlineHelp label="응답 시간 지표 설명">
+            <div className="space-y-1">
+              <div>Starter가 보낸 인스턴스별 최신 측정값을 보여줍니다.</div>
+              <div>p95 응답시간: 요청 100개 중 95개가 이 시간 안에 끝났다는 뜻입니다.</div>
+              <div>p99 응답시간: 매우 느린 일부 요청까지 포함해 tail latency를 보는 기준입니다.</div>
+            </div>
+          </InlineHelp>
+        </div>
+        <StatusBadge className={statusBadgeClassName(source.status)}>{statusDisplayText(source.status)}</StatusBadge>
       </div>
       {source.items.length === 0 ? (
         <div className="p-4 text-[12px] text-neutral-600">
-          {source.status === "missing" || source.status === "insufficient"
-            ? source.reason ?? "source evidence 부족"
-            : dashboard.sourceScopedReasonDisplay}
+          {sourceScopedEmptyText(source.status, source.reason ?? dashboard.sourceScopedReasonDisplay)}
         </div>
       ) : (
         <table className="w-full text-[12px]">
           <thead>
             <tr className="text-left text-neutral-500">
-              <th className="px-4 py-2">source</th>
-              <th className="px-4 py-2">instance</th>
-              <th className="px-4 py-2">requests</th>
-              <th className="px-4 py-2">p95</th>
-              <th className="px-4 py-2">p99</th>
-              <th className="px-4 py-2">bucket</th>
+              <th className="px-4 py-2">인스턴스</th>
+              <th className="px-4 py-2">요청 수</th>
+              <th className="px-4 py-2">
+                <span className="inline-flex items-center gap-1">
+                  p95 응답시간
+                  <InlineHelp label="p95 응답시간 설명">요청 100개 중 95개가 이 시간 안에 끝났다는 뜻입니다.</InlineHelp>
+                </span>
+              </th>
+              <th className="px-4 py-2">
+                <span className="inline-flex items-center gap-1">
+                  p99 응답시간
+                  <InlineHelp label="p99 응답시간 설명">매우 느린 일부 요청까지 포함해 tail latency를 보는 기준입니다.</InlineHelp>
+                </span>
+              </th>
+              <th className="px-4 py-2">측정 구간</th>
             </tr>
           </thead>
           <tbody>
             {source.items.map((item) => (
               <tr key={`${item.instance}-${item.bucketEndUtc}`} className="border-t border-neutral-100">
-                <td className="px-4 py-2 text-neutral-800">{item.source}</td>
                 <td className="px-4 py-2 text-neutral-700">{item.instance}</td>
                 <td className="px-4 py-2 text-neutral-700">{formatCount(item.requestCount)}</td>
                 <td className="px-4 py-2 text-neutral-900">{item.p95Ms} ms</td>
                 <td className="px-4 py-2 text-neutral-900">{item.p99Ms} ms</td>
-                <td className="px-4 py-2 text-neutral-500">{`${item.bucketStartUtc} -> ${item.bucketEndUtc}`}</td>
+                <td className="px-4 py-2 text-neutral-500">{formatDateRange(item.bucketStartUtc, item.bucketEndUtc)}</td>
               </tr>
             ))}
           </tbody>
@@ -743,15 +783,15 @@ function SourceScopedPercentilesPanel({ dashboard }: { dashboard: DashboardPrese
 function HistogramPanel({ dashboard }: { dashboard: DashboardPresentation }) {
   return (
     <div className="border border-neutral-200 bg-white">
-      <div className="px-4 py-3 border-b border-neutral-200">
-        <SectionLabel icon={Activity}>Histogram distribution evidence</SectionLabel>
+      <div className="px-4 py-3 border-b border-neutral-200 flex items-center gap-2">
+        <SectionLabel icon={Activity}>응답 시간 분포</SectionLabel>
+        <InlineHelp label="응답 시간 구간 설명">
+          서버가 보낸 응답 시간 기준별 요청 수를 그대로 비교합니다. 원자료가 누적 bucket일 수 있어 정확한 구간 분포 정책은 후속 backend/read model 작업으로 남겨둡니다.
+        </InlineHelp>
       </div>
       <div className="grid grid-cols-1 gap-0 md:grid-cols-2">
-        <HistogramWindowCard label="current" window={dashboard.histogramDistribution.current} />
-        <HistogramWindowCard label="baseline" window={dashboard.histogramDistribution.baseline} />
-      </div>
-      <div className="border-t border-neutral-100 px-4 py-2 text-[11px] text-neutral-500">
-        {dashboard.histogramDistribution.aggregatePolicy}
+        <HistogramWindowCard label="현재 구간" window={dashboard.histogramDistribution.current} />
+        <HistogramWindowCard label="비교 기준 구간" window={dashboard.histogramDistribution.baseline} />
       </div>
     </div>
   );
@@ -762,16 +802,16 @@ function HistogramWindowCard({ label, window }: { label: string; window: Histogr
     <div className="border-b border-neutral-100 p-4 md:border-b-0 md:border-r md:last:border-r-0">
       <div className="flex items-center justify-between gap-2">
         <div className="text-[11px] uppercase text-neutral-500">{label}</div>
-        <StatusBadge className={statusBadgeClassName(window.status)}>{window.status}</StatusBadge>
+        <StatusBadge className={statusBadgeClassName(window.status)}>{statusDisplayText(window.status)}</StatusBadge>
       </div>
-      <div className="mt-1 text-[11px] text-neutral-500">total {formatCount(window.totalCount)} · {window.reason ?? "reason 없음"}</div>
+      <div className="mt-1 text-[11px] text-neutral-500">총 요청 수 {formatCount(window.totalCount)}</div>
       {window.buckets.length === 0 ? (
-        <div className="mt-3 text-[12px] text-neutral-500">bucket evidence가 없습니다.</div>
+        <div className="mt-3 text-[12px] text-neutral-500">응답 시간 구간 데이터가 아직 없습니다.</div>
       ) : (
         <div className="mt-3 space-y-1.5">
           {window.buckets.map((bucket) => (
             <div key={bucket.leMs} className="flex items-center gap-2 text-[11px]">
-              <span className="w-20 text-neutral-500 tabular-nums">≤ {bucket.leMs} ms</span>
+              <span className="w-24 text-neutral-500 tabular-nums">{formatLatencyThreshold(bucket.leMs)}</span>
               <div className="h-3 flex-1 border border-neutral-200 bg-neutral-100">
                 <div className="h-full bg-neutral-800" style={{ width: histogramBarWidth(bucket.count, window) }} />
               </div>
@@ -1161,9 +1201,9 @@ function CredentialLifecyclePanel({ selectedProject }: { selectedProject: Projec
     return (
       <div className="border border-neutral-200">
         <div className="px-3 py-2.5 border-b border-neutral-200">
-          <SectionLabel icon={KeyRound}>Starter credential</SectionLabel>
+          <SectionLabel icon={KeyRound}>Starter 연결 키</SectionLabel>
         </div>
-        <div className="p-3 text-[12px] text-neutral-500">Project를 선택하면 credential metadata를 no-store로 조회합니다.</div>
+        <div className="p-3 text-[12px] text-neutral-500">Project를 선택하면 데이터 수집 키 상태를 확인합니다.</div>
       </div>
     );
   }
@@ -1171,24 +1211,24 @@ function CredentialLifecyclePanel({ selectedProject }: { selectedProject: Projec
   return (
     <div className="border border-neutral-200">
       <div className="px-3 py-2.5 border-b border-neutral-200 flex items-center justify-between">
-        <SectionLabel icon={KeyRound}>Starter credential</SectionLabel>
+        <SectionLabel icon={KeyRound}>Starter 연결 키</SectionLabel>
         <StatusBadge className={credential ? statusBadgeClassName(credential.status) : ""}>
-          {credential?.status ?? "loading"}
+          {credential ? statusDisplayText(credential.status) : "불러오는 중"}
         </StatusBadge>
       </div>
       <div className="p-3 text-[12px] text-neutral-600">
-        {credentialLoading && "credential metadata를 불러오는 중입니다."}
+        {credentialLoading && "연결 키 상태를 불러오는 중입니다."}
         {credentialError && credentialErrorCopy(credentialError)}
         {!credentialLoading && !credentialError && credential && (
           <div className="space-y-2">
             <div className="grid grid-cols-2 gap-2 text-[11px]">
-              <InfoCell label="key prefix" value={credential.keyPrefix} />
-              <InfoCell label="status" value={credential.status} />
-              <InfoCell label="issued" value={formatOptionalDateTime(credential.issuedAt)} />
-              <InfoCell label="rotated" value={formatOptionalDateTime(credential.rotatedAt)} />
-              <InfoCell label="revoked" value={formatOptionalDateTime(credential.revokedAt)} />
+              <InfoCell label="키 앞부분" value={credential.keyPrefix} />
+              <InfoCell label="상태" value={statusDisplayText(credential.status)} />
+              <InfoCell label="발급일" value={formatOptionalDateTime(credential.issuedAt)} />
+              <InfoCell label="마지막 교체" value={formatOptionalDateTime(credential.rotatedAt)} />
+              <InfoCell label="사용 중지일" value={formatOptionalDateTime(credential.revokedAt)} />
             </div>
-            <div className="text-[11px] text-neutral-500">metadata response는 raw value/hash를 포함하지 않는다는 전제로 표시합니다.</div>
+            <div className="text-[11px] text-neutral-500">보안을 위해 전체 키 값은 생성 직후 한 번만 표시됩니다.</div>
           </div>
         )}
         {operationError && <div className="mt-2 text-[11px] text-rose-700">{credentialErrorCopy(operationError)}</div>}
@@ -1207,20 +1247,20 @@ function CredentialLifecyclePanel({ selectedProject }: { selectedProject: Projec
         <Button
           variant="outline"
           size="sm"
-          className="flex-1 border-neutral-300"
+          className="flex-1 border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100 hover:text-sky-900"
           disabled={operationLoading !== null}
           onClick={rotateCredential}
         >
-          {operationLoading === "rotate" ? "Rotating" : "Rotate"}
+          {operationLoading === "rotate" ? "새 키 발급 중" : "새 키 발급"}
         </Button>
         <Button
           variant="outline"
           size="sm"
-          className="flex-1 border-neutral-300"
+          className="flex-1 border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100 hover:text-rose-900"
           disabled={operationLoading !== null}
           onClick={revokeCredential}
         >
-          {operationLoading === "revoke" ? "Revoking" : revokeConfirm ? "Confirm revoke" : "Revoke"}
+          {operationLoading === "revoke" ? "사용 중지 중" : revokeConfirm ? "사용 중지 확인" : "키 사용 중지"}
         </Button>
       </div>
     </div>
@@ -1237,9 +1277,9 @@ function OneTimeCredentialPanel({
   const copyAndClear = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(credential.displayValue);
-      onCleared("credential을 clipboard로 복사했고 화면 state에서 제거했습니다.");
+      onCleared("연결 키를 클립보드에 복사했고 화면에서 숨겼습니다.");
     } catch {
-      onCleared("clipboard 복사에 실패했지만 raw credential은 화면 state에서 제거했습니다.");
+      onCleared("클립보드 복사에는 실패했지만 전체 키 값은 화면에서 숨겼습니다.");
     }
   }, [credential.displayValue, onCleared]);
 
@@ -1247,26 +1287,26 @@ function OneTimeCredentialPanel({
     <div className="mt-3 border border-neutral-900 bg-neutral-50 p-3 text-[12px]">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-neutral-900">Starter credential 1회 표시</div>
+          <div className="text-neutral-900">Starter 연결 키 1회 표시</div>
           <div className="mt-1 text-[11px] text-neutral-600">
-            다시 볼 수 없습니다. 필요하면 rotation으로 새 credential을 발급받아야 합니다.
+            보안을 위해 전체 키 값은 생성 직후 한 번만 표시됩니다. 필요하면 새 키를 발급받아야 합니다.
           </div>
         </div>
-        <StatusBadge>{credential.visibleOnce ? "visible once" : "one-time"}</StatusBadge>
+        <StatusBadge>{credential.visibleOnce ? "한 번만 표시" : "일회 표시"}</StatusBadge>
       </div>
       <code className="mt-2 block break-all border border-neutral-300 bg-white p-2 text-[11px] text-neutral-900">
         {credential.displayValue}
       </code>
       <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
-        <InfoCell label="key prefix" value={credential.keyPrefix} />
-        <InfoCell label="issued" value={formatOptionalDateTime(credential.issuedAt)} />
+        <InfoCell label="키 앞부분" value={credential.keyPrefix} />
+        <InfoCell label="발급일" value={formatOptionalDateTime(credential.issuedAt)} />
       </div>
       <div className="mt-3 flex gap-2">
         <Button type="button" variant="outline" size="sm" className="gap-2 border-neutral-300" onClick={copyAndClear}>
-          <Copy className="h-3.5 w-3.5" strokeWidth={1.5} /> Copy and clear
+          <Copy className="h-3.5 w-3.5" strokeWidth={1.5} /> 복사 후 숨기기
         </Button>
-        <Button type="button" variant="outline" size="sm" className="gap-2 border-neutral-300" onClick={() => onCleared("credential 표시를 닫고 화면 state에서 제거했습니다.")}>
-          <X className="h-3.5 w-3.5" strokeWidth={1.5} /> Close
+        <Button type="button" variant="outline" size="sm" className="gap-2 border-neutral-300" onClick={() => onCleared("연결 키 표시를 닫고 화면에서 숨겼습니다.")}>
+          <X className="h-3.5 w-3.5" strokeWidth={1.5} /> 닫기
         </Button>
       </div>
     </div>
@@ -1294,12 +1334,12 @@ function credentialErrorCopy(error: Error): string {
     return error.message;
   }
   if (error instanceof ApiRequestError && error.status === 404) {
-    return "membership mismatch 또는 project scope fail-closed일 수 있습니다. credential revoked/project 없음으로 단정하지 않습니다.";
+    return "Project 권한이나 범위가 맞지 않을 수 있습니다. 키 폐기나 project 없음으로 단정하지 않습니다.";
   }
   if (error instanceof ApiRequestError && error.status === 401) {
     return "인증이 만료되었습니다. 다시 GitHub 로그인 후 시도해 주세요.";
   }
-  return "credential lifecycle 요청에 실패했습니다. raw value/hash/token은 표시하지 않습니다.";
+  return "연결 키 상태 요청에 실패했습니다. 전체 키 값, 해시, 토큰은 표시하지 않습니다.";
 }
 
 function InstancesPanel({
@@ -1314,10 +1354,10 @@ function InstancesPanel({
   return (
     <div className="border border-neutral-200">
       <div className="px-3 py-2.5 border-b border-neutral-200">
-        <SectionLabel icon={Server}>Instances</SectionLabel>
+        <SectionLabel icon={Server}>실행 인스턴스</SectionLabel>
       </div>
       {dashboard.instances.length === 0 ? (
-        <div className="p-3 text-[12px] text-neutral-500">bounded instance handoff entry가 없습니다.</div>
+        <div className="p-3 text-[12px] text-neutral-500">아직 확인할 실행 인스턴스가 없습니다.</div>
       ) : (
         <ul>
           {dashboard.instances.map((instance) => {
@@ -1331,16 +1371,10 @@ function InstancesPanel({
             return (
               <li key={instance.instanceId} className="px-3 py-2.5 border-b border-neutral-100 last:border-b-0">
                 <div className="text-[13px] text-neutral-900">{instance.instanceName}</div>
-                <div className="mt-0.5 text-[11px] text-neutral-500">last seen {formatOptionalDateTime(instance.lastSeenAt)}</div>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="mt-1 truncate text-[10px] text-neutral-400">{instance.links.evidence}</div>
-                  </TooltipTrigger>
-                  <TooltipContent>Story 10.4 evidence handoff link</TooltipContent>
-                </Tooltip>
+                <div className="mt-0.5 text-[11px] text-neutral-500">마지막 관측 {formatOptionalDateTime(instance.lastSeenAt)}</div>
                 <div className="mt-2 flex gap-3 text-[11px] text-neutral-700">
-                  <button onClick={() => onOpenEvidence(target)} className="underline underline-offset-2 hover:text-neutral-900">evidence</button>
-                  <button onClick={() => onOpenTrend(target)} className="underline underline-offset-2 hover:text-neutral-900">trend</button>
+                  <button onClick={() => onOpenEvidence(target)} className="underline underline-offset-2 hover:text-neutral-900">근거 보기</button>
+                  <button onClick={() => onOpenTrend(target)} className="underline underline-offset-2 hover:text-neutral-900">변화 보기</button>
                 </div>
               </li>
             );
@@ -1685,6 +1719,72 @@ function snapshotHistoryErrorCopy(error: Error): { title: string; body: string }
     title: "History 로드 실패",
     body: "stored snapshot source를 불러오지 못했습니다. backend detail, token, provider payload는 표시하지 않습니다.",
   };
+}
+
+function statusDisplayText(status: string | null | undefined): string {
+  switch ((status ?? "").toLowerCase()) {
+    case "active":
+      return "사용 중";
+    case "available":
+      return "측정됨";
+    case "current":
+      return "현재";
+    case "down_candidate":
+      return "수집 끊김 후보";
+    case "failed":
+      return "실패";
+    case "insufficient":
+      return "표본 부족";
+    case "insufficient_baseline":
+      return "비교 기준 부족";
+    case "loading":
+      return "불러오는 중";
+    case "missing":
+      return "아직 없음";
+    case "received":
+      return "수신됨";
+    case "recent":
+      return "최근 수신";
+    case "revoked":
+      return "사용 중지";
+    case "stale":
+      return "데이터 지연";
+    case "stale_candidate":
+      return "데이터 지연 후보";
+    case "unavailable":
+      return "사용 불가";
+    case "":
+      return "해당 없음";
+    default:
+      return status ?? "해당 없음";
+  }
+}
+
+function starterStateImpactText(stateImpact: string): string {
+  if (stateImpact === "none") {
+    return "상태 판단 영향 없음: starter heartbeat 신호가 현재 정상/주의/지연/끊김 판단을 직접 바꾸지 않습니다.";
+  }
+  return `상태 판단 영향: ${stateImpact}`;
+}
+
+function sourceScopedEmptyText(status: string, reason: string | null): string {
+  if (status === "missing") {
+    return "인스턴스별 응답 시간 데이터가 아직 없습니다.";
+  }
+  if (status === "insufficient") {
+    return "인스턴스별 응답 시간 표본이 아직 충분하지 않습니다.";
+  }
+  return reason && reason !== "source 없음" ? reason : "인스턴스별 응답 시간 데이터를 확인할 수 없습니다.";
+}
+
+function formatLatencyThreshold(leMs: number): string {
+  if (!Number.isFinite(leMs)) {
+    return "응답 시간 기준 없음";
+  }
+  if (leMs >= 1000 && leMs % 1000 === 0) {
+    return `${leMs / 1000}초 이하`;
+  }
+  return `${leMs}ms 이하`;
 }
 
 function MetricCell({ label, last = false, value }: { label: string; last?: boolean; value: string }) {
