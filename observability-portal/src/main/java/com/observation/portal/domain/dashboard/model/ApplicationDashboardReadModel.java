@@ -657,7 +657,8 @@ public record ApplicationDashboardReadModel(
         ERROR_SPIKE("error_spike"),
         LATENCY_SPIKE("latency_spike"),
         ERROR_AND_LATENCY("error_and_latency"),
-        COMPARATIVE_REGRESSION("comparative_regression");
+        COMPARATIVE_REGRESSION("comparative_regression"),
+        RECENT_ERROR("recent_error");
 
         private final String value;
 

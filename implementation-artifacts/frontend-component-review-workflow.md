@@ -615,6 +615,11 @@ Evidence/Trend 정보 정리 원칙:
   - read semantics/raw JSON/live joins 같은 내부 계약 정보를 사용자에게 얼마나 보여줄지 결정한다.
   - active anchor 강조가 충분히 눈에 들어오는가.
 
+## Backend/Read Model TODO
+
+- p95/p99 spike 근거: 현재 backend read model은 `sourceScopedPercentiles.items[].p95Ms/p99Ms`와 triage evidence의 `sourcePercentilePoint`로 current instance bucket point만 제공한다. app/endpoint 단위의 `current/baseline/delta` p95/p99 scalar는 제공하지 않는다. UI에서 "p99 기준 대비 증가"를 직접 표시하려면 API shape를 별도 확장해야 한다.
+- Histogram bucket 표시: 현재 backend read model과 endpoint evidence는 `leMs` cumulative bucket을 유지한다. 사용자 화면에서 독립 구간 분포를 안정적으로 보여주려면 `0-100ms`, `100-300ms`, `300ms-1s` 같은 non-overlapping bin field를 API에 추가하는 후속 정책 결정이 필요하다.
+
 ## 새 컨텍스트 첫 메시지 예시
 
 아래처럼 요청하면 바로 이어가기 좋다.
