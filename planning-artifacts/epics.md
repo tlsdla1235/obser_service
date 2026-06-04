@@ -3,8 +3,8 @@ artifactType: epics
 projectName: Spring Boot 운영 첫 화면 포털
 architectureStyle: Traditional MVC
 sourcePolicy: 기존 Lightweight Hexagonal 산출물의 제품/계약 의미를 Traditional MVC로 재해석
-status: real-smoke-planning-updated
-date: 2026-06-01
+status: epic-11-12-planning-updated
+date: 2026-06-04
 ---
 
 # Epics - Traditional MVC 기준 재산출
@@ -254,6 +254,78 @@ Epic 7은 production onboarding/product feature를 여는 epic이 아니라 loca
    - Dashboard/UI 확인은 service Bearer access token의 in-memory use만 허용하고 `localStorage`, `sessionStorage`, cookie token 저장, URL token parsing을 만들지 않는다.
    - Verification은 heartbeat-only, first accepted bucket/insufficient sample, active/no-triage baseline 중 관찰 가능한 단계와 실패 시 troubleshooting evidence를 남긴다.
    - Smoke artifacts는 host application down, 앱 정상 확정, 복구 완료를 단정하지 않고 accepted bucket metric axis와 starter heartbeat axis를 분리해 설명한다.
+
+## Epic Numbering Alignment Note
+
+Epic 8~10은 이 파일보다 별도 planning artifact와 story/status tracking이 더 최신이다. 이번 정렬에서는 Epic 8~10을 다시 분해하지 않고, Epic 11/12 추가를 위해 아래 pointer만 둔다.
+
+- Epic 8 후보: `planning-artifacts/stories/8-1-route-normalization-rule-change.md`와 `planning-artifacts/contracts/route-attribution-policy.md`에 route normalization rule change가 남아 있다.
+- Epic 9: `planning-artifacts/epic-9-product-onboarding-and-project-seed-issuance-ui.md`가 product onboarding과 project seed issuance UI의 source-of-truth다.
+- Epic 10: `planning-artifacts/figma-make-acceptance-sprint-plan.md`와 `implementation-artifacts/sprint-status.yaml`이 Figma Make acceptance/frontend hardening을 추적한다.
+
+Epic 11/12의 상세 drift, story별 acceptance, sprint-status backlog proposal은 `planning-artifacts/epic-11-12-operational-alerts-and-sqs-batch-ingest-plan.md`를 기준으로 한다.
+
+## Epic 11. Discord Operational Alert MVP
+
+목표: 서버 metric state가 downgrade되거나 error/degraded concern이 발생했을 때 Discord webhook으로 짧고 안전한 운영 알림을 보낸다.
+
+Epic 11은 incident platform이 아니다. Multi-channel escalation, PagerDuty류 on-call, acknowledgement lifecycle, alert delivery history UI, 복잡한 suppression policy, per-user notification setting은 만들지 않는다.
+
+Downgrade 의미는 `state-semantics.md`의 lifecycle state와 degraded hysteresis를 따른다. Alert copy는 host application down, 정상 확정, 복구 완료를 단정하지 않고 accepted bucket axis와 starter heartbeat axis를 분리한다.
+
+### Stories
+
+1. Alert trigger semantics and Discord MVP ADR
+   - Discord alert trigger source를 state/read model/service-layer 판단으로 고정한다.
+   - `degraded`, `stale`, `down`, selected high-confidence concern을 alert 후보로 제한한다.
+   - Heartbeat success/failure/missing 자체는 alert trigger가 아니며 operational event history와 alert delivery log를 섞지 않는다.
+2. Discord webhook configuration and secret redaction guard
+   - Discord webhook URL을 secret config로만 받고 missing/disabled config에서는 no-op 또는 disabled 상태로 둔다.
+   - Webhook URL, raw token, starter credential, project key는 log/error/response/snapshot/history/test fixture에 남기지 않는다.
+3. Minimal Discord alert delivery and payload copy
+   - Project/application/environment/state/summary/deep link를 담은 최소 Discord payload를 보낸다.
+   - Payload는 원인, host application down, 정상 확정, 복구 완료를 단정하지 않고 next check 중심으로 작성한다.
+   - Endpoint evidence가 있으면 low-cardinality `method route`만 포함하고 raw path/query/trace/per-request sample은 포함하지 않는다.
+4. Cooldown, throttle, and alert spam guard
+   - 같은 `project + application + stateCode + primaryRuleId/endpointKey` 후보의 반복 alert를 configurable cooldown으로 제한한다.
+   - Cooldown은 state/read model을 바꾸지 않고 delivery 여부만 제한한다.
+   - Durable incident dedupe, acknowledgement, escalation, delivery history UI는 범위 밖이다.
+5. Discord alert smoke verification and operator runbook
+   - Disabled config, valid webhook config, failing webhook config를 local/smoke로 검증하는 runbook을 남긴다.
+   - Smoke는 portfolio/demo verification이며 production incident drill이 아니다.
+
+## Epic 12. SQS Buffered Batch Ingest Performance Path
+
+목표: instance별 ingest payload를 SQS에 넣고, Spring Boot portal 내부 SQS consumer가 1분 단위 bounded batch insert로 PostgreSQL에 저장하는 성능 개선 path를 계획한다.
+
+Epic 12는 배포 전 portfolio 관점의 성능 개선 근거를 남기는 epic이다. 성능 개선 검증에 한해서만 테스트 시점의 가장 작은 EC2/RDBMS service instance와 동등한 격리 benchmark 환경을 사용하고, 일반 local/dev/test 환경의 기본 설정을 바꾸지 않는다. Production rollout, autoscaling, Lambda 기본 consumer, queue replay UI, backfill pipeline, complex exactly-once processing은 만들지 않는다.
+
+기본안은 Spring Boot portal 내부 SQS consumer다. Lambda는 ingest volume 증가, web process와 ingest worker 분리, 배포 단위 분리 필요가 생긴 뒤 재검토하는 deferred option으로만 둔다.
+
+### Stories
+
+1. SQS batch ingest architecture decision
+   - Spring Boot portal 내부 bounded SQS poller/consumer를 기본안으로 결정한다.
+   - Lambda consumer는 IAM, VPC, DB connection, cold start, deployment unit 증가 때문에 deferred option으로 문서화한다.
+   - SQS는 accepted bucket data-plane insert path의 buffer이며 dashboard snapshot/history source가 아니다.
+2. Ingest enqueue boundary and message contract
+   - 기존 `ingest-envelope` 지원 field를 SQS message로 담는 contract를 정의한다.
+   - Idempotency key, payload hash, payload size, message attribute, redaction guard를 고정한다.
+   - Raw project key, starter credential, Authorization token, webhook URL은 message body/attribute/log에 포함하지 않는다.
+3. Spring Boot SQS polling batch insert worker
+   - Portal 내부 scheduled/bounded poller가 SQS message를 읽고 1분 단위 또는 bounded flush window로 PostgreSQL batch insert를 수행한다.
+   - Batch insert는 `accepted_metric_buckets`의 existing idempotency와 unique constraints를 유지한다.
+   - Visibility timeout, bounded retry, DLQ 후보를 제한하고 request path를 batch insert로 막지 않는다.
+4. Snapshot delay and late-data discard policy
+   - Snapshot scheduler는 current window cutoff 이후 configurable delay를 둔다.
+   - Snapshot cutoff 이후 DB에 저장된 late bucket은 이미 생성된 snapshot/read model history에 backfill하지 않는다.
+   - Snapshot은 immutable read model history이며 replay/backfill/correction pipeline은 non-goal이다.
+5. Portfolio performance verification
+   - Direct insert path와 SQS-buffered batch insert path를 portfolio 전용 격리 benchmark 환경에서 비교한다.
+   - Benchmark 환경은 테스트 시점의 가장 작은 EC2/RDBMS service instance와 동등한 CPU, memory, database capacity 제약을 문서화한다.
+   - 일반 개발용 Docker/PostgreSQL/local profile, smoke profile, CI 기본 설정은 benchmark 제약의 영향을 받지 않는다.
+   - 비교 항목은 insert count, DB round trip, batch size, 처리량, ingest-to-persist latency, duplicate/conflict behavior다.
+   - Production-grade load test, autoscaling proof, cloud benchmark suite는 범위 밖이다.
 
 ## Post-MVP Candidate Backlog
 
