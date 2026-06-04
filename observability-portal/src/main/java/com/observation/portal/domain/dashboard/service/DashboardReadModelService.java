@@ -305,8 +305,7 @@ public class DashboardReadModelService {
                         previousStateCandidate(freshness, bucketGapEvidence)),
                 starterConnectionInput);
         List<ApplicationDashboardReadModel.EndpointPriorityItem> endpointPriority =
-                endpointPriority(freshness.status(), sampleReadiness, currentEndpointRows, baselineEndpointRows,
-                        latestBucketEndUtc);
+                endpointPriority(freshness.status(), currentEndpointRows, baselineEndpointRows, latestBucketEndUtc);
 
         return new ApplicationDashboardReadModel(
                 toUtcOffsetDateTime(queryAt),
@@ -315,6 +314,7 @@ public class DashboardReadModelService {
                 starterConnection(stateDecision.starterConnection()),
                 zeroInsight(
                         triageSummary.triageCards(),
+                        endpointPriority,
                         stateDecision.recovery(),
                         freshness.status(),
                         starterConnectionInput.freshness(),
@@ -357,17 +357,13 @@ public class DashboardReadModelService {
     }
 
     /**
-     * application aggregate sample이 부족한 current response에서는 endpoint 후보를 현재 우선순위로 승격하지 않는다.
+     * application state sample이 부족해도 current endpoint 오류 후보는 숨기지 않고 priority service로 전달한다.
      */
     private List<ApplicationDashboardReadModel.EndpointPriorityItem> endpointPriority(
             AcceptedBucketFreshnessStatus freshnessStatus,
-            MetricSampleReadiness sampleReadiness,
             List<EndpointEvidenceRow> currentEndpointRows,
             List<EndpointEvidenceRow> baselineEndpointRows,
             Optional<OffsetDateTime> latestBucketEndUtc) {
-        if (sampleReadiness == MetricSampleReadiness.INSUFFICIENT) {
-            return List.of();
-        }
         return endpointPriorityService.endpointPriority(new EndpointPriorityService.EndpointPriorityInput(
                 freshnessStatus,
                 currentEndpointRows,
@@ -777,6 +773,7 @@ public class DashboardReadModelService {
 
     private static ApplicationDashboardReadModel.ZeroInsight zeroInsight(
             List<ApplicationDashboardReadModel.TriageCard> triageCards,
+            List<ApplicationDashboardReadModel.EndpointPriorityItem> endpointPriority,
             RecoveryGuidance recovery,
             AcceptedBucketFreshnessStatus freshnessStatus,
             StarterConnectionFreshness starterFreshness,
@@ -812,12 +809,26 @@ public class DashboardReadModelService {
                     reasonCode,
                     "현재 window에서 우선 조치가 필요한 metric data traffic이 없습니다.",
                     "요청이 다시 들어오면 다음 accepted bucket 이후 dashboard를 확인하세요.");
-            case "no_action_needed" -> new ApplicationDashboardReadModel.ZeroInsight(
-                    reasonCode,
-                    "현재 우선 조치가 필요한 신호는 없습니다.",
-                    "트래픽이 유지되는지 다음 bucket까지 관찰하세요.");
+            case "no_action_needed" -> zeroInsightNoActionNeeded(endpointPriority);
             default -> throw new IllegalStateException("unsupported zeroInsight reasonCode: " + reasonCode);
         };
+    }
+
+    /**
+     * application-level triage가 없더라도 endpoint priority가 있으면 zeroInsight copy가 이를 부정하지 않게 한다.
+     */
+    private static ApplicationDashboardReadModel.ZeroInsight zeroInsightNoActionNeeded(
+            List<ApplicationDashboardReadModel.EndpointPriorityItem> endpointPriority) {
+        if (!endpointPriority.isEmpty()) {
+            return new ApplicationDashboardReadModel.ZeroInsight(
+                    "no_action_needed",
+                    "Application 단위 triage card는 없습니다.",
+                    "낮은 우선순위 endpoint 후보가 있으면 해당 API의 최근 오류 로그를 함께 확인하세요.");
+        }
+        return new ApplicationDashboardReadModel.ZeroInsight(
+                "no_action_needed",
+                "현재 우선 조치가 필요한 신호는 없습니다.",
+                "트래픽이 유지되는지 다음 bucket까지 관찰하세요.");
     }
 
     /**

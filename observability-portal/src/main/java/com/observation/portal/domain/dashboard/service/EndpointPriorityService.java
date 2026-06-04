@@ -105,20 +105,26 @@ public class EndpointPriorityService {
             EndpointAggregate current,
             EndpointAggregate baseline,
             OffsetDateTime lastObservedAt) {
-        if (baseline == null
-                || current.requestCount() < COMMON_MINIMUM_REQUEST_COUNT
-                || baseline.requestCount() < COMMON_MINIMUM_REQUEST_COUNT) {
+        if (current.requestCount() <= 0L) {
             return Optional.empty();
         }
 
         BigDecimal currentErrorRate = decimal(current.errorCount(), current.requestCount());
-        BigDecimal baselineErrorRate = decimal(baseline.errorCount(), baseline.requestCount());
-        BigDecimal errorRateDelta = currentErrorRate.subtract(baselineErrorRate);
-        boolean errorSpike = currentErrorRate.compareTo(ERROR_RATE_THRESHOLD) >= 0
+        BigDecimal baselineErrorRate = baseline == null || baseline.requestCount() <= 0L
+                ? null
+                : decimal(baseline.errorCount(), baseline.requestCount());
+        BigDecimal errorRateDelta = baselineErrorRate == null ? null : currentErrorRate.subtract(baselineErrorRate);
+        boolean comparativeEvidenceAvailable = baseline != null
+                && current.requestCount() >= COMMON_MINIMUM_REQUEST_COUNT
+                && baseline.requestCount() >= COMMON_MINIMUM_REQUEST_COUNT;
+        boolean errorSpike = comparativeEvidenceAvailable
+                && currentErrorRate.compareTo(ERROR_RATE_THRESHOLD) >= 0
                 && errorRateDelta.compareTo(ERROR_RATE_DELTA_THRESHOLD) >= 0
                 && currentErrorRate.compareTo(baselineErrorRate.multiply(ERROR_RATE_RELATIVE_THRESHOLD)) >= 0;
 
-        Optional<SlowSharePair> slowSharePair = slowSharePair(current, baseline);
+        Optional<SlowSharePair> slowSharePair = comparativeEvidenceAvailable
+                ? slowSharePair(current, baseline)
+                : Optional.empty();
         boolean latencyAvailable = slowSharePair.isPresent();
         BigDecimal slowShare = latencyAvailable ? slowSharePair.orElseThrow().currentShare() : null;
         BigDecimal baselineSlowShare = latencyAvailable ? slowSharePair.orElseThrow().baselineShare() : null;
@@ -132,6 +138,7 @@ public class EndpointPriorityService {
                 errorRateDelta,
                 latencyAvailable,
                 slowShareDelta);
+        boolean recentError = current.errorCount() > 0L;
 
         ApplicationDashboardReadModel.EndpointPriorityReason reason;
         List<String> ruleIds;
@@ -170,6 +177,10 @@ public class EndpointPriorityService {
             reason = ApplicationDashboardReadModel.EndpointPriorityReason.COMPARATIVE_REGRESSION;
             ruleIds = List.of("endpoint_comparative_regression");
             confidence = comparativeConfidence(errorRateDelta, slowShareDelta);
+        } else if (recentError) {
+            reason = ApplicationDashboardReadModel.EndpointPriorityReason.RECENT_ERROR;
+            ruleIds = List.of("endpoint_recent_error");
+            confidence = recentErrorConfidence(currentErrorRate, current.errorCount());
         } else {
             return Optional.empty();
         }
@@ -179,8 +190,8 @@ public class EndpointPriorityService {
                         current.requestCount(),
                         current.errorCount(),
                         currentErrorRate,
-                        baseline.requestCount(),
-                        baseline.errorCount(),
+                        baseline == null ? null : baseline.requestCount(),
+                        baseline == null ? null : baseline.errorCount(),
                         baselineErrorRate,
                         errorRateDelta,
                         latencyAvailable ? current.durationBuckets() : null,
@@ -213,6 +224,9 @@ public class EndpointPriorityService {
             BigDecimal errorRateDelta,
             boolean latencyAvailable,
             BigDecimal slowShareDelta) {
+        if (baseline == null || errorRateDelta == null) {
+            return false;
+        }
         if (current.requestCount() < COMPARATIVE_MINIMUM_REQUEST_COUNT
                 || baseline.requestCount() < COMPARATIVE_MINIMUM_REQUEST_COUNT) {
             return false;
@@ -303,6 +317,16 @@ public class EndpointPriorityService {
         return Math.min(COMPARATIVE_CONFIDENCE_CAP, clamp(confidence));
     }
 
+    private static double recentErrorConfidence(BigDecimal currentErrorRate, long errorCount) {
+        BigDecimal errorCountContribution = BigDecimal.valueOf(Math.min(errorCount, 10L))
+                .multiply(BigDecimal.valueOf(0.02d));
+        double confidence = BigDecimal.valueOf(0.35d)
+                .add(currentErrorRate.multiply(BigDecimal.valueOf(0.25d)))
+                .add(errorCountContribution)
+                .doubleValue();
+        return Math.min(COMPARATIVE_CONFIDENCE_CAP, clamp(confidence));
+    }
+
     private static double clamp(double value) {
         return Math.max(0.0d, Math.min(1.0d, value));
     }
@@ -317,6 +341,7 @@ public class EndpointPriorityService {
             case ERROR_SPIKE -> "이 endpoint의 최근 오류 로그와 배포 변경 가능성을 먼저 확인해보세요.";
             case LATENCY_SPIKE -> "이 endpoint의 느린 요청 구간과 외부 호출, DB query 대기 가능성을 먼저 확인해보세요.";
             case COMPARATIVE_REGRESSION -> "이 endpoint가 baseline보다 악화된 신호를 보이므로 최근 변경과 traffic 패턴을 먼저 확인해보세요.";
+            case RECENT_ERROR -> "최근 오류가 있었던 API입니다. 빈도가 낮아도 해당 endpoint의 5xx 로그를 확인해보세요.";
         };
     }
 
@@ -346,6 +371,7 @@ public class EndpointPriorityService {
             case ERROR_SPIKE -> 2;
             case LATENCY_SPIKE -> 3;
             case COMPARATIVE_REGRESSION -> 4;
+            case RECENT_ERROR -> 5;
         };
     }
 

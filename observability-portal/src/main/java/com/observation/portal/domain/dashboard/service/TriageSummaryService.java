@@ -62,10 +62,14 @@ public class TriageSummaryService {
 
         List<TriageCandidate> candidates = new ArrayList<>();
         Optional<TriageCandidate> errorCandidate = errorSpikeCandidate(requiredInput);
+        Optional<TriageCandidate> sustainedErrorCandidate = errorCandidate.isPresent()
+                ? Optional.empty()
+                : sustainedErrorRateCandidate(requiredInput);
+        Optional<TriageCandidate> errorConcernCandidate = errorCandidate.or(() -> sustainedErrorCandidate);
         Optional<TriageCandidate> latencyCandidate = latencySpikeCandidate(requiredInput);
-        errorCandidate.ifPresent(candidates::add);
+        errorConcernCandidate.ifPresent(candidates::add);
         latencyCandidate.ifPresent(candidates::add);
-        saturationHintCandidates(requiredInput, errorCandidate, latencyCandidate).forEach(candidates::add);
+        saturationHintCandidates(requiredInput, errorConcernCandidate, latencyCandidate).forEach(candidates::add);
 
         List<ApplicationDashboardReadModel.TriageCard> cards = candidates.stream()
                 .filter(candidate -> candidate.card().confidence() >= CARD_EXPOSURE_CONFIDENCE)
@@ -129,6 +133,55 @@ public class TriageSummaryService {
                 "Application 오류율 증가",
                 "current window의 오류율이 baseline보다 의미 있게 증가했습니다.",
                 "최근 배포와 외부 의존성 오류 로그를 먼저 확인해보세요.",
+                confidence,
+                score,
+                null,
+                evidence);
+        return Optional.of(new TriageCandidate(card, true, errorBadBucketCount(input.recentBuckets())));
+    }
+
+    private Optional<TriageCandidate> sustainedErrorRateCandidate(TriageSummaryInput input) {
+        WindowBucketAggregate current = input.currentAggregate();
+        if (current.requestCount() < MINIMUM_REQUEST_COUNT) {
+            return Optional.empty();
+        }
+
+        BigDecimal currentRate = errorRate(current.errorCount(), current.requestCount());
+        if (currentRate.compareTo(ERROR_RATE_THRESHOLD) < 0) {
+            return Optional.empty();
+        }
+
+        WindowBucketAggregate baseline = input.baselineAggregate();
+        Long baselineRequestCount = baseline.requestCount() > 0L ? baseline.requestCount() : null;
+        Long baselineErrorCount = baseline.requestCount() > 0L ? baseline.errorCount() : null;
+        BigDecimal baselineRate = baseline.requestCount() > 0L
+                ? errorRate(baseline.errorCount(), baseline.requestCount())
+                : null;
+        BigDecimal delta = baselineRate == null ? null : currentRate.subtract(baselineRate);
+
+        double confidence = confidenceFromAbsoluteErrorRate(currentRate);
+        int score = score(confidence);
+        ApplicationDashboardReadModel.TriageEvidence evidence = new ApplicationDashboardReadModel.TriageEvidence(
+                current.requestCount(),
+                current.errorCount(),
+                currentRate,
+                baselineRequestCount,
+                baselineErrorCount,
+                baselineRate,
+                delta,
+                null,
+                null,
+                null,
+                null,
+                runtimeRatioEvidence(input.runtimeRatio()),
+                input.freshnessStatus().name().toLowerCase(),
+                sourcePercentilePoint(input.sourceScopedPercentiles()));
+        ApplicationDashboardReadModel.TriageCard card = new ApplicationDashboardReadModel.TriageCard(
+                "sustained_error_rate_high",
+                severity(confidence),
+                "Application 오류율 높음",
+                "current window의 오류율이 절대 기준 이상으로 높게 유지됩니다.",
+                "최근 오류가 있었던 API와 공통 오류 로그를 먼저 확인해보세요.",
                 confidence,
                 score,
                 null,
@@ -383,6 +436,12 @@ public class TriageSummaryService {
         BigDecimal confidence = BigDecimal.valueOf(CARD_EXPOSURE_CONFIDENCE)
                 .add(current.subtract(currentThreshold))
                 .add(delta.subtract(deltaThreshold).multiply(BigDecimal.valueOf(2.0d)));
+        return clamp(confidence.doubleValue());
+    }
+
+    private static double confidenceFromAbsoluteErrorRate(BigDecimal currentRate) {
+        BigDecimal confidence = BigDecimal.valueOf(CARD_EXPOSURE_CONFIDENCE)
+                .add(currentRate.subtract(ERROR_RATE_THRESHOLD).multiply(BigDecimal.valueOf(2.0d)));
         return clamp(confidence.doubleValue());
     }
 

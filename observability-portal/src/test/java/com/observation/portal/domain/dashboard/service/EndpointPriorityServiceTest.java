@@ -118,15 +118,45 @@ class EndpointPriorityServiceTest {
     }
 
     @Test
-    void excludesUnknownRoutesAndLowSampleEndpointRows() {
-        assertThat(service.endpointPriority(input(
+    void excludesUnknownRoutesButKeepsLowSampleRecentErrorRows() {
+        List<ApplicationDashboardReadModel.EndpointPriorityItem> items = service.endpointPriority(input(
                 List.of(
                         endpoint("GET", "UNKNOWN", 200, 30, 70, 200),
                         endpoint("POST", "/too-small", 29, 10, 20, 29)),
                 List.of(
                         endpoint("GET", "UNKNOWN", 200, 1, 190, 200),
-                        endpoint("POST", "/too-small", 100, 1, 95, 100)))))
-                .isEmpty();
+                        endpoint("POST", "/too-small", 100, 1, 95, 100))));
+
+        assertThat(items).singleElement().satisfies(item -> {
+            assertThat(item.endpointKey()).isEqualTo("POST /too-small");
+            assertThat(item.reason()).isEqualTo(ApplicationDashboardReadModel.EndpointPriorityReason.RECENT_ERROR);
+            assertThat(item.ruleIds()).containsExactly("endpoint_recent_error");
+            assertThat(item.evidence().errorCount()).isEqualTo(10L);
+        });
+    }
+
+    @Test
+    void exposesRecentErrorEndpointWithoutBaselineOrMinimumSample() {
+        List<ApplicationDashboardReadModel.EndpointPriorityItem> items = service.endpointPriority(
+                new EndpointPriorityService.EndpointPriorityInput(
+                        AcceptedBucketFreshnessStatus.CURRENT,
+                        List.of(row("2026-05-26T01:10:00Z",
+                                "[" + endpoint("GET", "/health", 1, 1, 1, 1) + "]")),
+                        List.of(),
+                        offset("2026-05-26T01:10:30Z")));
+
+        assertThat(items).singleElement().satisfies(item -> {
+            assertThat(item.endpointKey()).isEqualTo("GET /health");
+            assertThat(item.reason()).isEqualTo(ApplicationDashboardReadModel.EndpointPriorityReason.RECENT_ERROR);
+            assertThat(item.ruleIds()).containsExactly("endpoint_recent_error");
+            assertThat(item.confidence()).isLessThanOrEqualTo(0.64d);
+            assertThat(item.evidence().requestCount()).isEqualTo(1L);
+            assertThat(item.evidence().errorCount()).isEqualTo(1L);
+            assertThat(item.evidence().errorRate()).isEqualByComparingTo(BigDecimal.ONE);
+            assertThat(item.evidence().baselineRequestCount()).isNull();
+            assertThat(item.evidence().baselineErrorRate()).isNull();
+            assertThat(item.evidence().errorRateDelta()).isNull();
+        });
     }
 
     @Test

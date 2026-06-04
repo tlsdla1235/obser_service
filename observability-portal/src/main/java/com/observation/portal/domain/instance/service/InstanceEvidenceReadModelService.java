@@ -557,7 +557,6 @@ public class InstanceEvidenceReadModelService {
         List<ApplicationDashboardReadModel.EndpointPriorityItem> endpointPriority =
                 applicationEndpointPriority(
                         applicationFreshness.status(),
-                        currentAggregate,
                         currentEndpointRows,
                         baselineEndpointRows,
                         latestApplicationBucketEndUtc);
@@ -572,13 +571,9 @@ public class InstanceEvidenceReadModelService {
 
     private List<ApplicationDashboardReadModel.EndpointPriorityItem> applicationEndpointPriority(
             AcceptedBucketFreshnessStatus applicationFreshnessStatus,
-            WindowBucketAggregate currentAggregate,
             List<EndpointEvidenceRow> currentEndpointRows,
             List<EndpointEvidenceRow> baselineEndpointRows,
             Optional<OffsetDateTime> latestApplicationBucketEndUtc) {
-        if (metricSampleReadiness(currentAggregate) == MetricSampleReadiness.INSUFFICIENT) {
-            return List.of();
-        }
         return endpointPriorityService.endpointPriority(new EndpointPriorityService.EndpointPriorityInput(
                 applicationFreshnessStatus,
                 currentEndpointRows,

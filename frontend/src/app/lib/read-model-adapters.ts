@@ -20,6 +20,8 @@ const INSTANCE_EVIDENCE_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)
 const INSTANCE_SNAPSHOT_TREND_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/instances\/([^/]+)\/snapshot-trend$/;
 const SNAPSHOT_DETAIL_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/dashboard\/snapshots\/([^/]+)$/;
 const UNKNOWN_TEXT = "source 없음";
+const EMPTY_DISPLAY_TEXT = "해당 없음";
+const DISPLAY_TIME_ZONE = "UTC";
 
 export const TREND_PRESET_QUERY = {
   "7d": { limit: 168, since: "7d" },
@@ -246,9 +248,9 @@ export function buildStarterCredentialRevocationPath(projectId: string): string 
 
 export function formatOptionalDateTime(value: string | null | undefined): string {
   if (!value) {
-    return UNKNOWN_TEXT;
+    return EMPTY_DISPLAY_TEXT;
   }
-  return value;
+  return formatDateTime(value);
 }
 
 export function formatCount(value: number): string {
@@ -270,7 +272,23 @@ export function formatNullableRatio(value: number | null | undefined): string {
 }
 
 export function formatWindow(window: DashboardWindow): string {
-  return `${window.startUtc} -> ${window.endUtc}`;
+  return formatDateRange(window.startUtc, window.endUtc);
+}
+
+export function formatDateRange(startUtc: string, endUtc: string): string {
+  const start = parseDate(startUtc);
+  const end = parseDate(endUtc);
+  if (!start || !end) {
+    return `${formatDateTime(startUtc)} - ${formatDateTime(endUtc)}`;
+  }
+  const includeSeconds = hasVisibleSeconds(start) || hasVisibleSeconds(end);
+  const startText = formatDateTime(startUtc, { includeSeconds });
+  const endText = sameUtcDate(start, end)
+    ? formatTimeOnly(end, includeSeconds)
+    : sameUtcYear(start, end)
+      ? formatMonthDayTime(end, includeSeconds)
+      : formatFullDateTime(end, includeSeconds);
+  return `${startText} - ${endText}`;
 }
 
 export function histogramBarWidth(bucketCount: number, window: HistogramWindow): string {
@@ -301,6 +319,7 @@ export function metricStateClassName(code: LifecycleStateCode | (string & {})): 
 
 export function statusBadgeClassName(status: string): string {
   switch (status) {
+    case "active":
     case "available":
     case "current":
     case "received":
@@ -308,6 +327,7 @@ export function statusBadgeClassName(status: string): string {
       return "border-emerald-500 bg-emerald-50 text-emerald-900";
     case "down_candidate":
     case "failed":
+    case "revoked":
     case "stale":
     case "unavailable":
       return "border-rose-500 bg-rose-50 text-rose-900";
@@ -319,6 +339,66 @@ export function statusBadgeClassName(status: string): string {
     default:
       return "border-neutral-400 bg-white text-neutral-800";
   }
+}
+
+function formatDateTime(value: string, options: { includeSeconds?: boolean } = {}): string {
+  const date = parseDate(value);
+  if (!date) {
+    return value;
+  }
+  return formatFullDateTime(date, Boolean(options.includeSeconds));
+}
+
+function formatFullDateTime(date: Date, includeSeconds: boolean): string {
+  return new Intl.DateTimeFormat("ko-KR", {
+    day: "numeric",
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+    month: "long",
+    second: includeSeconds ? "2-digit" : undefined,
+    timeZone: DISPLAY_TIME_ZONE,
+    year: "numeric",
+  }).format(date);
+}
+
+function formatMonthDayTime(date: Date, includeSeconds: boolean): string {
+  return new Intl.DateTimeFormat("ko-KR", {
+    day: "numeric",
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+    month: "long",
+    second: includeSeconds ? "2-digit" : undefined,
+    timeZone: DISPLAY_TIME_ZONE,
+  }).format(date);
+}
+
+function formatTimeOnly(date: Date, includeSeconds: boolean): string {
+  return new Intl.DateTimeFormat("ko-KR", {
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+    second: includeSeconds ? "2-digit" : undefined,
+    timeZone: DISPLAY_TIME_ZONE,
+  }).format(date);
+}
+
+function parseDate(value: string): Date | null {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? new Date(timestamp) : null;
+}
+
+function hasVisibleSeconds(date: Date): boolean {
+  return date.getUTCSeconds() !== 0 || date.getUTCMilliseconds() !== 0;
+}
+
+function sameUtcDate(a: Date, b: Date): boolean {
+  return sameUtcYear(a, b) && a.getUTCMonth() === b.getUTCMonth() && a.getUTCDate() === b.getUTCDate();
+}
+
+function sameUtcYear(a: Date, b: Date): boolean {
+  return a.getUTCFullYear() === b.getUTCFullYear();
 }
 
 function lifecycleBadgeClassName(code: string): string {

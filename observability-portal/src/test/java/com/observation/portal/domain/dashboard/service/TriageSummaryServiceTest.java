@@ -40,7 +40,7 @@ class TriageSummaryServiceTest {
     }
 
     @Test
-    void suppressesGlobalErrorSpikeWhenAnyGuardFails() {
+    void suppressesGlobalErrorSpikeWhenMinimumOrAbsoluteGuardFails() {
         assertThat(service.summarize(input(
                 new WindowBucketAggregate(29L, 4L),
                 new WindowBucketAggregate(100L, 1L),
@@ -51,11 +51,25 @@ class TriageSummaryServiceTest {
                 new WindowBucketAggregate(100L, 1L),
                 histogramMissing(),
                 List.of())).triageCards()).isEmpty();
-        assertThat(service.summarize(input(
-                new WindowBucketAggregate(100L, 6L),
-                new WindowBucketAggregate(100L, 4L),
+    }
+
+    @Test
+    void exposesSustainedHighErrorRateWithoutBaselineSpike() {
+        TriageSummaryService.TriageSummary summary = service.summarize(input(
+                new WindowBucketAggregate(44L, 4L),
+                new WindowBucketAggregate(66L, 6L),
                 histogramMissing(),
-                List.of())).triageCards()).isEmpty();
+                List.of()));
+
+        assertThat(summary.triageCards())
+                .extracting(ApplicationDashboardReadModel.TriageCard::ruleId)
+                .containsExactly("sustained_error_rate_high");
+        ApplicationDashboardReadModel.TriageCard card = summary.triageCards().get(0);
+        assertThat(card.title()).contains("오류율 높음");
+        assertThat(card.summary()).doesNotContain("증가", "spike");
+        assertThat(card.evidence().currentErrorRate()).isEqualByComparingTo("0.090909");
+        assertThat(card.evidence().baselineErrorRate()).isEqualByComparingTo("0.090909");
+        assertThat(card.evidence().errorRateDelta()).isEqualByComparingTo("0");
     }
 
     @Test

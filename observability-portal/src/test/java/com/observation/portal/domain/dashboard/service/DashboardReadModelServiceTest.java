@@ -701,7 +701,7 @@ class DashboardReadModelServiceTest {
     }
 
     @Test
-    void suppressesEndpointPriorityWhenCurrentAggregateSampleIsInsufficient() {
+    void exposesEndpointPriorityWhenCurrentAggregateSampleIsInsufficient() {
         when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
                 .thenReturn(Optional.of(application()));
         when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
@@ -731,7 +731,48 @@ class DashboardReadModelServiceTest {
 
         assertThat(dashboard.application().lastAcceptedBucketAt()).isEqualTo(offset("2026-05-25T10:32:00Z"));
         assertThat(dashboard.zeroInsight().reasonCode()).isEqualTo("insufficient_sample");
-        assertThat(dashboard.endpointPriority()).isEmpty();
+        assertThat(dashboard.endpointPriority()).singleElement().satisfies(item -> {
+            assertThat(item.endpointKey()).isEqualTo("POST /orders");
+            assertThat(item.reason())
+                    .isEqualTo(ApplicationDashboardReadModel.EndpointPriorityReason.ERROR_AND_LATENCY);
+        });
+    }
+
+    @Test
+    void activeStateExposesEndpointPriorityForSingleRecentServerError() {
+        when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
+                .thenReturn(Optional.of(application()));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-25T10:32:00Z")));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, CURRENT_START, EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(100L, 1L));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, BASELINE_START, CURRENT_START))
+                .thenReturn(new WindowBucketAggregate(100L, 0L));
+        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(List.of(endpointEvidenceRow(
+                        "2026-05-25T10:31:30Z",
+                        endpointJson("GET", "/health", 1L, 1L, 1L, 1L))));
+        when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("2026-05-25T10:32:20Z")));
+
+        ApplicationDashboardReadModel dashboard = service.getDashboard(PROJECT_ID, APPLICATION_ID).orElseThrow();
+
+        assertThat(dashboard.state().code()).isEqualTo("active");
+        assertThat(dashboard.triageCards()).isEmpty();
+        assertThat(dashboard.zeroInsight().reasonCode()).isEqualTo("no_action_needed");
+        assertThat(dashboard.zeroInsight().message()).contains("Application 단위 triage card");
+        assertThat(dashboard.zeroInsight().recommendedAction()).contains("endpoint 후보");
+        assertThat(dashboard.zeroInsight().message()).doesNotContain("우선 조치가 필요한 신호는 없습니다");
+        assertThat(dashboard.endpointPriority()).singleElement().satisfies(item -> {
+            assertThat(item.endpointKey()).isEqualTo("GET /health");
+            assertThat(item.reason()).isEqualTo(ApplicationDashboardReadModel.EndpointPriorityReason.RECENT_ERROR);
+            assertThat(item.ruleIds()).containsExactly("endpoint_recent_error");
+            assertThat(item.evidence().requestCount()).isEqualTo(1L);
+            assertThat(item.evidence().errorCount()).isEqualTo(1L);
+        });
     }
 
     @Test

@@ -658,11 +658,11 @@ class InstanceEvidenceReadModelServiceTest {
                         org.assertj.core.groups.Tuple.tuple(2, "POST /orders", "observed"),
                         org.assertj.core.groups.Tuple.tuple(3, "GET /payments", "not_observed"));
         assertThat(items.get(0)).satisfies(item -> {
-            assertThat(item.relatedApplicationPriorityRank()).isNull();
-            assertThat(item.relatedRuleIds()).isEmpty();
+            assertThat(item.relatedApplicationPriorityRank()).isEqualTo(3);
+            assertThat(item.relatedRuleIds()).containsExactly("endpoint_recent_error");
             assertThat(item.instanceRequestShare()).isEqualByComparingTo("1");
             assertThat(item.instanceErrorShare()).isEqualByComparingTo("1");
-            assertThat(item.reason()).isEqualTo("selected_instance_endpoint_observed");
+            assertThat(item.reason()).isEqualTo("application_priority_endpoint_observed_on_selected_instance");
         });
         assertThat(items.get(1)).satisfies(item -> {
             assertThat(item.relatedApplicationPriorityRank()).isEqualTo(1);
@@ -697,7 +697,7 @@ class InstanceEvidenceReadModelServiceTest {
     }
 
     @Test
-    void endpointEvidenceUsesTriageAffectedEndpointBeforeSelectedRequestCountWhenPriorityIsEmpty() {
+    void endpointEvidenceUsesSelectedRequestAndTriageHintWhileReferencingRecentErrorPriority() {
         stubCurrentApplicationMetricData();
         when(triageSummaryService.summarize(any(TriageSummaryService.TriageSummaryInput.class)))
                 .thenReturn(new TriageSummaryService.TriageSummary(
@@ -728,7 +728,53 @@ class InstanceEvidenceReadModelServiceTest {
                 .extracting(InstanceEvidenceReadModel.EndpointEvidenceItem::endpointKey)
                 .containsExactly("GET /selected", "PATCH /triage");
         assertThat(items.get(1).presenceOnSelectedInstance()).isEqualTo("not_observed");
-        assertThat(items.get(1).relatedApplicationPriorityRank()).isNull();
+        assertThat(items.get(1).relatedApplicationPriorityRank()).isEqualTo(1);
+        assertThat(items.get(1).relatedRuleIds()).containsExactly("endpoint_recent_error");
+    }
+
+    @Test
+    void endpointEvidenceKeepsLowSampleRecentErrorApplicationPriorityReference() {
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(
+                APPLICATION_ID,
+                EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-26T06:10:00Z")));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(1L, 1L));
+        when(metricBucketRepository.findWindowAggregateByApplicationId(
+                APPLICATION_ID,
+                BASELINE_START,
+                CURRENT_START))
+                .thenReturn(WindowBucketAggregate.zero());
+        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(List.of(endpointRow("2026-05-26T06:09:30Z",
+                        "[" + endpoint("GET", "/health", 1L, 1L, 1L, 1L) + "]")));
+        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationInstanceId(
+                INSTANCE_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(List.of(endpointRow("2026-05-26T06:09:30Z",
+                        "[" + endpoint("GET", "/health", 1L, 1L, 1L, 1L) + "]")));
+
+        List<InstanceEvidenceReadModel.EndpointEvidenceItem> items = service.getEvidence(
+                        PROJECT_ID,
+                        APPLICATION_ID,
+                        INSTANCE_ID)
+                .orElseThrow()
+                .endpointEvidence()
+                .items();
+
+        assertThat(items).singleElement().satisfies(item -> {
+            assertThat(item.endpointKey()).isEqualTo("GET /health");
+            assertThat(item.relatedApplicationPriorityRank()).isEqualTo(1);
+            assertThat(item.relatedRuleIds()).containsExactly("endpoint_recent_error");
+            assertThat(item.reason()).isEqualTo("application_priority_endpoint_observed_on_selected_instance");
+        });
     }
 
     @Test
