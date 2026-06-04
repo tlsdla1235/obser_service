@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-06-02T18:56:29+0900
+# last_updated: 2026-06-04T10:39:33+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -54,9 +54,14 @@
 # - Epic 10은 figma/ -> frontend/ 재배치, routing/typecheck, auth/fetch 이식, server read model 연결, Gradle/Spring 정적 서빙, legacy static dashboard replacement, acceptance 검증을 story 단위로 닫는다.
 # - Epic 10은 새 backend endpoint, Next.js API route, UI-side lifecycle/p95/p99/endpoint priority/snapshot event 계산을 만들지 않는다.
 # - `* 2.java` duplicate Java file 후보는 Epic 10 build/acceptance verification 전에 해결 또는 known blocker로 명시돼야 한다.
+# - Epic 11은 Discord webhook 기반 운영 알림 MVP다. Incident platform, multi-channel escalation, acknowledgement lifecycle, alert delivery history UI는 만들지 않는다.
+# - Epic 11 alert copy는 host application down, 정상 확정, 복구 완료를 단정하지 않고 accepted bucket metric axis와 starter heartbeat axis를 분리한다.
+# - Epic 12는 Spring Boot portal 내부 SQS consumer를 기본안으로 하는 buffered batch ingest 성능 path다. Lambda consumer는 deferred option이다.
+# - Epic 12 snapshot/history는 immutable read model history를 유지하며 late data backfill/replay pipeline, raw explorer, endpoint timeseries를 만들지 않는다.
+# - Epic 12 성능 개선 검증은 portfolio 전용 격리 benchmark에서만 최소 EC2/RDBMS service instance 동등 환경으로 수행하고, 일반 local/dev/test 환경 기본값에는 영향을 주지 않는다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-06-02T18:56:29+0900
+last_updated: 2026-06-04T10:39:33+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -137,3 +142,19 @@ development_status:
   10-6-replace-legacy-dashboard-and-clean-residue: done
   10-7-run-acceptance-gate: review
   epic-10-retrospective: optional
+
+  epic-11: backlog
+  11-1-alert-trigger-semantics-and-discord-mvp-adr: backlog
+  11-2-discord-webhook-configuration-and-secret-redaction-guard: backlog
+  11-3-minimal-discord-alert-delivery-and-payload-copy: backlog
+  11-4-cooldown-throttle-and-alert-spam-guard: backlog
+  11-5-discord-alert-smoke-verification-and-operator-runbook: backlog
+  epic-11-retrospective: optional
+
+  epic-12: backlog
+  12-1-sqs-batch-ingest-architecture-decision: backlog
+  12-2-ingest-enqueue-boundary-and-message-contract: backlog
+  12-3-spring-boot-sqs-polling-batch-insert-worker: backlog
+  12-4-snapshot-delay-and-late-data-discard-policy: backlog
+  12-5-portfolio-performance-verification: backlog
+  epic-12-retrospective: optional
