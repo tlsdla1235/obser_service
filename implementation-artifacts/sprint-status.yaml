@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-06-04T10:39:33+0900
+# last_updated: 2026-06-05T09:47:02+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -56,12 +56,14 @@
 # - `* 2.java` duplicate Java file 후보는 Epic 10 build/acceptance verification 전에 해결 또는 known blocker로 명시돼야 한다.
 # - Epic 11은 Discord webhook 기반 운영 알림 MVP다. Incident platform, multi-channel escalation, acknowledgement lifecycle, alert delivery history UI는 만들지 않는다.
 # - Epic 11 alert copy는 host application down, 정상 확정, 복구 완료를 단정하지 않고 accepted bucket metric axis와 starter heartbeat axis를 분리한다.
-# - Epic 12는 Spring Boot portal 내부 SQS consumer를 기본안으로 하는 buffered batch ingest 성능 path다. Lambda consumer는 deferred option이다.
+# - Epic 12는 Spring Boot portal 내부 SQS consumer를 기본안으로 하는 buffered ingest transition이다. Lambda consumer는 deferred/non-goal이다.
+# - Epic 12는 Phase 1 request latency 개선과 Phase 2 DB batch throughput 개선을 분리해 검증한다.
 # - Epic 12 snapshot/history는 immutable read model history를 유지하며 late data backfill/replay pipeline, raw explorer, endpoint timeseries를 만들지 않는다.
-# - Epic 12 성능 개선 검증은 portfolio 전용 격리 benchmark에서만 최소 EC2/RDBMS service instance 동등 환경으로 수행하고, 일반 local/dev/test 환경 기본값에는 영향을 주지 않는다.
+# - Epic 12는 SQS payload size, duplicate/no-op, malformed/conflict DLQ, snapshot cutoff, stale/down과 queue lag 분리를 story acceptance에 포함한다.
+# - Story 12.1은 Epic 12 architecture-level 결정을 닫았다: Spring Boot portal 내부 worker, Lambda deferred/non-goal, SQS mode opt-in/direct rollback, enqueue success only 202, enqueue failure 503, payload too large 413, no direct fallback, fake queue 기본/LocalStack opt-in, 12.3-only rollout 금지.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-06-04T10:39:33+0900
+last_updated: 2026-06-05T09:47:02+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -152,9 +154,9 @@ development_status:
   epic-11-retrospective: optional
 
   epic-12: backlog
-  12-1-sqs-batch-ingest-architecture-decision: backlog
-  12-2-ingest-enqueue-boundary-and-message-contract: backlog
-  12-3-spring-boot-sqs-polling-batch-insert-worker: backlog
-  12-4-snapshot-delay-and-late-data-discard-policy: backlog
-  12-5-portfolio-performance-verification: backlog
+  12-1-architecture-and-contract-decision: done
+  12-2-ingest-enqueue-boundary: backlog
+  12-3-spring-boot-sqs-worker-mvp-and-idempotency: backlog
+  12-4-snapshot-delay-and-pipeline-lag-semantics: backlog
+  12-5-batch-writer-and-performance-verification: backlog
   epic-12-retrospective: optional

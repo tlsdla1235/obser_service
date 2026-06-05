@@ -294,38 +294,38 @@ Downgrade 의미는 `state-semantics.md`의 lifecycle state와 degraded hysteres
    - Disabled config, valid webhook config, failing webhook config를 local/smoke로 검증하는 runbook을 남긴다.
    - Smoke는 portfolio/demo verification이며 production incident drill이 아니다.
 
-## Epic 12. SQS Buffered Batch Ingest Performance Path
+## Epic 12. SQS Buffered Ingest Transition
 
-목표: instance별 ingest payload를 SQS에 넣고, Spring Boot portal 내부 SQS consumer가 1분 단위 bounded batch insert로 PostgreSQL에 저장하는 성능 개선 path를 계획한다.
+목표: portal HTTP ingest request path에서는 검증과 enqueue까지만 수행하고, Spring Boot portal 내부 SQS worker가 bounded batch로 `accepted_metric_buckets` 저장을 처리하도록 전환한다.
 
-Epic 12는 배포 전 portfolio 관점의 성능 개선 근거를 남기는 epic이다. 성능 개선 검증에 한해서만 테스트 시점의 가장 작은 EC2/RDBMS service instance와 동등한 격리 benchmark 환경을 사용하고, 일반 local/dev/test 환경의 기본 설정을 바꾸지 않는다. Production rollout, autoscaling, Lambda 기본 consumer, queue replay UI, backfill pipeline, complex exactly-once processing은 만들지 않는다.
+Epic 12의 기본 consumer는 Spring Boot portal 내부 worker다. Lambda consumer는 이번 구현 범위에 넣지 않고 IAM/VPC/RDS connection/cold start/deployment unit 분리가 필요해진 뒤 검토할 deferred/non-goal로만 남긴다.
 
-기본안은 Spring Boot portal 내부 SQS consumer다. Lambda는 ingest volume 증가, web process와 ingest worker 분리, 배포 단위 분리 필요가 생긴 뒤 재검토하는 deferred option으로만 둔다.
+성능 개선 주장은 두 단계로 분리한다. Phase 1은 request path에서 DB bucket insert를 제거해 HTTP ingest latency를 줄이는 개선이다. Phase 2는 batch writer가 DB round trip, transaction, catalog lookup/last-seen update를 줄였을 때만 DB batch throughput 개선으로 주장한다.
+
+공통 guardrail:
+
+- SQS는 accepted bucket data-plane insert path의 buffer이며 dashboard snapshot/history source가 아니다.
+- SQS payload size limit, duplicate/no-op, malformed/conflict DLQ, snapshot cutoff, stale/down과 queue lag 분리는 Epic 12 story acceptance에 포함한다.
+- Snapshot cutoff 이후 late bucket은 accepted bucket 저장은 허용하되 이미 생성된 snapshot/history에는 backfill하지 않는다.
+- Production rollout, autoscaling, queue replay UI, backfill pipeline, complex exactly-once processing은 만들지 않는다.
 
 ### Stories
 
-1. SQS batch ingest architecture decision
-   - Spring Boot portal 내부 bounded SQS poller/consumer를 기본안으로 결정한다.
-   - Lambda consumer는 IAM, VPC, DB connection, cold start, deployment unit 증가 때문에 deferred option으로 문서화한다.
-   - SQS는 accepted bucket data-plane insert path의 buffer이며 dashboard snapshot/history source가 아니다.
-2. Ingest enqueue boundary and message contract
-   - 기존 `ingest-envelope` 지원 field를 SQS message로 담는 contract를 정의한다.
-   - Idempotency key, payload hash, payload size, message attribute, redaction guard를 고정한다.
-   - Raw project key, starter credential, Authorization token, webhook URL은 message body/attribute/log에 포함하지 않는다.
-3. Spring Boot SQS polling batch insert worker
-   - Portal 내부 scheduled/bounded poller가 SQS message를 읽고 1분 단위 또는 bounded flush window로 PostgreSQL batch insert를 수행한다.
-   - Batch insert는 `accepted_metric_buckets`의 existing idempotency와 unique constraints를 유지한다.
-   - Visibility timeout, bounded retry, DLQ 후보를 제한하고 request path를 batch insert로 막지 않는다.
-4. Snapshot delay and late-data discard policy
-   - Snapshot scheduler는 current window cutoff 이후 configurable delay를 둔다.
-   - Snapshot cutoff 이후 DB에 저장된 late bucket은 이미 생성된 snapshot/read model history에 backfill하지 않는다.
-   - Snapshot은 immutable read model history이며 replay/backfill/correction pipeline은 non-goal이다.
-5. Portfolio performance verification
-   - Direct insert path와 SQS-buffered batch insert path를 portfolio 전용 격리 benchmark 환경에서 비교한다.
-   - Benchmark 환경은 테스트 시점의 가장 작은 EC2/RDBMS service instance와 동등한 CPU, memory, database capacity 제약을 문서화한다.
-   - 일반 개발용 Docker/PostgreSQL/local profile, smoke profile, CI 기본 설정은 benchmark 제약의 영향을 받지 않는다.
-   - 비교 항목은 insert count, DB round trip, batch size, 처리량, ingest-to-persist latency, duplicate/conflict behavior다.
-   - Production-grade load test, autoscaling proof, cloud benchmark suite는 범위 밖이다.
+1. Architecture and Contract Decision
+   - SQS buffered ingest architecture와 계약 변경 범위를 닫는다.
+   - Standard queue + DLQ, Spring Boot portal 내부 worker, local fake queue 기본/LocalStack opt-in, SQS payload size limit, Lambda deferred/non-goal 경계를 닫힌 결정으로 문서화한다.
+2. Ingest Enqueue Boundary
+   - 기존 HTTP ingest acceptance를 validation/payload hash/enqueue boundary로 분리한다.
+   - Enqueue 성공이 DB insert 완료나 dashboard freshness current를 뜻하지 않도록 `202 queued`와 message contract/redaction guard를 고정한다.
+3. Spring Boot SQS Worker MVP and Idempotency
+   - Portal 내부 worker가 SQS message를 poll/process/delete하는 MVP path를 닫는다.
+   - Same payload duplicate는 no-op success, malformed/conflict는 DLQ 대상, transient DB failure는 retry 대상으로 분류한다.
+4. Snapshot Delay and Pipeline Lag Semantics
+   - Snapshot delay, snapshot cutoff, late-data no-backfill 정책을 정한다.
+   - Queue lag diagnostic은 stale/down state나 host application down copy와 섞지 않는다.
+5. Batch Writer and Performance Verification
+   - Batch writer 최적화와 portfolio 성능 검증을 한 story로 묶는다.
+   - Phase 1 request latency와 Phase 2 DB batch throughput 지표를 분리하고, 일반 local/dev/test 기본값과 benchmark profile을 분리한다.
 
 ## Post-MVP Candidate Backlog
 
