@@ -46,9 +46,9 @@ scope: SQS buffered metric bucket ingest transition
 2. portal request path는 project key와 envelope를 검증하고 payload hash를 계산한다.
 3. DB insert 대신 검증 완료 message를 SQS Standard queue에 enqueue한다.
 4. portal 내부 Spring Boot worker가 SQS를 long polling으로 읽고 batch 단위로 PostgreSQL에 저장한다.
-5. Lambda consumer는 후속 옵션으로 남긴다.
+5. Lambda consumer는 이번 Epic 12 범위에서 제외하고 deferred/non-goal로만 남긴다.
 
-이 프로젝트는 이미 Spring MVC/JPA/PostgreSQL 중심이고, local smoke와 Testcontainers 기반 검증이 잘 잡혀 있다. 그래서 첫 구현은 portal 내부 worker가 배포 단위와 DB connection 관리를 덜 늘린다. Lambda는 web process와 ingest worker를 분리해야 하거나, AWS 운영 경계까지 보여줄 필요가 생겼을 때 승격한다.
+이 프로젝트는 이미 Spring MVC/JPA/PostgreSQL 중심이고, local smoke와 Testcontainers 기반 검증이 잘 잡혀 있다. 그래서 첫 구현은 portal 내부 worker가 배포 단위와 DB connection 관리를 덜 늘린다. Lambda는 web process와 ingest worker를 분리해야 하거나, AWS 운영 경계까지 보여줄 필요가 생겼을 때 별도 epic/story에서 재검토한다.
 
 ### Queue type
 
@@ -60,10 +60,6 @@ scope: SQS buffered metric bucket ingest transition
 참고한 AWS 공식 문서:
 
 - [Amazon SQS standard queues](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/standard-queues.html)
-- [Lambda parameters for Amazon SQS event source mappings](https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-parameters.html)
-- [Creating and configuring an Amazon SQS event source mapping](https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-configure.html)
-- [Handling errors for an SQS event source in Lambda](https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-errorhandling.html)
-- [Configuring scaling behavior for SQS event source mappings](https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-scaling.html)
 
 ## 4. 처리 주기 제안
 
@@ -84,21 +80,11 @@ scope: SQS buffered metric bucket ingest transition
 
 “1분마다 처리”는 가능하지만 기본값으로는 추천하지 않는다. 1분 flush는 DB round trip을 더 줄일 수 있지만, dashboard freshness가 최소 수십 초씩 늦어지고 snapshot delay도 3분 이상으로 늘려야 한다. portfolio benchmark용 low-cost profile로는 둘 수 있다.
 
-### Lambda consumer를 선택할 경우
+### Lambda consumer deferred note
 
-Lambda event source mapping은 cron처럼 1분마다 도는 모델이 아니라 SQS를 계속 poll하고 batch 조건이 차면 function을 호출하는 모델이다. Lambda를 쓴다면 아래처럼 둔다.
+Lambda consumer는 이번 Epic 12 구현 범위에 넣지 않는다. 기본 consumer는 Spring Boot portal 내부 SQS worker로 고정한다.
 
-| 항목 | 제안값 | 이유 |
-| --- | --- | --- |
-| BatchSize | 100~500 | payload 크기를 보고 조정한다. 작은 payload면 더 키울 수 있다. |
-| MaximumBatchingWindowInSeconds | 5~10초 | low latency와 batch 효율 균형점이다. |
-| MaximumConcurrency | 2~5 | DB connection과 catalog race를 보호한다. |
-| Function timeout | 30초 후보 | batch insert worst-case를 실측해서 조정한다. |
-| Visibility timeout | `6 * functionTimeout + batchWindow` 이상 | Lambda/SQS 권장식에 맞춘다. |
-| FunctionResponseTypes | `ReportBatchItemFailures` | batch 일부 실패 시 성공 message 재처리를 줄인다. |
-| DLQ redrive | `maxReceiveCount >= 5` | 반복 실패 message를 분리한다. |
-
-Lambda를 기본안으로 미루는 이유는 IAM, VPC/RDS 접근, cold start, DB connection pooling, 배포 단위가 한 번에 늘어나기 때문이다. 단, AWS 운영 경험을 보여주는 것이 목표라면 공유 batch processor를 먼저 만들고 Lambda handler를 얇게 붙이는 식으로 확장할 수 있다.
+Lambda는 IAM, VPC/RDS 접근, cold start, DB connection pooling, 별도 배포 단위와 event source mapping 운영 부담이 한 번에 늘어나므로 deferred/non-goal로만 남긴다. 후속에 web process와 ingest worker를 분리해야 하거나 AWS 운영 경계를 별도 portfolio 항목으로 보여줄 필요가 생기면, 그때 shared batch processor를 재사용하는 얇은 handler 후보를 새 epic/story로 검토한다.
 
 ## 5. 코드 변경 계획
 
@@ -138,17 +124,17 @@ portal.dashboard-snapshots.fallback-staleness-threshold=67m
   - `ValidatedIngestCandidate`와 payload hash를 반환한다.
 - `MetricBucketDirectAcceptanceService`
   - 기존 direct DB insert path를 보존한다.
-  - local/test profile 또는 fallback path에서 사용한다.
+  - local/test profile 또는 direct rollback path에서 사용한다.
 - `MetricBucketEnqueueService`
   - 검증 완료 candidate를 SQS message로 변환하고 enqueue한다.
-  - enqueue 실패 시 `503 Service Unavailable` 후보로 매핑한다. starter worker는 non-2xx를 retry하므로 기존 재시도 흐름과 맞는다.
+  - enqueue 실패 시 `503 Service Unavailable`로 매핑한다. starter worker는 non-2xx를 retry하므로 기존 재시도 흐름과 맞는다.
 - `IngestAcceptanceService`
   - mode에 따라 direct 또는 enqueue use case를 선택하는 facade로 축소한다.
 
-Controller 응답 후보:
+Controller 응답:
 
 - direct mode: 기존 `201 Created` 유지.
-- sqs mode: `202 Accepted`와 `queued=true`, `receivedAt`, `idempotencyKey`, `messageId` 후보를 반환.
+- sqs mode: enqueue 성공 이후 `202 Accepted`를 반환한다. `queued=true`, `receivedAt`, `idempotencyKey`, `messageId` 노출 여부는 Story 12.2에서 세부화한다.
 
 추천은 SQS mode에서 `202 Accepted`를 쓰는 것이다. `201 Created`는 DB row가 이미 만들어졌다는 의미로 읽히기 쉽다.
 
@@ -176,6 +162,12 @@ Message attribute 후보:
 - `applicationName`
 - `environment`
 - `instanceName`
+
+Payload size guard:
+
+- SQS message body와 attribute 합산 크기는 구현 시점에 확인한 SQS payload size limit 안에 있어야 한다.
+- Limit 초과 envelope는 worker poison message가 되지 않도록 enqueue 전에 `413 Payload Too Large`로 reject한다.
+- Direct fallback은 저장 완료/queued 의미와 성능 측정이 섞일 수 있으므로 Epic 12 path로 열지 않는다.
 
 금지:
 
@@ -226,10 +218,10 @@ LocalStack은 SQS 자체 integration을 확인할 때만 사용한다. 기본 un
 | --- | --- | --- | --- |
 | inserted | delete/ack | 새 row insert | 정상 저장 |
 | duplicate same payload | delete/ack | no-op | SQS at-least-once와 starter retry 흡수 |
-| duplicate different payload | DLQ 후보 | no-op | 같은 idempotency key에 다른 payload |
-| same instance bucket different key | DLQ 후보 | no-op | `uk_buckets_instance_bucket_start` 충돌 |
+| duplicate different payload | DLQ 대상 | no-op | 같은 idempotency key에 다른 payload |
+| same instance bucket different key | DLQ 대상 | no-op | `uk_buckets_instance_bucket_start` 충돌 |
 | transient DB failure | delete하지 않음 | rollback | visibility timeout 후 retry |
-| malformed message | DLQ 후보 | no-op | retry로 회복 불가 |
+| malformed message | DLQ 대상 | no-op | retry로 회복 불가 |
 
 ### 5.6 Repository batch 저장
 
@@ -402,7 +394,7 @@ MVP에서는 dashboard state 계산에 queue backlog를 직접 섞지 않는다.
 - batch insert가 기존 unique constraint를 유지한다.
 - same idempotency/same hash는 no-op 처리된다.
 - same idempotency/different hash는 conflict 처리된다.
-- same instance/bucket start conflict가 DLQ 후보로 분류된다.
+- same instance/bucket start conflict가 DLQ 대상으로 분류된다.
 - catalog application/instance last-seen update가 batch에서 max seenAt 기준으로 유지된다.
 
 ### Worker integration test
@@ -425,24 +417,42 @@ MVP에서는 dashboard state 계산에 queue backlog를 직접 섞지 않는다.
 
 ## 9. 성능 개선 예상
 
-이 수치는 현재 코드 구조에서 유도한 예상이며, 최종 수치는 benchmark story에서 측정해야 한다.
+이 수치는 현재 코드 구조에서 유도한 예상이며, 최종 수치는 Story 12.5 benchmark에서 측정해야 한다. 성능 주장은 Phase 1 request latency와 Phase 2 DB batch throughput으로 분리한다.
 
-| 항목 | 현재 direct insert | SQS + worker 예상 |
+### Phase 1. HTTP request latency 개선
+
+Phase 1의 개선 근거는 request thread가 bucket DB insert/flush를 수행하지 않는다는 점이다.
+
+| 항목 | 현재 direct insert | SQS enqueue path 예상 |
 | --- | --- | --- |
-| HTTP ingest latency | project key 검증 + validation + idempotency DB lookup + catalog get-or-create + bucket insert/flush | project key 검증 + validation + SQS enqueue |
-| Request thread DB 부담 | bucket마다 DB read/write 수행 | project key 검증 DB read는 남고 bucket insert는 worker로 이동 |
-| DB write round trip | bucket마다 `saveAndFlush` 중심 | batch size 100 기준 flush/transaction 횟수 크게 감소 |
-| Burst 흡수 | DB가 느리면 starter retry/drop으로 이어질 수 있음 | SQS가 backlog로 흡수, read model freshness만 지연 |
-| 중복 처리 | request path에서 일부 duplicate를 `409` 처리 | worker가 same payload duplicate를 no-op success 처리 |
+| HTTP ingest latency | project key 검증 + validation + idempotency DB lookup + catalog get-or-create + bucket insert/flush | project key 검증 + validation + payload hash + SQS enqueue |
+| Request thread DB 부담 | bucket마다 DB read/write 수행 | project key 검증 DB read는 남을 수 있고 bucket insert는 worker로 이동 |
 | Dashboard freshness | insert 직후 반영 | enqueue-to-persist latency만큼 늦게 반영 |
+| Burst 흡수 | DB가 느리면 starter retry/drop으로 이어질 수 있음 | SQS가 backlog로 흡수하고 read model freshness가 지연됨 |
 
-예상 개선 범위:
+예상 범위:
 
-- HTTP ingest p95 latency: DB insert가 병목인 환경에서는 30~70% 개선 가능. 다만 BCrypt project key 검증과 SQS network latency가 남으므로 무조건 한 자리 ms가 되지는 않는다.
-- DB ingest throughput: 진짜 batch writer까지 구현하면 3~10배 개선 가능성이 있다. 특히 `saveAndFlush` per bucket을 flush once 또는 JDBC batch로 줄일 때 효과가 크다.
-- DB round trip: batch size 100이 안정적으로 채워지는 부하에서는 bucket insert 관련 round trip을 60~90% 줄일 수 있다. catalog get-or-create batch 최적화 여부에 따라 편차가 크다.
-- 장애 흡수력: 짧은 DB slowdown은 SQS backlog로 흡수할 수 있다. 대신 backlog가 길어지면 dashboard current/freshness와 snapshot 품질이 지연된다.
-- 비용: SQS/Lambda 비용은 추가된다. 반대로 DB peak write pressure와 request thread 점유는 줄어든다.
+- HTTP ingest p95 latency는 DB insert/flush가 병목인 환경에서 개선될 수 있다.
+- BCrypt project key 검증, payload validation, SQS network latency가 남으므로 한 자리 ms나 특정 개선율을 구현 전부터 단정하지 않는다.
+- 이 단계만으로 DB write throughput 개선을 주장하지 않는다. Worker MVP가 기존 `MetricBucketRepository#insert()`를 message별로 재사용하면 DB round trip 개선 폭은 제한된다.
+
+### Phase 2. DB batch throughput 개선
+
+Phase 2의 개선 근거는 batch writer가 DB round trip, transaction, catalog lookup/last-seen update를 줄이는 데 있다.
+
+| 항목 | Worker MVP | Batch writer 예상 |
+| --- | --- | --- |
+| DB write round trip | message별 기존 repository insert 재사용 가능 | batch size 기준 flush/transaction 횟수 축소 |
+| Catalog lookup/update | command마다 application/instance get-or-create 가능 | `projectId + application + environment + instance` grouping으로 축소 |
+| Duplicate/no-op | DB unique constraint와 lookup으로 수렴 | PostgreSQL `ON CONFLICT` 또는 conflict row 재처리로 batch 내 분류 |
+| Throughput claim | end-to-end decoupling claim만 가능 | measured DB throughput claim 가능 |
+
+예상 범위:
+
+- DB ingest throughput 개선은 batch writer 구현과 측정 이후에만 주장한다.
+- `saveAndFlush` per bucket을 flush once, JDBC batch, 또는 PostgreSQL `ON CONFLICT` 기반 insert로 줄일 때 효과가 커질 수 있다.
+- Catalog get-or-create 최적화 여부, conflict 비율, DB connection pool, worker concurrency에 따라 편차가 크다.
+- 짧은 DB slowdown은 SQS backlog로 흡수할 수 있지만, backlog가 길어지면 dashboard current/freshness와 snapshot 품질이 지연된다.
 
 성능 개선을 크게 만들려면 아래 최적화가 중요하다.
 
@@ -473,46 +483,57 @@ MVP에서는 dashboard state 계산에 queue backlog를 직접 섞지 않는다.
 | Batch catalog race | application/instance 중복 생성 또는 lock contention | worker concurrency 1부터 시작, catalog unique/index 검토 |
 | Snapshot 조기 생성 | late bucket 누락 | capture delay + backlog guard + no-backfill 정책 |
 | Local/test 복잡도 증가 | 개발 속도 저하 | direct mode/fake queue 기본, LocalStack은 opt-in |
-| Lambda 조기 도입 | IAM/VPC/DB connection/cold start 부담 | Spring Boot worker 우선, Lambda는 shared processor 후속 |
+| Lambda 조기 도입 | IAM/VPC/DB connection/cold start 부담 | Spring Boot worker 우선, Lambda는 이번 Epic 12 non-goal |
 | 성능 개선 과장 | portfolio 신뢰 저하 | constrained benchmark로 before/after 측정 |
 
-## 11. 구현 순서 제안
+## 11. BMAD 5-story 재구성
 
-1. ADR/contract 정리
-   - Standard vs FIFO, Spring worker vs Lambda, `202` response, late arrival/no-backfill 정책을 닫는다.
+### Story 12.1. Architecture and Contract Decision
 
-2. Enqueue boundary 추가
-   - validation과 persistence를 분리한다.
-   - `QueuedMetricBucketMessage`, publisher interface, fake publisher를 추가한다.
-   - sqs mode controller가 `202`를 반환하게 한다.
+- Standard queue + DLQ, Spring Boot portal 내부 worker, local fake queue/LocalStack opt-in 전략을 닫는다.
+- Lambda consumer는 이번 Epic 12 구현 범위에서 제외하고 deferred/non-goal로만 남긴다.
+- `ingest-envelope`, `read-model-contract`, `time-buckets`, `infrastructure-input-notes`에 반영해야 할 계약 변경과 변경하지 않을 의미를 분리한다.
+- SQS payload size `413`, enqueue success only `202 queued`, stale/down과 queue lag 분리, snapshot cutoff, Phase 1/Phase 2 성능 주장 분리를 후속 story의 source-of-truth로 고정한다.
 
-3. Worker MVP
-   - fake queue 기반 worker와 processor를 만든다.
-   - 처음에는 기존 `MetricBucketRepository#insert()`를 재사용해 end-to-end를 닫는다.
-   - duplicate/conflict/DLQ matrix를 테스트로 고정한다.
+### Story 12.2. Ingest Enqueue Boundary
 
-4. Batch writer 최적화
-   - batch catalog get-or-create와 batch insert를 구현한다.
-   - DB round trip과 insert duration metric을 추가한다.
+- validation과 persistence orchestration을 분리한다.
+- `QueuedMetricBucketMessage`, publisher interface, fake publisher, SQS publisher 후보를 추가한다.
+- Enqueue 성공은 DB insert 완료가 아니므로 SQS mode controller response는 실제 enqueue 성공 이후 `202 queued`를 반환한다.
+- Raw project key, starter credential, Authorization token, webhook URL은 message body/attribute/log에 남기지 않는다.
+- SQS payload size limit 초과 envelope는 구현 전 결정된 정책으로 request path에서 닫는다.
 
-5. Snapshot delay와 late policy
-   - `capture-delay`, fallback threshold, backlog guard를 추가한다.
-   - late arrival timeline test를 추가한다.
+### Story 12.3. Spring Boot SQS Worker MVP and Idempotency
 
-6. Optional AWS/LocalStack integration
-   - 실제 SQS send/receive/delete/visibility/DLQ를 opt-in으로 확인한다.
-   - Lambda handler는 필요할 때 shared `MetricBucketBatchProcessor`만 호출하게 얇게 만든다.
+- Portal 내부 Spring Boot worker가 SQS long polling, bounded batch accumulation, process, ack/delete를 수행한다.
+- 처음에는 기존 `MetricBucketRepository#insert()` 재사용을 허용해 end-to-end를 닫는다.
+- Same idempotency key + same payload hash는 no-op success로 ack/delete한다.
+- Same key/different hash, same instance bucket/different key, malformed message는 retry로 회복되지 않는 DLQ 대상으로 분리한다.
+- Transient DB failure는 delete하지 않고 visibility timeout 후 retry되게 한다.
 
-7. Performance verification
-   - 동일 fixture로 direct mode와 sqs mode를 비교한다.
-   - 지표: request p95, enqueue-to-persist latency, DB statement count, batch size, insert throughput, duplicate/conflict 처리.
+### Story 12.4. Snapshot Delay and Pipeline Lag Semantics
+
+- `capture-delay`, snapshot cutoff, fallback threshold, late-data no-backfill 정책을 닫는다.
+- Queue lag/backlog diagnostic은 stale/down state를 직접 바꾸지 않고 별도 metric/runbook/API 후보로 남긴다.
+- Late arrival timeline test와 snapshot immutability checklist로 검증한다.
+
+### Story 12.5. Batch Writer and Performance Verification
+
+- Batch catalog get-or-create와 batch insert 전략을 구현하고 DB round trip, insert duration, batch size metric을 추가한다.
+- 동일 fixture로 direct mode, SQS enqueue path, worker MVP, batch writer path를 분리해 비교한다.
+- Phase 1 request p95/enqueue latency와 Phase 2 DB throughput/round-trip 개선을 같은 report 안에서 분리한다.
+- Benchmark는 portfolio 전용 opt-in profile에서만 수행하고 일반 local/dev/test 기본값을 바꾸지 않는다.
 
 ## 12. 남은 결정
 
 - SQS mode에서 기존 endpoint path를 그대로 쓰고 `202`만 바꿀지, `/api/ingest/v1/buckets:enqueue` 같은 별도 path를 둘지.
 - 기본 local profile을 direct로 유지할지, fake queue worker까지 기본으로 켤지.
-- batch flush 기본값을 10초로 할지, README에 남은 1분 flush 방향을 유지할지.
-- snapshot delay 기본값을 120초로 시작할지, 180초로 더 보수적으로 둘지.
+- 12.2 response body field와 SQS `messageId` 노출 여부.
+- batch flush 기본값을 10초로 할지, 1분 flush 방향을 유지할지.
+- visibility timeout, max receive count, malformed/conflict DLQ를 어떤 sanitized payload shape로 남길지.
+- snapshot delay exact default를 120초로 시작할지, 180초로 더 보수적으로 둘지.
+- fallback threshold grace를 어떻게 계산할지.
 - severe late bucket을 제한 없이 저장할지, retention/max-lateness를 둘지.
+- queue lag/backlog diagnostic을 stale/down state와 분리해 어떤 metric/API/runbook에 남길지.
 - project key verification cache를 이번 범위에 포함할지.
-- Lambda를 portfolio demo에서 꼭 보여줄지, Spring worker로 충분한지.
+- benchmark manifest와 Phase 1 request latency/Phase 2 DB batch throughput pass-fail threshold를 어떻게 분리할지.

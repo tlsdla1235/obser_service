@@ -190,150 +190,220 @@ Non-goal:
 
 ## 4. Epic 12 추가 제안
 
-## Epic 12. SQS Buffered Batch Ingest Performance Path
+## Epic 12. SQS Buffered Ingest Transition
 
-목표: instance별 ingest payload를 SQS에 넣고, Spring Boot portal 내부 SQS consumer가 1분 단위 bounded batch insert로 PostgreSQL에 저장하는 성능 개선 path를 계획한다.
+목표: portal HTTP ingest request path에서는 검증과 enqueue까지만 수행하고, Spring Boot portal 내부 SQS worker가 bounded batch로 `accepted_metric_buckets` 저장을 처리하도록 전환한다.
 
-Epic 12는 배포 전 portfolio 관점의 성능 개선 근거를 남기는 epic이다. 성능 개선 검증에 한해서만 테스트 시점의 가장 작은 EC2/RDBMS service instance와 동등한 격리 benchmark 환경을 사용하고, 일반 local/dev/test 환경의 기본 설정을 바꾸지 않는다. Production rollout, autoscaling, Lambda 기본 consumer, queue replay UI, backfill pipeline, complex exactly-once processing은 만들지 않는다.
+Epic 12는 배포 전 portfolio 관점의 성능 개선 근거를 남기는 epic이다. 성능 개선 주장은 두 단계로 분리한다.
 
-기본안은 Spring Boot portal 내부 SQS consumer다. Lambda는 ingest volume 증가, web process와 ingest worker 분리, 배포 단위 분리 필요가 생긴 뒤 재검토하는 deferred option으로만 둔다.
+- Phase 1 request latency 개선: HTTP request thread에서 bucket DB insert와 flush를 제거하고 SQS enqueue까지로 줄이는 개선이다. DB batch throughput 개선을 주장하지 않는다.
+- Phase 2 DB batch throughput 개선: worker 쪽 batch writer가 DB round trip, transaction, catalog lookup/last-seen update를 줄인 뒤에만 주장한다.
 
-### Story 12.1. SQS batch ingest architecture decision
+기본 consumer는 Spring Boot portal 내부 worker로 고정한다. Lambda consumer는 이번 Epic 12 구현 범위에 넣지 않고, IAM/VPC/RDS connection/cold start/deployment unit 분리가 필요해진 뒤 검토할 deferred/non-goal로만 남긴다.
+
+Epic 12의 공통 guardrail:
+
+- SQS는 accepted bucket data-plane insert path의 buffer이며 dashboard snapshot/history source가 아니다.
+- SQS Standard의 at-least-once/out-of-order 처리는 duplicate/no-op, conflict, DLQ 분류와 DB unique constraint로 흡수한다.
+- SQS payload size limit 초과 envelope는 enqueue 전에 `413 Payload Too Large`로 reject한다. Direct fallback은 성능/의미 혼선을 만들 수 있어 Epic 12 path로 열지 않는다.
+- Malformed message, same idempotency key/different payload hash, same instance bucket/different idempotency key conflict는 retry로 회복되지 않는 DLQ 대상으로 둔다.
+- Snapshot cutoff 이후 도착한 late bucket은 accepted bucket 저장은 허용하되 이미 생성된 snapshot/history에는 backfill하지 않는다.
+- stale/down은 accepted bucket data freshness이며 queue lag나 worker backlog를 host application down으로 표현하지 않는다.
+
+### Story 12.1. Architecture and Contract Decision
 
 목표:
 
-- SQS buffered batch ingest의 기본 consumer를 Spring Boot portal 내부 worker로 결정하고 Lambda 대안을 ADR 수준으로 비교한다.
-- 기존 Spring Boot/JPA/PostgreSQL 중심 구조와 MVP/portfolio 범위 안에서 큐 도입 이유를 설명한다.
+- SQS buffered ingest의 architecture decision과 계약 변경 범위를 후속 story의 ADR/contract gate로 닫는다.
+- Spring Boot portal 내부 worker를 기본 consumer로 확정하고 Lambda는 deferred/non-goal로만 기록한다.
+- Enqueue failure, payload size, DLQ taxonomy, snapshot cutoff, queue lag naming, cutover/rollback 기준을 후속 story가 임의 해석하지 못하게 결정 ledger로 남긴다.
 
 Acceptance criteria:
 
-- 기본안은 Spring Boot portal 내부 bounded SQS poller/consumer다.
-- Lambda consumer는 IAM, VPC, DB connection, cold start, deployment unit 증가 때문에 deferred option으로 기록한다.
-- SQS는 accepted bucket data-plane insert path의 buffer이며 dashboard snapshot/history source가 아니다.
-- Redis/PostgreSQL outbox와의 차이를 `infrastructure-input-notes.md` 관점에서 비교한다.
-- Local/smoke 환경에서 SQS를 실제 LocalStack으로 둘지, fake queue adapter로 둘지 open decision으로 남긴다.
+- Standard queue + DLQ, Spring Boot portal 내부 worker, fake queue 기본 local/test adapter, LocalStack opt-in integration 전략이 결정으로 문서화된다.
+- `ingest-envelope`, `read-model-contract`, `time-buckets`, `infrastructure-input-notes`에서 Epic 12가 손대는 계약과 손대지 않는 계약이 분리된다.
+- Phase 1 request latency 개선과 Phase 2 DB batch throughput 개선 주장이 분리된다.
+- SQS payload size limit 초과는 enqueue 전 reject로 닫고 direct fallback은 열지 않으며, payload too large는 `413`, SQS unavailable/config/serialization failure는 `503`으로 분리된다.
+- `202 queued`는 enqueue 성공일 때만 허용되고, redaction guard, queue lag diagnostic, snapshot cutoff, DLQ 분류가 후속 story의 source-of-truth로 연결된다.
+- SQS mode는 feature flag/config opt-in, rollback은 direct mode 복귀로 두며, Story 12.3 worker MVP는 Story 12.4 lag semantics 없이 사용자-facing rollout하지 않는다.
+- Lambda consumer는 구현 story나 acceptance criteria에 들어가지 않고 deferred/non-goal로만 남는다.
 
 Non-goal:
 
-- Production autoscaling, multi-region queue, Lambda rollout, Kafka/Kinesis comparison.
-- Web process와 worker service의 즉시 분리.
+- Lambda handler, separate worker deployment, production autoscaling, multi-region queue, Kafka/Kinesis 비교.
+- Dashboard/read-model/source semantics 변경 구현.
+
+12.1에서 닫힌 결정:
+
+- Spring Boot portal 내부 worker를 기본 consumer로 둔다.
+- Lambda consumer는 deferred/non-goal이다.
+- Local smoke는 fake queue adapter를 기본으로 두고, LocalStack SQS는 opt-in integration으로 둔다.
+- SQS payload size 초과는 enqueue 전 `413` reject로 닫고 direct fallback을 열지 않는다.
+- Enqueue 성공일 때만 `202 queued`를 허용하고 SQS unavailable/config/serialization failure는 `503`으로 둔다.
+- SQS mode는 opt-in이고 rollback은 direct mode 복귀다.
+- Story 12.3 worker MVP만으로는 사용자-facing rollout하지 않는다.
 
 주요 검증 방법:
 
-- ADR review.
-- Existing MVC/JPA/PostgreSQL boundary review.
-- Infrastructure notes update checklist.
+- ADR/contract review.
+- MVC/JPA/PostgreSQL boundary review.
+- Lambda deferred/non-goal 문구 검색.
 
-### Story 12.2. Ingest enqueue boundary and message contract
+위험과 완화책:
+
+- 큐 도입이 read model source 변경처럼 해석될 위험은 SQS를 data-plane write buffer로만 정의해 완화한다.
+- 성능 개선이 과장될 위험은 Phase 1/Phase 2 지표를 분리해 완화한다.
+
+### Story 12.2. Ingest Enqueue Boundary
 
 목표:
 
-- 기존 instance ingest envelope를 SQS message로 담는 contract를 정의한다.
-- Idempotency key, payload hash, payload size, redaction guard, message attribute 후보를 고정한다.
+- 기존 HTTP ingest acceptance를 validation/payload hash/enqueue boundary로 분리한다.
+- Enqueue 성공이 DB insert 완료나 dashboard freshness current를 뜻하지 않는 API 의미를 고정한다.
 
 Acceptance criteria:
 
-- Message body는 기존 `ingest-envelope` 지원 field만 포함하고 unknown/unsupported field는 semantic source로 쓰지 않는다.
-- Message는 `projectId` 또는 verified project reference, application identity, bucket boundary, idempotency key, payload hash, receivedAt/enqueuedAt 후보를 포함한다.
-- Raw project key, starter credential, Authorization token, webhook URL은 message body/attribute/log에 포함하지 않는다.
-- SQS payload size limit을 넘는 envelope 처리 정책을 reject 또는 direct fallback 중 하나로 문서화한다.
-- HTTP ingest response가 `201/200` 유지인지 `202 queued` 전환인지 구현 전 open decision으로 남긴다.
-- Enqueue 성공은 DB insert 완료나 dashboard read model freshness current를 의미하지 않는다.
+- Request path는 project key verification, envelope validation, idempotency key format check, payload hash 계산, SQS message 생성까지만 포함한다.
+- Message body/attribute에는 verified project reference, application identity, bucket boundary, idempotency key, payload hash, receivedAt/enqueuedAt 후보만 포함하고 raw project key, starter credential, Authorization token, webhook URL은 포함하지 않는다.
+- SQS payload size limit 초과 envelope는 enqueue 전에 `413 Payload Too Large`로 reject하며 direct fallback을 열지 않는다.
+- SQS mode 응답은 실제 enqueue 성공 이후 `202 queued`로 반환하며, `201 Created`와 혼동되지 않도록 response body field를 Story 12.2에서 세부화한다.
+- Enqueue 실패는 starter retry가 가능한 non-2xx로 매핑한다.
 
 Non-goal:
 
 - Starter가 SQS에 직접 쓰는 AWS credential model.
-- Arbitrary raw metric import, custom metric map, queue replay UI.
+- Worker poll/insert 구현, batch writer 최적화, queue replay UI.
+
+구현 전 닫아야 할 결정:
+
+- 기존 `/api/ingest/v1/buckets` 응답을 mode별로 바꿀지, enqueue 전용 endpoint를 둘지.
+- `202 queued` response body field와 `messageId` 노출 여부.
+- Queue message schema version과 canonical payload hash 기준.
 
 주요 검증 방법:
 
-- Message schema review.
+- Message schema/golden JSON review.
 - Secret redaction checklist.
-- Idempotency duplicate/conflict scenario table.
+- Controller status mapping review.
 
-### Story 12.3. Spring Boot SQS polling batch insert worker
+위험과 완화책:
 
-목표:
+- `202`가 저장 완료로 오해될 위험은 response/copy/API 문서에서 queued semantics를 분리해 완화한다.
+- Payload size 초과가 worker poison message가 될 위험은 enqueue 전 size guard로 완화한다.
 
-- Portal 내부 scheduled/bounded poller가 SQS message를 읽고 1분 단위 또는 bounded flush window로 PostgreSQL batch insert를 수행하는 worker 계획을 닫는다.
-- Request path를 DB batch insert로 막지 않고, visibility timeout/retry/delete boundary를 제한한다.
-
-Acceptance criteria:
-
-- Worker는 bounded batch size, max poll duration, 1분 flush cadence 후보를 가진다.
-- Batch insert는 `accepted_metric_buckets`의 existing idempotency와 unique constraints를 유지한다.
-- Duplicate same payload는 no-second-row success semantics를 유지하고, same key/different hash는 conflict/dead-letter 후보로 분리한다.
-- Visibility timeout은 batch insert worst-case보다 길게 잡고, 실패 message는 bounded retry 후 DLQ 후보로 보낸다.
-- Worker failure는 portal dashboard read API와 static UI delivery를 막지 않는다.
-- Repository/service batching은 lifecycle state, p95/p99, endpoint priority, operational event를 계산하지 않는다.
-
-Non-goal:
-
-- Exactly-once guarantee claim, complex poison-message replay UI, DB trigger/state calculation.
-- Separate worker deployment as default.
-
-주요 검증 방법:
-
-- Local/fake SQS worker smoke.
-- Batch insert count and transaction boundary review.
-- Duplicate/conflict/DLQ scenario review.
-
-### Story 12.4. Snapshot delay and late-data discard policy
+### Story 12.3. Spring Boot SQS Worker MVP and Idempotency
 
 목표:
 
-- Batch insert 여유를 위해 snapshot 생성 시점을 약간 늦추고, snapshot cutoff 이후 저장된 late data는 해당 snapshot/history에 backfill하지 않는 정책을 문서화한다.
-- Snapshot은 immutable read model history로 유지한다.
+- Portal 내부 Spring Boot worker가 SQS message를 poll/process/delete하는 MVP path를 닫는다.
+- Duplicate/no-op/conflict/malformed/DLQ semantics를 DB unique constraint와 함께 고정한다.
 
 Acceptance criteria:
 
-- Snapshot scheduler는 current window cutoff 이후 configurable delay를 둔다.
-- Delay 후보는 batch poll cadence보다 충분히 길게 잡되, dashboard current response의 15분 current/baseline 의미를 바꾸지 않는다.
-- Snapshot cutoff 이후 DB에 저장된 late bucket은 이미 생성된 snapshot/read model history에 반영하지 않는다.
-- Late data discard는 해당 snapshot/history에 대한 정책이며 accepted bucket 저장 자체를 금지한다는 뜻이 아니다.
-- Replay/backfill/complex correction pipeline은 non-goal로 명시된다.
-- Snapshot detail과 operational history는 저장 당시 read model을 immutable하게 보여주며 current state를 재판정하지 않는다.
+- Worker는 bounded batch size, max batch age, long polling, visibility timeout, max receive count, DLQ policy를 가진다.
+- MVP writer는 기존 `MetricBucketRepository#insert()` 재사용을 허용해 end-to-end를 먼저 닫되, DB unique constraint를 최종 idempotency guard로 유지한다.
+- Same idempotency key + same payload hash는 no-op success로 ack/delete한다.
+- Same idempotency key + different payload hash, same instance/bucket start + different key, malformed message는 retry로 회복되지 않는 conflict/malformed DLQ 대상으로 분류한다.
+- Transient DB failure는 message를 delete하지 않고 visibility timeout 후 retry되게 한다.
+- Worker failure는 dashboard read API, static UI delivery, heartbeat endpoint를 막지 않는다.
 
 Non-goal:
 
-- Backfill UI, replay queue, snapshot recomputation job, immutable snapshot correction workflow.
-- Raw snapshot explorer.
+- Exactly-once guarantee claim, Lambda consumer, separate worker deployment, replay UI.
+- Lifecycle state, p95/p99, endpoint priority, operational event 계산.
+
+구현 전 닫아야 할 결정:
+
+- Same payload duplicate를 판정하기 위해 필요한 stored payload hash/identity projection API.
+- Visibility timeout, max receive count, sanitized DLQ payload shape의 exact 기본값과 field.
+- Partial batch failure ack/delete 전략.
 
 주요 검증 방법:
 
-- Timeline example review: bucket end, enqueue, batch insert, snapshot cutoff, late arrival.
+- Fake queue worker smoke.
+- Duplicate/no-op/conflict/DLQ matrix test.
+- Transient DB failure retry/delete boundary test.
+
+위험과 완화책:
+
+- SQS duplicate/out-of-order로 중복 row가 생길 위험은 DB unique constraint와 no-op success로 완화한다.
+- Poison message가 무한 retry될 위험은 malformed/conflict DLQ 분류와 max receive count로 완화한다.
+
+### Story 12.4. Snapshot Delay and Pipeline Lag Semantics
+
+목표:
+
+- SQS enqueue-to-persist delay를 흡수할 snapshot delay와 cutoff 정책을 고정한다.
+- stale/down과 queue lag/worker backlog를 혼동하지 않는 read-model semantics를 문서화한다.
+
+Acceptance criteria:
+
+- Snapshot scheduler는 target current window cutoff 이후 configurable delay를 둔다.
+- Delay는 worker batch cadence보다 충분히 길게 잡되 dashboard current/baseline 15분 의미를 바꾸지 않는다.
+- `persistedAt > snapshotCutoffAt` late bucket은 accepted bucket에는 저장될 수 있지만 이미 생성된 snapshot/history에는 backfill하지 않는다.
+- Queue lag diagnostic은 stale/down state를 직접 바꾸지 않고 별도 operational metric 또는 diagnostic으로 남는다.
+- Fallback staleness threshold는 `60분 + snapshotDelay + grace` 후보로 재계산된다.
+- Snapshot detail/history는 저장 당시 read model을 immutable하게 보여주며 current state를 재판정하지 않는다.
+
+Non-goal:
+
+- Snapshot recomputation job, late-data backfill pipeline, replay queue, raw snapshot explorer.
+- Queue lag를 host application down 또는 telemetry unreachable로 표시하는 UI 의미 변경.
+
+구현 전 닫아야 할 결정:
+
+- Snapshot delay 기본값과 max snapshot delay/backlog guard.
+- Late bucket metric 이름과 operator-facing diagnostic 노출 위치.
+- Fallback threshold grace 값.
+
+주요 검증 방법:
+
+- Timeline example review.
 - Snapshot immutability checklist.
-- History marker copy review.
+- stale/down vs queue lag copy/static review.
 
-### Story 12.5. Portfolio performance verification
+위험과 완화책:
+
+- Snapshot이 너무 일찍 생성돼 late bucket이 누락될 위험은 delay/cutoff/backlog guard로 완화한다.
+- Queue backlog를 host health 문제로 오해할 위험은 read-model contract의 accepted bucket axis와 queue diagnostic axis를 분리해 완화한다.
+
+### Story 12.5. Batch Writer and Performance Verification
 
 목표:
 
-- Direct insert path와 SQS-buffered batch insert path를 portfolio 전용 격리 benchmark 환경에서 비교해 성능 개선 근거를 남긴다.
-- Benchmark 환경은 테스트 시점의 가장 작은 EC2/RDBMS service instance와 동등한 CPU, memory, database capacity 제약을 명시한다.
-- 일반 개발용 Docker/PostgreSQL/local profile, smoke profile, CI 기본 설정은 benchmark 제약의 영향을 받지 않게 분리한다.
+- Phase 2 batch writer 최적화와 portfolio 성능 검증을 한 story로 묶어 DB throughput 개선 근거를 남긴다.
+- 일반 local/dev/test 기본 설정은 benchmark 제약의 영향을 받지 않게 분리한다.
 
 Acceptance criteria:
 
-- 비교 항목은 insert count, DB round trip, batch size, 처리량, ingest-to-persist latency, duplicate/conflict behavior다.
-- Before/after는 동일 fixture payload와 동일 idempotency distribution으로 비교한다.
-- Benchmark runbook은 테스트 시점의 최소 EC2/RDBMS service instance class 또는 동등 사양을 environment manifest로 기록한다.
-- Benchmark profile/config/script는 명시적으로 opt-in할 때만 동작하며 일반 개발 profile과 local smoke profile을 변경하지 않는다.
-- 결과는 production-grade load test나 autoscaling claim이 아니라 portfolio 전용 constrained benchmark로 표현한다.
-- Benchmark output은 secret, raw project key, token, webhook URL을 남기지 않는다.
-- Performance report는 accepted bucket source-of-truth와 heartbeat separation 원칙을 재확인한다.
+- Batch writer는 command grouping, catalog get-or-create/last-seen update 축소, JDBC batch 또는 `ON CONFLICT` 후보를 비교해 선택한다.
+- DB batch throughput 개선 주장은 batch writer 적용 후 DB statement/round-trip, persist duration, throughput 지표로만 제시한다.
+- Phase 1 request latency 지표와 Phase 2 DB throughput 지표는 report에서 분리된다.
+- Benchmark는 동일 fixture, 동일 idempotency distribution, 동일 constrained environment manifest로 direct path와 SQS-buffered path를 비교한다.
+- Benchmark output은 secret, raw project key, token, webhook URL, raw payload를 남기지 않는다.
+- 결과는 production-grade load test, autoscaling proof, cost model이 아니라 portfolio 전용 constrained benchmark로 표현한다.
 
 Non-goal:
 
-- Production load test, cost model, autoscaling proof, cloud benchmark suite.
+- Production load test, autoscaling proof, cloud benchmark suite, long-retention analytics, endpoint timeseries.
 - 일반 개발 환경의 DB/queue/runtime 설정을 가장 작은 instance 제약에 맞춰 낮추는 것.
-- Long-retention analytics나 endpoint timeseries 성능 주장.
+
+구현 전 닫아야 할 결정:
+
+- JDBC batch vs JPA `saveAll` vs PostgreSQL `ON CONFLICT` 전략.
+- Benchmark 환경 manifest의 최소 EC2/RDBMS 동등 사양 산정 방식.
+- 성능 report에 남길 지표와 pass/fail threshold.
 
 주요 검증 방법:
 
-- Isolated benchmark runbook과 environment manifest review.
 - DB statement/round-trip count comparison.
-- Latency distribution summary with bounded sample size.
+- Latency distribution and ingest-to-persist lag summary.
+- Duplicate/conflict behavior under batch load.
+
+위험과 완화책:
+
+- Request latency 개선을 DB throughput 개선으로 오해할 위험은 report에서 Phase 1/Phase 2를 분리해 완화한다.
+- Batch conflict가 transaction 전체를 흔들 위험은 conflict row 재처리 또는 `ON CONFLICT` 기반 분류 전략으로 완화한다.
 
 ## 5. sprint-status.yaml Backlog Entry 제안
 
@@ -349,11 +419,11 @@ epic-11: backlog
 epic-11-retrospective: optional
 
 epic-12: backlog
-12-1-sqs-batch-ingest-architecture-decision: backlog
-12-2-ingest-enqueue-boundary-and-message-contract: backlog
-12-3-spring-boot-sqs-polling-batch-insert-worker: backlog
-12-4-snapshot-delay-and-late-data-discard-policy: backlog
-12-5-portfolio-performance-verification: backlog
+12-1-architecture-and-contract-decision: done
+12-2-ingest-enqueue-boundary: backlog
+12-3-spring-boot-sqs-worker-mvp-and-idempotency: backlog
+12-4-snapshot-delay-and-pipeline-lag-semantics: backlog
+12-5-batch-writer-and-performance-verification: backlog
 epic-12-retrospective: optional
 ```
 
@@ -364,12 +434,10 @@ epic-12-retrospective: optional
 3. Epic 11 default cooldown 값을 30분, 60분, 또는 config-only로 둘지 결정해야 한다.
 4. Epic 11 alert delivery suppression state를 in-memory로 둘지, lightweight persisted state로 둘지 결정해야 한다.
 5. Epic 11 Discord webhook을 global portal config로 둘지, project별 config로 열지 결정해야 한다. MVP 제안은 global/local secret config다.
-6. Epic 12에서 HTTP ingest response를 enqueue 성공 기준 `202 queued`로 바꿀지, 기존 `201/200 accepted` semantics를 보존할지 결정해야 한다.
-7. Epic 12 local/smoke queue runtime을 LocalStack SQS로 둘지, fake queue adapter로 둘지 결정해야 한다.
-8. Epic 12 batch insert worker와 web process를 같은 Spring Boot runtime에 둘지, 후속 별도 worker service 분리를 준비만 할지 결정해야 한다.
-9. Epic 12 visibility timeout, max receive count, DLQ policy의 MVP 기본값을 정해야 한다.
-10. Epic 12 snapshot delay 기본값과 late-data cutoff 기준을 정해야 한다.
-11. Epic 12 portfolio benchmark에서 "가장 작은 EC2/RDBMS service instance와 동등한 환경"의 구체 instance class와 동등 사양 산정 방식을 테스트 시점에 확정해야 한다.
+6. Story 12.2에서 `202 queued` response body field와 SQS `messageId` 노출 여부를 정해야 한다.
+7. Story 12.3에서 visibility timeout, max receive count, sanitized DLQ payload shape의 exact 기본값과 field를 정해야 한다.
+8. Story 12.4에서 snapshot delay exact default, fallback grace, queue lag diagnostic 위치를 정해야 한다.
+9. Story 12.5에서 benchmark manifest와 pass/fail threshold 또는 evidence-only 판정 기준을 정해야 한다.
 
 ## 7. 구현 착수 전 최소 의사결정
 
@@ -379,8 +447,5 @@ epic-12-retrospective: optional
 - Epic 11: Alert trigger는 `degraded`, `stale`, `down`, selected high-confidence concern 후보로 제한한다.
 - Epic 11: Cooldown 기본값과 storage 방식을 정한다.
 - Epic 11: Alert message copy는 host application down, 정상 확정, 복구 완료를 단정하지 않는 문구로 고정한다.
-- Epic 12: Spring Boot portal 내부 SQS consumer를 기본안으로 승인한다.
-- Epic 12: HTTP ingest response semantics와 DB insert 완료 전 UI/read model 표현을 결정한다.
-- Epic 12: SQS message contract와 idempotency conflict 처리 방식을 확정한다.
-- Epic 12: Snapshot delay 기본값과 late-data discard cutoff를 확정한다.
-- Epic 12: Portfolio 전용 격리 benchmark 방식, 최소 EC2/RDBMS 동등 사양, 비교 지표를 확정한다.
+- Epic 12: Story 12.1에서 Spring Boot portal 내부 worker, Lambda deferred/non-goal, SQS mode opt-in/direct rollback, enqueue success only `202`, enqueue failure `503`, payload too large `413`, no direct fallback, fake queue 기본/LocalStack opt-in, 12.3-only rollout 금지를 닫았다.
+- Epic 12: 후속 story에서는 12.2 response body/messageId, 12.3 visibility timeout/max receive count/DLQ payload shape, 12.4 snapshot delay/fallback grace/queue lag diagnostic 위치, 12.5 benchmark manifest/pass-fail threshold만 세부화한다.
