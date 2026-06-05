@@ -204,6 +204,28 @@ class OperationalEventHistoryProjectorTest {
     }
 
     @Test
+    void queuePipelineDiagnosticsDoNotBecomeHostHealthCertaintyCopy() {
+        List<OperationalEventItem> events = projector.project(
+                PROJECT_ID,
+                APPLICATION_ID,
+                List.of(
+                        row(58, "2026-05-27T11:00:00Z", "down", "state_change", null, null, null,
+                                pipelineDiagnosticJson()),
+                        row(57, "2026-05-27T10:50:00Z", "active", "hourly_scheduled", null, null, null,
+                                emptyJson())));
+
+        OperationalEventItem event = only(events, OperationalEventType.DOWN_ENTERED);
+
+        assertSafeEventCopy(event);
+        assertThat(event.summary()).doesNotContain(
+                "telemetry unreachable",
+                "starter unreachable",
+                "host application down",
+                "host process down",
+                "앱 내려감");
+    }
+
+    @Test
     void promotesHighConfidenceConcernsWithGuardSuppressionBoundaryAndShortSpikeMapping() {
         DashboardSnapshotDetailRow firstConcern = row(
                 10,
@@ -455,6 +477,22 @@ class OperationalEventHistoryProjectorTest {
                 {
                   "snapshotEndpointEvidence": {"items": []},
                   "triageCards": [],
+                  "recovery": {"isRecovering": false},
+                  "zeroInsight": null
+                }
+                """;
+    }
+
+    private static String pipelineDiagnosticJson() {
+        return """
+                {
+                  "snapshotEndpointEvidence": {"items": []},
+                  "triageCards": [],
+                  "pipelineDiagnostics": {
+                    "queueLag": "PT10M",
+                    "queueBacklog": 42,
+                    "workerFailure": "persist_timeout"
+                  },
                   "recovery": {"isRecovering": false},
                   "zeroInsight": null
                 }

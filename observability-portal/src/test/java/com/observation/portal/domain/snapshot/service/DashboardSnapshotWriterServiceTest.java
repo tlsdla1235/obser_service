@@ -132,6 +132,7 @@ class DashboardSnapshotWriterServiceTest {
                 DashboardSnapshotCaptureReason.HOURLY_SCHEDULED,
                 WINDOW_END,
                 WINDOW_END.plusSeconds(5),
+                WINDOW_END.plusSeconds(5),
                 "test");
     }
 

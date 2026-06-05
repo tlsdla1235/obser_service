@@ -9,6 +9,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -25,10 +26,14 @@ import java.util.Objects;
 @Service
 public class DashboardSnapshotScheduler {
 
+    private static final Duration HOURLY_TARGET_SPAN = Duration.ofHours(1);
+
     private final ApplicationRepository applicationRepository;
     private final DashboardSnapshotCaptureService captureService;
     private final Clock clock;
+    private final DashboardSnapshotProperties snapshotProperties;
     private final int retentionDays;
+    private OffsetDateTime lastDispatchedWindowEndUtc;
 
     /**
      * scheduler 대상 조회 repository, capture use case, UTC clock과 retention horizon을 주입한다.
@@ -37,12 +42,14 @@ public class DashboardSnapshotScheduler {
             ApplicationRepository applicationRepository,
             DashboardSnapshotCaptureService captureService,
             Clock clock,
+            DashboardSnapshotProperties snapshotProperties,
             @Value("${portal.dashboard-snapshots.retention-days:14}") int retentionDays) {
         this.applicationRepository = Objects.requireNonNull(
                 applicationRepository,
                 "applicationRepository must not be null");
         this.captureService = Objects.requireNonNull(captureService, "captureService must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null").withZone(ZoneOffset.UTC);
+        this.snapshotProperties = Objects.requireNonNull(snapshotProperties, "snapshotProperties must not be null");
         if (retentionDays <= 0) {
             throw new IllegalArgumentException("retentionDays must be positive");
         }
@@ -50,27 +57,41 @@ public class DashboardSnapshotScheduler {
     }
 
     /**
-     * UTC 정시마다 active application 중 retention horizon 안 accepted bucket이 있는 application으로 capture를 dispatch한다.
+     * UTC minute tick마다 cutoff가 지난 첫 tick에서만 hourly target capture를 dispatch한다.
      */
-    @Scheduled(cron = "0 0 * * * *", zone = "UTC")
-    public void dispatchHourlyScheduledCaptures() {
+    @Scheduled(cron = "0 * * * * *", zone = "UTC")
+    public synchronized void dispatchHourlyScheduledCaptures() {
         Instant requestedAt = clock.instant();
-        Instant targetWindowEnd = requestedAt.truncatedTo(ChronoUnit.HOURS);
+        Instant targetWindowEnd = targetWindowEnd(requestedAt);
         OffsetDateTime requestedAtUtc = OffsetDateTime.ofInstant(requestedAt, ZoneOffset.UTC);
         OffsetDateTime targetWindowEndUtc = OffsetDateTime.ofInstant(targetWindowEnd, ZoneOffset.UTC);
+        OffsetDateTime snapshotCutoffAt = snapshotProperties.snapshotCutoffAt(targetWindowEndUtc);
+        if (requestedAtUtc.isBefore(snapshotCutoffAt) || targetWindowEndUtc.equals(lastDispatchedWindowEndUtc)) {
+            return;
+        }
         OffsetDateTime retentionCutoffUtc = requestedAtUtc.minusDays(retentionDays);
         List<ApplicationEntity> applications =
                 applicationRepository.findActiveApplicationsWithAcceptedBucketSince(
                         retentionCutoffUtc,
-                        targetWindowEndUtc);
+                        targetWindowEndUtc,
+                        snapshotCutoffAt);
+        lastDispatchedWindowEndUtc = targetWindowEndUtc;
         for (ApplicationEntity application : applications) {
             captureService.capture(new DashboardSnapshotCaptureRequest(
                     application.projectId(),
                     application.id(),
                     DashboardSnapshotCaptureReason.HOURLY_SCHEDULED,
                     targetWindowEndUtc,
+                    snapshotCutoffAt,
                     requestedAtUtc,
                     "utc_hourly_scheduler"));
         }
+    }
+
+    private Instant targetWindowEnd(Instant requestedAt) {
+        if (snapshotProperties.getCaptureDelay().compareTo(HOURLY_TARGET_SPAN) < 0) {
+            return requestedAt.truncatedTo(ChronoUnit.HOURS);
+        }
+        return requestedAt.minus(snapshotProperties.getCaptureDelay()).truncatedTo(ChronoUnit.HOURS);
     }
 }

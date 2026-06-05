@@ -169,6 +169,20 @@ public class MetricBucketRepository {
     }
 
     /**
+     * snapshot read model freshness source를 bucket_end와 accepted_at cutoff가 모두 지난 row로 제한한다.
+     */
+    @Transactional(readOnly = true)
+    public Optional<OffsetDateTime> findLatestBucketEndUtcByApplicationIdAtOrBeforeAcceptedAt(
+            UUID applicationId,
+            Instant evaluationAtUtc,
+            OffsetDateTime acceptedAtCutoffUtc) {
+        return acceptedMetricBucketJpaRepository.findLatestBucketEndUtcByApplicationIdAtOrBeforeAcceptedAt(
+                Objects.requireNonNull(applicationId, "applicationId must not be null"),
+                toUtcOffsetDateTime(Objects.requireNonNull(evaluationAtUtc, "evaluationAtUtc must not be null")),
+                toUtcOffsetDateTime(acceptedAtCutoffUtc));
+    }
+
+    /**
      * selected application instance scope의 마지막 accepted bucket endUtc timestamp만 조회한다.
      *
      * <p>이 값은 freshness source로만 사용하며, current window end boundary를 대체하지 않는다.</p>
@@ -180,6 +194,20 @@ public class MetricBucketRepository {
         return acceptedMetricBucketJpaRepository.findLatestBucketEndUtcByApplicationInstanceIdAtOrBefore(
                 Objects.requireNonNull(applicationInstanceId, "applicationInstanceId must not be null"),
                 toUtcOffsetDateTime(Objects.requireNonNull(evaluationAtUtc, "evaluationAtUtc must not be null")));
+    }
+
+    /**
+     * snapshot instance summary freshness source를 accepted_at cutoff 이전 persisted bucket으로 제한한다.
+     */
+    @Transactional(readOnly = true)
+    public Optional<OffsetDateTime> findLatestBucketEndUtcByApplicationInstanceIdAtOrBeforeAcceptedAt(
+            UUID applicationInstanceId,
+            Instant evaluationAtUtc,
+            OffsetDateTime acceptedAtCutoffUtc) {
+        return acceptedMetricBucketJpaRepository.findLatestBucketEndUtcByApplicationInstanceIdAtOrBeforeAcceptedAt(
+                Objects.requireNonNull(applicationInstanceId, "applicationInstanceId must not be null"),
+                toUtcOffsetDateTime(Objects.requireNonNull(evaluationAtUtc, "evaluationAtUtc must not be null")),
+                toUtcOffsetDateTime(acceptedAtCutoffUtc));
     }
 
     /**
@@ -202,6 +230,32 @@ public class MetricBucketRepository {
         OffsetDateTime windowEnd = toUtcOffsetDateTime(requiredWindowEndUtc);
         WindowBucketAggregate aggregate = acceptedMetricBucketJpaRepository
                 .sumWindowRequestAndErrorCountsByApplicationId(requiredApplicationId, windowStart, windowEnd);
+        return Objects.requireNonNullElse(aggregate, WindowBucketAggregate.zero());
+    }
+
+    /**
+     * snapshot application window aggregate를 accepted_at cutoff 이전 row만으로 합산한다.
+     */
+    @Transactional(readOnly = true)
+    public WindowBucketAggregate findWindowAggregateByApplicationIdAcceptedAtOrBefore(
+            UUID applicationId,
+            Instant windowStartUtc,
+            Instant windowEndUtc,
+            OffsetDateTime acceptedAtCutoffUtc) {
+        UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
+        Instant requiredWindowStartUtc = Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null");
+        Instant requiredWindowEndUtc = Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null");
+        if (!requiredWindowEndUtc.isAfter(requiredWindowStartUtc)) {
+            throw new IllegalArgumentException("windowEndUtc must be after windowStartUtc");
+        }
+        OffsetDateTime windowStart = toUtcOffsetDateTime(requiredWindowStartUtc);
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(requiredWindowEndUtc);
+        WindowBucketAggregate aggregate = acceptedMetricBucketJpaRepository
+                .sumWindowRequestAndErrorCountsByApplicationIdAcceptedAtOrBefore(
+                        requiredApplicationId,
+                        windowStart,
+                        windowEnd,
+                        toUtcOffsetDateTime(acceptedAtCutoffUtc));
         return Objects.requireNonNullElse(aggregate, WindowBucketAggregate.zero());
     }
 
@@ -235,6 +289,32 @@ public class MetricBucketRepository {
     }
 
     /**
+     * snapshot instance summary aggregate를 accepted_at cutoff 이전 row만으로 합산한다.
+     */
+    @Transactional(readOnly = true)
+    public WindowBucketAggregate findWindowAggregateByApplicationInstanceIdAcceptedAtOrBefore(
+            UUID applicationInstanceId,
+            Instant windowStartUtc,
+            Instant windowEndUtc,
+            OffsetDateTime acceptedAtCutoffUtc) {
+        UUID requiredApplicationInstanceId = Objects.requireNonNull(
+                applicationInstanceId,
+                "applicationInstanceId must not be null");
+        Instant requiredWindowStartUtc = Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null");
+        Instant requiredWindowEndUtc = Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null");
+        if (!requiredWindowEndUtc.isAfter(requiredWindowStartUtc)) {
+            throw new IllegalArgumentException("windowEndUtc must be after windowStartUtc");
+        }
+        WindowBucketAggregate aggregate = acceptedMetricBucketJpaRepository
+                .sumWindowRequestAndErrorCountsByApplicationInstanceIdAcceptedAtOrBefore(
+                        requiredApplicationInstanceId,
+                        toUtcOffsetDateTime(requiredWindowStartUtc),
+                        toUtcOffsetDateTime(requiredWindowEndUtc),
+                        toUtcOffsetDateTime(acceptedAtCutoffUtc));
+        return Objects.requireNonNullElse(aggregate, WindowBucketAggregate.zero());
+    }
+
+    /**
      * dashboard current window에서 instance bucket scope local percentile JSON evidence row를 조회한다.
      *
      * <p>조회는 application scope와 `(start, end]` bucket end boundary, `local_percentiles_json is not null` 조건만 적용하고
@@ -255,6 +335,28 @@ public class MetricBucketRepository {
                 requiredApplicationId,
                 windowStart,
                 windowEnd);
+    }
+
+    /**
+     * snapshot source-scoped percentile evidence를 accepted_at cutoff 이전 row만으로 조회한다.
+     */
+    @Transactional(readOnly = true)
+    public List<LocalPercentileEvidenceRow> findLocalPercentileEvidenceRowsByApplicationIdAcceptedAtOrBefore(
+            UUID applicationId,
+            Instant windowStartUtc,
+            Instant windowEndUtc,
+            OffsetDateTime acceptedAtCutoffUtc) {
+        UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
+        OffsetDateTime windowStart = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null"));
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null"));
+        validateWindow(windowStart, windowEnd);
+        return acceptedMetricBucketJpaRepository.findLocalPercentileEvidenceRowsByApplicationIdAcceptedAtOrBefore(
+                requiredApplicationId,
+                windowStart,
+                windowEnd,
+                toUtcOffsetDateTime(acceptedAtCutoffUtc));
     }
 
     /**
@@ -283,6 +385,31 @@ public class MetricBucketRepository {
     }
 
     /**
+     * snapshot instance summary percentile point를 accepted_at cutoff 이전 row만으로 조회한다.
+     */
+    @Transactional(readOnly = true)
+    public List<LocalPercentileEvidenceRow> findLocalPercentileEvidenceRowsByApplicationInstanceIdAcceptedAtOrBefore(
+            UUID applicationInstanceId,
+            Instant windowStartUtc,
+            Instant windowEndUtc,
+            OffsetDateTime acceptedAtCutoffUtc) {
+        UUID requiredApplicationInstanceId = Objects.requireNonNull(
+                applicationInstanceId,
+                "applicationInstanceId must not be null");
+        OffsetDateTime windowStart = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null"));
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null"));
+        validateWindow(windowStart, windowEnd);
+        return acceptedMetricBucketJpaRepository
+                .findLocalPercentileEvidenceRowsByApplicationInstanceIdAcceptedAtOrBefore(
+                        requiredApplicationInstanceId,
+                        windowStart,
+                        windowEnd,
+                        toUtcOffsetDateTime(acceptedAtCutoffUtc));
+    }
+
+    /**
      * dashboard histogram distribution용 application summary duration bucket JSON evidence row를 조회한다.
      *
      * <p>`endpoints_json`은 읽지 않으며, current/baseline 판단과 boundary mismatch guard는 service에서 수행한다.</p>
@@ -302,6 +429,29 @@ public class MetricBucketRepository {
                 requiredApplicationId,
                 windowStart,
                 windowEnd);
+    }
+
+    /**
+     * snapshot histogram evidence를 accepted_at cutoff 이전 application row만으로 조회한다.
+     */
+    @Transactional(readOnly = true)
+    public List<HistogramBucketEvidenceRow> findSummaryDurationBucketEvidenceRowsByApplicationIdAcceptedAtOrBefore(
+            UUID applicationId,
+            Instant windowStartUtc,
+            Instant windowEndUtc,
+            OffsetDateTime acceptedAtCutoffUtc) {
+        UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
+        OffsetDateTime windowStart = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null"));
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null"));
+        validateWindow(windowStart, windowEnd);
+        return acceptedMetricBucketJpaRepository
+                .findSummaryDurationBucketEvidenceRowsByApplicationIdAcceptedAtOrBefore(
+                        requiredApplicationId,
+                        windowStart,
+                        windowEnd,
+                        toUtcOffsetDateTime(acceptedAtCutoffUtc));
     }
 
     /**
@@ -354,6 +504,28 @@ public class MetricBucketRepository {
     }
 
     /**
+     * snapshot endpoint priority evidence를 accepted_at cutoff 이전 application row만으로 조회한다.
+     */
+    @Transactional(readOnly = true)
+    public List<EndpointEvidenceRow> findEndpointEvidenceRowsByApplicationIdAcceptedAtOrBefore(
+            UUID applicationId,
+            Instant windowStartUtc,
+            Instant windowEndUtc,
+            OffsetDateTime acceptedAtCutoffUtc) {
+        UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
+        OffsetDateTime windowStart = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null"));
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null"));
+        validateWindow(windowStart, windowEnd);
+        return acceptedMetricBucketJpaRepository.findEndpointEvidenceRowsByApplicationIdAcceptedAtOrBefore(
+                requiredApplicationId,
+                windowStart,
+                windowEnd,
+                toUtcOffsetDateTime(acceptedAtCutoffUtc));
+    }
+
+    /**
      * instance evidence read model용 selected instance endpoint JSON evidence row를 조회한다.
      *
      * <p>조회는 selected `application_instance_id`와 `(start, end]` bucket end boundary, `endpoints_json is not null`
@@ -380,6 +552,30 @@ public class MetricBucketRepository {
     }
 
     /**
+     * snapshot instance endpoint evidence ref를 accepted_at cutoff 이전 selected instance row만으로 조회한다.
+     */
+    @Transactional(readOnly = true)
+    public List<EndpointEvidenceRow> findEndpointEvidenceRowsByApplicationInstanceIdAcceptedAtOrBefore(
+            UUID applicationInstanceId,
+            Instant windowStartUtc,
+            Instant windowEndUtc,
+            OffsetDateTime acceptedAtCutoffUtc) {
+        UUID requiredApplicationInstanceId = Objects.requireNonNull(
+                applicationInstanceId,
+                "applicationInstanceId must not be null");
+        OffsetDateTime windowStart = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null"));
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null"));
+        validateWindow(windowStart, windowEnd);
+        return acceptedMetricBucketJpaRepository.findEndpointEvidenceRowsByApplicationInstanceIdAcceptedAtOrBefore(
+                requiredApplicationInstanceId,
+                windowStart,
+                windowEnd,
+                toUtcOffsetDateTime(acceptedAtCutoffUtc));
+    }
+
+    /**
      * latest accepted bucket과 직전 bucket boundary를 최신순 projection으로 읽어 lightweight gap 근거를 만든다.
      *
      * <p>이 method는 state/recovery/p95/p99/endpoint priority를 계산하지 않고, timestamp projection만 service에
@@ -397,6 +593,34 @@ public class MetricBucketRepository {
                         requiredApplicationId,
                         evaluationAt,
                         PageRequest.of(0, 2));
+        if (rows.isEmpty()) {
+            return Optional.empty();
+        }
+        AcceptedBucketGapEvidenceRow latest = rows.get(0);
+        Optional<OffsetDateTime> previous = rows.size() > 1
+                ? Optional.of(rows.get(1).bucketEndUtc())
+                : Optional.empty();
+        return Optional.of(new AcceptedBucketGapEvidence(latest.bucketEndUtc(), previous));
+    }
+
+    /**
+     * snapshot previous-state/gap 근거를 bucket_end와 accepted_at cutoff가 모두 지난 boundary로 제한한다.
+     */
+    @Transactional(readOnly = true)
+    public Optional<AcceptedBucketGapEvidence> findAcceptedBucketGapEvidenceByApplicationIdAtOrBeforeAcceptedAt(
+            UUID applicationId,
+            Instant evaluationAtUtc,
+            OffsetDateTime acceptedAtCutoffUtc) {
+        UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
+        OffsetDateTime evaluationAt = toUtcOffsetDateTime(
+                Objects.requireNonNull(evaluationAtUtc, "evaluationAtUtc must not be null"));
+        List<AcceptedBucketGapEvidenceRow> rows =
+                acceptedMetricBucketJpaRepository
+                        .findAcceptedBucketGapEvidenceRowsByApplicationIdAtOrBeforeAcceptedAt(
+                                requiredApplicationId,
+                                evaluationAt,
+                                toUtcOffsetDateTime(acceptedAtCutoffUtc),
+                                PageRequest.of(0, 2));
         if (rows.isEmpty()) {
             return Optional.empty();
         }
@@ -439,6 +663,40 @@ public class MetricBucketRepository {
     }
 
     /**
+     * snapshot degraded/spike recent bucket evidence를 accepted_at cutoff 이전 row만으로 조회한다.
+     */
+    @Transactional(readOnly = true)
+    public List<RecentBucketEvidenceRow> findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBeforeAcceptedAt(
+            UUID applicationId,
+            Instant evaluationAtUtc,
+            OffsetDateTime acceptedAtCutoffUtc) {
+        UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
+        OffsetDateTime evaluationAt = toUtcOffsetDateTime(
+                Objects.requireNonNull(evaluationAtUtc, "evaluationAtUtc must not be null"));
+        OffsetDateTime acceptedAtCutoff = toUtcOffsetDateTime(acceptedAtCutoffUtc);
+        List<AcceptedBucketBoundaryEvidenceRow> boundaries =
+                acceptedMetricBucketJpaRepository
+                        .findRecentBucketBoundaryEvidenceRowsByApplicationIdAtOrBeforeAcceptedAt(
+                                requiredApplicationId,
+                                evaluationAt,
+                                acceptedAtCutoff,
+                                PageRequest.of(0, RECENT_BUCKET_EVIDENCE_LIMIT));
+        if (boundaries.isEmpty()) {
+            return List.of();
+        }
+        List<OffsetDateTime> bucketEndUtcValues = boundaries.stream()
+                .map(AcceptedBucketBoundaryEvidenceRow::bucketEndUtc)
+                .toList();
+        List<RecentBucketEvidenceRow> rows =
+                acceptedMetricBucketJpaRepository
+                        .findRecentBucketEvidenceRowsByApplicationIdAndBucketEndUtcInAcceptedAtOrBefore(
+                                requiredApplicationId,
+                                bucketEndUtcValues,
+                                acceptedAtCutoff);
+        return RecentBucketEvidenceRows.applicationLevelBuckets(rows, RECENT_BUCKET_EVIDENCE_LIMIT, objectMapper);
+    }
+
+    /**
      * current window 안 latest runtime ratio sample projection을 조회한다.
      *
      * <p>ratio latest sample은 saturation hint evidence일 뿐이며 repository는 state/rule/recovery/root cause나
@@ -459,6 +717,31 @@ public class MetricBucketRepository {
                         requiredApplicationId,
                         windowStart,
                         windowEnd,
+                        PageRequest.of(0, 1))
+                .stream()
+                .findFirst();
+    }
+
+    /**
+     * snapshot saturation hint를 accepted_at cutoff 이전 application row만으로 조회한다.
+     */
+    @Transactional(readOnly = true)
+    public Optional<RuntimeRatioEvidenceRow> findLatestRuntimeRatioEvidenceRowByApplicationIdAcceptedAtOrBefore(
+            UUID applicationId,
+            Instant windowStartUtc,
+            Instant windowEndUtc,
+            OffsetDateTime acceptedAtCutoffUtc) {
+        UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
+        OffsetDateTime windowStart = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null"));
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null"));
+        validateWindow(windowStart, windowEnd);
+        return acceptedMetricBucketJpaRepository.findRuntimeRatioEvidenceRowsByApplicationIdAcceptedAtOrBefore(
+                        requiredApplicationId,
+                        windowStart,
+                        windowEnd,
+                        toUtcOffsetDateTime(acceptedAtCutoffUtc),
                         PageRequest.of(0, 1))
                 .stream()
                 .findFirst();
@@ -492,6 +775,34 @@ public class MetricBucketRepository {
                 .findFirst();
     }
 
+    /**
+     * snapshot instance resource hint를 accepted_at cutoff 이전 selected instance row만으로 조회한다.
+     */
+    @Transactional(readOnly = true)
+    public Optional<RuntimeRatioEvidenceRow> findLatestRuntimeRatioEvidenceRowByApplicationInstanceIdAcceptedAtOrBefore(
+            UUID applicationInstanceId,
+            Instant windowStartUtc,
+            Instant windowEndUtc,
+            OffsetDateTime acceptedAtCutoffUtc) {
+        UUID requiredApplicationInstanceId = Objects.requireNonNull(
+                applicationInstanceId,
+                "applicationInstanceId must not be null");
+        OffsetDateTime windowStart = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null"));
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null"));
+        validateWindow(windowStart, windowEnd);
+        return acceptedMetricBucketJpaRepository
+                .findRuntimeRatioEvidenceRowsByApplicationInstanceIdAcceptedAtOrBefore(
+                        requiredApplicationInstanceId,
+                        windowStart,
+                        windowEnd,
+                        toUtcOffsetDateTime(acceptedAtCutoffUtc),
+                        PageRequest.of(0, 1))
+                .stream()
+                .findFirst();
+    }
+
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -516,6 +827,11 @@ public class MetricBucketRepository {
 
     private static OffsetDateTime toUtcOffsetDateTime(Instant instant) {
         return OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
+    }
+
+    private static OffsetDateTime toUtcOffsetDateTime(OffsetDateTime offsetDateTime) {
+        return Objects.requireNonNull(offsetDateTime, "offsetDateTime must not be null")
+                .withOffsetSameInstant(ZoneOffset.UTC);
     }
 
     private static String requireText(String value, String fieldName) {

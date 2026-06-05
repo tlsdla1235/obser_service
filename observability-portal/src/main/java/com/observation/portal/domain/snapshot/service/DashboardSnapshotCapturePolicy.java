@@ -116,9 +116,10 @@ public class DashboardSnapshotCapturePolicy {
             return false;
         }
         List<RecentBucketEvidenceRow> recentBuckets =
-                metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBefore(
+                metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBeforeAcceptedAt(
                         command.applicationId(),
-                        command.currentWindowEndUtc().toInstant());
+                        command.currentWindowEndUtc().toInstant(),
+                        command.snapshotCutoffAt());
         return badBucketCount(recentBuckets) >= SHORT_STRONG_SPIKE_BAD_BUCKET_THRESHOLD;
     }
 

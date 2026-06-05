@@ -153,6 +153,46 @@ class StarterHeartbeatTelemetryRepositoryIntegrationTest {
     }
 
     @Test
+    void findsLatestHeartbeatAtOrBeforeSnapshotWindowBoundary() throws SQLException {
+        heartbeatTelemetryRepository.upsertLatest(command(
+                "orders-api",
+                "prod",
+                "pod-a",
+                "0.1.0",
+                "2026-05-24T08:29:30Z",
+                "2026-05-24T08:30:00Z",
+                1L,
+                30));
+        heartbeatTelemetryRepository.upsertLatest(command(
+                "orders-api",
+                "prod",
+                "pod-b",
+                "0.1.0",
+                "2026-05-24T08:31:30Z",
+                "2026-05-24T08:32:00Z",
+                2L,
+                30));
+        OffsetDateTime snapshotWindowEnd = OffsetDateTime.parse("2026-05-24T08:31:00Z");
+
+        assertThat(heartbeatTelemetryRepository.findLatestByApplicationScopeAtOrBeforeReceivedAt(
+                PROJECT_ID,
+                "orders-api",
+                "prod",
+                snapshotWindowEnd))
+                .hasValueSatisfying(record -> {
+                    assertThat(record.instanceName()).isEqualTo("pod-a");
+                    assertThat(record.lastReceivedAtUtc()).isEqualTo(OffsetDateTime.parse("2026-05-24T08:30:00Z"));
+                });
+        assertThat(heartbeatTelemetryRepository.findByIdentityAtOrBeforeReceivedAt(
+                PROJECT_ID,
+                "orders-api",
+                "prod",
+                "pod-b",
+                snapshotWindowEnd))
+                .isEmpty();
+    }
+
+    @Test
     void heartbeatTelemetryDoesNotCreateAcceptedBucketOrCatalogRows() throws SQLException {
         heartbeatTelemetryRepository.upsertLatest(command(
                 "orders-api",

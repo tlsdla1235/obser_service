@@ -1,6 +1,7 @@
 package com.observation.portal.domain.snapshot.model;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -15,6 +16,7 @@ public record DashboardSnapshotCaptureRequest(
         UUID applicationId,
         DashboardSnapshotCaptureReason captureReason,
         OffsetDateTime currentWindowEndUtc,
+        OffsetDateTime snapshotCutoffAt,
         OffsetDateTime requestedAt,
         String triggerSource
 ) {
@@ -26,8 +28,19 @@ public record DashboardSnapshotCaptureRequest(
         Objects.requireNonNull(projectId, "projectId must not be null");
         Objects.requireNonNull(applicationId, "applicationId must not be null");
         Objects.requireNonNull(captureReason, "captureReason must not be null");
-        Objects.requireNonNull(currentWindowEndUtc, "currentWindowEndUtc must not be null");
-        Objects.requireNonNull(requestedAt, "requestedAt must not be null");
+        currentWindowEndUtc = Objects.requireNonNull(
+                currentWindowEndUtc,
+                "currentWindowEndUtc must not be null")
+                .withOffsetSameInstant(ZoneOffset.UTC);
+        snapshotCutoffAt = Objects.requireNonNull(
+                snapshotCutoffAt,
+                "snapshotCutoffAt must not be null")
+                .withOffsetSameInstant(ZoneOffset.UTC);
+        requestedAt = Objects.requireNonNull(requestedAt, "requestedAt must not be null")
+                .withOffsetSameInstant(ZoneOffset.UTC);
+        if (snapshotCutoffAt.isBefore(currentWindowEndUtc)) {
+            throw new IllegalArgumentException("snapshotCutoffAt must not be before currentWindowEndUtc");
+        }
         triggerSource = normalizeTriggerSource(triggerSource);
     }
 

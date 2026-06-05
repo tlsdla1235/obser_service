@@ -25,6 +25,7 @@ class DashboardSnapshotCapturePolicyTest {
     private static final UUID PROJECT_ID = UUID.fromString("00000000-0000-0000-0000-000000005801");
     private static final UUID APPLICATION_ID = UUID.fromString("00000000-0000-0000-0000-000000005811");
     private static final OffsetDateTime WINDOW_END = OffsetDateTime.parse("2026-05-27T13:00:00Z");
+    private static final OffsetDateTime SNAPSHOT_CUTOFF_AT = OffsetDateTime.parse("2026-05-27T13:02:00Z");
 
     private final DashboardSnapshotRepository snapshotRepository = mock(DashboardSnapshotRepository.class);
     private final MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
@@ -79,9 +80,10 @@ class DashboardSnapshotCapturePolicyTest {
     void treatsShortStrongSpikeAsIndependentRecentBadBucketEvidence() {
         when(snapshotRepository.findLatestByApplicationId(APPLICATION_ID))
                 .thenReturn(Optional.of(latest("active")));
-        when(metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBefore(
+        when(metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBeforeAcceptedAt(
                 APPLICATION_ID,
-                WINDOW_END.toInstant()))
+                WINDOW_END.toInstant(),
+                SNAPSHOT_CUTOFF_AT))
                 .thenReturn(List.of(
                         recentBucket("2026-05-27T12:59:00Z", 100L, 5L),
                         recentBucket("2026-05-27T12:59:30Z", 100L, 7L)));
@@ -101,9 +103,10 @@ class DashboardSnapshotCapturePolicyTest {
     void rejectsShortStrongSpikeWhenConfidenceGuardDoesNotPass() {
         when(snapshotRepository.findLatestByApplicationId(APPLICATION_ID))
                 .thenReturn(Optional.of(latest("active")));
-        when(metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBefore(
+        when(metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBeforeAcceptedAt(
                 APPLICATION_ID,
-                WINDOW_END.toInstant()))
+                WINDOW_END.toInstant(),
+                SNAPSHOT_CUTOFF_AT))
                 .thenReturn(List.of(
                         recentBucket("2026-05-27T12:59:00Z", 100L, 5L),
                         recentBucket("2026-05-27T12:59:30Z", 100L, 7L)));
@@ -123,9 +126,10 @@ class DashboardSnapshotCapturePolicyTest {
     void rejectsShortStrongSpikeWhenBadBucketGuardDoesNotPass() {
         when(snapshotRepository.findLatestByApplicationId(APPLICATION_ID))
                 .thenReturn(Optional.of(latest("active")));
-        when(metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBefore(
+        when(metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBeforeAcceptedAt(
                 APPLICATION_ID,
-                WINDOW_END.toInstant()))
+                WINDOW_END.toInstant(),
+                SNAPSHOT_CUTOFF_AT))
                 .thenReturn(List.of(recentBucket("2026-05-27T12:59:30Z", 100L, 5L)));
 
         DashboardSnapshotWriteCommand weakSpike = command(
@@ -141,9 +145,10 @@ class DashboardSnapshotCapturePolicyTest {
     void fixedPriorityKeepsHighConfidenceConcernAheadOfShortStrongSpike() {
         when(snapshotRepository.findLatestByApplicationId(APPLICATION_ID))
                 .thenReturn(Optional.of(latest("active")));
-        when(metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBefore(
+        when(metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBeforeAcceptedAt(
                 APPLICATION_ID,
-                WINDOW_END.toInstant()))
+                WINDOW_END.toInstant(),
+                SNAPSHOT_CUTOFF_AT))
                 .thenReturn(List.of(
                         recentBucket("2026-05-27T12:59:00Z", 100L, 5L),
                         recentBucket("2026-05-27T12:59:30Z", 100L, 7L)));
@@ -175,6 +180,7 @@ class DashboardSnapshotCapturePolicyTest {
                 readModel(stateCode, triageCards, endpointPriority),
                 reason,
                 WINDOW_END,
+                SNAPSHOT_CUTOFF_AT,
                 WINDOW_END.plusSeconds(5),
                 "test");
     }

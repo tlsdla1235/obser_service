@@ -50,6 +50,7 @@ class DashboardReadModelServiceTest {
     private static final Instant EVALUATION_AT = Instant.parse("2026-05-25T10:32:30Z");
     private static final Instant CURRENT_START = Instant.parse("2026-05-25T10:17:30Z");
     private static final Instant BASELINE_START = Instant.parse("2026-05-25T10:02:30Z");
+    private static final OffsetDateTime SNAPSHOT_CUTOFF_AT = OffsetDateTime.parse("2026-05-25T10:34:30Z");
     private static final Clock CLOCK = Clock.fixed(QUERY_AT, ZoneOffset.UTC);
     private static final List<String> UNSAFE_OPERATIONAL_OUTCOME_COPY = List.of(
             "host application down",
@@ -126,6 +127,121 @@ class DashboardReadModelServiceTest {
                 CURRENT_START,
                 EVALUATION_AT))
                 .thenReturn(Optional.empty());
+    }
+
+    @Test
+    void snapshotReadModelUsesAcceptedAtCutoffAcrossBucketEvidenceQueries() {
+        ApplicationEntity application = application();
+        when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
+                .thenReturn(Optional.of(application));
+        when(heartbeatRepository.findLatestByApplicationScopeAtOrBeforeReceivedAt(
+                PROJECT_ID,
+                "orders-api",
+                "prod",
+                offset(EVALUATION_AT)))
+                .thenReturn(Optional.empty());
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBeforeAcceptedAt(
+                APPLICATION_ID,
+                EVALUATION_AT,
+                SNAPSHOT_CUTOFF_AT))
+                .thenReturn(Optional.of(offset("2026-05-25T10:31:30Z")));
+        when(metricBucketRepository.findWindowAggregateByApplicationIdAcceptedAtOrBefore(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT,
+                SNAPSHOT_CUTOFF_AT))
+                .thenReturn(new WindowBucketAggregate(100L, 0L));
+        when(metricBucketRepository.findWindowAggregateByApplicationIdAcceptedAtOrBefore(
+                APPLICATION_ID,
+                BASELINE_START,
+                CURRENT_START,
+                SNAPSHOT_CUTOFF_AT))
+                .thenReturn(WindowBucketAggregate.zero());
+        when(metricBucketRepository.findLocalPercentileEvidenceRowsByApplicationIdAcceptedAtOrBefore(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT,
+                SNAPSHOT_CUTOFF_AT))
+                .thenReturn(List.of());
+        when(metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationIdAcceptedAtOrBefore(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT,
+                SNAPSHOT_CUTOFF_AT))
+                .thenReturn(List.of());
+        when(metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationIdAcceptedAtOrBefore(
+                APPLICATION_ID,
+                BASELINE_START,
+                CURRENT_START,
+                SNAPSHOT_CUTOFF_AT))
+                .thenReturn(List.of());
+        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationIdAcceptedAtOrBefore(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT,
+                SNAPSHOT_CUTOFF_AT))
+                .thenReturn(List.of());
+        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationIdAcceptedAtOrBefore(
+                APPLICATION_ID,
+                BASELINE_START,
+                CURRENT_START,
+                SNAPSHOT_CUTOFF_AT))
+                .thenReturn(List.of());
+        when(metricBucketRepository.findAcceptedBucketGapEvidenceByApplicationIdAtOrBeforeAcceptedAt(
+                APPLICATION_ID,
+                EVALUATION_AT,
+                SNAPSHOT_CUTOFF_AT))
+                .thenReturn(Optional.empty());
+        when(metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBeforeAcceptedAt(
+                APPLICATION_ID,
+                EVALUATION_AT,
+                SNAPSHOT_CUTOFF_AT))
+                .thenReturn(List.of());
+        when(metricBucketRepository.findLatestRuntimeRatioEvidenceRowByApplicationIdAcceptedAtOrBefore(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT,
+                SNAPSHOT_CUTOFF_AT))
+                .thenReturn(Optional.empty());
+
+        ApplicationDashboardReadModel dashboard = service.getDashboardForSnapshot(
+                        PROJECT_ID,
+                        APPLICATION_ID,
+                        offset(EVALUATION_AT),
+                        SNAPSHOT_CUTOFF_AT)
+                .orElseThrow();
+
+        assertThat(dashboard.generatedAt()).isEqualTo(offset(EVALUATION_AT));
+        assertThat(dashboard.application().sourceWindow().current().endUtc()).isEqualTo(offset(EVALUATION_AT));
+        verify(metricBucketRepository).findLatestBucketEndUtcByApplicationIdAtOrBeforeAcceptedAt(
+                APPLICATION_ID,
+                EVALUATION_AT,
+                SNAPSHOT_CUTOFF_AT);
+        verify(metricBucketRepository).findWindowAggregateByApplicationIdAcceptedAtOrBefore(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT,
+                SNAPSHOT_CUTOFF_AT);
+        verify(metricBucketRepository).findWindowAggregateByApplicationIdAcceptedAtOrBefore(
+                APPLICATION_ID,
+                BASELINE_START,
+                CURRENT_START,
+                SNAPSHOT_CUTOFF_AT);
+        verify(metricBucketRepository).findEndpointEvidenceRowsByApplicationIdAcceptedAtOrBefore(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT,
+                SNAPSHOT_CUTOFF_AT);
+        verify(heartbeatRepository).findLatestByApplicationScopeAtOrBeforeReceivedAt(
+                PROJECT_ID,
+                "orders-api",
+                "prod",
+                offset(EVALUATION_AT));
+        verify(heartbeatRepository, never()).findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod");
+        verify(metricBucketRepository, never()).findWindowAggregateByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT);
     }
 
     @Test

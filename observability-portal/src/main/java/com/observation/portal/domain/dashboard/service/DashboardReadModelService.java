@@ -189,7 +189,8 @@ public class DashboardReadModelService {
                     ApplicationDashboardReadModel readModel = buildDashboard(
                             application,
                             queryAt,
-                            floorToBucketBoundary(queryAt));
+                            floorToBucketBoundary(queryAt),
+                            BucketQueryContext.current());
                     DashboardSnapshotFallbackCaptureService fallbackCaptureService =
                             fallbackCaptureServiceProvider.getIfAvailable();
                     if (fallbackCaptureService != null) {
@@ -200,83 +201,103 @@ public class DashboardReadModelService {
     }
 
     /**
-     * scheduled snapshot capture가 target current window end를 고정해 dashboard read model을 생성하는 내부 경로다.
+     * scheduled snapshot capture가 target current window end와 accepted_at cutoff를 고정해 read model을 생성하는 내부 경로다.
      *
-     * <p>이 method는 query fallback capture를 호출하지 않아 scheduler/capture/writer recursion을 만들지 않는다.</p>
+     * <p>이 method는 query fallback capture를 호출하지 않아 scheduler/capture/writer recursion을 만들지 않는다. current dashboard
+     * path와 같은 15분 window 계산을 쓰되, bucket repository 조회만 snapshot cutoff 기준으로 제한한다.</p>
      */
     @Transactional(readOnly = true)
     public Optional<ApplicationDashboardReadModel> getDashboardForSnapshot(
             UUID projectId,
             UUID applicationId,
-            OffsetDateTime currentWindowEndUtc) {
+            OffsetDateTime currentWindowEndUtc,
+            OffsetDateTime snapshotCutoffAt) {
         UUID requiredProjectId = Objects.requireNonNull(projectId, "projectId must not be null");
         UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
         OffsetDateTime requiredCurrentWindowEndUtc = Objects.requireNonNull(
                 currentWindowEndUtc,
                 "currentWindowEndUtc must not be null")
                 .withOffsetSameInstant(ZoneOffset.UTC);
+        OffsetDateTime requiredSnapshotCutoffAt = Objects.requireNonNull(
+                snapshotCutoffAt,
+                "snapshotCutoffAt must not be null")
+                .withOffsetSameInstant(ZoneOffset.UTC);
+        if (requiredSnapshotCutoffAt.isBefore(requiredCurrentWindowEndUtc)) {
+            throw new IllegalArgumentException("snapshotCutoffAt must not be before currentWindowEndUtc");
+        }
         return applicationRepository.findByIdAndProjectId(requiredApplicationId, requiredProjectId)
                 .map(application -> buildDashboard(
                         application,
                         requiredCurrentWindowEndUtc.toInstant(),
-                        requiredCurrentWindowEndUtc.toInstant()));
+                        requiredCurrentWindowEndUtc.toInstant(),
+                        BucketQueryContext.snapshot(requiredSnapshotCutoffAt)));
     }
 
     private ApplicationDashboardReadModel buildDashboard(
             ApplicationEntity application,
             Instant queryAt,
-            Instant evaluationAt) {
+            Instant evaluationAt,
+            BucketQueryContext bucketQueryContext) {
         DashboardTimeWindow dashboardWindow = timeBucketWindowCalculator.dashboardWindowEndingAt(evaluationAt);
-        Optional<OffsetDateTime> latestBucketEndUtc = metricBucketRepository
-                .findLatestBucketEndUtcByApplicationIdAtOrBefore(application.id(), evaluationAt);
-        WindowBucketAggregate aggregate = metricBucketRepository.findWindowAggregateByApplicationId(
+        Optional<OffsetDateTime> latestBucketEndUtc =
+                findLatestBucketEndUtcByApplicationId(application.id(), evaluationAt, bucketQueryContext);
+        WindowBucketAggregate aggregate = findWindowAggregateByApplicationId(
                 application.id(),
                 dashboardWindow.current().startUtc(),
-                dashboardWindow.current().endUtc());
-        WindowBucketAggregate baselineAggregate = metricBucketRepository.findWindowAggregateByApplicationId(
+                dashboardWindow.current().endUtc(),
+                bucketQueryContext);
+        WindowBucketAggregate baselineAggregate = findWindowAggregateByApplicationId(
                 application.id(),
                 dashboardWindow.baseline().startUtc(),
-                dashboardWindow.baseline().endUtc());
+                dashboardWindow.baseline().endUtc(),
+                bucketQueryContext);
         List<LocalPercentileEvidenceRow> currentPercentileRows =
-                metricBucketRepository.findLocalPercentileEvidenceRowsByApplicationId(
+                findLocalPercentileEvidenceRowsByApplicationId(
                         application.id(),
                         dashboardWindow.current().startUtc(),
-                        dashboardWindow.current().endUtc());
+                        dashboardWindow.current().endUtc(),
+                        bucketQueryContext);
         List<HistogramBucketEvidenceRow> currentHistogramRows =
-                metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
+                findSummaryDurationBucketEvidenceRowsByApplicationId(
                         application.id(),
                         dashboardWindow.current().startUtc(),
-                        dashboardWindow.current().endUtc());
+                        dashboardWindow.current().endUtc(),
+                        bucketQueryContext);
         List<HistogramBucketEvidenceRow> baselineHistogramRows =
-                metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
+                findSummaryDurationBucketEvidenceRowsByApplicationId(
                         application.id(),
                         dashboardWindow.baseline().startUtc(),
-                        dashboardWindow.baseline().endUtc());
+                        dashboardWindow.baseline().endUtc(),
+                        bucketQueryContext);
         List<EndpointEvidenceRow> currentEndpointRows =
-                metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
+                findEndpointEvidenceRowsByApplicationId(
                         application.id(),
                         dashboardWindow.current().startUtc(),
-                        dashboardWindow.current().endUtc());
+                        dashboardWindow.current().endUtc(),
+                        bucketQueryContext);
         List<EndpointEvidenceRow> baselineEndpointRows =
-                metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
+                findEndpointEvidenceRowsByApplicationId(
                         application.id(),
                         dashboardWindow.baseline().startUtc(),
-                        dashboardWindow.baseline().endUtc());
+                        dashboardWindow.baseline().endUtc(),
+                        bucketQueryContext);
         Optional<AcceptedBucketGapEvidence> bucketGapEvidence =
-                metricBucketRepository.findAcceptedBucketGapEvidenceByApplicationIdAtOrBefore(
+                findAcceptedBucketGapEvidenceByApplicationIdAtOrBefore(
                         application.id(),
-                        evaluationAt);
+                        evaluationAt,
+                        bucketQueryContext);
         List<RecentBucketEvidenceRow> recentBuckets =
-                metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBefore(
+                findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBefore(
                         application.id(),
-                        evaluationAt);
+                        evaluationAt,
+                        bucketQueryContext);
         Optional<RuntimeRatioEvidenceRow> runtimeRatio =
-                metricBucketRepository.findLatestRuntimeRatioEvidenceRowByApplicationId(
+                findLatestRuntimeRatioEvidenceRowByApplicationId(
                         application.id(),
                         dashboardWindow.current().startUtc(),
-                        dashboardWindow.current().endUtc());
-        Optional<StarterHeartbeatTelemetryRecord> latestHeartbeat = heartbeatTelemetryRepository
-                .findLatestByApplicationScope(application.projectId(), application.name(), application.environment());
+                        dashboardWindow.current().endUtc(),
+                        bucketQueryContext);
+        Optional<StarterHeartbeatTelemetryRecord> latestHeartbeat = findLatestHeartbeat(application, queryAt, bucketQueryContext);
 
         AcceptedBucketFreshness freshness = freshnessEvaluator.evaluateAt(
                 evaluationAt,
@@ -328,6 +349,152 @@ public class DashboardReadModelService {
                 endpointPriority,
                 instanceEntries(application),
                 null);
+    }
+
+    private Optional<OffsetDateTime> findLatestBucketEndUtcByApplicationId(
+            UUID applicationId,
+            Instant evaluationAt,
+            BucketQueryContext bucketQueryContext) {
+        return bucketQueryContext.acceptedAtCutoffUtc()
+                .map(cutoff -> metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBeforeAcceptedAt(
+                        applicationId,
+                        evaluationAt,
+                        cutoff))
+                .orElseGet(() -> metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(
+                        applicationId,
+                        evaluationAt));
+    }
+
+    private WindowBucketAggregate findWindowAggregateByApplicationId(
+            UUID applicationId,
+            Instant windowStartUtc,
+            Instant windowEndUtc,
+            BucketQueryContext bucketQueryContext) {
+        return bucketQueryContext.acceptedAtCutoffUtc()
+                .map(cutoff -> metricBucketRepository.findWindowAggregateByApplicationIdAcceptedAtOrBefore(
+                        applicationId,
+                        windowStartUtc,
+                        windowEndUtc,
+                        cutoff))
+                .orElseGet(() -> metricBucketRepository.findWindowAggregateByApplicationId(
+                        applicationId,
+                        windowStartUtc,
+                        windowEndUtc));
+    }
+
+    private List<LocalPercentileEvidenceRow> findLocalPercentileEvidenceRowsByApplicationId(
+            UUID applicationId,
+            Instant windowStartUtc,
+            Instant windowEndUtc,
+            BucketQueryContext bucketQueryContext) {
+        return bucketQueryContext.acceptedAtCutoffUtc()
+                .map(cutoff -> metricBucketRepository.findLocalPercentileEvidenceRowsByApplicationIdAcceptedAtOrBefore(
+                        applicationId,
+                        windowStartUtc,
+                        windowEndUtc,
+                        cutoff))
+                .orElseGet(() -> metricBucketRepository.findLocalPercentileEvidenceRowsByApplicationId(
+                        applicationId,
+                        windowStartUtc,
+                        windowEndUtc));
+    }
+
+    private List<HistogramBucketEvidenceRow> findSummaryDurationBucketEvidenceRowsByApplicationId(
+            UUID applicationId,
+            Instant windowStartUtc,
+            Instant windowEndUtc,
+            BucketQueryContext bucketQueryContext) {
+        return bucketQueryContext.acceptedAtCutoffUtc()
+                .map(cutoff -> metricBucketRepository
+                        .findSummaryDurationBucketEvidenceRowsByApplicationIdAcceptedAtOrBefore(
+                                applicationId,
+                                windowStartUtc,
+                                windowEndUtc,
+                                cutoff))
+                .orElseGet(() -> metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
+                        applicationId,
+                        windowStartUtc,
+                        windowEndUtc));
+    }
+
+    private List<EndpointEvidenceRow> findEndpointEvidenceRowsByApplicationId(
+            UUID applicationId,
+            Instant windowStartUtc,
+            Instant windowEndUtc,
+            BucketQueryContext bucketQueryContext) {
+        return bucketQueryContext.acceptedAtCutoffUtc()
+                .map(cutoff -> metricBucketRepository.findEndpointEvidenceRowsByApplicationIdAcceptedAtOrBefore(
+                        applicationId,
+                        windowStartUtc,
+                        windowEndUtc,
+                        cutoff))
+                .orElseGet(() -> metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
+                        applicationId,
+                        windowStartUtc,
+                        windowEndUtc));
+    }
+
+    private Optional<AcceptedBucketGapEvidence> findAcceptedBucketGapEvidenceByApplicationIdAtOrBefore(
+            UUID applicationId,
+            Instant evaluationAt,
+            BucketQueryContext bucketQueryContext) {
+        return bucketQueryContext.acceptedAtCutoffUtc()
+                .map(cutoff -> metricBucketRepository.findAcceptedBucketGapEvidenceByApplicationIdAtOrBeforeAcceptedAt(
+                        applicationId,
+                        evaluationAt,
+                        cutoff))
+                .orElseGet(() -> metricBucketRepository.findAcceptedBucketGapEvidenceByApplicationIdAtOrBefore(
+                        applicationId,
+                        evaluationAt));
+    }
+
+    private List<RecentBucketEvidenceRow> findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBefore(
+            UUID applicationId,
+            Instant evaluationAt,
+            BucketQueryContext bucketQueryContext) {
+        return bucketQueryContext.acceptedAtCutoffUtc()
+                .map(cutoff -> metricBucketRepository
+                        .findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBeforeAcceptedAt(
+                                applicationId,
+                                evaluationAt,
+                                cutoff))
+                .orElseGet(() -> metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBefore(
+                        applicationId,
+                        evaluationAt));
+    }
+
+    private Optional<RuntimeRatioEvidenceRow> findLatestRuntimeRatioEvidenceRowByApplicationId(
+            UUID applicationId,
+            Instant windowStartUtc,
+            Instant windowEndUtc,
+            BucketQueryContext bucketQueryContext) {
+        return bucketQueryContext.acceptedAtCutoffUtc()
+                .map(cutoff -> metricBucketRepository
+                        .findLatestRuntimeRatioEvidenceRowByApplicationIdAcceptedAtOrBefore(
+                                applicationId,
+                                windowStartUtc,
+                                windowEndUtc,
+                                cutoff))
+                .orElseGet(() -> metricBucketRepository.findLatestRuntimeRatioEvidenceRowByApplicationId(
+                        applicationId,
+                        windowStartUtc,
+                        windowEndUtc));
+    }
+
+    private Optional<StarterHeartbeatTelemetryRecord> findLatestHeartbeat(
+            ApplicationEntity application,
+            Instant queryAt,
+            BucketQueryContext bucketQueryContext) {
+        return bucketQueryContext.acceptedAtCutoffUtc()
+                .map(ignored -> heartbeatTelemetryRepository.findLatestByApplicationScopeAtOrBeforeReceivedAt(
+                        application.projectId(),
+                        application.name(),
+                        application.environment(),
+                        toUtcOffsetDateTime(queryAt)))
+                .orElseGet(() -> heartbeatTelemetryRepository.findLatestByApplicationScope(
+                        application.projectId(),
+                        application.name(),
+                        application.environment()));
     }
 
     /**
@@ -662,6 +829,7 @@ public class DashboardReadModelService {
         Instant lastReceivedAt = heartbeat.lastReceivedAtUtc().toInstant();
         StarterHeartbeatStatus heartbeatStatus = heartbeatStatus(heartbeat.heartbeatStatus());
         boolean recentReceivedHeartbeat = heartbeatStatus == StarterHeartbeatStatus.RECEIVED
+                && !lastReceivedAt.isAfter(queryAt)
                 && Duration.between(lastReceivedAt, queryAt).compareTo(STARTER_HEARTBEAT_RECENT_WINDOW) <= 0;
         if (recentReceivedHeartbeat) {
             return StarterConnectionInput.recentHeartbeat(lastReceivedAt);
@@ -907,6 +1075,29 @@ public class DashboardReadModelService {
 
     private static OffsetDateTime toUtcOffsetDateTime(Instant instant) {
         return OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
+    }
+
+    /**
+     * current dashboard와 snapshot read model이 같은 window 계산을 공유하되 snapshot만 accepted_at cutoff를 쓰게 구분한다.
+     */
+    private record BucketQueryContext(Optional<OffsetDateTime> acceptedAtCutoffUtc) {
+
+        private BucketQueryContext {
+            acceptedAtCutoffUtc = Objects.requireNonNull(
+                    acceptedAtCutoffUtc,
+                    "acceptedAtCutoffUtc must not be null")
+                    .map(cutoff -> cutoff.withOffsetSameInstant(ZoneOffset.UTC));
+        }
+
+        private static BucketQueryContext current() {
+            return new BucketQueryContext(Optional.empty());
+        }
+
+        private static BucketQueryContext snapshot(OffsetDateTime snapshotCutoffAt) {
+            return new BucketQueryContext(Optional.of(Objects.requireNonNull(
+                    snapshotCutoffAt,
+                    "snapshotCutoffAt must not be null")));
+        }
     }
 
     private static final class NoopFallbackCaptureServiceProvider

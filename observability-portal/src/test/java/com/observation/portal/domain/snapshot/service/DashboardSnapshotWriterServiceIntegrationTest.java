@@ -324,6 +324,7 @@ class DashboardSnapshotWriterServiceIntegrationTest {
                 reason,
                 WINDOW_END,
                 generatedAt,
+                generatedAt,
                 "test");
     }
 

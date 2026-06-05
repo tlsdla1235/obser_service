@@ -153,6 +153,31 @@ class DashboardSnapshotMarkerClassifierTest {
         assertThat(legacyState.summary()).isEqualTo("저장된 상태를 완전히 해석하지 못했습니다.");
     }
 
+    @Test
+    void queuePipelineDiagnosticsDoNotForceHostHealthCertaintyMarkerCopy() {
+        DashboardSnapshotMarkerItem marker = marker(
+                row("down", "state_change", null),
+                NO_PREVIOUS,
+                projection("""
+                        {
+                          "triageCards": [],
+                          "pipelineDiagnostics": {
+                            "queueLag": "PT10M",
+                            "queueBacklog": 42,
+                            "workerFailure": "persist_timeout"
+                          }
+                        }
+                        """));
+
+        assertThat(marker.title() + " " + marker.summary()).doesNotContain(
+                "host application down",
+                "host process down",
+                "telemetry unreachable",
+                "starter unreachable",
+                "앱 내려감",
+                "앱 정상 확정");
+    }
+
     private DashboardSnapshotMarkerItem marker(
             DashboardSnapshotDetailRow row,
             PreviousState previousState,

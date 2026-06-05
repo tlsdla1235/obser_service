@@ -27,6 +27,17 @@ interface StarterHeartbeatTelemetryJpaRepository extends JpaRepository<StarterHe
             String instanceName);
 
     /**
+     * snapshot read model에서 target window 이후 heartbeat가 섞이지 않도록 identity별 bounded latest row를 조회한다.
+     */
+    Optional<StarterHeartbeatTelemetryEntity>
+    findByProjectIdAndApplicationNameAndEnvironmentAndInstanceNameAndLastReceivedAtUtcLessThanEqual(
+            UUID projectId,
+            String applicationName,
+            String environment,
+            String instanceName,
+            OffsetDateTime receivedAtOrBeforeUtc);
+
+    /**
      * project scope에서 가장 최근에 수신된 heartbeat row를 조회한다.
      */
     Optional<StarterHeartbeatTelemetryEntity> findTopByProjectIdOrderByLastReceivedAtUtcDesc(UUID projectId);
@@ -38,6 +49,16 @@ interface StarterHeartbeatTelemetryJpaRepository extends JpaRepository<StarterHe
             UUID projectId,
             String applicationName,
             String environment);
+
+    /**
+     * snapshot read model에서 application scope latest heartbeat를 target window 이하로 제한해 조회한다.
+     */
+    Optional<StarterHeartbeatTelemetryEntity>
+    findTopByProjectIdAndApplicationNameAndEnvironmentAndLastReceivedAtUtcLessThanEqualOrderByLastReceivedAtUtcDesc(
+            UUID projectId,
+            String applicationName,
+            String environment,
+            OffsetDateTime receivedAtOrBeforeUtc);
 
     /**
      * PostgreSQL unique key를 기준으로 latest heartbeat row를 원자적으로 insert/update한다.

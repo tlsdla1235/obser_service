@@ -38,6 +38,7 @@ class ApplicationRepositoryIntegrationTest {
     private static final UUID DISABLED_APP_ID = UUID.fromString("00000000-0000-0000-0000-000000005864");
     private static final UUID OLD_BUCKET_APP_ID = UUID.fromString("00000000-0000-0000-0000-000000005865");
     private static final UUID FUTURE_ONLY_APP_ID = UUID.fromString("00000000-0000-0000-0000-000000005866");
+    private static final UUID LATE_ACCEPTED_APP_ID = UUID.fromString("00000000-0000-0000-0000-000000005867");
 
     @Container
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
@@ -79,17 +80,23 @@ class ApplicationRepositoryIntegrationTest {
         seedApplication(DISABLED_APP_ID, "disabled-recent", "disabled");
         seedApplication(OLD_BUCKET_APP_ID, "active-old-bucket", "active");
         seedApplication(FUTURE_ONLY_APP_ID, "active-future-only", "active");
+        seedApplication(LATE_ACCEPTED_APP_ID, "late-accepted", "active");
 
         insertAcceptedBucket(ACTIVE_RECENT_APP_ID, "2026-05-27T12:59:30Z");
         insertAcceptedBucket(DISABLED_APP_ID, "2026-05-27T12:59:30Z");
         insertAcceptedBucket(OLD_BUCKET_APP_ID, "2026-05-01T12:59:30Z");
         insertAcceptedBucket(FUTURE_ONLY_APP_ID, "2026-05-27T13:00:30Z");
+        insertAcceptedBucket(
+                LATE_ACCEPTED_APP_ID,
+                "2026-05-27T12:59:30Z",
+                OffsetDateTime.parse("2026-05-27T13:02:01Z"));
         insertHeartbeat("heartbeat-only", "pod-a", "2026-05-27T13:04:45Z");
 
         List<ApplicationEntity> applications =
                 applicationRepository.findActiveApplicationsWithAcceptedBucketSince(
                         RETENTION_CUTOFF,
-                        OffsetDateTime.parse("2026-05-27T13:00:00Z"));
+                        OffsetDateTime.parse("2026-05-27T13:00:00Z"),
+                        OffsetDateTime.parse("2026-05-27T13:02:00Z"));
 
         assertThat(applications)
                 .extracting(ApplicationEntity::id)
@@ -119,6 +126,14 @@ class ApplicationRepositoryIntegrationTest {
 
     private static void insertAcceptedBucket(UUID applicationId, String bucketEndText) throws SQLException {
         OffsetDateTime bucketEnd = OffsetDateTime.parse(bucketEndText);
+        insertAcceptedBucket(applicationId, bucketEndText, bucketEnd.plusSeconds(1));
+    }
+
+    private static void insertAcceptedBucket(
+            UUID applicationId,
+            String bucketEndText,
+            OffsetDateTime acceptedAt) throws SQLException {
+        OffsetDateTime bucketEnd = OffsetDateTime.parse(bucketEndText);
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
                      """
@@ -142,8 +157,8 @@ class ApplicationRepositoryIntegrationTest {
             statement.setString(5, "scheduler:%s:%s".formatted(applicationId, bucketEndText));
             statement.setObject(6, bucketEnd.minusSeconds(30));
             statement.setObject(7, bucketEnd);
-            statement.setObject(8, bucketEnd.plusSeconds(1));
-            statement.setObject(9, bucketEnd.plusSeconds(1));
+            statement.setObject(8, acceptedAt);
+            statement.setObject(9, acceptedAt);
             statement.executeUpdate();
         }
     }

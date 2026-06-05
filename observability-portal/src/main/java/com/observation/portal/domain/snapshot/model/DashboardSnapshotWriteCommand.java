@@ -3,6 +3,7 @@ package com.observation.portal.domain.snapshot.model;
 import com.observation.portal.domain.dashboard.model.ApplicationDashboardReadModel;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -18,6 +19,7 @@ public record DashboardSnapshotWriteCommand(
         ApplicationDashboardReadModel readModel,
         DashboardSnapshotCaptureReason captureReason,
         OffsetDateTime currentWindowEndUtc,
+        OffsetDateTime snapshotCutoffAt,
         OffsetDateTime requestedAt,
         String triggerSource
 ) {
@@ -30,9 +32,20 @@ public record DashboardSnapshotWriteCommand(
         Objects.requireNonNull(applicationId, "applicationId must not be null");
         Objects.requireNonNull(readModel, "readModel must not be null");
         Objects.requireNonNull(captureReason, "captureReason must not be null");
-        Objects.requireNonNull(currentWindowEndUtc, "currentWindowEndUtc must not be null");
-        Objects.requireNonNull(requestedAt, "requestedAt must not be null");
+        currentWindowEndUtc = Objects.requireNonNull(
+                currentWindowEndUtc,
+                "currentWindowEndUtc must not be null")
+                .withOffsetSameInstant(ZoneOffset.UTC);
+        snapshotCutoffAt = Objects.requireNonNull(
+                snapshotCutoffAt,
+                "snapshotCutoffAt must not be null")
+                .withOffsetSameInstant(ZoneOffset.UTC);
+        requestedAt = Objects.requireNonNull(requestedAt, "requestedAt must not be null")
+                .withOffsetSameInstant(ZoneOffset.UTC);
         triggerSource = normalizeTriggerSource(triggerSource);
+        if (snapshotCutoffAt.isBefore(currentWindowEndUtc)) {
+            throw new IllegalArgumentException("snapshotCutoffAt must not be before currentWindowEndUtc");
+        }
         if (!projectId.equals(readModel.application().projectId())) {
             throw new IllegalArgumentException("projectId must match readModel.application.projectId");
         }

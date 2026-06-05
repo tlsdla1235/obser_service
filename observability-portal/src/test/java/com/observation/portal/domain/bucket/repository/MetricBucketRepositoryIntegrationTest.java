@@ -205,6 +205,49 @@ class MetricBucketRepositoryIntegrationTest {
     }
 
     @Test
+    void snapshotCutoffQueriesUseAcceptedAtInsteadOfOnlyBucketEndBoundary() {
+        OffsetDateTime snapshotCutoffAt = OffsetDateTime.parse("2026-05-08T01:02:00Z");
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:snapshot-cutoff-included",
+                "hash-cutoff-included",
+                "2026-05-08T01:00:00Z",
+                OffsetDateTime.parse("2026-05-08T01:00:31Z"),
+                "orders-api",
+                "prod",
+                "pod-a"));
+        metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-b:snapshot-cutoff-late",
+                "hash-cutoff-late",
+                "2026-05-08T01:00:30Z",
+                OffsetDateTime.parse("2026-05-08T01:03:01Z"),
+                "orders-api",
+                "prod",
+                "pod-b"));
+
+        var ordersApplication = applicationRepository
+                .findByProjectIdAndNameAndEnvironment(PROJECT_ID, "orders-api", "prod")
+                .orElseThrow();
+
+        assertThat(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBeforeAcceptedAt(
+                ordersApplication.id(),
+                OffsetDateTime.parse("2026-05-08T01:01:00Z").toInstant(),
+                snapshotCutoffAt))
+                .contains(OffsetDateTime.parse("2026-05-08T01:00:30Z"));
+        assertThat(metricBucketRepository.findWindowAggregateByApplicationIdAcceptedAtOrBefore(
+                ordersApplication.id(),
+                OffsetDateTime.parse("2026-05-08T01:00:00Z").toInstant(),
+                OffsetDateTime.parse("2026-05-08T01:01:00Z").toInstant(),
+                snapshotCutoffAt))
+                .isEqualTo(new WindowBucketAggregate(3L, 1L));
+        assertThat(metricBucketRepository.findRecentFiveBucketEvidenceRowsByApplicationIdAtOrBeforeAcceptedAt(
+                ordersApplication.id(),
+                OffsetDateTime.parse("2026-05-08T01:01:00Z").toInstant(),
+                snapshotCutoffAt))
+                .extracting(RecentBucketEvidenceRow::bucketEndUtc)
+                .containsExactly(OffsetDateTime.parse("2026-05-08T01:00:30Z"));
+    }
+
+    @Test
     void findsSelectedInstanceLatestBucketAndAggregateWithWindowBoundarySemantics() {
         OffsetDateTime windowStart = OffsetDateTime.parse("2026-05-08T01:17:30Z");
         OffsetDateTime windowEnd = OffsetDateTime.parse("2026-05-08T01:32:30Z");

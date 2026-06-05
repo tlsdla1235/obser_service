@@ -8,6 +8,7 @@ import com.observation.portal.domain.snapshot.repository.DashboardSnapshotReposi
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -30,8 +31,9 @@ class DashboardSnapshotFallbackCaptureServiceTest {
 
     private final DashboardSnapshotRepository snapshotRepository = mock(DashboardSnapshotRepository.class);
     private final DashboardSnapshotWriterService writerService = mock(DashboardSnapshotWriterService.class);
+    private final DashboardSnapshotProperties snapshotProperties = new DashboardSnapshotProperties();
     private final DashboardSnapshotFallbackCaptureService service =
-            new DashboardSnapshotFallbackCaptureService(snapshotRepository, writerService);
+            new DashboardSnapshotFallbackCaptureService(snapshotRepository, writerService, snapshotProperties);
 
     @Test
     void capturesWhenLatestSnapshotIsMissingUsingAlreadyBuiltReadModel() {
@@ -46,12 +48,13 @@ class DashboardSnapshotFallbackCaptureServiceTest {
         assertThat(captor.getValue().readModel()).isSameAs(readModel);
         assertThat(captor.getValue().captureReason()).isEqualTo(DashboardSnapshotCaptureReason.QUERY_FALLBACK);
         assertThat(captor.getValue().currentWindowEndUtc()).isEqualTo(OffsetDateTime.parse("2026-05-27T13:00:00Z"));
+        assertThat(captor.getValue().snapshotCutoffAt()).isEqualTo(QUERY_AT);
     }
 
     @Test
-    void skipsWhenLatestSnapshotIsInsideSixtyFiveMinuteGraceWindow() {
+    void skipsWhenLatestSnapshotIsInsideDelayAwareGraceWindow() {
         when(snapshotRepository.findLatestByApplicationId(APPLICATION_ID))
-                .thenReturn(Optional.of(latest("2026-05-27T12:01:00Z")));
+                .thenReturn(Optional.of(latest("2026-05-27T11:59:00Z")));
 
         service.captureIfNeeded(readModel(), QUERY_AT);
 
@@ -60,8 +63,10 @@ class DashboardSnapshotFallbackCaptureServiceTest {
 
     @Test
     void capturesWhenLatestSnapshotIsExactlyAtStalenessThreshold() {
+        snapshotProperties.setCaptureDelay(Duration.ofSeconds(120));
+        snapshotProperties.setFallbackGrace(Duration.ofMinutes(5));
         when(snapshotRepository.findLatestByApplicationId(APPLICATION_ID))
-                .thenReturn(Optional.of(latest("2026-05-27T12:00:00Z")));
+                .thenReturn(Optional.of(latest("2026-05-27T11:58:00Z")));
 
         service.captureIfNeeded(readModel(), QUERY_AT);
 

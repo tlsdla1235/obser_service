@@ -5,6 +5,8 @@ import com.observation.portal.domain.ingest.model.StarterHeartbeatTelemetryRecor
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -74,6 +76,28 @@ public class StarterHeartbeatTelemetryRepository {
     }
 
     /**
+     * snapshot 저장 시점의 target window 이후 heartbeat를 제외하고 identity별 latest row를 조회한다.
+     */
+    @Transactional(readOnly = true)
+    public Optional<StarterHeartbeatTelemetryRecord> findByIdentityAtOrBeforeReceivedAt(
+            UUID projectId,
+            String applicationName,
+            String environment,
+            String instanceName,
+            OffsetDateTime receivedAtOrBeforeUtc) {
+        return jpaRepository
+                .findByProjectIdAndApplicationNameAndEnvironmentAndInstanceNameAndLastReceivedAtUtcLessThanEqual(
+                        Objects.requireNonNull(projectId, "projectId must not be null"),
+                        requireText(applicationName, "applicationName"),
+                        requireText(environment, "environment"),
+                        requireText(instanceName, "instanceName"),
+                        toUtc(Objects.requireNonNull(
+                                receivedAtOrBeforeUtc,
+                                "receivedAtOrBeforeUtc must not be null")))
+                .map(entity -> entity.toRecord());
+    }
+
+    /**
      * project scope에서 가장 최근에 수신된 starter heartbeat를 조회한다.
      */
     @Transactional(readOnly = true)
@@ -99,6 +123,30 @@ public class StarterHeartbeatTelemetryRepository {
                         requireText(applicationName, "applicationName"),
                         requireText(environment, "environment"))
                 .map(entity -> entity.toRecord());
+    }
+
+    /**
+     * snapshot application read model에서 target window 이후 heartbeat를 제외하고 application scope latest row를 조회한다.
+     */
+    @Transactional(readOnly = true)
+    public Optional<StarterHeartbeatTelemetryRecord> findLatestByApplicationScopeAtOrBeforeReceivedAt(
+            UUID projectId,
+            String applicationName,
+            String environment,
+            OffsetDateTime receivedAtOrBeforeUtc) {
+        return jpaRepository
+                .findTopByProjectIdAndApplicationNameAndEnvironmentAndLastReceivedAtUtcLessThanEqualOrderByLastReceivedAtUtcDesc(
+                        Objects.requireNonNull(projectId, "projectId must not be null"),
+                        requireText(applicationName, "applicationName"),
+                        requireText(environment, "environment"),
+                        toUtc(Objects.requireNonNull(
+                                receivedAtOrBeforeUtc,
+                                "receivedAtOrBeforeUtc must not be null")))
+                .map(entity -> entity.toRecord());
+    }
+
+    private static OffsetDateTime toUtc(OffsetDateTime value) {
+        return value.withOffsetSameInstant(ZoneOffset.UTC);
     }
 
     private static String requireText(String value, String fieldName) {

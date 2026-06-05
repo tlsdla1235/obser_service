@@ -33,9 +33,10 @@ public interface ApplicationRepository extends JpaRepository<ApplicationEntity, 
     List<ApplicationEntity> findByProjectIdOrderByNameAscEnvironmentAsc(UUID projectId);
 
     /**
-     * UTC hourly scheduled snapshot 후보 application을 accepted bucket axis로만 조회한다.
+     * UTC hourly scheduled snapshot 후보 application을 accepted bucket axis와 snapshot cutoff로만 조회한다.
      *
-     * <p>heartbeat는 eligibility source로 사용하지 않으며, repository는 snapshot/read model/state 판단을 계산하지 않는다.</p>
+     * <p>heartbeat, queue backlog, worker lag는 eligibility source로 사용하지 않으며, repository는 snapshot/read model/state
+     * 판단을 계산하지 않는다.</p>
      */
     @Query("select distinct application "
             + "from ApplicationEntity application "
@@ -46,9 +47,11 @@ public interface ApplicationRepository extends JpaRepository<ApplicationEntity, 
             + "  where bucket.applicationId = application.id "
             + "  and bucket.bucketEndUtc >= :retentionCutoffUtc"
             + "  and bucket.bucketEndUtc <= :targetWindowEndUtc"
+            + "  and bucket.acceptedAt <= :snapshotCutoffAt"
             + ") "
             + "order by application.projectId asc, application.id asc")
     List<ApplicationEntity> findActiveApplicationsWithAcceptedBucketSince(
             @Param("retentionCutoffUtc") OffsetDateTime retentionCutoffUtc,
-            @Param("targetWindowEndUtc") OffsetDateTime targetWindowEndUtc);
+            @Param("targetWindowEndUtc") OffsetDateTime targetWindowEndUtc,
+            @Param("snapshotCutoffAt") OffsetDateTime snapshotCutoffAt);
 }

@@ -50,7 +50,8 @@ public class DashboardSnapshotCaptureService {
             dashboardReadModelService.getDashboardForSnapshot(
                             requiredRequest.projectId(),
                             requiredRequest.applicationId(),
-                            requiredRequest.currentWindowEndUtc())
+                            requiredRequest.currentWindowEndUtc(),
+                            requiredRequest.snapshotCutoffAt())
                     .ifPresentOrElse(
                             readModel -> write(requiredRequest, readModel),
                             () -> log.warn(
@@ -76,6 +77,7 @@ public class DashboardSnapshotCaptureService {
                 readModel,
                 request.captureReason(),
                 request.currentWindowEndUtc(),
+                request.snapshotCutoffAt(),
                 request.requestedAt(),
                 request.triggerSource()));
     }

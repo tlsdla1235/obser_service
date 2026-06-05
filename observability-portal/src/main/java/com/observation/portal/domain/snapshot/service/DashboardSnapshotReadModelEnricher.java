@@ -230,36 +230,43 @@ public class DashboardSnapshotReadModelEnricher {
         OffsetDateTime windowStart = command.readModel().application().sourceWindow().current().startUtc();
         OffsetDateTime windowEnd = command.readModel().application().sourceWindow().current().endUtc();
         Optional<OffsetDateTime> latestBucketEndUtc =
-                metricBucketRepository.findLatestBucketEndUtcByApplicationInstanceIdAtOrBefore(
+                metricBucketRepository.findLatestBucketEndUtcByApplicationInstanceIdAtOrBeforeAcceptedAt(
                         instance.instanceId(),
-                        command.currentWindowEndUtc().toInstant());
+                        command.currentWindowEndUtc().toInstant(),
+                        command.snapshotCutoffAt());
         AcceptedBucketFreshness freshness = freshnessEvaluator.evaluateAt(
                 command.currentWindowEndUtc().toInstant(),
                 latestBucketEndUtc.map(OffsetDateTime::toInstant).orElse(null));
-        WindowBucketAggregate aggregate = metricBucketRepository.findWindowAggregateByApplicationInstanceId(
-                instance.instanceId(),
-                windowStart.toInstant(),
-                windowEnd.toInstant());
-        Optional<RuntimeRatioEvidenceRow> runtimeRatio =
-                metricBucketRepository.findLatestRuntimeRatioEvidenceRowByApplicationInstanceId(
+        WindowBucketAggregate aggregate =
+                metricBucketRepository.findWindowAggregateByApplicationInstanceIdAcceptedAtOrBefore(
                         instance.instanceId(),
                         windowStart.toInstant(),
-                        windowEnd.toInstant());
+                        windowEnd.toInstant(),
+                        command.snapshotCutoffAt());
+        Optional<RuntimeRatioEvidenceRow> runtimeRatio =
+                metricBucketRepository.findLatestRuntimeRatioEvidenceRowByApplicationInstanceIdAcceptedAtOrBefore(
+                        instance.instanceId(),
+                        windowStart.toInstant(),
+                        windowEnd.toInstant(),
+                        command.snapshotCutoffAt());
         Optional<StarterHeartbeatTelemetryRecord> heartbeat =
-                heartbeatTelemetryRepository.findByIdentity(
+                heartbeatTelemetryRepository.findByIdentityAtOrBeforeReceivedAt(
                         command.projectId(),
                         command.readModel().application().name(),
                         command.readModel().application().environment(),
-                        instance.instanceName());
+                        instance.instanceName(),
+                        command.currentWindowEndUtc());
         Optional<PercentilePoint> percentilePoint = latestPercentilePoint(
-                metricBucketRepository.findLocalPercentileEvidenceRowsByApplicationInstanceId(
+                metricBucketRepository.findLocalPercentileEvidenceRowsByApplicationInstanceIdAcceptedAtOrBefore(
                         instance.instanceId(),
                         windowStart.toInstant(),
-                        windowEnd.toInstant()));
+                        windowEnd.toInstant(),
+                        command.snapshotCutoffAt()));
         List<EndpointEvidenceRef> refs = endpointEvidenceRefs(
                 instance.instanceId(),
                 windowStart,
                 windowEnd,
+                command.snapshotCutoffAt(),
                 endpointEvidence);
         List<String> relatedRuleIds = refs.stream()
                 .flatMap(ref -> ref.relatedRuleIds().stream())
@@ -288,14 +295,17 @@ public class DashboardSnapshotReadModelEnricher {
             UUID instanceId,
             OffsetDateTime windowStart,
             OffsetDateTime windowEnd,
+            OffsetDateTime snapshotCutoffAt,
             List<StoredEndpointEvidence> endpointEvidence) {
         if (endpointEvidence.isEmpty()) {
             return List.of();
         }
-        List<EndpointEvidenceRow> rows = metricBucketRepository.findEndpointEvidenceRowsByApplicationInstanceId(
-                instanceId,
-                windowStart.toInstant(),
-                windowEnd.toInstant());
+        List<EndpointEvidenceRow> rows =
+                metricBucketRepository.findEndpointEvidenceRowsByApplicationInstanceIdAcceptedAtOrBefore(
+                        instanceId,
+                        windowStart.toInstant(),
+                        windowEnd.toInstant(),
+                        snapshotCutoffAt);
         WindowEndpointEvidence selected = endpointEvidenceAggregationService.mergeWindow(rows);
         if (selected.malformedEvidence()) {
             return List.of();
@@ -344,6 +354,7 @@ public class DashboardSnapshotReadModelEnricher {
                 : record.heartbeatStatus().trim().toLowerCase(Locale.ROOT);
         node.put("lastHeartbeatStatus", status.isBlank() ? "unknown" : status);
         boolean recentReceived = "received".equals(status)
+                && !record.lastReceivedAtUtc().isAfter(currentWindowEndUtc)
                 && Duration.between(record.lastReceivedAtUtc(), currentWindowEndUtc)
                 .compareTo(STARTER_HEARTBEAT_RECENT_WINDOW) <= 0;
         node.put("connectionMeaning", recentReceived ? "starter_connected" : "starter_disconnected");

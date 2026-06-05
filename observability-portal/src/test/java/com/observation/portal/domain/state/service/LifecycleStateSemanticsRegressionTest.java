@@ -22,6 +22,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -61,6 +62,21 @@ class LifecycleStateSemanticsRegressionTest {
         AcceptedBucketFreshness current = metricAxis.currentBucket(Duration.ofMillis(89_999)).freshness();
         assertThat(current.lastAcceptedBucketEndUtc()).contains(QUERY_AT.minusMillis(89_999));
         assertThat(current.age()).contains(Duration.ofMillis(89_999));
+    }
+
+    @Test
+    void queuePipelineDiagnosticsAreNotMetricLifecycleInputs() {
+        List<String> metricLifecycleInputFields = Arrays.stream(MetricLifecycleInput.class.getRecordComponents())
+                .map(RecordComponent::getName)
+                .toList();
+
+        assertThat(metricLifecycleInputFields)
+                .doesNotContain(
+                        "queueLag",
+                        "queueBacklog",
+                        "workerFailure",
+                        "oldestMessageAge",
+                        "lastSuccessfulPersistLag");
     }
 
     @Test
