@@ -68,6 +68,26 @@ public record IngestErrorResponse(String error, String message, List<ValidationE
     }
 
     /**
+     * queue message가 configured SQS size guard를 넘어 enqueue 전에 거절됐음을 알린다.
+     */
+    public static IngestErrorResponse payloadTooLarge() {
+        return new IngestErrorResponse(
+                "payload_too_large",
+                "Ingest payload is too large to enqueue.",
+                List.of());
+    }
+
+    /**
+     * queue config, serialization, publisher failure를 raw infrastructure detail 없이 retry 가능한 실패로 알린다.
+     */
+    public static IngestErrorResponse ingestEnqueueUnavailable() {
+        return new IngestErrorResponse(
+                "ingest_enqueue_unavailable",
+                "Ingest queue is temporarily unavailable.",
+                List.of());
+    }
+
+    /**
      * service validation error를 API-safe field/code/message 모양으로 옮긴다.
      */
     public record ValidationErrorResponse(String code, String field, String message) {

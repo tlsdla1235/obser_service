@@ -3,6 +3,7 @@ package com.observation.portal.domain.ingest.controller;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
 import com.observation.portal.domain.ingest.dto.IngestAcceptedResponse;
 import com.observation.portal.domain.ingest.dto.IngestErrorResponse;
+import com.observation.portal.domain.ingest.dto.IngestQueuedResponse;
 import com.observation.portal.domain.ingest.model.IngestEnvelopeRequest;
 import com.observation.portal.domain.ingest.service.IngestAcceptanceResult;
 import com.observation.portal.domain.ingest.service.IngestAcceptanceService;
@@ -42,7 +43,7 @@ public class IngestController {
     }
 
     /**
-     * first successful ingest는 repository receipt를 받아 `201 Created`로 응답한다.
+     * mode별 service 결과를 기존 direct `201 Created` 또는 queue `202 Accepted` 계약으로 응답한다.
      */
     @PostMapping
     public ResponseEntity<?> acceptBucket(
@@ -59,6 +60,9 @@ public class IngestController {
             return ResponseEntity.created(URI.create("/api/ingest/v1/buckets/" + receipt.bucketId()))
                     .body(IngestAcceptedResponse.created(receipt));
         }
+        if (result.isQueued()) {
+            return ResponseEntity.accepted().body(IngestQueuedResponse.queued(result.queuedResult().orElseThrow()));
+        }
         if (result.isInvalidRequest()) {
             return ResponseEntity.badRequest().body(IngestErrorResponse.invalidRequest(result.errors()));
         }
@@ -67,6 +71,13 @@ public class IngestController {
         }
         if (result.isDuplicateIdempotencyKey()) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(IngestErrorResponse.duplicateIdempotencyKey());
+        }
+        if (result.isPayloadTooLarge()) {
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(IngestErrorResponse.payloadTooLarge());
+        }
+        if (result.isIngestEnqueueUnavailable()) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(IngestErrorResponse.ingestEnqueueUnavailable());
         }
         throw new IllegalStateException("Unsupported ingest acceptance status: " + result.status());
     }

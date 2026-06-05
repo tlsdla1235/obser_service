@@ -1,8 +1,10 @@
 package com.observation.portal.domain.ingest.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommand;
 import com.observation.portal.domain.bucket.repository.MetricBucketRepository;
@@ -12,13 +14,24 @@ import com.observation.portal.domain.catalog.model.StarterCredentialStatus;
 import com.observation.portal.domain.catalog.repository.ProjectRepository;
 import com.observation.portal.domain.ingest.dto.IngestErrorResponse;
 import com.observation.portal.domain.ingest.model.IngestEnvelopeRequest;
+import com.observation.portal.domain.ingest.queue.FakeMetricIngestQueuePublisher;
+import com.observation.portal.domain.ingest.queue.IngestBufferMode;
+import com.observation.portal.domain.ingest.queue.IngestBufferProperties;
+import com.observation.portal.domain.ingest.queue.MetricIngestMessageBuildException;
+import com.observation.portal.domain.ingest.queue.MetricIngestQueueMessageFactory;
+import com.observation.portal.domain.ingest.queue.MetricIngestQueuePublishException;
+import com.observation.portal.domain.ingest.queue.MetricIngestQueuePublisher;
 import com.observation.portal.security.ProjectKeyHashVerifier;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.bcrypt.BCrypt;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -33,6 +46,8 @@ import static org.mockito.Mockito.when;
 
 class IngestAcceptanceServiceTest {
 
+    private static final Clock FIXED_CLOCK =
+            Clock.fixed(Instant.parse("2026-05-08T01:00:31Z"), ZoneOffset.UTC);
     private static final AcceptedMetricBucketReceipt ACCEPTED_RECEIPT = new AcceptedMetricBucketReceipt(
             UUID.fromString("00000000-0000-0000-0000-00000000a331"),
             OffsetDateTime.parse("2026-05-08T01:00:31Z"));
@@ -481,6 +496,192 @@ class IngestAcceptanceServiceTest {
         assertThat(result.errors().toString()).doesNotContain("/orders/12345", "token=secret", PortalIngestValidationFixture.PROJECT_KEY_HEADER);
     }
 
+    @Test
+    void fakeModeEnqueuesValidatedMessageWithoutRepositoryLookupOrInsert() throws Exception {
+        ProjectKeyVerificationService projectKeyVerificationService = verifiedProjectKeyService();
+        MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        IngestPayloadHasher payloadHasher = new IngestPayloadHasher(new ObjectMapper());
+        FakeMetricIngestQueuePublisher publisher = new FakeMetricIngestQueuePublisher();
+        IngestAcceptanceService service = newService(
+                projectKeyVerificationService,
+                metricBucketRepository,
+                payloadHasher,
+                IngestBufferMode.FAKE,
+                publisher);
+        IngestEnvelopeRequest request = PortalIngestValidationFixture.goldenRequest();
+
+        IngestAcceptanceResult result = service.accept(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                request);
+
+        assertThat(result.isQueued()).isTrue();
+        assertThat(result.queuedResult()).hasValueSatisfying(queued -> {
+            assertThat(queued.idempotencyKey()).isEqualTo(PortalIngestValidationFixture.IDEMPOTENCY_KEY);
+            assertThat(queued.messageVersion()).isEqualTo("1");
+            assertThat(queued.receivedAt()).isEqualTo(OffsetDateTime.parse("2026-05-08T01:00:31Z"));
+            assertThat(queued.enqueuedAt()).isEqualTo(OffsetDateTime.parse("2026-05-08T01:00:31Z"));
+        });
+        verifyNoInteractions(metricBucketRepository);
+        assertThat(publisher.enqueuedMessages()).hasSize(1)
+                .first()
+                .satisfies(message -> {
+                    assertThat(message.body().messageVersion()).isEqualTo("1");
+                    assertThat(message.body().projectId()).isEqualTo(PortalIngestValidationFixture.VERIFIED_PROJECT.projectId());
+                    assertThat(message.body().projectName()).isEqualTo("checkout");
+                    assertThat(message.body().payloadHash()).isEqualTo(payloadHasher.sha256(request));
+                    assertThat(message.attributes())
+                            .extracting(attribute -> attribute.name())
+                            .containsExactly(
+                                    "messageVersion",
+                                    "projectId",
+                                    "schemaVersion",
+                                    "bucketStartUtc",
+                                    "bucketEndUtc",
+                                    "applicationName",
+                                    "environment",
+                                    "instanceName");
+                });
+    }
+
+    @Test
+    void queueModeRejectsInvalidProjectBeforeValidationHashMessageBuildOrPublisher() throws Exception {
+        ProjectKeyVerificationService projectKeyVerificationService = mock(ProjectKeyVerificationService.class);
+        when(projectKeyVerificationService.verify(PortalIngestValidationFixture.PROJECT_KEY_HEADER))
+                .thenReturn(ProjectKeyVerificationResult.unauthorized());
+        MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        IngestPayloadHasher payloadHasher = mock(IngestPayloadHasher.class);
+        FakeMetricIngestQueuePublisher publisher = new FakeMetricIngestQueuePublisher();
+        IngestAcceptanceService service = newService(
+                projectKeyVerificationService,
+                metricBucketRepository,
+                payloadHasher,
+                IngestBufferMode.FAKE,
+                publisher);
+
+        IngestAcceptanceResult result = service.accept(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                "not-a-valid-idempotency-key",
+                null);
+
+        assertThat(result.isUnauthorized()).isTrue();
+        verifyNoInteractions(metricBucketRepository, payloadHasher);
+        assertThat(publisher.enqueuedMessages()).isEmpty();
+    }
+
+    @Test
+    void queueModeRejectsInvalidPayloadBeforeHashMessageBuildOrPublisher() throws Exception {
+        MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        IngestPayloadHasher payloadHasher = mock(IngestPayloadHasher.class);
+        FakeMetricIngestQueuePublisher publisher = new FakeMetricIngestQueuePublisher();
+        IngestAcceptanceService service = newService(
+                verifiedProjectKeyService(),
+                metricBucketRepository,
+                payloadHasher,
+                IngestBufferMode.FAKE,
+                publisher);
+
+        IngestAcceptanceResult result = service.accept(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                "not-a-valid-idempotency-key",
+                null);
+
+        assertThat(result.isInvalidRequest()).isTrue();
+        verifyNoInteractions(metricBucketRepository, payloadHasher);
+        assertThat(publisher.enqueuedMessages()).isEmpty();
+    }
+
+    @Test
+    void queueModeRejectsPayloadTooLargeBeforePublisherAndWithoutDirectFallback() throws Exception {
+        MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        FakeMetricIngestQueuePublisher publisher = new FakeMetricIngestQueuePublisher();
+        IngestAcceptanceService service = newService(
+                verifiedProjectKeyService(),
+                metricBucketRepository,
+                new IngestPayloadHasher(new ObjectMapper()),
+                queueProperties(IngestBufferMode.FAKE, 32L, ""),
+                publisher);
+
+        IngestAcceptanceResult result = service.accept(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                PortalIngestValidationFixture.goldenRequest());
+
+        assertThat(result.isPayloadTooLarge()).isTrue();
+        assertThat(publisher.enqueuedMessages()).isEmpty();
+        verifyNoInteractions(metricBucketRepository);
+    }
+
+    @Test
+    void sqsModeWithBlankQueueUrlFailsClosedBeforePublisher() throws Exception {
+        MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        MetricIngestQueuePublisher publisher = mock(MetricIngestQueuePublisher.class);
+        IngestAcceptanceService service = newService(
+                verifiedProjectKeyService(),
+                metricBucketRepository,
+                new IngestPayloadHasher(new ObjectMapper()),
+                queueProperties(IngestBufferMode.SQS, 1_048_576L, " "),
+                publisher);
+
+        IngestAcceptanceResult result = service.accept(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                PortalIngestValidationFixture.goldenRequest());
+
+        assertThat(result.isIngestEnqueueUnavailable()).isTrue();
+        verifyNoInteractions(metricBucketRepository, publisher);
+    }
+
+    @Test
+    void queueModeMapsMessageBuildFailureToEnqueueUnavailable() throws Exception {
+        MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        IngestPayloadHasher payloadHasher = mock(IngestPayloadHasher.class);
+        when(payloadHasher.sha256(any(IngestEnvelopeRequest.class)))
+                .thenThrow(new MetricIngestMessageBuildException("hash_unavailable", new RuntimeException("boom")));
+        FakeMetricIngestQueuePublisher publisher = new FakeMetricIngestQueuePublisher();
+        IngestAcceptanceService service = newService(
+                verifiedProjectKeyService(),
+                metricBucketRepository,
+                payloadHasher,
+                IngestBufferMode.FAKE,
+                publisher);
+
+        IngestAcceptanceResult result = service.accept(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                PortalIngestValidationFixture.goldenRequest());
+
+        assertThat(result.isIngestEnqueueUnavailable()).isTrue();
+        assertThat(result.toString()).doesNotContain(PortalIngestValidationFixture.PROJECT_KEY_HEADER, "boom");
+        assertThat(publisher.enqueuedMessages()).isEmpty();
+        verifyNoInteractions(metricBucketRepository);
+    }
+
+    @Test
+    void queueModeMapsPublisherFailureToEnqueueUnavailableAfterNoPersistenceWork() throws Exception {
+        MetricBucketRepository metricBucketRepository = mock(MetricBucketRepository.class);
+        MetricIngestQueuePublisher publisher = message -> {
+            throw new MetricIngestQueuePublishException("sqs_send_failed", new RuntimeException("queue url secret"));
+        };
+        IngestAcceptanceService service = newService(
+                verifiedProjectKeyService(),
+                metricBucketRepository,
+                new IngestPayloadHasher(new ObjectMapper()),
+                IngestBufferMode.FAKE,
+                publisher);
+
+        IngestAcceptanceResult result = service.accept(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                PortalIngestValidationFixture.goldenRequest());
+
+        assertThat(result.isIngestEnqueueUnavailable()).isTrue();
+        assertThat(IngestErrorResponse.ingestEnqueueUnavailable().toString()).doesNotContain(
+                "queue url secret",
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER);
+        verifyNoInteractions(metricBucketRepository);
+    }
+
     private static IngestAcceptanceResult accept(Consumer<ObjectNode> mutation) throws Exception {
         return accept(PortalIngestValidationFixture.IDEMPOTENCY_KEY, PortalIngestValidationFixture.requestWith(mutation));
     }
@@ -507,6 +708,55 @@ class IngestAcceptanceServiceTest {
                 projectKeyVerificationService,
                 metricBucketRepository,
                 payloadHasher);
+    }
+
+    private static IngestAcceptanceService newService(
+            ProjectKeyVerificationService projectKeyVerificationService,
+            MetricBucketRepository metricBucketRepository,
+            IngestPayloadHasher payloadHasher,
+            IngestBufferMode mode,
+            MetricIngestQueuePublisher publisher) {
+        return newService(
+                projectKeyVerificationService,
+                metricBucketRepository,
+                payloadHasher,
+                queueProperties(mode, 1_048_576L, "https://sqs.us-east-1.amazonaws.com/123/ingest"),
+                publisher);
+    }
+
+    private static IngestAcceptanceService newService(
+            ProjectKeyVerificationService projectKeyVerificationService,
+            MetricBucketRepository metricBucketRepository,
+            IngestPayloadHasher payloadHasher,
+            IngestBufferProperties properties,
+            MetricIngestQueuePublisher publisher) {
+        ObjectMapper objectMapper = queueObjectMapper();
+        return new IngestAcceptanceService(
+                projectKeyVerificationService,
+                metricBucketRepository,
+                payloadHasher,
+                properties,
+                new MetricIngestQueueMessageFactory(objectMapper, payloadHasher),
+                publisher,
+                FIXED_CLOCK);
+    }
+
+    private static IngestBufferProperties queueProperties(
+            IngestBufferMode mode,
+            long messageSizeLimitBytes,
+            String queueUrl) {
+        IngestBufferProperties properties = new IngestBufferProperties();
+        properties.setMode(mode);
+        properties.setMessageSizeLimitBytes(messageSizeLimitBytes);
+        properties.setPublisherTimeout(Duration.ofSeconds(3));
+        properties.getSqs().setQueueUrl(queueUrl);
+        return properties;
+    }
+
+    private static ObjectMapper queueObjectMapper() {
+        return new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 
     private static MetricBucketRepository acceptingRepository() {
