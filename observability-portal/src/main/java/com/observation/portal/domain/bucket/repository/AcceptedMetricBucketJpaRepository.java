@@ -3,6 +3,7 @@ package com.observation.portal.domain.bucket.repository;
 import com.observation.portal.domain.bucket.entity.AcceptedMetricBucketEntity;
 import com.observation.portal.domain.bucket.model.AcceptedBucketBoundaryEvidenceRow;
 import com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidenceRow;
+import com.observation.portal.domain.bucket.model.AcceptedMetricBucketIdentity;
 import com.observation.portal.domain.bucket.model.EndpointEvidenceRow;
 import com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow;
 import com.observation.portal.domain.bucket.model.LocalPercentileEvidenceRow;
@@ -37,6 +38,54 @@ interface AcceptedMetricBucketJpaRepository extends JpaRepository<AcceptedMetric
     Optional<AcceptedMetricBucketEntity> findByApplicationInstanceIdAndBucketStartUtc(
             UUID applicationInstanceId,
             OffsetDateTime bucketStartUtc);
+
+    /**
+     * worker duplicate/no-op 분류에 필요한 저장 identity만 project/idempotency key로 조회한다.
+     */
+    @Query("select new com.observation.portal.domain.bucket.model.AcceptedMetricBucketIdentity("
+            + "bucket.id, "
+            + "bucket.projectId, "
+            + "bucket.applicationId, "
+            + "bucket.applicationInstanceId, "
+            + "bucket.idempotencyKey, "
+            + "bucket.payloadHash, "
+            + "bucket.bucketStartUtc, "
+            + "bucket.bucketEndUtc, "
+            + "bucket.acceptedAt) "
+            + "from AcceptedMetricBucketEntity bucket "
+            + "where bucket.projectId = :projectId "
+            + "and bucket.idempotencyKey = :idempotencyKey")
+    Optional<AcceptedMetricBucketIdentity> findIdentityByProjectIdAndIdempotencyKey(
+            @Param("projectId") UUID projectId,
+            @Param("idempotencyKey") String idempotencyKey);
+
+    /**
+     * application identity와 30초 bucket start 기준 unique constraint에 대응하는 저장 identity를 조회한다.
+     */
+    @Query("select new com.observation.portal.domain.bucket.model.AcceptedMetricBucketIdentity("
+            + "bucket.id, "
+            + "bucket.projectId, "
+            + "bucket.applicationId, "
+            + "bucket.applicationInstanceId, "
+            + "bucket.idempotencyKey, "
+            + "bucket.payloadHash, "
+            + "bucket.bucketStartUtc, "
+            + "bucket.bucketEndUtc, "
+            + "bucket.acceptedAt) "
+            + "from AcceptedMetricBucketEntity bucket, ApplicationEntity application, ApplicationInstanceEntity instance "
+            + "where application.id = bucket.applicationId "
+            + "and instance.id = bucket.applicationInstanceId "
+            + "and application.projectId = :projectId "
+            + "and application.name = :applicationName "
+            + "and application.environment = :environment "
+            + "and instance.instanceName = :instanceName "
+            + "and bucket.bucketStartUtc = :bucketStartUtc")
+    Optional<AcceptedMetricBucketIdentity> findIdentityByProjectApplicationInstanceAndBucketStartUtc(
+            @Param("projectId") UUID projectId,
+            @Param("applicationName") String applicationName,
+            @Param("environment") String environment,
+            @Param("instanceName") String instanceName,
+            @Param("bucketStartUtc") OffsetDateTime bucketStartUtc);
 
     /**
      * application scope freshness 입력으로 사용할 마지막 accepted bucket endUtc timestamp만 조회한다.

@@ -28,6 +28,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.ResolverStyle;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -162,8 +163,7 @@ public class IngestAcceptanceService {
             return IngestAcceptanceResult.unauthorized();
         }
 
-        EnvelopeValidator validator = new EnvelopeValidator(request, idempotencyKeyHeader);
-        List<IngestValidationError> errors = validator.validate();
+        List<IngestValidationError> errors = validateEnvelope(request, idempotencyKeyHeader);
         if (!errors.isEmpty()) {
             return IngestAcceptanceResult.invalid(errors);
         }
@@ -248,6 +248,17 @@ public class IngestAcceptanceService {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * queue worker가 direct/fake/sqs request path와 동일한 ingest envelope 규칙을 다시 적용할 수 있게 한다.
+     *
+     * <p>원문 payload 값은 error에 보관하지 않고, field path와 안정적인 code만 반환한다.</p>
+     */
+    public static List<IngestValidationError> validateEnvelope(
+            IngestEnvelopeRequest request,
+            String idempotencyKeyHeader) {
+        return new EnvelopeValidator(request, idempotencyKeyHeader).validate();
     }
 
     /**
@@ -493,7 +504,7 @@ public class IngestAcceptanceService {
                 return;
             }
 
-            validateHeaderSafeComponent(components[0], "Idempotency-Key.project");
+            validateProjectComponent(components[0]);
             validateHeaderSafeComponent(components[1], "Idempotency-Key.application");
             validateHeaderSafeComponent(components[2], "Idempotency-Key.environment");
             validateHeaderSafeComponent(components[3], "Idempotency-Key.instance");
@@ -650,6 +661,17 @@ public class IngestAcceptanceService {
             }
         }
 
+        private void validateProjectComponent(String component) {
+            String field = "Idempotency-Key.project";
+            if (!hasText(component) || !HEADER_SAFE_COMPONENT.matcher(component).matches()) {
+                add("invalid_idempotency_key", field, "Idempotency-Key component has unsupported characters");
+                return;
+            }
+            if (looksCredentialLike(component)) {
+                add("invalid_idempotency_key", field, "Idempotency-Key project component must not contain credential-like value");
+            }
+        }
+
         private Optional<Instant> parseUtcInstant(String value, String field) {
             if (!hasText(value)) {
                 add("required", field, "UTC instant is required");
@@ -743,6 +765,20 @@ public class IngestAcceptanceService {
             return segment.matches("[0-9]+")
                     || UUID_SEGMENT.matcher(segment).matches()
                     || LONG_HEX_SEGMENT.matcher(segment).matches();
+        }
+
+        private static boolean looksCredentialLike(String value) {
+            String normalized = value.toLowerCase(Locale.ROOT);
+            return normalized.contains("authorization")
+                    || normalized.contains("bearer")
+                    || normalized.contains("credential")
+                    || normalized.contains("webhook")
+                    || normalized.contains("aws")
+                    || normalized.contains("sqs")
+                    || normalized.startsWith("pk_live")
+                    || normalized.startsWith("pk_test")
+                    || normalized.startsWith("sk_")
+                    || normalized.contains("://");
         }
 
         private static boolean hasValidPercentEncoding(String value) {

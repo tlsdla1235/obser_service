@@ -29,4 +29,48 @@ class IngestBufferPropertiesTest {
         assertThat(properties.getMessageSizeLimitBytes())
                 .isEqualTo(IngestBufferProperties.SQS_MESSAGE_SIZE_LIMIT_BYTES);
     }
+
+    @Test
+    void exposesSafeWorkerDefaults() {
+        IngestBufferProperties properties = new IngestBufferProperties();
+
+        assertThat(properties.getWorker().isEnabled()).isFalse();
+        assertThat(properties.getWorker().getDlqUrl()).isEmpty();
+        assertThat(properties.getWorker().getLongPollSeconds()).isEqualTo(20);
+        assertThat(properties.getWorker().getMaxMessagesPerPoll()).isEqualTo(10);
+        assertThat(properties.getWorker().getVisibilityTimeout()).isEqualTo(java.time.Duration.ofSeconds(60));
+        assertThat(properties.getWorker().getMaxReceiveCount()).isEqualTo(5);
+        assertThat(properties.getWorker().getMaxBatchSize()).isEqualTo(10);
+        assertThat(properties.getWorker().getMaxBatchAge()).isEqualTo(java.time.Duration.ofSeconds(2));
+    }
+
+    @Test
+    void rejectsInvalidWorkerReceiveBoundsAndDurations() {
+        IngestBufferProperties.Worker worker = new IngestBufferProperties().getWorker();
+
+        assertThatThrownBy(() -> worker.setLongPollSeconds(-1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("longPollSeconds");
+        assertThatThrownBy(() -> worker.setLongPollSeconds(21))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("longPollSeconds");
+        assertThatThrownBy(() -> worker.setMaxMessagesPerPoll(0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maxMessagesPerPoll");
+        assertThatThrownBy(() -> worker.setMaxMessagesPerPoll(11))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maxMessagesPerPoll");
+        assertThatThrownBy(() -> worker.setVisibilityTimeout(java.time.Duration.ZERO))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("visibilityTimeout");
+        assertThatThrownBy(() -> worker.setMaxReceiveCount(0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maxReceiveCount");
+        assertThatThrownBy(() -> worker.setMaxBatchSize(0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maxBatchSize");
+        assertThatThrownBy(() -> worker.setMaxBatchAge(java.time.Duration.ZERO))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maxBatchAge");
+    }
 }

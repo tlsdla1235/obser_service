@@ -483,6 +483,10 @@ class IngestAcceptanceServiceTest {
                 "Idempotency-Key.bucketStartUtc", "idempotency_payload_mismatch");
         assertInvalid(accept("project-123:orders:api:prod:orders-api-7f9c9c8c9d-x2p4k:20260508T010000Z", request),
                 "Idempotency-Key", "invalid_idempotency_key");
+        assertInvalid(accept("pk_live_checkout.secret:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:20260508T010000Z", request),
+                "Idempotency-Key.project", "invalid_idempotency_key");
+        assertInvalid(accept("sqs.ap-northeast-2.amazonaws.com.queue:orders-api:prod:orders-api-7f9c9c8c9d-x2p4k:20260508T010000Z", request),
+                "Idempotency-Key.project", "invalid_idempotency_key");
     }
 
     @Test

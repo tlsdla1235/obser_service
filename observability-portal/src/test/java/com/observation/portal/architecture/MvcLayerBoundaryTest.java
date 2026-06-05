@@ -109,6 +109,29 @@ class MvcLayerBoundaryTest {
     }
 
     @Test
+    void epic12WorkerClassesStayInIngestQueuePackageAndDoNotIntroduceLambdaSurface() {
+        List<String> misplacedEpic12WorkerClasses = PORTAL_CLASSES.stream()
+                .map(JavaClass::getName)
+                .filter(MvcLayerBoundaryTest::matchesEpic12WorkerSurface)
+                .filter(className -> !className.startsWith("com.observation.portal.domain.ingest.queue."))
+                .sorted()
+                .toList();
+        List<String> lambdaSurfaceClasses = PORTAL_CLASSES.stream()
+                .map(JavaClass::getName)
+                .filter(className -> className.toLowerCase().contains("lambda")
+                        || className.toLowerCase().contains("eventsourcemapping"))
+                .sorted()
+                .toList();
+
+        assertThat(misplacedEpic12WorkerClasses)
+                .as("Epic 12 worker/processor/DLQ/SQS receive classes must stay in domain.ingest.queue")
+                .isEmpty();
+        assertThat(lambdaSurfaceClasses)
+                .as("Epic 12 must not add Lambda consumer, handler, or event source mapping classes")
+                .isEmpty();
+    }
+
+    @Test
     void accountFeatureUsesOnlyMvcPackageRoles() {
         List<String> accountClassesOutsideMvcRoles = PORTAL_CLASSES.stream()
                 .filter(javaClass -> javaClass.getPackageName()
@@ -303,6 +326,14 @@ class MvcLayerBoundaryTest {
                 || normalized.contains("rawsnapshot")
                 || normalized.contains("rawbucket")
                 || normalized.contains("rawexplorer");
+    }
+
+    private static boolean matchesEpic12WorkerSurface(String className) {
+        String normalized = className.toLowerCase();
+        return normalized.contains("metricingestqueueworker")
+                || normalized.contains("metricingestqueueprocessor")
+                || normalized.contains("metricingestdlq")
+                || normalized.contains("sqsmetricingestqueueconsumer");
     }
 
     private static Stream<String> forbiddenMigrationSnippets(Path path) {

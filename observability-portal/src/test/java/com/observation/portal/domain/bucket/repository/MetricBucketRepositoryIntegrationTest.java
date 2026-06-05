@@ -1,6 +1,7 @@
 package com.observation.portal.domain.bucket.repository;
 
 import com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidence;
+import com.observation.portal.domain.bucket.model.AcceptedMetricBucketIdentity;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommand;
 import com.observation.portal.domain.bucket.model.EndpointEvidenceRow;
@@ -890,6 +891,48 @@ class MetricBucketRepositoryIntegrationTest {
         assertThat(countAcceptedBuckets()).isEqualTo(1);
         assertPersistedBucketRow(receipt.bucketId(), first);
         assertCatalogSeenAt(FIXED_TIME);
+    }
+
+    @Test
+    void storedIdentityProjectionSupportsWorkerDuplicateAndConflictClassification() throws SQLException {
+        AcceptedMetricBucketWriteCommand original = command(
+                "project-123:orders-api:prod:pod-a:20260508T010000Z",
+                "hash-original",
+                "2026-05-08T01:00:00Z",
+                FIXED_TIME);
+        AcceptedMetricBucketReceipt receipt = metricBucketRepository.insert(original);
+
+        Optional<AcceptedMetricBucketIdentity> byKey =
+                metricBucketRepository.findIdentityByProjectIdAndIdempotencyKey(PROJECT_ID, original.idempotencyKey());
+        Optional<AcceptedMetricBucketIdentity> byInstanceBucket =
+                metricBucketRepository.findIdentityByProjectApplicationInstanceAndBucketStartUtc(
+                        PROJECT_ID,
+                        "orders-api",
+                        "prod",
+                        "pod-a",
+                        original.bucketStartUtc());
+
+        assertThat(byKey).hasValueSatisfying(identity -> {
+            assertThat(identity.bucketId()).isEqualTo(receipt.bucketId());
+            assertThat(identity.payloadHash()).isEqualTo("hash-original");
+            assertThat(identity.idempotencyKey()).isEqualTo(original.idempotencyKey());
+            assertThat(identity.bucketStartUtc()).isEqualTo(original.bucketStartUtc());
+            assertThat(identity.bucketEndUtc()).isEqualTo(original.bucketEndUtc());
+            assertThat(identity.acceptedAt()).isEqualTo(FIXED_TIME);
+        });
+        assertThat(byInstanceBucket).hasValueSatisfying(identity -> {
+            assertThat(identity.bucketId()).isEqualTo(receipt.bucketId());
+            assertThat(identity.applicationInstanceId()).isEqualTo(byKey.orElseThrow().applicationInstanceId());
+        });
+
+        assertThatThrownBy(() -> metricBucketRepository.insert(command(
+                "project-123:orders-api:prod:pod-a:different-key",
+                "hash-conflict",
+                "2026-05-08T01:00:00Z",
+                OffsetDateTime.parse("2026-05-08T01:01:05Z"))))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(countAcceptedBuckets()).isEqualTo(1);
+        assertPersistedBucketRow(receipt.bucketId(), original);
     }
 
     @Test

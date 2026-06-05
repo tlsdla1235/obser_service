@@ -6,6 +6,7 @@ import com.observation.portal.domain.bucket.entity.AcceptedMetricBucketEntity;
 import com.observation.portal.domain.bucket.model.AcceptedBucketBoundaryEvidenceRow;
 import com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidence;
 import com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidenceRow;
+import com.observation.portal.domain.bucket.model.AcceptedMetricBucketIdentity;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommand;
 import com.observation.portal.domain.bucket.model.EndpointEvidenceRow;
@@ -109,6 +110,36 @@ public class MetricBucketRepository {
             String idempotencyKey) {
         return acceptedMetricBucketJpaRepository.findByProjectIdAndIdempotencyKey(projectId, idempotencyKey)
                 .map(AcceptedMetricBucketEntity::toReceipt);
+    }
+
+    /**
+     * queue worker가 같은 idempotency key의 stored payload hash를 비교할 수 있게 identity projection을 조회한다.
+     */
+    @Transactional(readOnly = true)
+    public Optional<AcceptedMetricBucketIdentity> findIdentityByProjectIdAndIdempotencyKey(
+            UUID projectId,
+            String idempotencyKey) {
+        return acceptedMetricBucketJpaRepository.findIdentityByProjectIdAndIdempotencyKey(
+                Objects.requireNonNull(projectId, "projectId must not be null"),
+                requireText(idempotencyKey, "idempotencyKey"));
+    }
+
+    /**
+     * queue worker가 같은 application instance와 bucket start의 기존 row를 deterministic conflict로 분류할 수 있게 조회한다.
+     */
+    @Transactional(readOnly = true)
+    public Optional<AcceptedMetricBucketIdentity> findIdentityByProjectApplicationInstanceAndBucketStartUtc(
+            UUID projectId,
+            String applicationName,
+            String environment,
+            String instanceName,
+            OffsetDateTime bucketStartUtc) {
+        return acceptedMetricBucketJpaRepository.findIdentityByProjectApplicationInstanceAndBucketStartUtc(
+                Objects.requireNonNull(projectId, "projectId must not be null"),
+                requireText(applicationName, "applicationName"),
+                requireText(environment, "environment"),
+                requireText(instanceName, "instanceName"),
+                Objects.requireNonNull(bucketStartUtc, "bucketStartUtc must not be null"));
     }
 
     /**
@@ -485,5 +516,12 @@ public class MetricBucketRepository {
 
     private static OffsetDateTime toUtcOffsetDateTime(Instant instant) {
         return OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
+    }
+
+    private static String requireText(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value;
     }
 }

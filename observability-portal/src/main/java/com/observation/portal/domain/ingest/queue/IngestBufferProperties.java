@@ -22,6 +22,7 @@ public class IngestBufferProperties {
     private long messageSizeLimitBytes = SQS_MESSAGE_SIZE_LIMIT_BYTES;
     private Duration publisherTimeout = Duration.ofSeconds(3);
     private final Sqs sqs = new Sqs();
+    private final Worker worker = new Worker();
 
     /**
      * `direct`, `fake`, `sqs` 중 하나로만 바인딩되며 기본값은 direct다.
@@ -80,6 +81,13 @@ public class IngestBufferProperties {
     }
 
     /**
+     * portal 내부 queue worker의 receive/delete/DLQ 동작을 제한하는 안전 기본값 묶음이다.
+     */
+    public Worker getWorker() {
+        return worker;
+    }
+
+    /**
      * SQS publisher 전용 설정이다. blank queue URL은 service에서 503 fail-closed로 처리한다.
      */
     public static class Sqs {
@@ -101,6 +109,107 @@ public class IngestBufferProperties {
 
         public void setEndpointOverride(String endpointOverride) {
             this.endpointOverride = endpointOverride == null ? "" : endpointOverride;
+        }
+    }
+
+    /**
+     * worker는 기본 비활성화 상태이며, SQS receive bounds와 DLQ URL을 명시적으로 켠 환경에서만 사용한다.
+     */
+    public static class Worker {
+
+        private boolean enabled = false;
+        private String dlqUrl = "";
+        private int longPollSeconds = 20;
+        private int maxMessagesPerPoll = 10;
+        private Duration visibilityTimeout = Duration.ofSeconds(60);
+        private int maxReceiveCount = 5;
+        private int maxBatchSize = 10;
+        private Duration maxBatchAge = Duration.ofSeconds(2);
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getDlqUrl() {
+            return dlqUrl;
+        }
+
+        public void setDlqUrl(String dlqUrl) {
+            this.dlqUrl = dlqUrl == null ? "" : dlqUrl;
+        }
+
+        public int getLongPollSeconds() {
+            return longPollSeconds;
+        }
+
+        public void setLongPollSeconds(int longPollSeconds) {
+            if (longPollSeconds < 0 || longPollSeconds > 20) {
+                throw new IllegalArgumentException("longPollSeconds must be between 0 and 20");
+            }
+            this.longPollSeconds = longPollSeconds;
+        }
+
+        public int getMaxMessagesPerPoll() {
+            return maxMessagesPerPoll;
+        }
+
+        public void setMaxMessagesPerPoll(int maxMessagesPerPoll) {
+            if (maxMessagesPerPoll < 1 || maxMessagesPerPoll > 10) {
+                throw new IllegalArgumentException("maxMessagesPerPoll must be between 1 and 10");
+            }
+            this.maxMessagesPerPoll = maxMessagesPerPoll;
+        }
+
+        public Duration getVisibilityTimeout() {
+            return visibilityTimeout;
+        }
+
+        public void setVisibilityTimeout(Duration visibilityTimeout) {
+            Duration requiredTimeout = Objects.requireNonNull(
+                    visibilityTimeout,
+                    "visibilityTimeout must not be null");
+            if (requiredTimeout.isZero() || requiredTimeout.isNegative()) {
+                throw new IllegalArgumentException("visibilityTimeout must be positive");
+            }
+            this.visibilityTimeout = requiredTimeout;
+        }
+
+        public int getMaxReceiveCount() {
+            return maxReceiveCount;
+        }
+
+        public void setMaxReceiveCount(int maxReceiveCount) {
+            if (maxReceiveCount < 1) {
+                throw new IllegalArgumentException("maxReceiveCount must be at least 1");
+            }
+            this.maxReceiveCount = maxReceiveCount;
+        }
+
+        public int getMaxBatchSize() {
+            return maxBatchSize;
+        }
+
+        public void setMaxBatchSize(int maxBatchSize) {
+            if (maxBatchSize < 1) {
+                throw new IllegalArgumentException("maxBatchSize must be at least 1");
+            }
+            this.maxBatchSize = maxBatchSize;
+        }
+
+        public Duration getMaxBatchAge() {
+            return maxBatchAge;
+        }
+
+        public void setMaxBatchAge(Duration maxBatchAge) {
+            Duration requiredMaxBatchAge = Objects.requireNonNull(maxBatchAge, "maxBatchAge must not be null");
+            if (requiredMaxBatchAge.isZero() || requiredMaxBatchAge.isNegative()) {
+                throw new IllegalArgumentException("maxBatchAge must be positive");
+            }
+            this.maxBatchAge = requiredMaxBatchAge;
         }
     }
 }
