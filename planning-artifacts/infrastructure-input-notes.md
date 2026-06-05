@@ -41,6 +41,47 @@ Redis는 필수 결정으로 잠그지 않고, 필요에 따라 도입하는 선
 
 Account/auth token store는 Redis 도입을 전제로 잠그지 않는다. 초기 구현 후보는 PostgreSQL/RDBMS에 hashed refresh token 또는 token family metadata를 저장하는 방식이다. Redis는 logout/revoke/reuse detection 요구가 고성능 distributed state를 필요로 할 때 후속 선택지로 검토한다.
 
+## 2A. SQS Buffered Ingest
+
+Epic 12의 metric bucket ingest buffer는 SQS Standard queue + DLQ를 기본 후보로 둔다. 이 항목은 실제 AWS 리소스를 즉시 만든다는 뜻이 아니라 Story 12.2 enqueue boundary와 Story 12.3 worker 구현이 공유할 resource option spec이다.
+
+닫힌 전제:
+
+- Consumer runtime은 Spring Boot portal 내부 worker다.
+- Lambda consumer는 deferred/non-goal이다.
+- SQS mode는 opt-in이고 rollback은 direct mode 복귀다.
+- Local/test 기본 adapter는 fake queue이며 LocalStack은 opt-in integration이다.
+- Payload too large는 enqueue 전에 `413`으로 reject하고 direct fallback을 열지 않는다.
+- SQS unavailable/config/serialization failure는 `503`으로 매핑한다.
+
+Queue 후보:
+
+| 항목 | 값 | 비고 |
+| --- | --- | --- |
+| Main queue | SQS Standard `observation-metric-ingest-{env}` | Standard queue의 at-least-once/out-of-order는 DB idempotency로 흡수한다. |
+| DLQ | SQS Standard `observation-metric-ingest-dlq-{env}` | malformed/conflict 조사 대상만 분리한다. |
+| Long polling | `ReceiveMessageWaitTimeSeconds=20` | worker receive 경계는 Story 12.3에서 구현한다. |
+| Visibility timeout | `180s` 후보 | exact 기본값은 Story 12.3에서 확정한다. |
+| Redrive | `maxReceiveCount=5` 후보 | exact 기본값은 Story 12.3에서 확정한다. |
+| Retention | AWS 기본값 4일 유지 후보 | replay/backfill pipeline은 Epic 12 non-goal이다. |
+| Encryption | SSE-SQS 기본 후보, KMS opt-in | KMS key policy는 배포 spec에서 별도로 닫는다. |
+| Message size guard | app-level configurable limit | AWS SQS quota를 넘기기 전에 request boundary에서 reject한다. |
+
+IAM 후보:
+
+- Portal API publisher는 `sqs:SendMessage`, `sqs:GetQueueAttributes`만 가진다.
+- Portal worker는 `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:ChangeMessageVisibility`, `sqs:GetQueueAttributes`를 가진다.
+- DLQ 조사 role은 raw payload/secret을 출력하지 않는 runbook과 함께 최소 read 권한으로 제한한다.
+
+기본 metric/diagnostic 후보:
+
+- `ingest.enqueue.success.count`
+- `ingest.enqueue.failure.count`
+- `ingest.queue.message.age.seconds`
+- `ingest.queue.visible.count`
+- `ingest.queue.not_visible.count`
+- `ingest.persist.lag.seconds`
+
 ## 3. Reverse Proxy And Web Server
 
 Nginx를 web server / reverse proxy로 두고 portal HTTP traffic을 프록시하는 배포 구성을 고려한다.

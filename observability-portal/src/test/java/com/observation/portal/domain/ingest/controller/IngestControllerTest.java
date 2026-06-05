@@ -1,10 +1,16 @@
 package com.observation.portal.domain.ingest.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
 import com.observation.portal.domain.ingest.dto.IngestAcceptedResponse;
 import com.observation.portal.domain.ingest.dto.IngestErrorResponse;
+import com.observation.portal.domain.ingest.dto.IngestQueuedResponse;
 import com.observation.portal.domain.ingest.service.IngestAcceptanceResult;
 import com.observation.portal.domain.ingest.service.IngestAcceptanceService;
+import com.observation.portal.domain.ingest.service.IngestQueuedResult;
 import com.observation.portal.domain.ingest.service.IngestValidationError;
 import com.observation.portal.domain.ingest.service.PortalIngestValidationFixture;
 import com.observation.portal.domain.ingest.service.ValidatedIngestCandidate;
@@ -23,6 +29,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class IngestControllerTest {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
     @Test
     void mapsFirstSuccessfulIngestTo201CreatedWithBucketReceipt() throws Exception {
@@ -147,5 +157,95 @@ class IngestControllerTest {
                 PortalIngestValidationFixture.PROJECT_KEY_HEADER,
                 PortalIngestValidationFixture.IDEMPOTENCY_KEY,
                 request);
+    }
+
+    @Test
+    void mapsQueuedIngestTo202AcceptedWithoutPersistenceReceiptFields() throws Exception {
+        IngestAcceptanceService service = mock(IngestAcceptanceService.class);
+        IngestController controller = new IngestController(service);
+        var request = PortalIngestValidationFixture.goldenRequest();
+        OffsetDateTime receivedAt = OffsetDateTime.parse("2026-05-08T01:00:31Z");
+        OffsetDateTime enqueuedAt = OffsetDateTime.parse("2026-05-08T01:00:31.120Z");
+        when(service.accept(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                request))
+                .thenReturn(IngestAcceptanceResult.queued(new IngestQueuedResult(
+                        PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                        "1",
+                        receivedAt,
+                        enqueuedAt)));
+
+        ResponseEntity<?> response = controller.acceptBucket(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(response.getHeaders().getLocation()).isNull();
+        assertThat(response.getBody()).isEqualTo(new IngestQueuedResponse(
+                "queued",
+                true,
+                false,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                "1",
+                receivedAt,
+                enqueuedAt));
+
+        ObjectNode body = OBJECT_MAPPER.valueToTree(response.getBody());
+        assertThat(body.fieldNames()).toIterable().containsExactly(
+                "status",
+                "queued",
+                "persisted",
+                "idempotencyKey",
+                "messageVersion",
+                "receivedAt",
+                "enqueuedAt");
+        assertThat(body.toString()).doesNotContain("messageId", "bucketId", "acceptedAt", "duplicate");
+    }
+
+    @Test
+    void mapsPayloadTooLargeTo413PayloadTooLarge() throws Exception {
+        IngestAcceptanceService service = mock(IngestAcceptanceService.class);
+        IngestController controller = new IngestController(service);
+        var request = PortalIngestValidationFixture.goldenRequest();
+        when(service.accept(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                request))
+                .thenReturn(IngestAcceptanceResult.payloadTooLarge());
+
+        ResponseEntity<?> response = controller.acceptBucket(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
+        assertThat(response.getBody()).isEqualTo(IngestErrorResponse.payloadTooLarge());
+    }
+
+    @Test
+    void mapsEnqueueUnavailableTo503ServiceUnavailable() throws Exception {
+        IngestAcceptanceService service = mock(IngestAcceptanceService.class);
+        IngestController controller = new IngestController(service);
+        var request = PortalIngestValidationFixture.goldenRequest();
+        when(service.accept(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                request))
+                .thenReturn(IngestAcceptanceResult.ingestEnqueueUnavailable());
+
+        ResponseEntity<?> response = controller.acceptBucket(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                PortalIngestValidationFixture.IDEMPOTENCY_KEY,
+                request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getBody()).isEqualTo(IngestErrorResponse.ingestEnqueueUnavailable());
+        assertThat(response.getBody().toString()).doesNotContain(
+                PortalIngestValidationFixture.PROJECT_KEY_HEADER,
+                "queue-url",
+                "Authorization",
+                "webhook");
     }
 }

@@ -14,23 +14,30 @@ import java.util.Optional;
 public final class IngestAcceptanceResult {
 
     private static final IngestAcceptanceResult UNAUTHORIZED =
-            new IngestAcceptanceResult(Status.UNAUTHORIZED, null, null, List.of());
+            new IngestAcceptanceResult(Status.UNAUTHORIZED, null, null, null, List.of());
     private static final IngestAcceptanceResult DUPLICATE_IDEMPOTENCY_KEY =
-            new IngestAcceptanceResult(Status.DUPLICATE_IDEMPOTENCY_KEY, null, null, List.of());
+            new IngestAcceptanceResult(Status.DUPLICATE_IDEMPOTENCY_KEY, null, null, null, List.of());
+    private static final IngestAcceptanceResult PAYLOAD_TOO_LARGE =
+            new IngestAcceptanceResult(Status.PAYLOAD_TOO_LARGE, null, null, null, List.of());
+    private static final IngestAcceptanceResult INGEST_ENQUEUE_UNAVAILABLE =
+            new IngestAcceptanceResult(Status.INGEST_ENQUEUE_UNAVAILABLE, null, null, null, List.of());
 
     private final Status status;
     private final ValidatedIngestCandidate acceptedCandidate;
     private final AcceptedMetricBucketReceipt acceptedReceipt;
+    private final IngestQueuedResult queuedResult;
     private final List<IngestValidationError> errors;
 
     private IngestAcceptanceResult(
             Status status,
             ValidatedIngestCandidate acceptedCandidate,
             AcceptedMetricBucketReceipt acceptedReceipt,
+            IngestQueuedResult queuedResult,
             List<IngestValidationError> errors) {
         this.status = Objects.requireNonNull(status, "status must not be null");
         this.acceptedCandidate = acceptedCandidate;
         this.acceptedReceipt = acceptedReceipt;
+        this.queuedResult = queuedResult;
         this.errors = List.copyOf(Objects.requireNonNull(errors, "errors must not be null"));
     }
 
@@ -49,7 +56,7 @@ public final class IngestAcceptanceResult {
         if (copiedErrors.isEmpty()) {
             throw new IllegalArgumentException("errors must not be empty");
         }
-        return new IngestAcceptanceResult(Status.INVALID_REQUEST, null, null, copiedErrors);
+        return new IngestAcceptanceResult(Status.INVALID_REQUEST, null, null, null, copiedErrors);
     }
 
     /**
@@ -69,7 +76,34 @@ public final class IngestAcceptanceResult {
                 Status.ACCEPTED,
                 Objects.requireNonNull(candidate, "candidate must not be null"),
                 Objects.requireNonNull(receipt, "receipt must not be null"),
+                null,
                 List.of());
+    }
+
+    /**
+     * queue enqueue가 성공한 뒤 controller가 `202 queued`로 매핑할 결과를 만든다.
+     */
+    public static IngestAcceptanceResult queued(IngestQueuedResult queuedResult) {
+        return new IngestAcceptanceResult(
+                Status.QUEUED,
+                null,
+                null,
+                Objects.requireNonNull(queuedResult, "queuedResult must not be null"),
+                List.of());
+    }
+
+    /**
+     * queue message size limit 초과 결과를 만든다.
+     */
+    public static IngestAcceptanceResult payloadTooLarge() {
+        return PAYLOAD_TOO_LARGE;
+    }
+
+    /**
+     * queue config, message build, publisher 실패 결과를 만든다.
+     */
+    public static IngestAcceptanceResult ingestEnqueueUnavailable() {
+        return INGEST_ENQUEUE_UNAVAILABLE;
     }
 
     /**
@@ -84,6 +118,13 @@ public final class IngestAcceptanceResult {
      */
     public boolean isAccepted() {
         return status == Status.ACCEPTED;
+    }
+
+    /**
+     * enqueue 성공 후 public `202 queued` 응답으로 매핑할 수 있는지 확인한다.
+     */
+    public boolean isQueued() {
+        return status == Status.QUEUED;
     }
 
     /**
@@ -108,6 +149,20 @@ public final class IngestAcceptanceResult {
     }
 
     /**
+     * serialized queue body와 attributes가 configured size limit을 넘었는지 확인한다.
+     */
+    public boolean isPayloadTooLarge() {
+        return status == Status.PAYLOAD_TOO_LARGE;
+    }
+
+    /**
+     * queue config/message build/publisher failure로 retry 가능한 503인지 확인한다.
+     */
+    public boolean isIngestEnqueueUnavailable() {
+        return status == Status.INGEST_ENQUEUE_UNAVAILABLE;
+    }
+
+    /**
      * accepted path에서만 검증 완료 후보를 반환한다.
      */
     public Optional<ValidatedIngestCandidate> acceptedCandidate() {
@@ -119,6 +174,13 @@ public final class IngestAcceptanceResult {
      */
     public Optional<AcceptedMetricBucketReceipt> acceptedReceipt() {
         return Optional.ofNullable(acceptedReceipt);
+    }
+
+    /**
+     * queued path에서 public response로 매핑할 enqueue metadata를 반환한다.
+     */
+    public Optional<IngestQueuedResult> queuedResult() {
+        return Optional.ofNullable(queuedResult);
     }
 
     /**
@@ -138,8 +200,11 @@ public final class IngestAcceptanceResult {
      */
     public enum Status {
         ACCEPTED,
+        QUEUED,
         INVALID_REQUEST,
         UNAUTHORIZED,
-        DUPLICATE_IDEMPOTENCY_KEY
+        DUPLICATE_IDEMPOTENCY_KEY,
+        PAYLOAD_TOO_LARGE,
+        INGEST_ENQUEUE_UNAVAILABLE
     }
 }

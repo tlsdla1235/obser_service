@@ -4,9 +4,21 @@ import com.observation.portal.domain.bucket.model.AcceptedMetricBucketReceipt;
 import com.observation.portal.domain.bucket.model.AcceptedMetricBucketWriteCommand;
 import com.observation.portal.domain.bucket.repository.MetricBucketRepository;
 import com.observation.portal.domain.ingest.model.IngestEnvelopeRequest;
+import com.observation.portal.domain.ingest.queue.IngestBufferMode;
+import com.observation.portal.domain.ingest.queue.IngestBufferProperties;
+import com.observation.portal.domain.ingest.queue.MetricIngestMessageBuildException;
+import com.observation.portal.domain.ingest.queue.MetricIngestQueueMessage;
+import com.observation.portal.domain.ingest.queue.MetricIngestQueueMessageFactory;
+import com.observation.portal.domain.ingest.queue.MetricIngestQueuePublishException;
+import com.observation.portal.domain.ingest.queue.MetricIngestQueuePublisher;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -19,6 +31,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
 /**
@@ -48,14 +61,78 @@ public class IngestAcceptanceService {
     private final ProjectKeyVerificationService projectKeyVerificationService;
     private final MetricBucketRepository metricBucketRepository;
     private final IngestPayloadHasher payloadHasher;
+    private final IngestBufferProperties ingestBufferProperties;
+    private final MetricIngestQueueMessageFactory queueMessageFactory;
+    private final Supplier<MetricIngestQueuePublisher> queuePublisherSupplier;
+    private final Clock clock;
 
     /**
      * project key 검증, payload hash, bucket repository를 연결해 ingest acceptance service를 구성한다.
+     */
+    @Autowired
+    public IngestAcceptanceService(
+            ProjectKeyVerificationService projectKeyVerificationService,
+            MetricBucketRepository metricBucketRepository,
+            IngestPayloadHasher payloadHasher,
+            IngestBufferProperties ingestBufferProperties,
+            MetricIngestQueueMessageFactory queueMessageFactory,
+            ObjectProvider<MetricIngestQueuePublisher> queuePublisherProvider) {
+        this(
+                projectKeyVerificationService,
+                metricBucketRepository,
+                payloadHasher,
+                ingestBufferProperties,
+                queueMessageFactory,
+                (Supplier<MetricIngestQueuePublisher>) queuePublisherProvider::getIfAvailable,
+                Clock.systemUTC());
+    }
+
+    /**
+     * 기존 direct-mode unit test가 default direct path를 간단히 구성할 수 있게 하는 생성자다.
      */
     public IngestAcceptanceService(
             ProjectKeyVerificationService projectKeyVerificationService,
             MetricBucketRepository metricBucketRepository,
             IngestPayloadHasher payloadHasher) {
+        this(
+                projectKeyVerificationService,
+                metricBucketRepository,
+                payloadHasher,
+                new IngestBufferProperties(),
+                new MetricIngestQueueMessageFactory(new ObjectMapper(), payloadHasher),
+                (Supplier<MetricIngestQueuePublisher>) () -> null,
+                Clock.systemUTC());
+    }
+
+    /**
+     * queue-mode focused test에서 publisher와 clock을 고정해 검증할 수 있게 하는 생성자다.
+     */
+    public IngestAcceptanceService(
+            ProjectKeyVerificationService projectKeyVerificationService,
+            MetricBucketRepository metricBucketRepository,
+            IngestPayloadHasher payloadHasher,
+            IngestBufferProperties ingestBufferProperties,
+            MetricIngestQueueMessageFactory queueMessageFactory,
+            MetricIngestQueuePublisher queuePublisher,
+            Clock clock) {
+        this(
+                projectKeyVerificationService,
+                metricBucketRepository,
+                payloadHasher,
+                ingestBufferProperties,
+                queueMessageFactory,
+                (Supplier<MetricIngestQueuePublisher>) () -> queuePublisher,
+                clock);
+    }
+
+    private IngestAcceptanceService(
+            ProjectKeyVerificationService projectKeyVerificationService,
+            MetricBucketRepository metricBucketRepository,
+            IngestPayloadHasher payloadHasher,
+            IngestBufferProperties ingestBufferProperties,
+            MetricIngestQueueMessageFactory queueMessageFactory,
+            Supplier<MetricIngestQueuePublisher> queuePublisherSupplier,
+            Clock clock) {
         this.projectKeyVerificationService = Objects.requireNonNull(
                 projectKeyVerificationService,
                 "projectKeyVerificationService must not be null");
@@ -63,10 +140,18 @@ public class IngestAcceptanceService {
                 metricBucketRepository,
                 "metricBucketRepository must not be null");
         this.payloadHasher = Objects.requireNonNull(payloadHasher, "payloadHasher must not be null");
+        this.ingestBufferProperties = Objects.requireNonNull(
+                ingestBufferProperties,
+                "ingestBufferProperties must not be null");
+        this.queueMessageFactory = Objects.requireNonNull(queueMessageFactory, "queueMessageFactory must not be null");
+        this.queuePublisherSupplier = Objects.requireNonNull(
+                queuePublisherSupplier,
+                "queuePublisherSupplier must not be null");
+        this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
     /**
-     * project key, Idempotency-Key, envelope payload를 검증하고 accepted/400/401/409 후보 결과를 반환한다.
+     * project key, Idempotency-Key, envelope payload를 검증하고 mode별 direct/queued 결과를 반환한다.
      */
     public IngestAcceptanceResult accept(
             String projectKeyHeader,
@@ -87,17 +172,24 @@ public class IngestAcceptanceService {
                 projectKeyResult.verifiedProject().orElseThrow(),
                 idempotencyKeyHeader,
                 request);
+        if (ingestBufferProperties.getMode().isDirect()) {
+            return acceptDirect(candidate);
+        }
+        return enqueue(candidate, ingestBufferProperties.getMode());
+    }
+
+    private IngestAcceptanceResult acceptDirect(ValidatedIngestCandidate candidate) {
         if (metricBucketRepository.findByProjectIdAndIdempotencyKey(
                 candidate.verifiedProject().projectId(),
                 candidate.idempotencyKey()).isPresent()) {
             return IngestAcceptanceResult.duplicateIdempotencyKey();
         }
 
-        String payloadHash = payloadHasher.sha256(request);
+        String payloadHash = payloadHasher.sha256(candidate.payload());
         AcceptedMetricBucketWriteCommand command = AcceptedMetricBucketWriteCommand.from(
                 candidate,
                 payloadHash,
-                OffsetDateTime.now(ZoneOffset.UTC));
+                OffsetDateTime.now(clock));
         AcceptedMetricBucketReceipt receipt;
         try {
             receipt = metricBucketRepository.insert(command);
@@ -110,6 +202,52 @@ public class IngestAcceptanceService {
         }
 
         return IngestAcceptanceResult.accepted(candidate, receipt);
+    }
+
+    private IngestAcceptanceResult enqueue(ValidatedIngestCandidate candidate, IngestBufferMode mode) {
+        if (!mode.isQueueMode()) {
+            return IngestAcceptanceResult.ingestEnqueueUnavailable();
+        }
+        if (mode == IngestBufferMode.SQS && isBlank(ingestBufferProperties.getSqs().getQueueUrl())) {
+            return IngestAcceptanceResult.ingestEnqueueUnavailable();
+        }
+        MetricIngestQueuePublisher publisher = queuePublisherSupplier.get();
+        if (publisher == null) {
+            return IngestAcceptanceResult.ingestEnqueueUnavailable();
+        }
+
+        OffsetDateTime receivedAt = OffsetDateTime.now(clock);
+        OffsetDateTime enqueuedAt = OffsetDateTime.now(clock);
+        MetricIngestQueueMessage message;
+        try {
+            message = queueMessageFactory.build(candidate, receivedAt, enqueuedAt);
+        } catch (MetricIngestMessageBuildException exception) {
+            return IngestAcceptanceResult.ingestEnqueueUnavailable();
+        } catch (RuntimeException exception) {
+            return IngestAcceptanceResult.ingestEnqueueUnavailable();
+        }
+
+        if (message.estimatedSizeBytes() > ingestBufferProperties.getMessageSizeLimitBytes()) {
+            return IngestAcceptanceResult.payloadTooLarge();
+        }
+
+        try {
+            publisher.enqueue(message);
+        } catch (MetricIngestQueuePublishException exception) {
+            return IngestAcceptanceResult.ingestEnqueueUnavailable();
+        } catch (RuntimeException exception) {
+            return IngestAcceptanceResult.ingestEnqueueUnavailable();
+        }
+
+        return IngestAcceptanceResult.queued(new IngestQueuedResult(
+                candidate.idempotencyKey(),
+                message.body().messageVersion(),
+                message.body().receivedAt(),
+                message.body().enqueuedAt()));
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     /**

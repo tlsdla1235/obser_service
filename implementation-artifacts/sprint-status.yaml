@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-06-05T09:47:02+0900
+# last_updated: 2026-06-05T11:40:11+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -63,7 +63,7 @@
 # - Story 12.1은 Epic 12 architecture-level 결정을 닫았다: Spring Boot portal 내부 worker, Lambda deferred/non-goal, SQS mode opt-in/direct rollback, enqueue success only 202, enqueue failure 503, payload too large 413, no direct fallback, fake queue 기본/LocalStack opt-in, 12.3-only rollout 금지.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-06-05T09:47:02+0900
+last_updated: 2026-06-05T11:40:11+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -155,7 +155,7 @@ development_status:
 
   epic-12: backlog
   12-1-architecture-and-contract-decision: done
-  12-2-ingest-enqueue-boundary: backlog
+  12-2-ingest-enqueue-boundary: done
   12-3-spring-boot-sqs-worker-mvp-and-idempotency: backlog
   12-4-snapshot-delay-and-pipeline-lag-semantics: backlog
   12-5-batch-writer-and-performance-verification: backlog

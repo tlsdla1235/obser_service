@@ -145,6 +145,7 @@ class MvcLayerBoundaryTest {
         List<String> forbiddenClasses = PORTAL_CLASSES.stream()
                 .map(JavaClass::getName)
                 .filter(MvcLayerBoundaryTest::matchesStory58aForbiddenSurface)
+                .filter(className -> !isEpic12IngestQueueSurface(className))
                 .sorted()
                 .toList();
 
@@ -288,6 +289,10 @@ class MvcLayerBoundaryTest {
                 || normalized.contains("sqs")
                 || normalized.contains("lambda")
                 || normalized.contains("jobmetadata");
+    }
+
+    private static boolean isEpic12IngestQueueSurface(String className) {
+        return className.startsWith("com.observation.portal.domain.ingest.queue.");
     }
 
     private static boolean matchesStory59aForbiddenPhysicalSurface(String className) {
