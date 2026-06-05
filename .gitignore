@@ -5,6 +5,9 @@ __pycache__/
 .gradle/
 build/
 */build/
+.env
+.env.*
+!.env.example
 .private/
 /frontend/node_modules/
 /frontend/dist/
