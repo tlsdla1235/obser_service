@@ -1,6 +1,7 @@
 package com.observation.portal.domain.ingest.queue;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -9,7 +10,10 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class MetricIngestQueueWorkerBoundaryTest {
@@ -24,16 +28,12 @@ class MetricIngestQueueWorkerBoundaryTest {
                 source("transient")));
         RecordingDlqPublisher dlqPublisher = new RecordingDlqPublisher(false);
         MetricIngestQueueProcessor processor = mock(MetricIngestQueueProcessor.class);
-        when(processor.process(any(MetricIngestReceivedMessage.class))).thenAnswer(invocation -> {
-            MetricIngestReceivedMessage message = invocation.getArgument(0);
-            return switch (message.messageId()) {
-                case "source-inserted" -> MetricIngestQueueProcessResult.inserted();
-                case "source-duplicate" -> MetricIngestQueueProcessResult.duplicateNoop();
-                case "source-malformed" -> MetricIngestQueueProcessResult.applicationDlq(
-                        dlqEnvelope("source-malformed", "malformed", "invalid_json"));
-                default -> MetricIngestQueueProcessResult.transientFailure("database_transient_failure");
-            };
-        });
+        when(processor.processBatch(any())).thenReturn(List.of(
+                MetricIngestQueueProcessResult.inserted(),
+                MetricIngestQueueProcessResult.duplicateNoop(),
+                MetricIngestQueueProcessResult.applicationDlq(
+                        dlqEnvelope("source-malformed", "malformed", "invalid_json")),
+                MetricIngestQueueProcessResult.transientFailure("database_transient_failure")));
         MetricIngestQueueWorker worker = new MetricIngestQueueWorker(properties, consumer, dlqPublisher, processor);
 
         worker.pollOnce();
@@ -49,14 +49,51 @@ class MetricIngestQueueWorkerBoundaryTest {
         RecordingConsumer consumer = new RecordingConsumer(List.of(source));
         RecordingDlqPublisher dlqPublisher = new RecordingDlqPublisher(true);
         MetricIngestQueueProcessor processor = mock(MetricIngestQueueProcessor.class);
-        when(processor.process(source)).thenReturn(MetricIngestQueueProcessResult.applicationDlq(
-                dlqEnvelope("source-conflict", "conflict", "idempotency_payload_conflict")));
+        when(processor.processBatch(List.of(source))).thenReturn(List.of(MetricIngestQueueProcessResult.applicationDlq(
+                dlqEnvelope("source-conflict", "conflict", "idempotency_payload_conflict"))));
         MetricIngestQueueWorker worker = new MetricIngestQueueWorker(properties, consumer, dlqPublisher, processor);
 
         worker.pollOnce();
 
         assertThat(consumer.deletedMessageIds()).isEmpty();
         assertThat(dlqPublisher.envelopes()).hasSize(1);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void receivePageIsSplitByConfiguredMaxBatchSize() {
+        IngestBufferProperties properties = fakeWorkerProperties();
+        properties.getWorker().setMaxBatchSize(2);
+        RecordingConsumer consumer = new RecordingConsumer(List.of(
+                source("one"),
+                source("two"),
+                source("three"),
+                source("four"),
+                source("five")));
+        MetricIngestQueueProcessor processor = mock(MetricIngestQueueProcessor.class);
+        when(processor.processBatch(anyList())).thenAnswer(invocation -> {
+            List<MetricIngestReceivedMessage> messages = invocation.getArgument(0);
+            return messages.stream()
+                    .map(ignored -> MetricIngestQueueProcessResult.inserted())
+                    .toList();
+        });
+        MetricIngestQueueWorker worker = new MetricIngestQueueWorker(
+                properties,
+                consumer,
+                new RecordingDlqPublisher(false),
+                processor);
+
+        worker.pollOnce();
+
+        ArgumentCaptor<List<MetricIngestReceivedMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(processor, times(3)).processBatch(captor.capture());
+        assertThat(captor.getAllValues()).extracting(List::size).containsExactly(2, 2, 1);
+        assertThat(consumer.deletedMessageIds()).containsExactly(
+                "source-one",
+                "source-two",
+                "source-three",
+                "source-four",
+                "source-five");
     }
 
     @Test

@@ -53,8 +53,11 @@ public class MetricIngestQueueWorker implements SmartLifecycle {
             log.warn("metric ingest worker receive failed category=receive_failure");
             return;
         }
-        for (MetricIngestReceivedMessage message : messages) {
-            processOne(message);
+        int maxBatchSize = properties.getWorker().getMaxBatchSize();
+        for (int start = 0; start < messages.size(); start += maxBatchSize) {
+            List<MetricIngestReceivedMessage> batch = List.copyOf(
+                    messages.subList(start, Math.min(start + maxBatchSize, messages.size())));
+            processAndApply(batch);
         }
     }
 
@@ -102,18 +105,7 @@ public class MetricIngestQueueWorker implements SmartLifecycle {
         }
     }
 
-    private void processOne(MetricIngestReceivedMessage message) {
-        MetricIngestQueueProcessResult result;
-        try {
-            result = processor.process(message);
-        } catch (RuntimeException exception) {
-            log.warn(
-                    "metric ingest worker processor failed category=processor_failure sourceMessageId={} receiveCount={}",
-                    message.messageId(),
-                    message.receiveCount());
-            return;
-        }
-
+    private void applyResult(MetricIngestReceivedMessage message, MetricIngestQueueProcessResult result) {
         if (result.status() == MetricIngestQueueProcessStatus.INSERTED
                 || result.status() == MetricIngestQueueProcessStatus.DUPLICATE_NOOP) {
             deleteSource(message, result.status());
@@ -132,6 +124,23 @@ public class MetricIngestQueueWorker implements SmartLifecycle {
                 return;
             }
             deleteSource(message, result.status());
+        }
+    }
+
+    private void processAndApply(List<MetricIngestReceivedMessage> messages) {
+        List<MetricIngestQueueProcessResult> results;
+        try {
+            results = processor.processBatch(messages);
+        } catch (RuntimeException exception) {
+            log.warn("metric ingest worker processor batch failed category=processor_failure");
+            return;
+        }
+        if (results.size() != messages.size()) {
+            log.warn("metric ingest worker processor batch failed category=result_size_mismatch");
+            return;
+        }
+        for (int index = 0; index < messages.size(); index++) {
+            applyResult(messages.get(index), results.get(index));
         }
     }
 

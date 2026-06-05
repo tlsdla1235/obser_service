@@ -3,6 +3,8 @@ package com.observation.portal.domain.bucket.repository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.observation.portal.domain.bucket.entity.AcceptedMetricBucketEntity;
+import com.observation.portal.domain.bucket.model.AcceptedMetricBucketBatchItemResult;
+import com.observation.portal.domain.bucket.model.AcceptedMetricBucketBatchWriteResult;
 import com.observation.portal.domain.bucket.model.AcceptedBucketBoundaryEvidenceRow;
 import com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidence;
 import com.observation.portal.domain.bucket.model.AcceptedBucketGapEvidenceRow;
@@ -19,6 +21,8 @@ import com.observation.portal.domain.bucket.model.WindowBucketAggregate;
 import com.observation.portal.domain.catalog.model.ApplicationCatalogEntry;
 import com.observation.portal.domain.catalog.repository.ApplicationCatalogRepository;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,9 +30,14 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -44,6 +53,7 @@ public class MetricBucketRepository {
     private final AcceptedMetricBucketJpaRepository acceptedMetricBucketJpaRepository;
     private final ApplicationCatalogRepository applicationCatalogRepository;
     private final ObjectMapper objectMapper;
+    private final NamedParameterJdbcTemplate jdbcTemplate;
 
     /**
      * bucket 저장과 catalog get-or-create에 필요한 repository 구현체를 주입한다.
@@ -51,7 +61,8 @@ public class MetricBucketRepository {
     public MetricBucketRepository(
             AcceptedMetricBucketJpaRepository acceptedMetricBucketJpaRepository,
             ApplicationCatalogRepository applicationCatalogRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            NamedParameterJdbcTemplate jdbcTemplate) {
         this.acceptedMetricBucketJpaRepository = Objects.requireNonNull(
                 acceptedMetricBucketJpaRepository,
                 "acceptedMetricBucketJpaRepository must not be null");
@@ -59,6 +70,7 @@ public class MetricBucketRepository {
                 applicationCatalogRepository,
                 "applicationCatalogRepository must not be null");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper must not be null");
+        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate must not be null");
     }
 
     /**
@@ -99,6 +111,107 @@ public class MetricBucketRepository {
                 requiredCommand.acceptedAt());
 
         return acceptedMetricBucketJpaRepository.saveAndFlush(entity).toReceipt();
+    }
+
+    /**
+     * bounded worker batch를 PostgreSQL multi-row insert로 저장하고 command별 duplicate/conflict 결과를 반환한다.
+     *
+     * <p>기본 전략은 bulk pre-read, catalog grouping, `ON CONFLICT DO NOTHING RETURNING`, post-read classification이다.
+     * JPA `saveAll`이나 plain JDBC batch를 쓰지 않는 이유는 conflict row가 전체 batch를 실패시키지 않게 하고, 반환되지 않은
+     * row를 deterministic duplicate/conflict로 다시 분류하기 위해서다.</p>
+     */
+    @Transactional
+    public AcceptedMetricBucketBatchWriteResult insertBatch(List<AcceptedMetricBucketWriteCommand> commands) {
+        List<AcceptedMetricBucketWriteCommand> requiredCommands = List.copyOf(
+                Objects.requireNonNull(commands, "commands must not be null"));
+        if (requiredCommands.isEmpty()) {
+            return AcceptedMetricBucketBatchWriteResult.empty();
+        }
+
+        int statementCount = 0;
+        List<AcceptedMetricBucketBatchItemResult> results =
+                new ArrayList<>(Collections.nCopies(requiredCommands.size(), null));
+
+        Map<CommandIdempotencyKey, AcceptedMetricBucketIdentity> identitiesByKey =
+                findIdentitiesByIdempotencyKeys(requiredCommands);
+        statementCount++;
+        Map<CommandInstanceKey, AcceptedMetricBucketIdentity> identitiesByInstance =
+                findIdentitiesByInstanceBoundaries(requiredCommands);
+        statementCount++;
+
+        Set<CommandIdempotencyKey> electedIdempotencyKeys = new java.util.LinkedHashSet<>();
+        Set<CommandInstanceKey> electedInstanceKeys = new java.util.LinkedHashSet<>();
+        List<IndexedCommand> insertCandidates = new ArrayList<>();
+        List<IndexedCommand> postReadCandidates = new ArrayList<>();
+
+        for (int index = 0; index < requiredCommands.size(); index++) {
+            AcceptedMetricBucketWriteCommand command = requiredCommands.get(index);
+            Optional<AcceptedMetricBucketBatchItemResult> existing =
+                    classifyWithIdentities(command, identitiesByKey, identitiesByInstance);
+            if (existing.isPresent()) {
+                results.set(index, existing.orElseThrow());
+                continue;
+            }
+
+            CommandIdempotencyKey idempotencyKey = CommandIdempotencyKey.from(command);
+            CommandInstanceKey instanceKey = CommandInstanceKey.from(command);
+            boolean elected = electedIdempotencyKeys.add(idempotencyKey) && electedInstanceKeys.add(instanceKey);
+            if (elected) {
+                insertCandidates.add(new IndexedCommand(index, command));
+            } else {
+                postReadCandidates.add(new IndexedCommand(index, command));
+            }
+        }
+
+        if (!insertCandidates.isEmpty()) {
+            List<AcceptedMetricBucketWriteCommand> insertCommands = insertCandidates.stream()
+                    .map(IndexedCommand::command)
+                    .toList();
+            List<ApplicationCatalogEntry> catalogEntries = applicationCatalogRepository.getOrCreateBatch(insertCommands);
+            Map<CommandIdempotencyKey, AcceptedMetricBucketIdentity> inserted =
+                    insertRowsReturningIdentities(insertCandidates, catalogEntries);
+            statementCount++;
+            for (IndexedCommand candidate : insertCandidates) {
+                AcceptedMetricBucketIdentity identity = inserted.get(CommandIdempotencyKey.from(candidate.command()));
+                if (identity == null) {
+                    postReadCandidates.add(candidate);
+                } else {
+                    results.set(candidate.index(), AcceptedMetricBucketBatchItemResult.inserted(
+                            candidate.command(),
+                            new AcceptedMetricBucketReceipt(identity.bucketId(), identity.acceptedAt())));
+                }
+            }
+        }
+
+        if (!postReadCandidates.isEmpty()) {
+            List<AcceptedMetricBucketWriteCommand> postReadCommands = postReadCandidates.stream()
+                    .map(IndexedCommand::command)
+                    .toList();
+            Map<CommandIdempotencyKey, AcceptedMetricBucketIdentity> postReadByKey =
+                    findIdentitiesByIdempotencyKeys(postReadCommands);
+            statementCount++;
+            Map<CommandInstanceKey, AcceptedMetricBucketIdentity> postReadByInstance =
+                    findIdentitiesByInstanceBoundaries(postReadCommands);
+            statementCount++;
+            for (IndexedCommand candidate : postReadCandidates) {
+                results.set(candidate.index(), classifyWithIdentities(
+                                candidate.command(),
+                                postReadByKey,
+                                postReadByInstance)
+                        .orElseGet(() -> AcceptedMetricBucketBatchItemResult.transientFailure(
+                                candidate.command(),
+                                "database_integrity_reread_missing")));
+            }
+        }
+
+        for (int index = 0; index < results.size(); index++) {
+            if (results.get(index) == null) {
+                results.set(index, AcceptedMetricBucketBatchItemResult.transientFailure(
+                        requiredCommands.get(index),
+                        "database_batch_result_missing"));
+            }
+        }
+        return new AcceptedMetricBucketBatchWriteResult(results, statementCount);
     }
 
     /**
@@ -801,6 +914,286 @@ public class MetricBucketRepository {
                         PageRequest.of(0, 1))
                 .stream()
                 .findFirst();
+    }
+
+    private Optional<AcceptedMetricBucketBatchItemResult> classifyWithIdentities(
+            AcceptedMetricBucketWriteCommand command,
+            Map<CommandIdempotencyKey, AcceptedMetricBucketIdentity> identitiesByKey,
+            Map<CommandInstanceKey, AcceptedMetricBucketIdentity> identitiesByInstance) {
+        AcceptedMetricBucketIdentity byKey = identitiesByKey.get(CommandIdempotencyKey.from(command));
+        if (byKey != null) {
+            if (byKey.payloadHash().equals(command.payloadHash())) {
+                return Optional.of(AcceptedMetricBucketBatchItemResult.duplicateNoop(command));
+            }
+            return Optional.of(AcceptedMetricBucketBatchItemResult.conflict(
+                    command,
+                    "idempotency_payload_conflict",
+                    byKey));
+        }
+
+        AcceptedMetricBucketIdentity byInstance = identitiesByInstance.get(CommandInstanceKey.from(command));
+        if (byInstance != null && !byInstance.idempotencyKey().equals(command.idempotencyKey())) {
+            return Optional.of(AcceptedMetricBucketBatchItemResult.conflict(
+                    command,
+                    "instance_bucket_identity_conflict",
+                    byInstance));
+        }
+        if (byInstance != null && byInstance.payloadHash().equals(command.payloadHash())) {
+            return Optional.of(AcceptedMetricBucketBatchItemResult.duplicateNoop(command));
+        }
+        return Optional.empty();
+    }
+
+    private Map<CommandIdempotencyKey, AcceptedMetricBucketIdentity> findIdentitiesByIdempotencyKeys(
+            List<AcceptedMetricBucketWriteCommand> commands) {
+        List<CommandIdempotencyKey> keys = commands.stream()
+                .map(CommandIdempotencyKey::from)
+                .distinct()
+                .toList();
+        if (keys.isEmpty()) {
+            return Map.of();
+        }
+
+        MapSqlParameterSource parameters = new MapSqlParameterSource();
+        StringBuilder tuples = new StringBuilder();
+        for (int index = 0; index < keys.size(); index++) {
+            if (index > 0) {
+                tuples.append(", ");
+            }
+            tuples.append("(:projectId").append(index).append(", :idempotencyKey").append(index).append(")");
+            parameters.addValue("projectId" + index, keys.get(index).projectId());
+            parameters.addValue("idempotencyKey" + index, keys.get(index).idempotencyKey());
+        }
+
+        String sql = """
+                select id as bucket_id,
+                       project_id,
+                       application_id,
+                       application_instance_id,
+                       idempotency_key,
+                       payload_hash,
+                       bucket_start_utc,
+                       bucket_end_utc,
+                       accepted_at
+                from accepted_metric_buckets
+                where (project_id, idempotency_key) in (%s)
+                """.formatted(tuples);
+        Map<CommandIdempotencyKey, AcceptedMetricBucketIdentity> identities = new LinkedHashMap<>();
+        jdbcTemplate.query(sql, parameters, (resultSet) -> {
+            AcceptedMetricBucketIdentity identity = identityFrom(resultSet);
+            identities.put(new CommandIdempotencyKey(identity.projectId(), identity.idempotencyKey()), identity);
+        });
+        return identities;
+    }
+
+    private Map<CommandInstanceKey, AcceptedMetricBucketIdentity> findIdentitiesByInstanceBoundaries(
+            List<AcceptedMetricBucketWriteCommand> commands) {
+        List<CommandInstanceKey> keys = commands.stream()
+                .map(CommandInstanceKey::from)
+                .distinct()
+                .toList();
+        if (keys.isEmpty()) {
+            return Map.of();
+        }
+
+        MapSqlParameterSource parameters = new MapSqlParameterSource();
+        StringBuilder tuples = new StringBuilder();
+        for (int index = 0; index < keys.size(); index++) {
+            if (index > 0) {
+                tuples.append(", ");
+            }
+            tuples.append("(:projectId").append(index)
+                    .append(", :applicationName").append(index)
+                    .append(", :environment").append(index)
+                    .append(", :instanceName").append(index)
+                    .append(", :bucketStartUtc").append(index)
+                    .append(")");
+            CommandInstanceKey key = keys.get(index);
+            parameters.addValue("projectId" + index, key.projectId());
+            parameters.addValue("applicationName" + index, key.applicationName());
+            parameters.addValue("environment" + index, key.environment());
+            parameters.addValue("instanceName" + index, key.instanceName());
+            parameters.addValue("bucketStartUtc" + index, key.bucketStartUtc());
+        }
+
+        String sql = """
+                select bucket.id as bucket_id,
+                       bucket.project_id,
+                       bucket.application_id,
+                       bucket.application_instance_id,
+                       bucket.idempotency_key,
+                       bucket.payload_hash,
+                       bucket.bucket_start_utc,
+                       bucket.bucket_end_utc,
+                       bucket.accepted_at,
+                       application.name as application_name,
+                       application.environment as environment,
+                       instance.instance_name as instance_name
+                from accepted_metric_buckets bucket
+                join applications application on application.id = bucket.application_id
+                join application_instances instance on instance.id = bucket.application_instance_id
+                where (application.project_id,
+                       application.name,
+                       application.environment,
+                       instance.instance_name,
+                       bucket.bucket_start_utc) in (%s)
+                """.formatted(tuples);
+        Map<CommandInstanceKey, AcceptedMetricBucketIdentity> identities = new LinkedHashMap<>();
+        jdbcTemplate.query(sql, parameters, (resultSet) -> {
+            AcceptedMetricBucketIdentity identity = identityFrom(resultSet);
+            identities.put(new CommandInstanceKey(
+                    identity.projectId(),
+                    resultSet.getString("application_name"),
+                    resultSet.getString("environment"),
+                    resultSet.getString("instance_name"),
+                    identity.bucketStartUtc()), identity);
+        });
+        return identities;
+    }
+
+    private Map<CommandIdempotencyKey, AcceptedMetricBucketIdentity> insertRowsReturningIdentities(
+            List<IndexedCommand> insertCandidates,
+            List<ApplicationCatalogEntry> catalogEntries) {
+        if (insertCandidates.size() != catalogEntries.size()) {
+            throw new IllegalStateException("catalog entry count must match insert candidate count");
+        }
+        if (insertCandidates.isEmpty()) {
+            return Map.of();
+        }
+
+        MapSqlParameterSource parameters = new MapSqlParameterSource();
+        StringBuilder values = new StringBuilder();
+        for (int index = 0; index < insertCandidates.size(); index++) {
+            if (index > 0) {
+                values.append(", ");
+            }
+            IndexedCommand indexed = insertCandidates.get(index);
+            AcceptedMetricBucketWriteCommand command = indexed.command();
+            ApplicationCatalogEntry catalogEntry = catalogEntries.get(index);
+            values.append("""
+                    (:id%s, :projectId%s, :applicationId%s, :applicationInstanceId%s,
+                     :schemaVersion%s, :idempotencyKey%s, :payloadHash%s,
+                     :bucketStartUtc%s, :bucketEndUtc%s, :durationSeconds%s,
+                     :acceptedAt%s, :requestCount%s, :errorCount%s,
+                     CAST(:durationBucketsJson%s AS jsonb), :cpuUsageRatio%s, :heapUsedRatio%s,
+                     :datasourcePoolUsageRatio%s, CAST(:localPercentilesJson%s AS jsonb),
+                     CAST(:endpointsJson%s AS jsonb), :createdAt%s)
+                    """.formatted(
+                    index, index, index, index, index, index, index, index, index, index,
+                    index, index, index, index, index, index, index, index, index, index));
+            parameters.addValue("id" + index, UUID.randomUUID());
+            parameters.addValue("projectId" + index, command.projectId());
+            parameters.addValue("applicationId" + index, catalogEntry.applicationId());
+            parameters.addValue("applicationInstanceId" + index, catalogEntry.applicationInstanceId());
+            parameters.addValue("schemaVersion" + index, command.schemaVersion());
+            parameters.addValue("idempotencyKey" + index, command.idempotencyKey());
+            parameters.addValue("payloadHash" + index, command.payloadHash());
+            parameters.addValue("bucketStartUtc" + index, command.bucketStartUtc());
+            parameters.addValue("bucketEndUtc" + index, command.bucketEndUtc());
+            parameters.addValue("durationSeconds" + index, command.durationSeconds());
+            parameters.addValue("acceptedAt" + index, command.acceptedAt());
+            parameters.addValue("requestCount" + index, command.requestCount());
+            parameters.addValue("errorCount" + index, command.errorCount());
+            parameters.addValue("durationBucketsJson" + index, writeJson(command.durationBuckets()));
+            parameters.addValue("cpuUsageRatio" + index, toBigDecimal(command.cpuUsageRatio()));
+            parameters.addValue("heapUsedRatio" + index, toBigDecimal(command.heapUsedRatio()));
+            parameters.addValue("datasourcePoolUsageRatio" + index, toBigDecimal(command.datasourcePoolUsageRatio()));
+            parameters.addValue("localPercentilesJson" + index, writeNullableJson(command.localPercentiles()));
+            parameters.addValue("endpointsJson" + index, writeJson(command.endpoints()));
+            parameters.addValue("createdAt" + index, command.acceptedAt());
+        }
+
+        String sql = """
+                insert into accepted_metric_buckets (
+                  id, project_id, application_id, application_instance_id,
+                  schema_version, idempotency_key, payload_hash,
+                  bucket_start_utc, bucket_end_utc, duration_seconds,
+                  accepted_at, request_count, error_count,
+                  duration_buckets_json, cpu_usage_ratio, heap_used_ratio,
+                  datasource_pool_usage_ratio, local_percentiles_json,
+                  endpoints_json, created_at
+                )
+                values %s
+                on conflict do nothing
+                returning id as bucket_id,
+                          project_id,
+                          application_id,
+                          application_instance_id,
+                          idempotency_key,
+                          payload_hash,
+                          bucket_start_utc,
+                          bucket_end_utc,
+                          accepted_at
+                """.formatted(values);
+
+        Map<CommandIdempotencyKey, AcceptedMetricBucketIdentity> identities = new LinkedHashMap<>();
+        jdbcTemplate.query(sql, parameters, (resultSet) -> {
+            AcceptedMetricBucketIdentity identity = identityFrom(resultSet);
+            identities.put(CommandIdempotencyKey.from(identity), identity);
+        });
+        return identities;
+    }
+
+    private static AcceptedMetricBucketIdentity identityFrom(java.sql.ResultSet resultSet) throws java.sql.SQLException {
+        return new AcceptedMetricBucketIdentity(
+                resultSet.getObject("bucket_id", UUID.class),
+                resultSet.getObject("project_id", UUID.class),
+                resultSet.getObject("application_id", UUID.class),
+                resultSet.getObject("application_instance_id", UUID.class),
+                resultSet.getString("idempotency_key"),
+                resultSet.getString("payload_hash"),
+                resultSet.getObject("bucket_start_utc", OffsetDateTime.class),
+                resultSet.getObject("bucket_end_utc", OffsetDateTime.class),
+                resultSet.getObject("accepted_at", OffsetDateTime.class));
+    }
+
+    private record IndexedCommand(int index, AcceptedMetricBucketWriteCommand command) {
+
+        private IndexedCommand {
+            Objects.requireNonNull(command, "command must not be null");
+        }
+    }
+
+    private record CommandIdempotencyKey(UUID projectId, String idempotencyKey) {
+
+        private CommandIdempotencyKey {
+            Objects.requireNonNull(projectId, "projectId must not be null");
+            idempotencyKey = requireText(idempotencyKey, "idempotencyKey");
+        }
+
+        private static CommandIdempotencyKey from(AcceptedMetricBucketWriteCommand command) {
+            return new CommandIdempotencyKey(command.projectId(), command.idempotencyKey());
+        }
+
+        private static CommandIdempotencyKey from(AcceptedMetricBucketIdentity identity) {
+            return new CommandIdempotencyKey(identity.projectId(), identity.idempotencyKey());
+        }
+    }
+
+    private record CommandInstanceKey(
+            UUID projectId,
+            String applicationName,
+            String environment,
+            String instanceName,
+            OffsetDateTime bucketStartUtc
+    ) {
+
+        private CommandInstanceKey {
+            Objects.requireNonNull(projectId, "projectId must not be null");
+            applicationName = requireText(applicationName, "applicationName");
+            environment = requireText(environment, "environment");
+            instanceName = requireText(instanceName, "instanceName");
+            Objects.requireNonNull(bucketStartUtc, "bucketStartUtc must not be null");
+        }
+
+        private static CommandInstanceKey from(AcceptedMetricBucketWriteCommand command) {
+            return new CommandInstanceKey(
+                    command.projectId(),
+                    command.applicationName(),
+                    command.environment(),
+                    command.instanceName(),
+                    command.bucketStartUtc());
+        }
     }
 
     private String writeJson(Object value) {
