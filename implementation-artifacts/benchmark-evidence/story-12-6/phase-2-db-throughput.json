@@ -1,0 +1,54 @@
+{
+  "phase" : "phase-2-db-throughput",
+  "claimBoundary" : "DB persistence throughput only; request latency is reported in Phase 1",
+  "workerMvp" : {
+    "name" : "worker-mvp-message-by-message-persistence",
+    "count" : 90,
+    "batchSize" : 1,
+    "insertedCount" : 90,
+    "duplicateNoopCount" : 0,
+    "conflictCount" : 0,
+    "transientCount" : 0,
+    "bucketStatementCount" : 90,
+    "roundTripCount" : 90,
+    "persistDurationMs" : 172.11325,
+    "persistedBucketsPerSecond" : 522.9115132042419,
+    "itemDurationMs" : {
+      "count" : 90,
+      "min" : 1.266291,
+      "p50" : 1.695375,
+      "p95" : 3.201416,
+      "p99" : 6.0055,
+      "max" : 6.0055
+    },
+    "measurementMeaning" : "message별 repository insert baseline이며 DB batch throughput improvement claim이 아님"
+  },
+  "batchWriter" : {
+    "name" : "batch-writer-persistence",
+    "count" : 90,
+    "batchSize" : 30,
+    "insertedCount" : 90,
+    "duplicateNoopCount" : 0,
+    "conflictCount" : 0,
+    "transientCount" : 0,
+    "bucketStatementCount" : 9,
+    "roundTripCount" : 3,
+    "persistDurationMs" : 51.534042,
+    "persistedBucketsPerSecond" : 1746.4184160054822,
+    "itemDurationMs" : {
+      "count" : 1,
+      "min" : 51.534042,
+      "p50" : 51.534042,
+      "p95" : 51.534042,
+      "p99" : 51.534042,
+      "max" : 51.534042
+    },
+    "measurementMeaning" : "Story 12.5 batch writer DB persistence evidence"
+  },
+  "duplicateNoopSmoke" : {
+    "scenario" : "same-key-same-hash-duplicate-smoke",
+    "firstStatus" : "INSERTED",
+    "duplicateStatus" : "DUPLICATE_NOOP",
+    "noopSuccess" : true
+  }
+}

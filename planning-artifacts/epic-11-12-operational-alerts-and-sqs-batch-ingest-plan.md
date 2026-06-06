@@ -405,6 +405,34 @@ Non-goal:
 - Request latency 개선을 DB throughput 개선으로 오해할 위험은 report에서 Phase 1/Phase 2를 분리해 완화한다.
 - Batch conflict가 transaction 전체를 흔들 위험은 conflict row 재처리 또는 `ON CONFLICT` 기반 분류 전략으로 완화한다.
 
+### Story 12.6. Benchmark Evidence Run and Report
+
+목표:
+
+- Story 12.5의 benchmark harness/guard를 사용해 실제 local 또는 격리 benchmark 수치와 sanitized report artifact를 남긴다.
+- Phase 1 request latency evidence와 Phase 2 DB batch throughput evidence를 같은 결론이나 단일 개선율로 합치지 않는다.
+
+Acceptance criteria:
+
+- Primary fixture는 `applicationCount=1`, `instanceCount=30`이며, synthetic instance임을 report에 명시한다.
+- Direct insert path와 SQS enqueue path는 같은 fixture, 같은 idempotency distribution, 같은 DB 초기 상태로 Phase 1 request latency를 측정한다.
+- Worker MVP message-by-message persistence와 batch writer persistence는 같은 fixture와 DB 초기 상태로 Phase 2 DB throughput을 측정한다.
+- Report는 실제 p50/p95/p99, statement count, persist duration, persisted buckets/sec 같은 정량 수치를 포함한다.
+- Benchmark output은 raw project key, starter credential, token, AWS credential/session token, queue URL, raw payload를 남기지 않는다.
+- 결과는 production-grade load test, autoscaling proof, cost model, dashboard UI performance claim이 아니라 local/isolated benchmark evidence로 표현한다.
+
+Non-goal:
+
+- Production load test, autoscaling proof, cloud benchmark suite, Lambda consumer, separate worker deployment.
+- 일반 local/dev/test/smoke/CI profile을 benchmark resource constraint로 낮추는 것.
+
+주요 검증 방법:
+
+- Opt-in benchmark command smoke.
+- Benchmark output redaction scan.
+- Phase 1/Phase 2 report section separation test.
+- Fixture shape and DB reset/seed test.
+
 ## 5. sprint-status.yaml Backlog Entry 제안
 
 `implementation-artifacts/sprint-status.yaml`에는 Epic 10 이후 아래 entry를 backlog로 둔다.
@@ -424,6 +452,7 @@ epic-12: backlog
 12-3-spring-boot-sqs-worker-mvp-and-idempotency: backlog
 12-4-snapshot-delay-and-pipeline-lag-semantics: backlog
 12-5-batch-writer-and-performance-verification: backlog
+12-6-benchmark-evidence-run-and-report: backlog
 epic-12-retrospective: optional
 ```
 

@@ -5,7 +5,7 @@ storyKey: "12-5-batch-writer-and-performance-verification"
 epic: "Epic 12. SQS Buffered Ingest Transition"
 title: "Batch Writer and Performance Verification"
 architectureStyle: Traditional MVC
-status: review
+status: done
 date: 2026-06-05
 commitBoundary: "perf: add sqs batch writer benchmark evidence"
 ---
@@ -14,13 +14,15 @@ commitBoundary: "perf: add sqs batch writer benchmark evidence"
 
 ## Status
 
-review
+done
 
 2026-06-05: `bmad-create-story`로 기존 12.5 story 파일을 source-of-truth 기준에 맞춰 보강했다. 이 작업은 구현을 포함하지 않으며, 후속 구현자는 아래 acceptance criteria와 task checklist를 기준으로 batch writer와 benchmark evidence를 구현한다.
 
 2026-06-05: `bmad-dev-story` 구현을 시작하며 상태를 in-progress로 전환했다.
 
 2026-06-05: Batch writer path, catalog grouping, benchmark guard 구현과 전체 portal regression 검증을 완료하고 review로 전환했다.
+
+2026-06-05: Story 12.5 변경분을 commit/push/merge했고, 후속 실제 수치 evidence run은 Story 12.6으로 분리한다.
 
 ## Story
 

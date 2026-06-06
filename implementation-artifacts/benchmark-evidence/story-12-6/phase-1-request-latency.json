@@ -1,0 +1,56 @@
+{
+  "phase" : "phase-1-request-latency",
+  "claimBoundary" : "request latency only; direct persist response and fake enqueue response are separate meanings",
+  "direct" : {
+    "name" : "direct-insert-request-path",
+    "queueMode" : "direct",
+    "measurementMeaning" : "저장 완료 후 응답하는 service request boundary",
+    "latencyMs" : {
+      "count" : 90,
+      "min" : 2.571708,
+      "p50" : 4.154333,
+      "p95" : 5.996667,
+      "p99" : 10.552875,
+      "max" : 10.552875
+    },
+    "failureCount" : 0,
+    "acceptedBucketRowsAfterScenario" : 90,
+    "requestThreadAcceptedBucketRows" : 90,
+    "enqueueLatencyMs" : {
+      "count" : 0,
+      "min" : 0.0,
+      "p50" : 0.0,
+      "p95" : 0.0,
+      "p99" : 0.0,
+      "max" : 0.0
+    },
+    "queuedCount" : 0,
+    "requestThreadDbWriteAbsent" : false
+  },
+  "enqueue" : {
+    "name" : "fake-queue-enqueue-request-path",
+    "queueMode" : "fake",
+    "measurementMeaning" : "SQS mode enqueue semantics with in-memory fake queue; real SQS network latency evidence가 아님",
+    "latencyMs" : {
+      "count" : 90,
+      "min" : 0.087791,
+      "p50" : 0.108125,
+      "p95" : 0.152667,
+      "p99" : 0.408542,
+      "max" : 0.408542
+    },
+    "failureCount" : 0,
+    "acceptedBucketRowsAfterScenario" : 0,
+    "requestThreadAcceptedBucketRows" : 0,
+    "enqueueLatencyMs" : {
+      "count" : 90,
+      "min" : 0.001,
+      "p50" : 0.001166,
+      "p95" : 0.002083,
+      "p99" : 0.031208,
+      "max" : 0.031208
+    },
+    "queuedCount" : 90,
+    "requestThreadDbWriteAbsent" : true
+  }
+}

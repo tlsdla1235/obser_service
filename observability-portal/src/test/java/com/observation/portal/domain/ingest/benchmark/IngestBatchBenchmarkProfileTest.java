@@ -58,13 +58,13 @@ class IngestBatchBenchmarkProfileTest {
 
         assertThat(scanner.findViolations("aggregate count only").violations()).isEmpty();
         assertThatThrownBy(() -> scanner.assertSafe("""
-                queueUrl=https://sqs.ap-northeast-2.amazonaws.com/123/source
+                queueUrl : http://localhost:4566/000000000000/source
                 projectKey=raw-project-key
                 starterCredential=starter-secret
                 Authorization: Bearer token
-                access_token=token
+                "token" : "secret"
                 AWS_SESSION_TOKEN=session
-                rawPayload={"schemaVersion":"1.0"}
+                "payload" : {"schemaVersion" : "1.0"}
                 """))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("queue_url")

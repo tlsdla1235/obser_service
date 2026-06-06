@@ -16,6 +16,15 @@ import java.util.stream.Stream;
 public class IngestBenchmarkRedactionScanner {
 
     private static final Pattern AWS_ACCESS_KEY = Pattern.compile("(AKIA|ASIA)[0-9A-Z]{16}");
+    private static final Pattern QUEUE_URL_MARKER = Pattern.compile(
+            "(https?://(?:sqs\\.|localhost:4566|[^\\s\"']*amazonaws\\.com)|\"?queue[-_]?url\"?\\s*[:=])",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern TOKEN_JSON_KEY = Pattern.compile(
+            "\"(?:access_token|refresh_token|session_token|token)\"\\s*:",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern RAW_PAYLOAD_JSON_KEY = Pattern.compile(
+            "\"(?:payload|schemaversion)\"\\s*:",
+            Pattern.CASE_INSENSITIVE);
 
     /**
      * 단일 text artifact에서 금지 marker를 찾아 violation 목록으로 반환한다.
@@ -24,7 +33,7 @@ public class IngestBenchmarkRedactionScanner {
         String text = Objects.requireNonNull(content, "content must not be null");
         String lower = text.toLowerCase(Locale.ROOT);
         List<String> violations = new ArrayList<>();
-        if (lower.contains("https://sqs.") || lower.contains("queueurl=") || lower.contains("queue-url=")) {
+        if (QUEUE_URL_MARKER.matcher(text).find()) {
             violations.add("queue_url");
         }
         if (lower.contains("projectkey=")
@@ -46,7 +55,7 @@ public class IngestBenchmarkRedactionScanner {
                 || lower.contains("refresh_token")
                 || lower.contains("session_token")
                 || lower.contains("token=")
-                || lower.contains("\"token\":")) {
+                || TOKEN_JSON_KEY.matcher(text).find()) {
             violations.add("token");
         }
         if (lower.contains("discord.com/api/webhooks")) {
@@ -61,8 +70,7 @@ public class IngestBenchmarkRedactionScanner {
         if (lower.contains("rawpayload")
                 || lower.contains("raw_payload")
                 || lower.contains("raw payload")
-                || lower.contains("\"payload\":")
-                || lower.contains("\"schemaversion\":")) {
+                || RAW_PAYLOAD_JSON_KEY.matcher(text).find()) {
             violations.add("raw_payload");
         }
         return new ScanResult(List.copyOf(violations));

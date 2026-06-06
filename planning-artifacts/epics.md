@@ -326,6 +326,9 @@ Epic 12의 기본 consumer는 Spring Boot portal 내부 worker다. Lambda consum
 5. Batch Writer and Performance Verification
    - Batch writer 최적화와 portfolio 성능 검증을 한 story로 묶는다.
    - Phase 1 request latency와 Phase 2 DB batch throughput 지표를 분리하고, 일반 local/dev/test 기본값과 benchmark profile을 분리한다.
+6. Benchmark Evidence Run and Report
+   - Story 12.5의 benchmark harness/guard를 사용해 실제 local/isolated benchmark 수치와 sanitized report artifact를 남긴다.
+   - Phase 1 request latency와 Phase 2 DB batch throughput evidence를 같은 결론이나 단일 개선율로 합치지 않는다.
 
 ## Post-MVP Candidate Backlog
 
