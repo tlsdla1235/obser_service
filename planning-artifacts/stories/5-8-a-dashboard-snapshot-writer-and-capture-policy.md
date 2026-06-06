@@ -19,7 +19,7 @@ portal 구현자로서, Application Dashboard read model을 정책에 맞게 `da
 
 ## Source of Truth
 
-`implementation-artifacts/spec-story-5-8-a-dashboard-snapshot-writer-and-capture-policy-contract-decisions.md`가 Story 5.8-a의 최상위 결정 문서다.
+`implementation-artifacts/spec-story-5-8-a-dashboard-snapshot-writer-and-capture-policy-contract-decisions.md`가 Story 5.8-a의 최상위 결정 문서다. 2026-06-06 이후 scheduled/fallback 저장 eligibility는 `implementation-artifacts/spec-snapshot-heartbeat-gated-capture.md`가 보완한다.
 
 아래 문서는 모두 읽고 반영한 story context다. 구현 중 충돌처럼 보이는 지점은 5.8-a 전용 결정 문서를 우선하고, Story 5.7이 고정한 `instanceSummary` source path와 minimum shape는 재논의하지 않는다.
 
@@ -45,28 +45,30 @@ portal 구현자로서, Application Dashboard read model을 정책에 맞게 `da
 2. capture reason priority는 `state_change > high_confidence_concern > short_strong_spike > query_fallback > hourly_scheduled`다.
 3. duplicate identity는 `application_id + current_window_end_utc`다.
 4. 같은 identity row는 하나만 유지하고, incoming reason이 existing reason보다 높은 priority일 때만 representative row를 update한다.
-5. scheduler 대상은 `applications.status=active`이고 snapshot retention horizon 안에 accepted bucket이 있는 application이다.
-6. heartbeat-only application과 disabled application은 scheduled snapshot 대상이 아니다.
-7. dashboard query fallback은 latest snapshot 없음 또는 `latest.generated_at <= queryAt - 65분`일 때만 시도한다.
-8. fallback writer는 이미 만든 dashboard read model을 저장하며 `DashboardReadModelService`를 다시 호출하지 않는다.
-9. fallback 저장 실패는 짧은 1회 retry 후 fail-open이다.
-10. helper column은 `capture_reason`, `primary_rule_id`, `primary_endpoint_key`, `max_confidence`다.
-11. 5.8-a가 새로 확정하는 index/constraint는 unique identity와 `application_id + capture_reason + generated_at desc`까지만이다. Story 5.7 existing latest/retention 조회 index는 유지하고, 5.9 helper index는 추가하지 않는다.
-12. endpoint evidence max 10 selection은 `endpointPriority.rank ASC`를 우선한다.
-13. instance summary max 50 selection은 triage contributors, freshness attention, high request count 순서다.
-14. `endpointEvidenceRefs`는 `endpointKey`, optional `method`, optional `route`, optional `relatedApplicationPriorityRank`, optional `relatedRuleIds`만 저장한다.
-15. `snapshotDetailAnchor` 생성 규칙, marker/detail/recovery read semantics는 5-8-b로 넘긴다.
-16. save failure는 structured log와 bounded meter metric으로 기록한다.
-17. MVP scheduled capture는 portal service-layer scheduled task가 맡되, scheduler는 snapshot 생성 로직이 아니라 capture trigger/dispatcher 책임을 가진다.
-18. 실제 dashboard read model generation orchestration, bounded evidence/summary fill, priority-aware idempotent upsert는 portal 내부 service/use case와 writer가 소유한다.
-19. capture request는 MVP public API가 아니라 내부 service boundary이며, Post-MVP SQS/Lambda message contract 후보로만 남긴다.
+5. scheduler 대상은 `applications.status=active`이고 snapshot retention horizon 안에 accepted bucket이 있으며 최근 starter heartbeat도 있는 application이다.
+6. recent heartbeat 기준은 `starter_heartbeat_telemetry.interval_seconds`로 계산한 `max(90초, interval_seconds * 3)` 안에 `last_received_at_utc`가 있는 경우다.
+7. heartbeat-only application, heartbeat row가 없거나 stale인 application, disabled application은 scheduled snapshot 대상이 아니다.
+8. dashboard query fallback은 latest snapshot 없음 또는 `latest.generated_at <= queryAt - 65분` 조건과 recent heartbeat 조건을 모두 만족할 때만 snapshot 저장을 시도한다.
+9. heartbeat가 missing/stale이면 fallback은 snapshot 저장만 건너뛰고 dashboard current response는 fail-open으로 계속 성공한다.
+10. fallback writer는 이미 만든 dashboard read model을 저장하며 `DashboardReadModelService`를 다시 호출하지 않는다.
+11. fallback 저장 실패는 짧은 1회 retry 후 fail-open이다.
+12. helper column은 `capture_reason`, `primary_rule_id`, `primary_endpoint_key`, `max_confidence`다.
+13. 5.8-a가 새로 확정하는 index/constraint는 unique identity와 `application_id + capture_reason + generated_at desc`까지만이다. Story 5.7 existing latest/retention 조회 index는 유지하고, 5.9 helper index는 추가하지 않는다.
+14. endpoint evidence max 10 selection은 `endpointPriority.rank ASC`를 우선한다.
+15. instance summary max 50 selection은 triage contributors, freshness attention, high request count 순서다.
+16. `endpointEvidenceRefs`는 `endpointKey`, optional `method`, optional `route`, optional `relatedApplicationPriorityRank`, optional `relatedRuleIds`만 저장한다.
+17. `snapshotDetailAnchor` 생성 규칙, marker/detail/recovery read semantics는 5-8-b로 넘긴다.
+18. save failure는 structured log와 bounded meter metric으로 기록한다.
+19. MVP scheduled capture는 portal service-layer scheduled task가 맡되, scheduler는 snapshot 생성 로직이 아니라 capture trigger/dispatcher 책임을 가진다.
+20. 실제 dashboard read model generation orchestration, bounded evidence/summary fill, priority-aware idempotent upsert는 portal 내부 service/use case와 writer가 소유한다.
+21. capture request는 MVP public API가 아니라 내부 service boundary이며, Post-MVP SQS/Lambda message contract 후보로만 남긴다.
 
 ## Scope / Out of Scope
 
 포함:
 
 - `dashboard_snapshots` writer service와 priority-aware idempotent upsert
-- portal service-layer UTC hourly scheduled capture trigger/dispatcher
+- portal service-layer UTC hourly scheduled capture trigger/dispatcher와 recent heartbeat eligibility gate
 - state-change, high-confidence concern, short-strong-spike, query fallback capture reason seed enum
 - dashboard query fallback capture threshold, recursion guard, retry/fail-open
 - 내부 capture request boundary 후보
@@ -77,7 +79,7 @@ portal 구현자로서, Application Dashboard read model을 정책에 맞게 `da
 - Story 5.7 `dashboard_snapshots.read_model_json.instanceSummary.items[]` wrapper와 minimum item shape fill
 - `instanceSummary.items[].endpointEvidenceRefs[]` 최소 ref-only field 저장
 - save failure structured log와 bounded meter metric
-- heartbeat-to-snapshot, raw explorer, endpoint timeseries, operational event table regression guard tests
+- heartbeat-only snapshot, heartbeat-derived read model, raw explorer, endpoint timeseries, operational event table regression guard tests
 
 제외:
 
@@ -91,7 +93,7 @@ portal 구현자로서, Application Dashboard read model을 정책에 맞게 `da
 - raw snapshot explorer, raw bucket explorer, arbitrary metric query
 - endpoint timeseries table/API
 - endpoint p95/p99, endpoint percentile rollup, endpoint p99 alert 기준
-- heartbeat를 accepted bucket freshness, host health, dashboard snapshot, recovery source, operational event source로 합성
+- heartbeat를 accepted bucket freshness, host health, dashboard read model/source, recovery source, operational event source로 합성
 - UI/controller/repository/DB trigger의 state/rule/p95/p99/endpoint priority 계산
 - Story 5.7의 `instanceSummary.items[]` path, `schemaVersion=1.0`, `maxItems=50`, minimum field meaning 재논의
 
@@ -136,18 +138,18 @@ portal 구현자로서, Application Dashboard read model을 정책에 맞게 `da
 37. scheduled snapshot은 1시간 data aggregate가 아니라 target boundary 기준 dashboard current 15분과 baseline 15분 read model을 저장한다.
 38. scheduled snapshot 대상은 `applications.status=active` application으로 제한한다.
 39. scheduled snapshot 대상은 snapshot retention horizon 안에 accepted bucket이 하나 이상 있는 application으로 제한한다.
-40. accepted bucket이 한 번도 없는 application은 scheduled snapshot 대상이 아니다.
-41. heartbeat-only application은 scheduled snapshot 대상이 아니다.
-42. disabled application은 scheduled snapshot 대상이 아니다.
-43. 마지막 accepted bucket이 snapshot retention horizon 밖이면 scheduled snapshot 대상이 아니다.
-44. scheduler eligibility 판단은 accepted bucket axis를 사용하고 starter heartbeat success/missing을 snapshot eligibility로 합성하지 않는다.
-45. dashboard query fallback은 latest snapshot이 없으면 시도한다.
-46. latest snapshot이 있더라도 `latest.generated_at <= queryAt - 65분`이면 fallback capture를 시도한다.
+40. scheduled snapshot 대상은 recent starter heartbeat가 있는 application으로 제한한다. 기준은 `starter_heartbeat_telemetry.interval_seconds`로 계산한 `max(90초, interval_seconds * 3)` 안에 `last_received_at_utc`가 있는 경우다.
+41. accepted bucket이 한 번도 없는 application과 heartbeat-only application은 scheduled snapshot 대상이 아니다.
+42. heartbeat row가 없거나 stale인 application은 scheduled snapshot 대상이 아니다.
+43. disabled application과 마지막 accepted bucket이 snapshot retention horizon 밖인 application은 scheduled snapshot 대상이 아니다.
+44. scheduler eligibility 판단에서 heartbeat는 저장 gate로만 사용하고 accepted bucket freshness, state, read model source로 합성하지 않는다.
+45. dashboard query fallback은 latest snapshot이 없고 recent starter heartbeat가 있으면 snapshot 저장을 검토한다.
+46. latest snapshot이 있더라도 `latest.generated_at <= queryAt - 65분`이고 recent starter heartbeat가 있으면 fallback capture 저장을 검토한다.
 47. `65분` grace threshold는 hourly scheduler jitter 허용값이며 exact current window match 요구로 바꾸지 않는다.
 48. fallback capture는 query마다 snapshot을 저장하는 주 저장 경로가 아니다.
 49. fallback writer는 dashboard query path에서 이미 생성한 current dashboard read model을 저장한다.
 50. fallback writer는 fallback 저장을 위해 `DashboardReadModelService`를 다시 호출하지 않는다.
-51. fallback 저장은 current dashboard 판단 기준, HTTP response model, state/triage/endpoint priority 계산 결과를 바꾸지 않는다.
+51. fallback 저장은 current dashboard 판단 기준, HTTP response model, state/triage/endpoint priority 계산 결과를 바꾸지 않는다. heartbeat가 missing/stale이면 snapshot 저장만 건너뛰고 dashboard current response는 fail-open으로 성공한다.
 52. fallback 저장에서 transient duplicate/conflict 계열 실패가 나면 짧은 1회 retry를 허용한다.
 53. fallback 최종 저장 실패는 dashboard current response를 실패시키지 않고 `200` fail-open으로 둔다.
 54. fallback 저장 실패는 response warning field, failed `snapshotId`, snapshot link, marker/detail/history 후보로 노출하지 않는다.
@@ -187,14 +189,14 @@ portal 구현자로서, Application Dashboard read model을 정책에 맞게 `da
 88. `read_model_json.instances[]` live navigation list를 instance trend source로 확장하지 않는다.
 89. `read_model_json.snapshot` marker/link 후보를 instance summary source로 사용하지 않는다.
 90. snapshot writer는 current dashboard read model을 저장하되 current state, rule, p95/p99, endpoint priority를 새로 계산하는 DB view, trigger, repository path를 만들지 않는다.
-91. heartbeat success/missing은 accepted bucket freshness, dashboard snapshot eligibility, recovery source, operational event source로 합성하지 않는다.
+91. heartbeat success/missing은 accepted bucket freshness, dashboard read model/source, recovery source, operational event source로 합성하지 않는다. 최근 heartbeat는 scheduled/fallback snapshot 저장 gate로만 사용한다.
 92. raw snapshot explorer endpoint를 만들지 않는다.
 93. raw bucket explorer endpoint를 만들지 않는다.
 94. endpoint timeseries table/API를 만들지 않는다.
 95. `operational_events` table/repository/API를 만들지 않는다.
 96. snapshot marker/detail/recovery API를 5.8-a에서 만들지 않는다.
 97. snapshot 저장 실패나 absence를 5-8-b가 current dashboard regeneration으로 보완하도록 약속하지 않는다.
-98. Focused tests가 capture reason token/priority, idempotent upsert, scheduler eligibility, fallback threshold/fail-open, helper column update, endpoint evidence cap, instance summary cap/minimum shape, endpoint ref field, save failure metric/log, regression non-goals를 검증한다.
+98. Focused tests가 capture reason token/priority, idempotent upsert, scheduler heartbeat eligibility, fallback threshold/no-write/fail-open, helper column update, endpoint evidence cap, instance summary cap/minimum shape, endpoint ref field, save failure metric/log, regression non-goals를 검증한다.
 99. `./gradlew :observability-portal:test`와 `git diff --check`가 통과해야 implementation completion으로 볼 수 있다.
 
 ## Tasks / Subtasks
@@ -225,15 +227,16 @@ portal 구현자로서, Application Dashboard read model을 정책에 맞게 `da
 - [x] UTC hourly scheduled capture trigger/dispatcher 구현 (AC: 35~44, 55, 57~60, 90~96, 98~99)
   - [x] portal service-layer UTC hourly boundary scheduler를 추가한다. Spring `@Scheduled` 사용 시 zone은 UTC로 고정한다.
   - [x] execution jitter와 무관하게 target `currentWindowEndUtc`는 해당 hourly boundary로 고정한다.
-  - [x] active application과 retention horizon 안 accepted bucket 존재 여부를 repository/service에서 조회한다.
-  - [x] heartbeat-only application, accepted bucket 없는 application, disabled application을 제외한다.
+  - [x] active application, retention horizon 안 accepted bucket, recent starter heartbeat 조건을 repository/service에서 조회한다.
+  - [x] heartbeat-only application, accepted bucket 없는 application, heartbeat row가 없거나 stale인 application, disabled application을 제외한다.
   - [x] scheduled dispatcher는 내부 capture request를 portal capture service/use case에 전달한다.
   - [x] portal capture service/use case는 `hourly_scheduled` reason으로 read model을 한 번 생성해 writer에 전달한다.
   - [x] scheduled save failure는 structured log/metric 후 다음 대상 또는 다음 run으로 넘어간다.
   - [x] MVP 구현에 Spring Batch, SQS, Lambda, outbox, Redis, materialized view, 별도 job metadata table을 추가하지 않는다.
 
 - [x] Dashboard query fallback capture 구현 (AC: 45~54, 57~60, 90~97)
-  - [x] dashboard current query path에서 latest snapshot 없음 또는 latest `generated_at <= queryAt - 65분` 조건만 fallback capture를 시도한다.
+  - [x] dashboard current query path에서 latest snapshot 없음 또는 latest `generated_at <= queryAt - 65분` 조건과 recent starter heartbeat 조건을 모두 만족할 때만 fallback capture 저장을 시도한다.
+  - [x] heartbeat가 missing/stale이면 snapshot 저장만 건너뛰고 dashboard response는 fail-open으로 둔다.
   - [x] fallback writer에는 이미 생성한 `ApplicationDashboardReadModel`을 전달한다.
   - [x] fallback writer 또는 helper가 `DashboardReadModelService`를 다시 호출하지 않도록 dependency/test guard를 둔다.
   - [x] transient duplicate/conflict 실패는 짧은 1회 retry 후 fail-open으로 둔다.
@@ -255,8 +258,8 @@ portal 구현자로서, Application Dashboard read model을 정책에 맞게 `da
   - [x] `InstanceSnapshotTrendParserTest` 또는 writer fixture test로 5.7 parser가 stored summary를 projection할 수 있음을 검증한다.
 
 - [x] Regression guard와 full verification (AC: 90~99)
-  - [x] heartbeat-only application이 scheduled snapshot 대상이 아님을 테스트한다.
-  - [x] heartbeat success/missing이 accepted bucket freshness, snapshot eligibility, recovery/event source로 합성되지 않음을 테스트한다.
+  - [x] heartbeat-only application과 heartbeat missing/stale application이 scheduled snapshot 대상이 아님을 테스트한다.
+  - [x] heartbeat success/missing이 accepted bucket freshness, dashboard read model/source, recovery/event source로 합성되지 않음을 테스트한다.
   - [x] raw snapshot explorer/raw bucket explorer/endpoint timeseries/operational event table/API가 추가되지 않았음을 architecture or smoke test로 확인한다.
   - [x] controller/repository/DB trigger가 state/rule/p95/p99/endpoint priority를 계산하지 않는 boundary guard를 유지한다.
   - [x] focused tests, relevant repository integration tests, `MvcLayerBoundaryTest`, full portal test, `git diff --check`를 실행한다.
@@ -266,6 +269,7 @@ portal 구현자로서, Application Dashboard read model을 정책에 맞게 `da
 ### Contract Priority
 
 - 최우선 source는 `implementation-artifacts/spec-story-5-8-a-dashboard-snapshot-writer-and-capture-policy-contract-decisions.md`다.
+- 2026-06-06 이후 scheduled/fallback 저장 eligibility는 `implementation-artifacts/spec-snapshot-heartbeat-gated-capture.md`가 보완한다.
 - `read-model-contract.md`, `operational-event-history.md`, `database-schema.md`, `api-surface.md`에는 5.8-a 이전 후보 표현이 남아 있다. 예를 들어 older helper 후보의 `scheduled` token, endpoint evidence selection order, dashboard fallback `500` rough mapping은 5.8-a 결정 문서가 덮어쓴다.
 - Story 5.7의 `instanceSummary.items[]` path, `schemaVersion=1.0`, `maxItems=50`, minimum field meaning은 절대 다시 열지 않는다.
 - 5.8 decomposition 문서 기준으로 5.8-a는 "무엇을 언제 저장하는가"만 닫는다. "저장된 것을 어떻게 읽고 marker/detail/recovery로 연결하는가"는 5-8-b다.
@@ -282,7 +286,7 @@ portal 구현자로서, Application Dashboard read model을 정책에 맞게 `da
 - scheduled snapshot은 hourly boundary target을 고정해야 하므로, dev-story에서 `DashboardReadModelService`에 supplied evaluation instant를 받는 internal method/command를 추가할지 검토해야 한다. Query current behavior는 바꾸지 않는다.
 - `MetricBucketRepository`는 application/latest bucket, current/baseline aggregate, endpoint rows, recent five buckets, instance-scope evidence projections를 제공한다.
 - `EndpointEvidenceAggregationService`는 Story 5.5/5.6에서 endpoint JSON parsing, safe route validation, histogram boundary merge를 공유한다. Snapshot endpoint evidence도 raw JSON parsing drift를 만들지 않도록 재사용 후보로 본다.
-- `ApplicationRepository`는 `findByIdAndProjectId`와 project list만 있다. Scheduler eligibility에는 `status=active`와 accepted bucket horizon join/exists 조회가 필요하다.
+- `ApplicationRepository.findActiveApplicationsEligibleForScheduledSnapshot(...)`는 `status=active`, accepted bucket retention/cutoff, recent starter heartbeat 조건을 함께 조회한다.
 - `ApplicationEntity`는 `status` field를 갖지만 accessor가 없다. Scheduler eligibility 구현 시 repository query 또는 `status()` accessor가 필요할 수 있다.
 - `ApplicationInstanceRepository.findByApplicationIdOrderByLastSeenAtDescInstanceNameAsc`는 dashboard navigation entry max 50 source다. Stored instance summary는 더 깊은 minimum shape가 필요하므로 이 shallow entry만 복사하면 Story 5.7 contract를 만족하지 못한다.
 
@@ -381,10 +385,12 @@ Focused test 대상 후보:
 - `created_at`은 preserve되고 `generated_at`은 representative read model generated time으로 update된다.
 - helper columns는 insert와 higher-priority update 때 채워지고 lower-priority write로 downgrade되지 않는다.
 - unique `application_id + current_window_end_utc`가 duplicate row를 막는다.
-- active application이며 retention horizon 안 accepted bucket이 있는 경우만 scheduled target이다.
-- accepted bucket 없음, heartbeat-only, disabled, retention horizon 밖 last bucket은 scheduled target이 아니다.
+- active application이며 retention horizon 안 accepted bucket과 recent starter heartbeat가 모두 있는 경우만 scheduled target이다.
+- recent starter heartbeat 기준은 heartbeat row의 `interval_seconds`로 계산한 `max(90초, interval_seconds * 3)` 안에 `last_received_at_utc`가 있는 경우다.
+- accepted bucket 없음, heartbeat-only, heartbeat missing/stale, disabled, retention horizon 밖 last bucket은 scheduled target이 아니다.
 - scheduled target hourly boundary와 current/baseline 15분 window가 UTC 기준으로 계산된다.
-- query fallback은 latest snapshot 없음 또는 latest generatedAt이 queryAt보다 65분 이상 오래된 경우만 시도한다.
+- query fallback은 latest snapshot 없음 또는 latest generatedAt이 queryAt보다 65분 이상 오래된 조건과 recent starter heartbeat 조건을 모두 만족할 때만 snapshot 저장을 시도한다.
+- query fallback에서 heartbeat가 missing/stale이면 snapshot 저장만 건너뛰고 dashboard response는 fail-open으로 성공한다.
 - query fallback writer가 `DashboardReadModelService`를 재호출하지 않는다.
 - fallback duplicate/conflict transient failure는 1회 retry 후 fail-open이다.
 - fallback final failure에도 dashboard response는 200이고 warning/snapshot link/failed snapshot id를 노출하지 않는다.
@@ -464,7 +470,7 @@ GPT-5 Codex
 - writer-owned capture reason enum, capture request/write command/value/result/latest row 모델과 priority-aware idempotent writer를 구현했다.
 - scheduled capture dispatcher, internal capture use case, query fallback fail-open capture, Java time JSON configuration, bounded write metrics/logging을 추가했다.
 - `snapshotEndpointEvidence` top-level block과 Story 5.7 compatible `instanceSummary.items[]` wrapper/minimum shape fill을 writer enricher에서 구현했다.
-- state-change/high-confidence/short-strong-spike eligibility policy와 fallback duplicate retry 범위, scheduler eligibility, non-goal regression guard를 focused tests로 고정했다.
+- state-change/high-confidence/short-strong-spike eligibility policy와 fallback duplicate retry 범위, scheduler heartbeat eligibility, non-goal regression guard를 focused tests로 고정했다.
 - 검증: `./gradlew :observability-portal:test --tests '*DashboardSnapshot*'`, `./gradlew :observability-portal:test --tests '*DashboardSnapshot*' --tests com.observation.portal.domain.catalog.repository.ApplicationRepositoryIntegrationTest --tests com.observation.portal.domain.catalog.repository.CatalogSchemaMigrationIntegrationTest --tests com.observation.portal.architecture.MvcLayerBoundaryTest`, `./gradlew :observability-portal:test`, `git diff --check`.
 
 ### File List

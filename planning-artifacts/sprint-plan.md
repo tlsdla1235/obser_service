@@ -64,7 +64,7 @@ supersedes: Epic 3 Portal Ingest Acceptance sprint plan dated 2026-05-18
 - Epic 1~4 완료 상태 되돌리기
 - Prometheus scrape/query UI, arbitrary metric query, dashboard builder, raw explorer
 - UI-side lifecycle state, rule, p95/p99, endpoint priority, snapshot/history event 계산
-- heartbeat를 accepted bucket freshness, host application health, dashboard snapshot, operational event source로 합성
+- heartbeat를 accepted bucket freshness, host application health, dashboard read model/source, operational event source로 합성. 최근 heartbeat는 snapshot 저장 eligibility gate로만 사용할 수 있다.
 - endpoint별 p95/p99 계산, endpoint timeseries table, long-retention time-series analytics
 - 별도 `operational_events` table, event repository, materialized view, Redis/outbox를 MVP history source로 도입
 - Alert/Discord surface를 Epic 6 MVP 필수로 확정

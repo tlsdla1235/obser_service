@@ -129,7 +129,7 @@ portal 구현자로서, Application Dashboard가 사용할 current dashboard rea
 - Project Entry와 Application List는 scope 선택/스캔 surface이고, 상세 dashboard 판단은 이 API에서만 온다.
 - accepted bucket은 application metric freshness/state/read-model의 data-plane source-of-truth다.
 - starter heartbeat는 accepted bucket과 분리된 control-plane/liveness source다.
-- heartbeat 성공/미수신은 accepted bucket freshness, host business health, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 생성하거나 암시하지 않는다.
+- heartbeat 성공/미수신만으로 accepted bucket freshness, host business health, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 생성하거나 암시하지 않는다. 최근 heartbeat는 snapshot 저장 eligibility gate로만 사용할 수 있다.
 - `DashboardReadModelService`는 response assembly를 담당하고, state 의미 판단은 `LifecycleStateService`가 담당한다.
 
 ### Pre-Dev Contract Locks
@@ -307,7 +307,7 @@ Shape는 구현 중 record/class 이름을 조정할 수 있다. 단, top-level 
 - UI가 lifecycle state, starter connection diagnosis, zeroInsight, recovery, p95/p99, endpoint priority를 재계산하지 않는다.
 - Controller가 lifecycle state, starter connection diagnosis, zeroInsight, recovery, p95/p99, endpoint priority를 재계산하지 않는다.
 - heartbeat를 accepted bucket freshness나 host application health로 합치지 않는다.
-- heartbeat 성공은 accepted bucket, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 만들지 않는다.
+- heartbeat 성공만으로 accepted bucket, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 만들지 않는다. 최근 heartbeat는 snapshot 저장 eligibility gate로만 사용할 수 있다.
 - latest accepted bucket `endUtc`는 freshness source일 뿐 dashboard current window end가 아니다.
 - `TimeBucketWindowCalculator.dashboardWindowAtCurrentTime()`를 그대로 쓰면 raw clock instant가 window end가 될 수 있다. Story 5.2는 floor된 `evaluationAt`을 명시적으로 사용해야 한다.
 - current aggregate query는 current window에 포함되는 accepted bucket만 합산한다. baseline aggregate는 5.2에서 state/rule에 쓰지 않으므로 불필요하면 조회하지 않는다.

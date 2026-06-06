@@ -248,7 +248,7 @@ Shape는 구현 중 코드 스타일에 맞게 record/class 이름을 조정할 
 - UI가 lifecycle state, starter connection diagnosis, rule, p95/p99, endpoint priority를 재계산하지 않는다.
 - Controller가 lifecycle state, starter connection diagnosis, rule, p95/p99, endpoint priority를 재계산하지 않는다.
 - heartbeat를 accepted bucket freshness나 host application health로 합치지 않는다.
-- heartbeat 성공은 accepted bucket, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 만들지 않는다.
+- heartbeat 성공만으로 accepted bucket, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 만들지 않는다. 최근 heartbeat는 snapshot 저장 eligibility gate로만 사용할 수 있다.
 - Project/Application navigation read model은 Application Dashboard 판단을 대체하지 않는다.
 - Application List는 detailed triage, endpoint priority, p95/p99 판단을 제공하지 않는다.
 - raw metric explorer, endpoint timeseries, dashboard snapshot/history, operational event API는 Story 5.1 범위가 아니다.

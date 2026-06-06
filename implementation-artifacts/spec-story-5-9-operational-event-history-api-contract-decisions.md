@@ -61,7 +61,7 @@ Story 5.9는 아래 금지선을 유지한다.
 - endpoint timeseries table/API를 만들지 않는다.
 - endpoint p95/p99, endpoint percentile rollup, endpoint p99 alert 기준을 만들지 않는다.
 - current dashboard read model, lifecycle state, triage, endpoint priority, p95/p99를 history 조회 시점에 재계산하지 않는다.
-- heartbeat success/failure/missing을 accepted bucket freshness, host application health, dashboard snapshot, recovery source, operational event source로 합성하지 않는다.
+- heartbeat success/failure/missing을 accepted bucket freshness, host application health, dashboard read model/source, recovery source, operational event source로 합성하지 않는다. 최근 heartbeat가 snapshot 저장 gate로 쓰인 경우에도 operational event source로 승격하지 않는다.
 - UI/controller/repository/DB trigger가 lifecycle state, rule, p95/p99, endpoint priority, operational event를 계산하지 않는다.
 
 ## Closed Decisions

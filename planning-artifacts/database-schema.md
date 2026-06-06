@@ -64,9 +64,11 @@ History 조회는 `dashboard_snapshots`의 아래 값을 기반으로 service la
 
 이 결정은 Epic 2와 Epic 3의 migration 범위를 변경하지 않는다.
 
-`dashboard_snapshots`는 application별 1시간 scheduled snapshot을 기본 cadence로 둔다. 30초 단위 원천은 이미 `accepted_metric_buckets`에 저장되므로, ingest commit마다 dashboard snapshot을 생성하거나 30초 dashboard snapshot을 장기 보관하지 않는다. Dashboard query fallback regeneration은 current response 보장을 위한 service 동작이지 raw metric 복제 저장 정책이 아니다.
+`dashboard_snapshots`는 application별 1시간 scheduled snapshot을 기본 cadence로 둔다. 새 `hourly_scheduled` row는 active application, snapshot retention horizon 안의 accepted bucket, recent starter heartbeat 조건을 모두 만족할 때만 저장한다. recent heartbeat 기준은 `starter_heartbeat_telemetry.interval_seconds`로 계산한 `max(90초, interval_seconds * 3)` 안에 `last_received_at_utc`가 있는 경우다. 30초 단위 원천은 이미 `accepted_metric_buckets`에 저장되므로, ingest commit마다 dashboard snapshot을 생성하거나 30초 dashboard snapshot을 장기 보관하지 않는다.
 
-1시간 cadence 외 추가 snapshot row는 의미 있는 `state_code` 변화, confidence `>= 0.82` high-confidence concern, 짧지만 강한 spike 실험값(confidence `>= 0.90` + 최근 5개 30초 bucket 중 2개 이상 bad), dashboard query fallback regeneration 조건에서만 남긴다. 이 capture 정책도 `dashboard_snapshots`에 read model 전체를 저장하는 bounded history 정책이며, 별도 event table이나 endpoint timeseries 저장소를 만들기 위한 우회 경로가 아니다.
+Dashboard query fallback regeneration은 current response 보장을 위한 service 동작이지 raw metric 복제 저장 정책이 아니다. query fallback은 latest snapshot이 없거나 명백히 오래된 경우에도 recent starter heartbeat가 있을 때만 snapshot 저장을 시도한다. heartbeat가 missing/stale이면 snapshot 저장만 건너뛰고 dashboard current response는 fail-open으로 계속 성공한다.
+
+1시간 cadence 외 추가 snapshot row는 의미 있는 `state_code` 변화, confidence `>= 0.82` high-confidence concern, 짧지만 강한 spike 실험값(confidence `>= 0.90` + 최근 5개 30초 bucket 중 2개 이상 bad), recent heartbeat가 있는 dashboard query fallback regeneration 조건에서만 남긴다. 이 capture 정책도 `dashboard_snapshots`에 read model 전체를 저장하는 bounded history 정책이며, 별도 event table이나 endpoint timeseries 저장소를 만들기 위한 우회 경로가 아니다. Heartbeat는 snapshot 저장 gate일 뿐 metric freshness, state, read model source가 아니며, 기존 snapshot row를 삭제하거나 재작성하지 않는다.
 
 Instance snapshot trend는 이 table의 새 raw timeseries 책임이 아니다. Snapshot `read_model_json`에 저장된 bounded instance summary에서 특정 `application + instance` point만 projection하며, 기본 `since=7d`, `limit=168`, 최대 `since=14d`, `limit=336`으로 clamp한다.
 
@@ -344,7 +346,7 @@ Notes:
 
 | Candidate Column | Type | 의미 |
 |---|---|---|
-| `capture_reason` | `varchar(48)` | `scheduled`, `state_change`, `high_confidence_concern`, `short_strong_spike`, `query_fallback` 같은 snapshot row 생성 사유 |
+| `capture_reason` | `varchar(48)` | `hourly_scheduled`, `state_change`, `high_confidence_concern`, `short_strong_spike`, `query_fallback` 같은 snapshot row 생성 사유. 기존 `scheduled` token은 read-side opaque metadata로만 취급한다 |
 | `primary_rule_id` | `varchar(80)` | 가장 행동 가능한 primary concern의 rule id 복사값 |
 | `primary_endpoint_key` | `varchar(240)` | primary concern endpoint의 low-cardinality key 복사값 |
 | `max_confidence` | `numeric(4,3)` | snapshot 안 concern confidence 최댓값 |
@@ -448,10 +450,10 @@ Operational Event History를 위한 별도 migration은 MVP에 없다.
 - repository 구현 표준은 Spring Data JPA/Jakarta Persistence + Hibernate이며, JPA entity UUID도 application-generated UUID를 사용한다.
 - Flyway SQL migration이 schema source of truth다. Hibernate DDL auto 생성/갱신은 사용하지 않는다.
 - MVP endpoint bucket은 `accepted_metric_buckets.endpoints_json`에 bounded JSON으로 저장한다. 별도 endpoint table은 만들지 않는다.
-- dashboard snapshot 저장은 application별 1시간 scheduled snapshot을 기본으로 한다. ingest transaction commit 직후 30초 bucket마다 snapshot refresh를 수행하지 않는다.
-- dashboard query 시점에 snapshot이 없거나 current response로 쓰기에 명백히 오래된 경우 `DashboardReadModelService`가 fallback으로 재생성하고 필요하면 snapshot으로 저장할 수 있다.
+- dashboard snapshot 저장은 application별 1시간 scheduled snapshot을 기본으로 하되, 새 `hourly_scheduled` 저장 후보는 active application, retention horizon 안의 accepted bucket, recent starter heartbeat 조건을 모두 만족해야 한다. ingest transaction commit 직후 30초 bucket마다 snapshot refresh를 수행하지 않는다.
+- dashboard query 시점에 snapshot이 없거나 current response로 쓰기에 명백히 오래된 경우에도 recent starter heartbeat가 있을 때만 fallback snapshot 저장을 시도한다. heartbeat가 missing/stale이면 저장만 건너뛰고 dashboard current response는 fail-open으로 성공한다.
 - `dashboard_snapshots` retention은 기본 14일이며 config로 조정 가능하게 둔다.
-- 의미 있는 state-change, confidence `>= 0.82` high-confidence concern, 짧지만 강한 spike 실험값, dashboard query fallback regeneration 조건에서만 1시간 cadence 외 추가 snapshot capture를 허용한다.
+- 의미 있는 state-change, confidence `>= 0.82` high-confidence concern, 짧지만 강한 spike 실험값, recent heartbeat가 있는 dashboard query fallback regeneration 조건에서만 1시간 cadence 외 추가 snapshot capture를 허용한다.
 - snapshot endpoint evidence는 최대 10개만 `read_model_json`에 남기고 raw path/query/trace/per-request sample은 저장하지 않는다.
 - snapshot bounded instance summary는 최대 50개만 `read_model_json`에 남기고 raw instance timeseries나 endpoint timeseries로 확장하지 않는다.
 - instance snapshot trend는 stored dashboard snapshot/read model projection이며 기본 7일, 최대 14일 retention 안에서 bounded 조회한다.

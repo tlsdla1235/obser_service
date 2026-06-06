@@ -64,7 +64,7 @@ Story 5-8-a가 고정한 아래 계약은 5-8-b에서 다시 열지 않는다.
 - raw snapshot explorer, raw bucket explorer, endpoint timeseries를 제공하지 않는다.
 - endpoint p95/p99, endpoint percentile rollup, endpoint p99 alert 기준을 만들지 않는다.
 - UI/controller/repository/DB trigger가 lifecycle state, rule, p95/p99, endpoint priority, marker/event를 계산하지 않는다.
-- heartbeat를 accepted bucket freshness, host application health, dashboard snapshot, recovery source, operational event source로 합성하지 않는다.
+- heartbeat를 accepted bucket freshness, host application health, dashboard read model/source, recovery source, operational event source로 합성하지 않는다. 최근 heartbeat가 5-8-a snapshot 저장 gate로 쓰였더라도 5-8-b detail/marker/recovery source로 재해석하지 않는다.
 
 ## Closed Decisions
 
@@ -817,7 +817,7 @@ Handoff candidate fields:
 - missing endpoint evidence anchor는 bounded missing ref로 표현하고 detail/trend를 invalid로 만들지 않는다.
 - raw snapshot explorer, raw bucket explorer, endpoint timeseries, endpoint p95/p99, `operational_events` table/API를 만들지 않는다.
 - UI/controller/repository/DB trigger가 state/rule/p95/p99/endpoint priority/marker/event를 계산하지 않는다.
-- heartbeat는 accepted bucket freshness, dashboard snapshot, recovery source, operational event source로 합성되지 않는다.
+- heartbeat는 accepted bucket freshness, dashboard read model/source, recovery source, operational event source로 합성되지 않는다. 최근 heartbeat 저장 gate는 stored snapshot row 생성 조건일 뿐 detail/marker/recovery source가 아니다.
 
 결정 이유:
 
@@ -860,7 +860,7 @@ Story 5-8-b must not implement:
 - raw snapshot explorer, raw bucket explorer, endpoint timeseries
 - endpoint p95/p99 or endpoint percentile rollup
 - UI-side lifecycle state/rule/p95/p99/endpoint priority/event calculation
-- heartbeat-to-snapshot/recovery/event synthesis
+- heartbeat-only snapshot 또는 heartbeat-derived recovery/event synthesis
 
 ## Story 5.9 Handoff Summary
 

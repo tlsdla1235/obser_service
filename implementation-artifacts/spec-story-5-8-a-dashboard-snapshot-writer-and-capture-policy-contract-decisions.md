@@ -52,7 +52,7 @@ Story 5.7이 고정한 아래 계약은 5-8-a에서 다시 열지 않는다.
 - raw snapshot explorer, raw bucket explorer, endpoint timeseries를 만들지 않는다.
 - endpoint p95/p99, endpoint percentile rollup, endpoint p99 alert 기준을 만들지 않는다.
 - UI/controller/repository/DB trigger가 lifecycle state, rule, p95/p99, endpoint priority를 계산하지 않는다.
-- heartbeat를 accepted bucket freshness, host application health, dashboard snapshot, recovery source, operational event source로 합성하지 않는다.
+- heartbeat를 accepted bucket freshness, host application health, dashboard read model/source, recovery source, operational event source로 합성하지 않는다. 최근 heartbeat는 scheduled/fallback snapshot 저장 eligibility gate로만 사용할 수 있다.
 
 ## Closed Decisions
 
@@ -157,20 +157,23 @@ application_id + current_window_end_utc
 - scheduler는 eligible application과 target `current_window_end_utc`를 정한 뒤 portal 내부 capture service/use case에 요청을 전달한다.
 - 실제 dashboard read model generation orchestration, bounded evidence/summary fill, priority-aware idempotent upsert는 portal 내부 service/use case와 writer가 소유한다.
 - scheduled snapshot은 1시간 데이터 집계가 아니라 실행 시점 dashboard read model의 current 15분 + baseline 15분 저장이다.
-- eligible application은 `applications.status = active`이고 최근 dashboard snapshot retention horizon 안에 accepted bucket이 있는 application이다.
+- eligible application은 `applications.status = active`이고 최근 dashboard snapshot retention horizon 안에 accepted bucket이 있으며, 최근 starter heartbeat도 있는 application이다.
+- 최근 starter heartbeat는 `starter_heartbeat_telemetry.interval_seconds` 기준 `max(90초, interval_seconds * 3)` 안에 `last_received_at_utc`가 있는 경우다.
 - accepted bucket이 한 번도 없는 application은 scheduled snapshot 대상에서 제외한다.
 - heartbeat만 있는 application은 scheduled snapshot 대상에서 제외한다.
 - disabled application은 scheduled snapshot 대상에서 제외한다.
 - 마지막 accepted bucket이 retention horizon 밖이면 scheduled snapshot 대상에서 제외한다.
+- heartbeat row가 없거나 stale이면 `hourly_scheduled` snapshot 대상에서 제외한다.
 
 예시:
 
 ```text
 앱 metric bucket 수신 시작: 11:45
 앱 metric bucket 중단: 12:50
+starter heartbeat 마지막 수신: 12:59, interval_seconds: 30
 UTC hourly scheduler: 13:00 실행
 마지막 accepted bucket: 12:50 근처
-결과: retention horizon 안에 accepted bucket이 있으므로 13:00 scheduled snapshot 대상이 될 수 있다.
+결과: retention horizon 안에 accepted bucket이 있고 heartbeat가 max(90초, 30초 * 3) 안에 있으므로 13:00 scheduled snapshot 대상이 될 수 있다.
 ```
 
 13:00 snapshot의 read model window는 아래처럼 저장된다.
@@ -186,12 +189,14 @@ baseline_window: 12:30 ~ 12:45
 
 - snapshot/history는 사용자가 dashboard를 보지 않았던 동안의 coarse 운영 흐름을 남겨야 한다.
 - heartbeat-only application을 저장하면 heartbeat를 snapshot source로 합성하는 금지선을 깰 수 있다.
+- stale/missing heartbeat application을 계속 저장하면 포털이 실제로 관찰하지 못한 smoke/test application의 반복 `down` snapshot이 늘어날 수 있다.
 - retention horizon 밖 application을 계속 저장하면 오래 방치된 app의 반복 down snapshot이 무한히 쌓인다.
 
 금지:
 
 - dashboard 조회가 있어야만 hourly snapshot이 생기는 구조로 만들지 않는다.
-- heartbeat success/missing만으로 application을 scheduled snapshot eligible로 만들지 않는다.
+- heartbeat success만으로 application을 scheduled snapshot eligible로 만들지 않는다. accepted bucket retention 조건도 함께 필요하다.
+- heartbeat missing/stale application을 `hourly_scheduled` snapshot 대상으로 삼지 않는다.
 - disabled application을 scheduled snapshot 대상으로 삼지 않는다.
 - scheduler, Spring Batch job, DB trigger, 외부 worker가 dashboard read model 계산이나 `dashboard_snapshots` 직접 저장 책임을 소유하지 않는다.
 
@@ -225,11 +230,12 @@ Dashboard query fallback capture는 scheduler 누락과 첫 진입 공백을 보
 
 - dashboard query 시 latest snapshot이 없으면 fallback capture를 시도한다.
 - latest snapshot이 있더라도 `latest.generated_at <= queryAt - 65분`이면 fallback capture를 시도한다.
+- 단, `query_fallback` snapshot 저장은 최근 starter heartbeat가 있을 때만 시도한다.
 - `65분`은 hourly scheduler의 작은 지연과 clock/execution jitter를 허용하기 위한 grace threshold다.
 - fallback capture는 query마다 snapshot을 저장하는 경로가 아니다.
 - fallback 저장은 이미 생성한 current dashboard read model을 writer에 전달한다.
 - snapshot writer는 fallback 저장을 위해 `DashboardReadModelService`를 다시 호출하지 않는다.
-- fallback 저장은 current dashboard 판단 기준을 바꾸지 않는다.
+- heartbeat가 missing/stale이면 fallback snapshot 저장만 건너뛰고 current dashboard 판단 기준과 response 성공 여부는 바꾸지 않는다.
 
 결정 이유:
 
@@ -241,6 +247,7 @@ Dashboard query fallback capture는 scheduler 누락과 첫 진입 공백을 보
 
 - dashboard query fallback을 주 저장 경로로 사용하지 않는다.
 - fallback capture가 accepted bucket을 dashboard snapshot으로 복제하는 경로가 되지 않는다.
+- fallback capture가 heartbeat missing/stale을 dashboard response 실패 조건으로 바꾸지 않는다.
 - fallback writer가 dashboard current read model을 재생성하지 않는다.
 
 ### 6. Query Fallback Save Failure Contract
@@ -251,6 +258,7 @@ Query fallback snapshot 저장 실패는 dashboard current response를 실패시
 
 - fallback writer는 idempotent upsert를 시도한다.
 - transient conflict 또는 duplicate 계열 실패는 짧게 1회 retry할 수 있다.
+- heartbeat가 missing/stale이라서 fallback 저장을 건너뛴 경우도 dashboard current response는 실패하지 않는다.
 - 최종 실패해도 dashboard current response는 `200`으로 반환한다.
 - 실패는 structured log와 metric으로 남긴다.
 - 실패한 snapshot row, `snapshotId`, snapshot link, marker/detail/history 후보를 response에 노출하지 않는다.
@@ -528,7 +536,9 @@ dashboard.snapshot.write.failure
 필수 guard:
 
 - heartbeat-only application은 scheduled snapshot 대상이 아니다.
-- heartbeat는 accepted bucket freshness, dashboard snapshot, recovery source, operational event source로 합성되지 않는다.
+- heartbeat row가 없거나 stale인 application은 `hourly_scheduled` snapshot 대상이 아니다.
+- dashboard query fallback은 heartbeat가 missing/stale이면 snapshot 저장만 건너뛰고 current response는 fail-open으로 성공한다.
+- heartbeat는 accepted bucket freshness, dashboard read model/source, recovery source, operational event source로 합성되지 않는다.
 - raw snapshot explorer endpoint를 만들지 않는다.
 - raw bucket explorer endpoint를 만들지 않는다.
 - endpoint timeseries table/API를 만들지 않는다.
@@ -542,7 +552,7 @@ dashboard.snapshot.write.failure
 결정 이유:
 
 - 5-8-a는 writer를 추가하면서 기존 금지선을 건드리기 쉬운 story다.
-- 특히 heartbeat-to-snapshot 회귀와 raw explorer/endpoint timeseries/operational event table 추가는 프로젝트 전역 계약을 깨뜨린다.
+- 특히 heartbeat-only snapshot, heartbeat-derived state/read model, raw explorer/endpoint timeseries/operational event table 추가는 프로젝트 전역 계약을 깨뜨린다.
 - cap/shape/recursion은 문서만으로는 깨지기 쉬워 behavior test가 필요하다.
 
 금지:
@@ -574,8 +584,8 @@ Story 5-8-a should implement dashboard snapshot writer and capture policy:
 - writer-owned capture reason enum with canonical `hourly_scheduled`
 - reason priority and priority-aware upsert
 - duplicate identity `application_id + current_window_end_utc`
-- portal service-layer UTC hourly scheduled capture trigger/dispatcher for active applications with accepted bucket inside snapshot retention horizon
-- dashboard query fallback capture when latest snapshot is missing or older than 65 minutes
+- portal service-layer UTC hourly scheduled capture trigger/dispatcher for active applications with accepted bucket inside snapshot retention horizon and recent starter heartbeat
+- dashboard query fallback capture when latest snapshot is missing or older than 65 minutes and starter heartbeat is recent
 - fallback fail-open after short retry on transient conflict/duplicate failures
 - internal capture request boundary candidate with `projectId`, `applicationId`, `captureReason`, `currentWindowEndUtc`, `requestedAt`, optional `triggerSource`
 - helper columns `capture_reason`, `primary_rule_id`, `primary_endpoint_key`, `max_confidence`
@@ -585,7 +595,7 @@ Story 5-8-a should implement dashboard snapshot writer and capture policy:
 - Story 5.7 minimum instance summary shape fill
 - minimal `endpointEvidenceRefs` ref-only field
 - structured log + bounded metric for save failure
-- regression tests for heartbeat/raw explorer/endpoint timeseries/operational_events/marker-detail-recovery non-goals
+- regression tests for heartbeat-only snapshot, heartbeat-derived read model, raw explorer, endpoint timeseries, operational_events, marker/detail/recovery non-goals
 
 Story 5-8-a must not implement:
 

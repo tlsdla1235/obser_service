@@ -365,7 +365,7 @@ The 5.8 split must preserve these prohibitions across both child stories.
 - endpoint timeseries를 만들지 않는다.
 - endpoint별 p95/p99, endpoint percentile rollup, endpoint p99 alert 기준을 만들지 않는다.
 - UI-side lifecycle state, rule, p95/p99, endpoint priority, marker/event calculation을 만들지 않는다.
-- heartbeat를 accepted bucket freshness, host application health, dashboard snapshot, recovery source, operational event source로 합성하지 않는다.
+- heartbeat를 accepted bucket freshness, host application health, dashboard read model/source, recovery source, operational event source로 합성하지 않는다. 5-8-a 이후 recent heartbeat는 새 scheduled/fallback snapshot 저장 eligibility gate로만 사용할 수 있다.
 - `operational_events` table, event repository, materialized view, Redis/outbox를 MVP에 도입하지 않는다.
 - 30초 bucket마다 dashboard snapshot을 장기 보관하지 않는다.
 - current detail/history 조회에서 current state를 재판정하지 않는다.
@@ -385,7 +385,7 @@ The 5.8 split must preserve these prohibitions across both child stories.
 9. Instance summary max 50 selection policy tie-breaker를 deterministic하게 닫는다.
 10. `endpointEvidenceRefs`에 5-8-a가 저장할 최소 ref field와 5-8-b가 나중에 채울 anchor field를 분리한다.
 11. Save failure logging/metric/test strategy를 닫되, 실패가 marker/detail 성공처럼 보이지 않게 한다.
-12. No heartbeat-to-snapshot, no raw explorer, no operational event table regression tests를 둔다.
+12. No heartbeat-only snapshot, no heartbeat-derived read model/recovery/event, no raw explorer, no operational event table regression tests를 둔다.
 
 ## 8. 5-8-b Pre-Story Decision Queue
 
