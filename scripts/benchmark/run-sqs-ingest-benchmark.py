@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
-"""Opt-in SQS ingest benchmark evidence harness.
+"""Opt-in SQS ingest benchmark evidence runner.
 
-이 script는 실제 부하 실행 대신 안전한 manifest/report skeleton을 먼저 만들고,
-긴 benchmark runner를 붙일 때도 같은 opt-in/redaction 경계를 재사용하게 한다.
+이 runner는 일반 local/dev/test/smoke/CI 실행을 건드리지 않고, 명시 opt-in일 때만
+Testcontainers PostgreSQL 기반 Story 12.6 scenario runner를 실행해 sanitized evidence artifact를 만든다.
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import pathlib
 import re
 import subprocess
 import sys
-import time
 
 
 FORBIDDEN_MARKERS = (
@@ -47,12 +45,35 @@ FORBIDDEN_MARKERS = (
     '"schemaversion":',
 )
 AWS_ACCESS_KEY_RE = re.compile(r"(AKIA|ASIA)[0-9A-Z]{16}")
+QUEUE_URL_RE = re.compile(
+    r"(https?://(?:sqs\.|localhost:4566|[^\s\"']*amazonaws\.com)|\"?queue[-_]?url\"?\s*[:=])",
+    re.IGNORECASE,
+)
+TOKEN_JSON_KEY_RE = re.compile(r"\"(?:access_token|refresh_token|session_token|token)\"\s*:", re.IGNORECASE)
+RAW_PAYLOAD_JSON_KEY_RE = re.compile(r"\"(?:payload|schemaversion)\"\s*:", re.IGNORECASE)
+REQUIRED_ARTIFACTS = (
+    "manifest.json",
+    "phase-1-request-latency.json",
+    "phase-2-db-throughput.json",
+    "report.md",
+)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate sanitized SQS ingest benchmark evidence skeleton")
-    parser.add_argument("--output-dir", default="observability-portal/build/reports/ingest-benchmark")
-    parser.add_argument("--fallback-reason", required=True)
+    parser = argparse.ArgumentParser(description="Run sanitized SQS ingest benchmark evidence scenarios")
+    parser.add_argument(
+        "--output-dir",
+        default="observability-portal/build/reports/ingest-benchmark",
+        help="Directory where sanitized benchmark artifacts will be written.",
+    )
+    parser.add_argument(
+        "--fallback-reason",
+        required=True,
+        help="Isolated PostgreSQL/RDS-reference fallback reason to record in the manifest.",
+    )
+    parser.add_argument("--measurement-count", type=int, default=90)
+    parser.add_argument("--warmup-count", type=int, default=30)
+    parser.add_argument("--batch-size", type=int, default=30)
     parser.add_argument("--opt-in", action="store_true")
     args = parser.parse_args()
 
@@ -60,59 +81,71 @@ def main() -> int:
         print("benchmark requires --opt-in or PORTAL_INGEST_BENCHMARK_OPT_IN=true", file=sys.stderr)
         return 2
 
-    output_dir = pathlib.Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    git_revision = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"],
-        check=False,
-        capture_output=True,
-        text=True,
-    ).stdout.strip() or "unknown"
-    dirty = subprocess.run(["git", "diff", "--quiet"], check=False).returncode != 0
-    manifest = {
-        "runId": f"{time.strftime('%Y%m%dT%H%M%S')}-local",
-        "gitRevision": f"{git_revision}{'-dirty' if dirty else ''}",
-        "fixture": {
-            "applicationCount": 1,
-            "instanceCount": 30,
-            "distribution": "same fixture/idempotency distribution for direct and SQS buffered paths",
-        },
-        "database": {
-            "engine": "Amazon RDS for PostgreSQL reference or isolated PostgreSQL fallback",
-            "referenceInstanceClass": "db.t4g.micro",
-            "referenceCompute": "2 vCPU / 1 GiB memory",
-            "referenceStorage": "gp3 20 GiB, 3,000 IOPS / 125 MiB/s baseline",
-            "fallbackReason": args.fallback_reason,
-        },
-        "queue": {
-            "description": "fake/SQS/LocalStack type and region only; queue URL redacted",
-        },
-    }
-    report = (
-        "# SQS Buffered Ingest Benchmark Evidence\n\n"
-        "portfolio evidence and relative trend context only.\n\n"
-        "## Phase 1 Request Latency Evidence\n\n"
-        "Direct insert request latency and SQS enqueue request latency are recorded separately.\n\n"
-        "## Worker MVP Correctness/Lag Baseline\n\n"
-        "Worker MVP lag/correctness baseline is not a DB throughput improvement claim.\n\n"
-        "## Phase 2 DB Batch Throughput Evidence\n\n"
-        "Batch writer throughput, bucket statement count, and persisted buckets/sec are recorded here.\n"
-    )
-    manifest_path = output_dir / "manifest.json"
-    report_path = output_dir / "report.md"
-    manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    report_path.write_text(report, encoding="utf-8")
+    if args.measurement_count < 1 or args.warmup_count < 1 or args.batch_size < 1:
+        print("measurement-count, warmup-count, and batch-size must be positive", file=sys.stderr)
+        return 2
 
-    combined = manifest_path.read_text(encoding="utf-8") + report_path.read_text(encoding="utf-8")
-    lower_combined = combined.lower()
-    violations = [marker for marker in FORBIDDEN_MARKERS if marker in lower_combined]
-    if AWS_ACCESS_KEY_RE.search(combined):
-        violations.append("aws_access_key")
+    repo_root = pathlib.Path(__file__).resolve().parents[2]
+    output_dir = (repo_root / args.output_dir).resolve() if not pathlib.Path(args.output_dir).is_absolute() else pathlib.Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for name in REQUIRED_ARTIFACTS:
+        artifact = output_dir / name
+        if artifact.exists():
+            artifact.unlink()
+
+    env = os.environ.copy()
+    env["PORTAL_INGEST_BENCHMARK_OPT_IN"] = "true"
+    env["PORTAL_INGEST_BENCHMARK_OUTPUT_DIR"] = str(output_dir)
+    env["PORTAL_INGEST_BENCHMARK_FALLBACK_REASON"] = args.fallback_reason
+    env["PORTAL_INGEST_BENCHMARK_MEASUREMENT_COUNT"] = str(args.measurement_count)
+    env["PORTAL_INGEST_BENCHMARK_WARMUP_COUNT"] = str(args.warmup_count)
+    env["PORTAL_INGEST_BENCHMARK_BATCH_SIZE"] = str(args.batch_size)
+
+    command = [
+        "./gradlew",
+        ":observability-portal:cleanTest",
+        ":observability-portal:test",
+        "--rerun-tasks",
+        "--tests",
+        "*IngestBenchmarkScenarioRunTest",
+    ]
+    result = subprocess.run(command, cwd=repo_root, env=env, text=True)
+    if result.returncode != 0:
+        return result.returncode
+
+    missing = [name for name in REQUIRED_ARTIFACTS if not (output_dir / name).is_file()]
+    if missing:
+        print(f"benchmark did not create required artifacts: {missing}", file=sys.stderr)
+        return 4
+
+    violations = scan_output(output_dir)
     if violations:
         print(f"redaction scan failed: {violations}", file=sys.stderr)
         return 3
-    print(f"wrote sanitized benchmark skeleton to {output_dir}")
+
+    print(f"wrote sanitized benchmark evidence to {output_dir}")
+    for name in REQUIRED_ARTIFACTS:
+        print(f"- {output_dir / name}")
     return 0
+
+
+def scan_output(output_dir: pathlib.Path) -> list[str]:
+    combined_parts: list[str] = []
+    for path in output_dir.rglob("*"):
+        if path.is_file():
+            combined_parts.append(path.read_text(encoding="utf-8"))
+    combined = "\n".join(combined_parts)
+    lower_combined = combined.lower()
+    violations = [marker for marker in FORBIDDEN_MARKERS if marker in lower_combined]
+    if QUEUE_URL_RE.search(combined):
+        violations.append("queue_url")
+    if TOKEN_JSON_KEY_RE.search(combined):
+        violations.append("token")
+    if RAW_PAYLOAD_JSON_KEY_RE.search(combined):
+        violations.append("raw_payload")
+    if AWS_ACCESS_KEY_RE.search(combined):
+        violations.append("aws_access_key")
+    return violations
 
 
 if __name__ == "__main__":

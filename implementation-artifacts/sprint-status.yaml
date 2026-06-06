@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-06-05T20:54:02+0900
+# last_updated: 2026-06-06T13:51:05+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -61,9 +61,10 @@
 # - Epic 12 snapshot/history는 immutable read model history를 유지하며 late data backfill/replay pipeline, raw explorer, endpoint timeseries를 만들지 않는다.
 # - Epic 12는 SQS payload size, duplicate/no-op, malformed/conflict DLQ, snapshot cutoff, stale/down과 queue lag 분리를 story acceptance에 포함한다.
 # - Story 12.1은 Epic 12 architecture-level 결정을 닫았다: Spring Boot portal 내부 worker, Lambda deferred/non-goal, SQS mode opt-in/direct rollback, enqueue success only 202, enqueue failure 503, payload too large 413, no direct fallback, fake queue 기본/LocalStack opt-in, 12.3-only rollout 금지.
+# - Story 12.6은 12.5가 만든 benchmark harness/guard를 사용해 실제 local/isolated benchmark 수치와 sanitized report artifact를 남긴다. Phase 1 request latency와 Phase 2 DB batch throughput evidence는 같은 결론으로 합치지 않는다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-06-05T20:54:02+0900
+last_updated: 2026-06-06T13:51:05+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -158,5 +159,6 @@ development_status:
   12-2-ingest-enqueue-boundary: done
   12-3-spring-boot-sqs-worker-mvp-and-idempotency: done
   12-4-snapshot-delay-and-pipeline-lag-semantics: done
-  12-5-batch-writer-and-performance-verification: review
+  12-5-batch-writer-and-performance-verification: done
+  12-6-benchmark-evidence-run-and-report: done
   epic-12-retrospective: optional

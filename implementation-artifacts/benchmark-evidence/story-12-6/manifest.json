@@ -1,0 +1,59 @@
+{
+  "runId" : "20260606T045051Z-story-12-6",
+  "generatedAtUtc" : "2026-06-06T04:50:51.347538Z",
+  "gitRevision" : "20b9fbf",
+  "gitDirty" : true,
+  "fixture" : {
+    "applicationCount" : 1,
+    "instanceCount" : 30,
+    "syntheticInstanceMeaning" : "30 synthetic instance names inside one local benchmark fixture; not EC2 hosts",
+    "phase1PayloadCount" : 90,
+    "phase1DuplicateRatio" : 0.0,
+    "phase2PayloadCount" : 90,
+    "phase2DuplicateRatio" : 0.0,
+    "conflictRatio" : 0.0,
+    "cadence" : "30s bucket replay with deterministic synthetic identities"
+  },
+  "runtime" : {
+    "javaVersion" : "17.0.18",
+    "springProfile" : "benchmark-sqs-ingest opt-in test runner",
+    "workerBatchSize" : 30,
+    "workerMaxBatchAge" : "2s default; DB scenario flushes bounded chunks"
+  },
+  "host" : {
+    "os" : "Mac OS X 26.5.1 aarch64",
+    "availableProcessors" : 10,
+    "jvmMaxMemoryBytes" : 536870912
+  },
+  "database" : {
+    "engine" : "PostgreSQL isolated Testcontainers run",
+    "postgresVersion" : "PostgreSQL 16.13 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+    "referenceInstanceClass" : "db.t4g.micro",
+    "referenceCompute" : "2 vCPU / 1 GiB memory",
+    "referenceStorage" : "gp3 20 GiB, 3,000 IOPS / 125 MiB/s baseline",
+    "fallbackReason" : "postgres:16-alpine isolated Testcontainers PostgreSQL on local workstation"
+  },
+  "queue" : {
+    "phase1Mode" : "fake",
+    "queueType" : "in-memory fake queue",
+    "queueEndpointStored" : false,
+    "realSqsLatencyEvidence" : false
+  },
+  "timing" : {
+    "warmupCount" : 30,
+    "measurementCount" : 90,
+    "clockSource" : "System.nanoTime for durations, UTC wall clock for run metadata"
+  },
+  "scenarios" : [ "direct-insert-request-path", "fake-queue-enqueue-request-path", "worker-mvp-message-by-message-persistence", "batch-writer-persistence" ],
+  "duplicateNoopSmoke" : {
+    "scenario" : "same-key-same-hash-duplicate-smoke",
+    "firstStatus" : "INSERTED",
+    "duplicateStatus" : "DUPLICATE_NOOP",
+    "noopSuccess" : true
+  },
+  "redaction" : {
+    "artifactPublishGate" : "passed",
+    "scanner" : "IngestBenchmarkRedactionScanner",
+    "scanStatus" : "passed"
+  }
+}
