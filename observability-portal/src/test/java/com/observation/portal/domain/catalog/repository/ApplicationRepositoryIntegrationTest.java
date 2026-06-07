@@ -39,6 +39,9 @@ class ApplicationRepositoryIntegrationTest {
     private static final UUID OLD_BUCKET_APP_ID = UUID.fromString("00000000-0000-0000-0000-000000005865");
     private static final UUID FUTURE_ONLY_APP_ID = UUID.fromString("00000000-0000-0000-0000-000000005866");
     private static final UUID LATE_ACCEPTED_APP_ID = UUID.fromString("00000000-0000-0000-0000-000000005867");
+    private static final UUID ACTIVE_LONG_INTERVAL_APP_ID = UUID.fromString("00000000-0000-0000-0000-000000005868");
+    private static final UUID NO_HEARTBEAT_APP_ID = UUID.fromString("00000000-0000-0000-0000-000000005869");
+    private static final UUID STALE_HEARTBEAT_APP_ID = UUID.fromString("00000000-0000-0000-0000-000000005870");
 
     @Container
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
@@ -73,8 +76,11 @@ class ApplicationRepositoryIntegrationTest {
     }
 
     @Test
-    void findsOnlyActiveApplicationsWithAcceptedBucketInsideRetentionHorizon() throws SQLException {
+    void findsOnlyActiveApplicationsWithAcceptedBucketAndRecentHeartbeatInsideRetentionHorizon() throws SQLException {
         seedApplication(ACTIVE_RECENT_APP_ID, "active-recent", "active");
+        seedApplication(ACTIVE_LONG_INTERVAL_APP_ID, "active-long-interval", "active");
+        seedApplication(NO_HEARTBEAT_APP_ID, "active-no-heartbeat", "active");
+        seedApplication(STALE_HEARTBEAT_APP_ID, "stale-heartbeat", "active");
         seedApplication(NO_BUCKET_APP_ID, "active-no-bucket", "active");
         seedApplication(HEARTBEAT_ONLY_APP_ID, "heartbeat-only", "active");
         seedApplication(DISABLED_APP_ID, "disabled-recent", "disabled");
@@ -83,24 +89,35 @@ class ApplicationRepositoryIntegrationTest {
         seedApplication(LATE_ACCEPTED_APP_ID, "late-accepted", "active");
 
         insertAcceptedBucket(ACTIVE_RECENT_APP_ID, "2026-05-27T12:59:30Z");
+        insertHeartbeat("active-recent", "pod-a", "2026-05-27T13:03:30Z");
+        insertAcceptedBucket(ACTIVE_LONG_INTERVAL_APP_ID, "2026-05-27T12:59:30Z");
+        insertHeartbeat("active-long-interval", "pod-a", "2026-05-27T13:02:01Z", 60);
+        insertAcceptedBucket(NO_HEARTBEAT_APP_ID, "2026-05-27T12:59:30Z");
+        insertAcceptedBucket(STALE_HEARTBEAT_APP_ID, "2026-05-27T12:59:30Z");
+        insertHeartbeat("stale-heartbeat", "pod-a", "2026-05-27T13:03:29Z");
         insertAcceptedBucket(DISABLED_APP_ID, "2026-05-27T12:59:30Z");
+        insertHeartbeat("disabled-recent", "pod-a", "2026-05-27T13:04:45Z");
         insertAcceptedBucket(OLD_BUCKET_APP_ID, "2026-05-01T12:59:30Z");
+        insertHeartbeat("active-old-bucket", "pod-a", "2026-05-27T13:04:45Z");
         insertAcceptedBucket(FUTURE_ONLY_APP_ID, "2026-05-27T13:00:30Z");
+        insertHeartbeat("active-future-only", "pod-a", "2026-05-27T13:04:45Z");
         insertAcceptedBucket(
                 LATE_ACCEPTED_APP_ID,
                 "2026-05-27T12:59:30Z",
                 OffsetDateTime.parse("2026-05-27T13:02:01Z"));
+        insertHeartbeat("late-accepted", "pod-a", "2026-05-27T13:04:45Z");
         insertHeartbeat("heartbeat-only", "pod-a", "2026-05-27T13:04:45Z");
 
         List<ApplicationEntity> applications =
-                applicationRepository.findActiveApplicationsWithAcceptedBucketSince(
+                applicationRepository.findActiveApplicationsEligibleForScheduledSnapshot(
                         RETENTION_CUTOFF,
                         OffsetDateTime.parse("2026-05-27T13:00:00Z"),
-                        OffsetDateTime.parse("2026-05-27T13:02:00Z"));
+                        OffsetDateTime.parse("2026-05-27T13:02:00Z"),
+                        NOW);
 
         assertThat(applications)
                 .extracting(ApplicationEntity::id)
-                .containsExactly(ACTIVE_RECENT_APP_ID);
+                .containsExactly(ACTIVE_RECENT_APP_ID, ACTIVE_LONG_INTERVAL_APP_ID);
     }
 
     private void seedApplication(UUID applicationId, String applicationName, String status) {
@@ -167,6 +184,14 @@ class ApplicationRepositoryIntegrationTest {
             String applicationName,
             String instanceName,
             String receivedAtText) throws SQLException {
+        insertHeartbeat(applicationName, instanceName, receivedAtText, 30);
+    }
+
+    private static void insertHeartbeat(
+            String applicationName,
+            String instanceName,
+            String receivedAtText,
+            int intervalSeconds) throws SQLException {
         OffsetDateTime receivedAt = OffsetDateTime.parse(receivedAtText);
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
@@ -176,7 +201,7 @@ class ApplicationRepositoryIntegrationTest {
                        last_sent_at_utc, last_received_at_utc, last_sequence, interval_seconds,
                        metadata_status, heartbeat_status, created_at, updated_at
                      )
-                     values (?, ?, ?, 'prod', ?, '1.0.0', ?, ?, 1, 30, 'valid', 'received', ?, ?)
+                     values (?, ?, ?, 'prod', ?, '1.0.0', ?, ?, 1, ?, 'valid', 'received', ?, ?)
                      """)) {
             statement.setObject(1, UUID.randomUUID());
             statement.setObject(2, PROJECT_ID);
@@ -184,8 +209,9 @@ class ApplicationRepositoryIntegrationTest {
             statement.setString(4, instanceName);
             statement.setObject(5, receivedAt.minusSeconds(1));
             statement.setObject(6, receivedAt);
-            statement.setObject(7, receivedAt);
+            statement.setInt(7, intervalSeconds);
             statement.setObject(8, receivedAt);
+            statement.setObject(9, receivedAt);
             statement.executeUpdate();
         }
     }

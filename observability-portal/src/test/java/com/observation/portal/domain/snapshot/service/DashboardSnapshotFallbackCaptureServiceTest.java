@@ -1,6 +1,8 @@
 package com.observation.portal.domain.snapshot.service;
 
 import com.observation.portal.domain.dashboard.model.ApplicationDashboardReadModel;
+import com.observation.portal.domain.ingest.model.StarterHeartbeatTelemetryRecord;
+import com.observation.portal.domain.ingest.repository.StarterHeartbeatTelemetryRepository;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotCaptureReason;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotLatestRow;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotWriteCommand;
@@ -32,12 +34,19 @@ class DashboardSnapshotFallbackCaptureServiceTest {
     private final DashboardSnapshotRepository snapshotRepository = mock(DashboardSnapshotRepository.class);
     private final DashboardSnapshotWriterService writerService = mock(DashboardSnapshotWriterService.class);
     private final DashboardSnapshotProperties snapshotProperties = new DashboardSnapshotProperties();
+    private final StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository =
+            mock(StarterHeartbeatTelemetryRepository.class);
     private final DashboardSnapshotFallbackCaptureService service =
-            new DashboardSnapshotFallbackCaptureService(snapshotRepository, writerService, snapshotProperties);
+            new DashboardSnapshotFallbackCaptureService(
+                    snapshotRepository,
+                    writerService,
+                    snapshotProperties,
+                    heartbeatTelemetryRepository);
 
     @Test
     void capturesWhenLatestSnapshotIsMissingUsingAlreadyBuiltReadModel() {
         ApplicationDashboardReadModel readModel = readModel();
+        givenRecentHeartbeat();
         when(snapshotRepository.findLatestByApplicationId(APPLICATION_ID)).thenReturn(Optional.empty());
 
         service.captureIfNeeded(readModel, QUERY_AT);
@@ -53,6 +62,7 @@ class DashboardSnapshotFallbackCaptureServiceTest {
 
     @Test
     void skipsWhenLatestSnapshotIsInsideDelayAwareGraceWindow() {
+        givenRecentHeartbeat();
         when(snapshotRepository.findLatestByApplicationId(APPLICATION_ID))
                 .thenReturn(Optional.of(latest("2026-05-27T11:59:00Z")));
 
@@ -65,6 +75,7 @@ class DashboardSnapshotFallbackCaptureServiceTest {
     void capturesWhenLatestSnapshotIsExactlyAtStalenessThreshold() {
         snapshotProperties.setCaptureDelay(Duration.ofSeconds(120));
         snapshotProperties.setFallbackGrace(Duration.ofMinutes(5));
+        givenRecentHeartbeat();
         when(snapshotRepository.findLatestByApplicationId(APPLICATION_ID))
                 .thenReturn(Optional.of(latest("2026-05-27T11:58:00Z")));
 
@@ -75,6 +86,7 @@ class DashboardSnapshotFallbackCaptureServiceTest {
 
     @Test
     void failsOpenWhenWriterThrows() {
+        givenRecentHeartbeat();
         when(snapshotRepository.findLatestByApplicationId(APPLICATION_ID)).thenReturn(Optional.empty());
         doThrow(new DashboardSnapshotWriteException("boom", "persistence", new RuntimeException("boom")))
                 .when(writerService)
@@ -85,6 +97,7 @@ class DashboardSnapshotFallbackCaptureServiceTest {
 
     @Test
     void failsOpenWhenLatestSnapshotLookupThrows() {
+        givenRecentHeartbeat();
         when(snapshotRepository.findLatestByApplicationId(APPLICATION_ID))
                 .thenThrow(new RuntimeException("repository down"));
 
@@ -95,6 +108,7 @@ class DashboardSnapshotFallbackCaptureServiceTest {
 
     @Test
     void doesNotAddSecondFallbackRetryWhenWriterAlreadyClassifiesDuplicateConflict() {
+        givenRecentHeartbeat();
         when(snapshotRepository.findLatestByApplicationId(APPLICATION_ID)).thenReturn(Optional.empty());
         doThrow(new DashboardSnapshotWriteException("conflict", "duplicate_conflict", new RuntimeException("boom")))
                 .when(writerService)
@@ -105,6 +119,50 @@ class DashboardSnapshotFallbackCaptureServiceTest {
         verify(writerService, times(1)).write(org.mockito.ArgumentMatchers.any());
     }
 
+    @Test
+    void skipsWhenStarterHeartbeatIsMissingAndKeepsDashboardFailOpen() {
+        when(heartbeatTelemetryRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.empty());
+
+        assertThatNoException().isThrownBy(() -> service.captureIfNeeded(readModel(), QUERY_AT));
+
+        verify(snapshotRepository, never()).findLatestByApplicationId(APPLICATION_ID);
+        verify(writerService, never()).write(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void skipsWhenStarterHeartbeatIsStaleByReportedInterval() {
+        when(heartbeatTelemetryRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("2026-05-27T13:03:29Z", 30)));
+
+        service.captureIfNeeded(readModel(), QUERY_AT);
+
+        verify(snapshotRepository, never()).findLatestByApplicationId(APPLICATION_ID);
+        verify(writerService, never()).write(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void capturesWhenHeartbeatIsFreshByLongerReportedInterval() {
+        when(heartbeatTelemetryRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("2026-05-27T13:02:01Z", 60)));
+        when(snapshotRepository.findLatestByApplicationId(APPLICATION_ID)).thenReturn(Optional.empty());
+
+        service.captureIfNeeded(readModel(), QUERY_AT);
+
+        verify(writerService).write(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void failsOpenWhenHeartbeatLookupThrows() {
+        when(heartbeatTelemetryRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenThrow(new RuntimeException("heartbeat repository down"));
+
+        assertThatNoException().isThrownBy(() -> service.captureIfNeeded(readModel(), QUERY_AT));
+
+        verify(snapshotRepository, never()).findLatestByApplicationId(APPLICATION_ID);
+        verify(writerService, never()).write(org.mockito.ArgumentMatchers.any());
+    }
+
     private static DashboardSnapshotLatestRow latest(String generatedAt) {
         return new DashboardSnapshotLatestRow(
                 UUID.fromString("00000000-0000-0000-0000-000000005899"),
@@ -112,6 +170,30 @@ class DashboardSnapshotFallbackCaptureServiceTest {
                 OffsetDateTime.parse(generatedAt),
                 "active",
                 "hourly_scheduled");
+    }
+
+    private void givenRecentHeartbeat() {
+        when(heartbeatTelemetryRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
+                .thenReturn(Optional.of(heartbeat("2026-05-27T13:04:00Z", 30)));
+    }
+
+    private static StarterHeartbeatTelemetryRecord heartbeat(String lastReceivedAtUtc, int intervalSeconds) {
+        OffsetDateTime receivedAt = OffsetDateTime.parse(lastReceivedAtUtc);
+        return new StarterHeartbeatTelemetryRecord(
+                UUID.fromString("00000000-0000-0000-0000-000000005888"),
+                PROJECT_ID,
+                "orders-api",
+                "prod",
+                "pod-a",
+                "1.0.0",
+                receivedAt.minusSeconds(1),
+                receivedAt,
+                1,
+                intervalSeconds,
+                "valid",
+                "received",
+                receivedAt,
+                receivedAt);
     }
 
     static ApplicationDashboardReadModel readModel() {
