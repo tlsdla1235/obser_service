@@ -229,7 +229,7 @@ MVP에서는 별도 `OperationalEventRepository`를 만들지 않는다. Operati
 4. `IngestHeartbeatService`는 `ProjectKeyVerificationService`와 ingest metadata validation vocabulary를 재사용해 검증한다.
 5. service는 선택적으로 lightweight heartbeat telemetry만 저장한다.
 6. heartbeat telemetry는 starter/application process liveness, portal reachability, project key validity, metadata validity의 control-plane source다.
-7. heartbeat 성공은 accepted bucket, application/instance catalog row, dashboard snapshot, operational event, p95/p99, rule/metric read-model calculation을 만들지 않는다.
+7. heartbeat 성공만으로 accepted bucket, application/instance catalog row, dashboard snapshot, operational event, p95/p99, rule/metric read-model calculation을 만들지 않는다. 최근 heartbeat는 snapshot 저장 eligibility gate로만 사용할 수 있다.
 8. heartbeat 미수신은 host application down 판정이 아니며 starter disconnected, telemetry unreachable, unknown 계열의 starter connection 상태로만 표현한다.
 
 ### 6.2 Read Flow

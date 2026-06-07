@@ -71,10 +71,11 @@ public class DashboardSnapshotScheduler {
         }
         OffsetDateTime retentionCutoffUtc = requestedAtUtc.minusDays(retentionDays);
         List<ApplicationEntity> applications =
-                applicationRepository.findActiveApplicationsWithAcceptedBucketSince(
+                applicationRepository.findActiveApplicationsEligibleForScheduledSnapshot(
                         retentionCutoffUtc,
                         targetWindowEndUtc,
-                        snapshotCutoffAt);
+                        snapshotCutoffAt,
+                        requestedAtUtc);
         lastDispatchedWindowEndUtc = targetWindowEndUtc;
         for (ApplicationEntity application : applications) {
             captureService.capture(new DashboardSnapshotCaptureRequest(

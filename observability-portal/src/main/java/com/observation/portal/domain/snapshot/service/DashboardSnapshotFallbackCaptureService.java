@@ -1,6 +1,9 @@
 package com.observation.portal.domain.snapshot.service;
 
+import com.observation.portal.common.time.StarterHeartbeatFreshnessPolicy;
 import com.observation.portal.domain.dashboard.model.ApplicationDashboardReadModel;
+import com.observation.portal.domain.ingest.model.StarterHeartbeatTelemetryRecord;
+import com.observation.portal.domain.ingest.repository.StarterHeartbeatTelemetryRepository;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotCaptureReason;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotLatestRow;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotWriteCommand;
@@ -29,17 +32,22 @@ public class DashboardSnapshotFallbackCaptureService {
     private final DashboardSnapshotRepository snapshotRepository;
     private final DashboardSnapshotWriterService writerService;
     private final DashboardSnapshotProperties snapshotProperties;
+    private final StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository;
 
     /**
-     * fallback threshold 조회 repository와 writer를 주입한다.
+     * fallback threshold 조회 repository, writer, heartbeat freshness 조회 repository를 주입한다.
      */
     public DashboardSnapshotFallbackCaptureService(
             DashboardSnapshotRepository snapshotRepository,
             DashboardSnapshotWriterService writerService,
-            DashboardSnapshotProperties snapshotProperties) {
+            DashboardSnapshotProperties snapshotProperties,
+            StarterHeartbeatTelemetryRepository heartbeatTelemetryRepository) {
         this.snapshotRepository = Objects.requireNonNull(snapshotRepository, "snapshotRepository must not be null");
         this.writerService = Objects.requireNonNull(writerService, "writerService must not be null");
         this.snapshotProperties = Objects.requireNonNull(snapshotProperties, "snapshotProperties must not be null");
+        this.heartbeatTelemetryRepository = Objects.requireNonNull(
+                heartbeatTelemetryRepository,
+                "heartbeatTelemetryRepository must not be null");
     }
 
     /**
@@ -59,6 +67,9 @@ public class DashboardSnapshotFallbackCaptureService {
 
         CAPTURE_IN_PROGRESS.set(Boolean.TRUE);
         try {
+            if (!hasRecentStarterHeartbeat(requiredReadModel, requiredQueryAt)) {
+                return;
+            }
             if (!shouldCapture(requiredReadModel, requiredQueryAt)) {
                 return;
             }
@@ -79,6 +90,22 @@ public class DashboardSnapshotFallbackCaptureService {
         } finally {
             CAPTURE_IN_PROGRESS.set(Boolean.FALSE);
         }
+    }
+
+    private boolean hasRecentStarterHeartbeat(ApplicationDashboardReadModel readModel, OffsetDateTime queryAt) {
+        return heartbeatTelemetryRepository.findLatestByApplicationScope(
+                        readModel.application().projectId(),
+                        readModel.application().name(),
+                        readModel.application().environment())
+                .filter(heartbeat -> isRecent(heartbeat, queryAt))
+                .isPresent();
+    }
+
+    private static boolean isRecent(StarterHeartbeatTelemetryRecord heartbeat, OffsetDateTime queryAt) {
+        return StarterHeartbeatFreshnessPolicy.isRecent(
+                heartbeat.lastReceivedAtUtc(),
+                heartbeat.intervalSeconds(),
+                queryAt);
     }
 
     private boolean shouldCapture(ApplicationDashboardReadModel readModel, OffsetDateTime queryAt) {

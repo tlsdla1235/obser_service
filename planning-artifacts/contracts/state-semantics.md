@@ -48,6 +48,8 @@ freshness가 부족하면 stale/down 계열 metric-data 평가가 우선하고, 
 
 heartbeat telemetry가 존재하더라도 accepted bucket freshness age 계산에는 들어가지 않는다. 대신 metric-data state가 정해진 뒤 starter connection 축을 함께 읽어 rationale, zero-insight reason, recommended action, `starterConnection` copy를 보강할 수 있다. UI가 heartbeat를 함께 표시할 때도 starter 연결 상태와 accepted bucket 기반 application state는 별도 축으로 유지한다.
 
+Snapshot capture 정책은 recent heartbeat를 새 `hourly_scheduled`/`query_fallback` row 저장 eligibility gate로 사용할 수 있다. 이 gate는 저장량과 관측 가능성 범위를 제한하는 service policy이며, freshness/state/read model 계산 순서에 들어가지 않는다. heartbeat가 missing/stale이라 fallback snapshot 저장을 건너뛰어도 dashboard current response는 현재 read model 기준으로 fail-open 성공해야 한다.
+
 ## 4. Transition Criteria
 
 | From | To | 조건 |

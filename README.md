@@ -43,6 +43,8 @@ flowchart LR
 - Portal backend가 수집 데이터를 검증하고 PostgreSQL에 저장한 뒤, 운영 판단에 필요한 형태로 집계합니다.
 - SQS buffered ingest mode에서는 request thread가 검증과 enqueue까지만 수행하고 `202 queued`를 반환하며, PostgreSQL 저장은 Spring Boot portal 내부 worker가 처리합니다.
 - Dashboard API가 상태, 신선도, p95/p99, triage, endpoint priority, snapshot/history 데이터를 계산해서 제공합니다.
+- Snapshot/history는 저장 당시 dashboard read model을 읽습니다. 새 scheduled/fallback snapshot 저장은 accepted bucket 이력과 최근 starter heartbeat가 함께 있을 때만 허용하며, heartbeat가 없거나 오래된 query fallback은 저장만 건너뛰고 current dashboard response는 계속 성공합니다.
+- Starter heartbeat는 연결 상태 신호와 snapshot 저장 gate로만 사용하며, metric freshness/state/read model source로 합성하지 않습니다.
 - Frontend는 서버가 계산한 결과를 재계산하지 않고 표시합니다.
 - Smoke service가 Spring MVC 요청 경로를 실제로 태워 starter의 HTTP route 관측 경로를 검증합니다.
 

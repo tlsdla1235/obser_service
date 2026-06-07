@@ -38,11 +38,19 @@ import {
   formatNullableRatio,
   formatOptionalDateTime,
   formatRatio,
-  histogramBarWidth,
+  histogramRangeBarWidth,
   HISTORY_PRESET_QUERY,
+  humanizeAnchorStatus,
+  humanizeCaptureReason,
+  humanizeOrderCode,
+  humanizeSourceCode,
+  humanizeStatusCode,
+  severityBadgeClassName,
+  severityDisplayText,
   statusBadgeClassName,
   toApplicationPresentationItems,
   toDashboardPresentation,
+  toDisplayLatencyBuckets,
   toProjectPresentationItems,
   validateDashboardPath,
   validateProjectApplicationsPath,
@@ -64,6 +72,7 @@ import type {
   ProjectNavigationReadModel,
   StarterCredentialMetadataResponse,
   StarterCredentialRotationResponse,
+  TrendPreset,
   TriageCard,
 } from "../lib/read-model-types";
 import { Button } from "./ui/button";
@@ -72,6 +81,7 @@ import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { InstancePanels, useInstanceView } from "./instance-panels";
 import { SnapshotDetailSurface, type SnapshotDetailTarget } from "./snapshot-detail-surface";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
 type ResourceScope = "applications" | "dashboard" | "projects";
 
@@ -435,7 +445,7 @@ function ProjectRail({
   selectedProjectId: string | null;
 }) {
   if (loading) {
-    return <ResourceMessage title="Project 로딩 중" body="계정에 연결된 project navigation read model을 불러오는 중입니다." />;
+    return <ResourceMessage title="Project 로딩 중" body="계정에 연결된 프로젝트 목록을 불러오는 중입니다." />;
   }
   if (error) {
     return <ResourceErrorMessage scope="projects" error={error} onReload={onReload} />;
@@ -503,7 +513,7 @@ function ApplicationRail({
     return <ResourceMessage title="Project 선택 대기" body="Project 목록이 로드되면 application link를 통해 다음 목록을 불러옵니다." />;
   }
   if (loading) {
-    return <ResourceMessage title="Application 로딩 중" body="선택한 project의 server-provided applications link를 호출하는 중입니다." />;
+    return <ResourceMessage title="Application 로딩 중" body="선택한 project의 앱 목록을 불러오는 중입니다." />;
   }
   if (error) {
     return <ResourceErrorMessage scope="applications" error={error} onReload={onReload} />;
@@ -512,7 +522,7 @@ function ApplicationRail({
     return (
       <ResourceMessage
         title="Application 목록 없음"
-        body="이 project의 catalog application 또는 첫 accepted bucket source가 아직 없습니다. 정상/장애 상태를 단정하지 않습니다."
+        body="이 project에 등록된 앱이나 첫 수집 데이터가 아직 없습니다. 정상/장애 상태를 단정하지 않습니다."
       />
     );
   }
@@ -539,17 +549,17 @@ function ApplicationRail({
               <div className="mt-1 text-[10px] text-neutral-400">{application.lifecycleBadgeMeta}</div>
               <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
                 <div className="border border-neutral-200 p-1.5">
-                  <SectionLabel icon={Activity}>metric data</SectionLabel>
-                  <div className="mt-0.5 text-neutral-800">{application.metricData.freshnessLabel}</div>
-                  <div className="text-neutral-500">{application.metricData.statusSource}</div>
+                  <SectionLabel icon={Activity}>수집 데이터</SectionLabel>
+                  <div className="mt-0.5 text-neutral-800">{humanizeStatusCode(application.metricData.freshnessLabel)}</div>
+                  <div className="text-neutral-500">{humanizeSourceCode(application.metricData.statusSource)}</div>
                   <div className="truncate text-neutral-400">{application.metricLastAcceptedBucketDisplay}</div>
                 </div>
                 <div className="border border-neutral-200 p-1.5">
-                  <SectionLabel icon={Radio}>starter</SectionLabel>
+                  <SectionLabel icon={Radio}>앱 연결</SectionLabel>
                   <div className="mt-0.5 text-neutral-800">
-                    {application.starterConnection.heartbeatStatus} · {application.starterConnection.freshnessLabel}
+                    {humanizeStatusCode(application.starterConnection.heartbeatStatus)} · {humanizeStatusCode(application.starterConnection.freshnessLabel)}
                   </div>
-                  <div className="truncate text-neutral-500">{application.starterConnection.connectionMeaning}</div>
+                  <div className="truncate text-neutral-500">{humanizeStatusCode(application.starterConnection.connectionMeaning)}</div>
                   <div className="truncate text-neutral-400">{application.starterLastHeartbeatDisplay}</div>
                 </div>
               </div>
@@ -585,38 +595,54 @@ function DashboardMain({
   selectedProject: ProjectPresentationItem | null;
 }) {
   if (!selectedProject) {
-    return <MainMessage title="Project를 선택하세요" body="Project read model이 로드된 뒤 server link로 application 목록을 불러옵니다." />;
+    return <MainMessage title="Project를 선택하세요" body="Project 목록이 로드된 뒤 application 목록을 불러옵니다." />;
   }
   if (!selectedApplication) {
     return <MainMessage title="Application 선택 대기" body="선택한 project의 application 목록이 비어 있거나 아직 로드 중입니다." />;
   }
   if (loading) {
-    return <MainMessage title="Dashboard 로딩 중" body="선택한 application의 server-provided dashboard link를 호출하는 중입니다." />;
+    return <MainMessage title="Dashboard 로딩 중" body="선택한 application의 상태 화면을 불러오는 중입니다." />;
   }
   if (error) {
     return <ResourceErrorMessage scope="dashboard" error={error} onReload={onReload} roomy />;
   }
   if (!dashboard) {
-    return <MainMessage title="Dashboard 선택 대기" body="Application을 선택하면 dashboard read model을 불러옵니다." />;
+    return <MainMessage title="Dashboard 선택 대기" body="Application을 선택하면 상태 화면을 불러옵니다." />;
   }
   return (
-    <div className="grid grid-cols-12">
-      <div className="col-span-12 xl:col-span-8 p-5 space-y-4">
-        <DashboardContext selectedProject={selectedProject} dashboard={dashboard} />
-        <MetricStateStrip dashboard={dashboard} />
-        <StarterConnectionStrip dashboard={dashboard} />
-        <RecoveryNotice dashboard={dashboard} />
-        <MetricScalars dashboard={dashboard} />
-        <SourceScopedPercentilesPanel dashboard={dashboard} />
-        <HistogramPanel dashboard={dashboard} />
-        <TriagePanel dashboard={dashboard} />
-        <EndpointPriorityPanel items={dashboard.endpointPriority} />
-      </div>
-      <aside className="col-span-12 xl:col-span-4 border-l border-neutral-200 bg-white p-5 space-y-4">
-        <CredentialLifecyclePanel selectedProject={selectedProject} />
-        <InstancesPanel dashboard={dashboard} onOpenEvidence={onOpenEvidence} onOpenTrend={onOpenTrend} />
-        <SnapshotHistoryPanel dashboard={dashboard} selectedApplication={selectedApplication} selectedProject={selectedProject} />
-      </aside>
+    <div className="p-5">
+      <DashboardContext selectedProject={selectedProject} dashboard={dashboard} />
+      <Tabs defaultValue="current" className="mt-4 gap-4">
+        <TabsList className="h-10 w-full justify-start rounded-none border border-neutral-200 bg-white p-1 md:w-fit">
+          <TabsTrigger value="current" className="rounded-none px-4 text-[13px] data-[state=active]:bg-neutral-900 data-[state=active]:text-white">
+            현재 상태
+          </TabsTrigger>
+          <TabsTrigger value="snapshots" className="rounded-none px-4 text-[13px] data-[state=active]:bg-neutral-900 data-[state=active]:text-white">
+            스냅샷 기록
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="current" className="mt-0">
+          <div className="grid grid-cols-12 gap-4">
+            <div className="col-span-12 xl:col-span-8 space-y-4">
+              <MetricStateStrip dashboard={dashboard} />
+              <StarterConnectionStrip dashboard={dashboard} />
+              <RecoveryNotice dashboard={dashboard} />
+              <MetricScalars dashboard={dashboard} />
+              <SourceScopedPercentilesPanel dashboard={dashboard} />
+              <HistogramPanel dashboard={dashboard} />
+              <TriagePanel dashboard={dashboard} />
+              <EndpointPriorityPanel items={dashboard.endpointPriority} />
+            </div>
+            <aside className="col-span-12 space-y-4 xl:col-span-4">
+              <CredentialLifecyclePanel selectedProject={selectedProject} />
+              <InstancesPanel dashboard={dashboard} onOpenEvidence={onOpenEvidence} onOpenTrend={onOpenTrend} />
+            </aside>
+          </div>
+        </TabsContent>
+        <TabsContent value="snapshots" className="mt-0">
+          <SnapshotHistoryPanel dashboard={dashboard} selectedApplication={selectedApplication} selectedProject={selectedProject} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -650,18 +676,18 @@ function MetricStateStrip({ dashboard }: { dashboard: DashboardPresentation }) {
           <SectionLabel icon={Gauge}>상태 판단</SectionLabel>
           <InlineHelp label="데이터 지연 기준 설명">
             <div className="space-y-1">
-              <div>마지막 수집 구간: application 상태 판단의 metric data 기준점입니다.</div>
-              <div>데이터 지연 기준: {formatOptionalDateTime(dashboard.application.freshness.staleAt)}까지 새 metric bucket이 들어오지 않으면 지연으로 볼 수 있습니다.</div>
-              <div>수집 끊김 기준: {formatOptionalDateTime(dashboard.application.freshness.downAt)}까지도 새 metric bucket이 없으면 starter 연결, 트래픽, 수집 경로를 함께 확인합니다.</div>
+              <div>마지막 수집 구간은 앱 상태 판단에 사용한 최신 데이터입니다.</div>
+              <div>데이터 지연 기준: {formatOptionalDateTime(dashboard.application.freshness.staleAt)}까지 새 데이터가 들어오지 않으면 지연으로 볼 수 있습니다.</div>
+              <div>수집 끊김 기준: {formatOptionalDateTime(dashboard.application.freshness.downAt)}까지도 새 데이터가 없으면 앱 연결, 트래픽, 수집 경로를 함께 확인합니다.</div>
             </div>
           </InlineHelp>
         </div>
-        <StatusBadge className={dashboard.metricStateClassName}>{dashboard.state.label}</StatusBadge>
+        <StatusBadge className={dashboard.metricStateClassName}>{applicationStateDisplayText(dashboard.state.code)}</StatusBadge>
       </div>
-      <div className="mt-2 text-neutral-900">{dashboard.state.rationale}</div>
+      <div className="mt-2 text-neutral-900">{applicationStateSummary(dashboard)}</div>
       <div className="mt-1 text-[12px] text-neutral-600">{dashboard.state.recommendedAction}</div>
       <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-neutral-600">
-        <InfoCell label="판단 범위" value={dashboard.state.scope} />
+        <InfoCell label="판단 범위" value={humanizeStatusCode(dashboard.state.scope)} />
         <InfoCell label="마지막 수집 구간" value={dashboard.lastAcceptedBucketDisplay} />
       </div>
     </div>
@@ -676,7 +702,7 @@ function StarterConnectionStrip({ dashboard }: { dashboard: DashboardPresentatio
           <SectionLabel icon={Radio}>Starter 연결 상태</SectionLabel>
           <InlineHelp label="상태 판단 영향 설명">
             <div className="space-y-1">
-              <div>마지막 heartbeat는 starter가 마지막으로 살아 있다고 알려온 시각입니다.</div>
+              <div>마지막 연결 신호는 앱이 마지막으로 살아 있다고 알려온 시각입니다.</div>
               <div>{starterStateImpactText(dashboard.starterConnection.stateImpact)}</div>
             </div>
           </InlineHelp>
@@ -687,7 +713,7 @@ function StarterConnectionStrip({ dashboard }: { dashboard: DashboardPresentatio
       </div>
       <div className="mt-2 grid grid-cols-2 gap-3 text-[12px]">
         <InfoCell label="마지막 연결 확인" value={dashboard.starterLastHeartbeatDisplay} />
-        <InfoCell label="연결 의미" value={dashboard.starterConnection.connectionMeaning} />
+        <InfoCell label="연결 의미" value={humanizeStatusCode(dashboard.starterConnection.connectionMeaning)} />
       </div>
     </div>
   );
@@ -702,7 +728,7 @@ function RecoveryNotice({ dashboard }: { dashboard: DashboardPresentation }) {
       <History className="h-4 w-4" strokeWidth={1.5} />
       <AlertTitle>회복 관찰 중</AlertTitle>
       <AlertDescription>
-        {dashboard.recovery.recommendedAction ?? "회복 여부를 확정하지 말고 다음 accepted bucket까지 관찰하세요."}
+        {dashboard.recovery.recommendedAction ?? "회복 여부를 확정하지 말고 다음 수집 데이터까지 관찰하세요."}
         {dashboard.recovery.retryAfterSeconds !== null && (
           <span className="ml-1 text-neutral-500">다음 판단 대기 {dashboard.recovery.retryAfterSeconds}s</span>
         )}
@@ -740,7 +766,7 @@ function SourceScopedPercentilesPanel({ dashboard }: { dashboard: DashboardPrese
       </div>
       {source.items.length === 0 ? (
         <div className="p-4 text-[12px] text-neutral-600">
-          {sourceScopedEmptyText(source.status, source.reason ?? dashboard.sourceScopedReasonDisplay)}
+          {sourceScopedEmptyText(source.status, source.reason ? humanizeStatusCode(source.reason) : dashboard.sourceScopedReasonDisplay)}
         </div>
       ) : (
         <table className="w-full text-[12px]">
@@ -786,7 +812,7 @@ function HistogramPanel({ dashboard }: { dashboard: DashboardPresentation }) {
       <div className="px-4 py-3 border-b border-neutral-200 flex items-center gap-2">
         <SectionLabel icon={Activity}>응답 시간 분포</SectionLabel>
         <InlineHelp label="응답 시간 구간 설명">
-          서버가 보낸 응답 시간 기준별 요청 수를 그대로 비교합니다. 원자료가 누적 bucket일 수 있어 정확한 구간 분포 정책은 후속 backend/read model 작업으로 남겨둡니다.
+          응답시간 구간마다 해당 범위에 들어온 요청 수를 보여줍니다.
         </InlineHelp>
       </div>
       <div className="grid grid-cols-1 gap-0 md:grid-cols-2">
@@ -798,6 +824,7 @@ function HistogramPanel({ dashboard }: { dashboard: DashboardPresentation }) {
 }
 
 function HistogramWindowCard({ label, window }: { label: string; window: HistogramWindow }) {
+  const buckets = toDisplayLatencyBuckets(window.buckets);
   return (
     <div className="border-b border-neutral-100 p-4 md:border-b-0 md:border-r md:last:border-r-0">
       <div className="flex items-center justify-between gap-2">
@@ -805,15 +832,15 @@ function HistogramWindowCard({ label, window }: { label: string; window: Histogr
         <StatusBadge className={statusBadgeClassName(window.status)}>{statusDisplayText(window.status)}</StatusBadge>
       </div>
       <div className="mt-1 text-[11px] text-neutral-500">총 요청 수 {formatCount(window.totalCount)}</div>
-      {window.buckets.length === 0 ? (
+      {buckets.length === 0 ? (
         <div className="mt-3 text-[12px] text-neutral-500">응답 시간 구간 데이터가 아직 없습니다.</div>
       ) : (
         <div className="mt-3 space-y-1.5">
-          {window.buckets.map((bucket) => (
-            <div key={bucket.leMs} className="flex items-center gap-2 text-[11px]">
-              <span className="w-24 text-neutral-500 tabular-nums">{formatLatencyThreshold(bucket.leMs)}</span>
+          {buckets.map((bucket) => (
+            <div key={bucket.key} className="flex items-center gap-2 text-[11px]">
+              <span className="w-44 text-neutral-500 tabular-nums">{bucket.label}</span>
               <div className="h-3 flex-1 border border-neutral-200 bg-neutral-100">
-                <div className="h-full bg-neutral-800" style={{ width: histogramBarWidth(bucket.count, window) }} />
+                <div className="h-full bg-neutral-800" style={{ width: histogramRangeBarWidth(bucket.count, buckets) }} />
               </div>
               <span className="w-16 text-right text-neutral-700 tabular-nums">{formatCount(bucket.count)}</span>
             </div>
@@ -828,7 +855,7 @@ function TriagePanel({ dashboard }: { dashboard: DashboardPresentation }) {
   return (
     <div className="border border-neutral-200 bg-white">
       <div className="px-4 py-3 border-b border-neutral-200">
-        <SectionLabel icon={AlertCircle}>Triage</SectionLabel>
+        <SectionLabel icon={AlertCircle}>먼저 볼 문제</SectionLabel>
       </div>
       {dashboard.triageCards.length === 0 ? (
         <ZeroInsightBlock dashboard={dashboard} />
@@ -845,13 +872,13 @@ function TriagePanel({ dashboard }: { dashboard: DashboardPresentation }) {
 
 function ZeroInsightBlock({ dashboard }: { dashboard: DashboardPresentation }) {
   if (!dashboard.zeroInsight) {
-    return <div className="p-4 text-[12px] text-neutral-600">zeroInsight 응답을 확인할 수 없습니다.</div>;
+    return <div className="p-4 text-[12px] text-neutral-600">현재 화면에서 보여줄 추가 판단 근거가 없습니다.</div>;
   }
   return (
     <div className="p-4 text-[12px] text-neutral-700">
       <div className="text-neutral-900">{dashboard.zeroInsight.message}</div>
       <div className="mt-1">{dashboard.zeroInsight.recommendedAction}</div>
-      <div className="mt-2 text-[11px] text-neutral-500">{dashboard.zeroInsight.reasonCode}</div>
+      <div className="mt-2 text-[11px] text-neutral-500">{humanizeStatusCode(dashboard.zeroInsight.reasonCode)}</div>
     </div>
   );
 }
@@ -865,17 +892,17 @@ function TriageCardItem({ card }: { card: TriageCard }) {
           <div className="mt-0.5 text-[12px] text-neutral-700">{card.summary}</div>
           <div className="mt-1 text-[12px] text-neutral-600">{card.recommendation}</div>
         </div>
-        <StatusBadge className={statusBadgeClassName(card.severity)}>{card.severity}</StatusBadge>
+        <StatusBadge className={severityBadgeClassName(card.severity)}>{severityDisplayText(card.severity)}</StatusBadge>
       </div>
       <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500 md:grid-cols-4">
-        <InfoCell label="rule" value={card.ruleId} />
-        <InfoCell label="score" value={String(card.score)} />
-        <InfoCell label="confidence" value={formatNullableRatio(card.confidence)} />
-        <InfoCell label="endpoint" value={card.affectedEndpoint ?? "endpoint 없음"} />
-        <InfoCell label="requests" value={formatOptionalNumber(card.evidence.requestCount)} />
-        <InfoCell label="errors" value={formatOptionalNumber(card.evidence.currentErrorCount)} />
-        <InfoCell label="error rate" value={formatNullableRatio(card.evidence.currentErrorRate)} />
-        <InfoCell label="freshness reason" value={card.evidence.freshnessStatusReason ?? "reason 없음"} />
+        <InfoCell label="판단 기준" value={card.ruleId || "적용된 판단 기준 없음"} />
+        <InfoCell label="우선순위 점수" value={String(card.score)} />
+        <InfoCell label="신뢰도" value={formatNullableRatio(card.confidence)} />
+        <InfoCell label="엔드포인트" value={card.affectedEndpoint ?? "해당 엔드포인트 없음"} />
+        <InfoCell label="요청 수" value={formatOptionalNumber(card.evidence.requestCount)} />
+        <InfoCell label="오류 수" value={formatOptionalNumber(card.evidence.currentErrorCount)} />
+        <InfoCell label="오류율" value={formatNullableRatio(card.evidence.currentErrorRate)} />
+        <InfoCell label="데이터 상태" value={card.evidence.freshnessStatusReason ? humanizeStatusCode(card.evidence.freshnessStatusReason) : "확인할 수 없음"} />
       </div>
     </li>
   );
@@ -885,11 +912,11 @@ function EndpointPriorityPanel({ items }: { items: EndpointPriorityItem[] }) {
   return (
     <div className="border border-neutral-200 bg-white">
       <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between">
-        <SectionLabel icon={ListChecks}>먼저 확인할 endpoint</SectionLabel>
-        <span className="text-[11px] text-neutral-500">server order</span>
+        <SectionLabel icon={ListChecks}>먼저 확인할 엔드포인트</SectionLabel>
+        <span className="text-[11px] text-neutral-500">우선순위 높은 순서</span>
       </div>
       {items.length === 0 ? (
-        <div className="p-4 text-[12px] text-neutral-500">서버가 제공한 next-check endpoint 후보가 없습니다.</div>
+        <div className="p-4 text-[12px] text-neutral-500">먼저 확인할 엔드포인트 후보가 없습니다.</div>
       ) : (
         <ol>
           {items.map((item) => (
@@ -913,17 +940,17 @@ function EndpointPriorityRow({ item }: { item: EndpointPriorityItem }) {
           <div className="mt-1 text-[12px] text-neutral-700">{item.recommendedAction}</div>
           <div className="mt-1 text-[11px] text-neutral-500">{item.reason} · {item.ruleIds.join(", ")}</div>
         </div>
-        <StatusBadge className={statusBadgeClassName(item.freshness.status)}>{item.freshness.status}</StatusBadge>
+        <StatusBadge className={statusBadgeClassName(item.freshness.status)}>{humanizeStatusCode(item.freshness.status)}</StatusBadge>
       </div>
       <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500 md:grid-cols-4">
-        <InfoCell label="requests" value={formatCount(item.evidence.requestCount)} />
-        <InfoCell label="errors" value={formatCount(item.evidence.errorCount)} />
-        <InfoCell label="error rate" value={formatRatio(item.evidence.errorRate)} />
-        <InfoCell label="bucket source" value={item.evidence.bucketDistributionSource} />
-        <InfoCell label="freshness at" value={item.freshness.lastObservedAt} />
-        <InfoCell label="source window" value={item.freshness.sourceWindow} />
-        <InfoCell label="error evidence" value={item.evidence.errorEvidenceStatus} />
-        <InfoCell label="latency evidence" value={item.evidence.latencyEvidenceStatus} />
+        <InfoCell label="요청 수" value={formatCount(item.evidence.requestCount)} />
+        <InfoCell label="오류 수" value={formatCount(item.evidence.errorCount)} />
+        <InfoCell label="오류율" value={formatRatio(item.evidence.errorRate)} />
+        <InfoCell label="분포 기준" value={humanizeSourceCode(item.evidence.bucketDistributionSource)} />
+        <InfoCell label="마지막 관측" value={formatOptionalDateTime(item.freshness.lastObservedAt)} />
+        <InfoCell label="관측 구간" value={humanizeStatusCode(item.freshness.sourceWindow)} />
+        <InfoCell label="오류 근거" value={humanizeStatusCode(item.evidence.errorEvidenceStatus)} />
+        <InfoCell label="응답시간 근거" value={humanizeStatusCode(item.evidence.latencyEvidenceStatus)} />
       </div>
     </li>
   );
@@ -1326,7 +1353,7 @@ function registrationErrorCopy(error: Error): string {
   if (error instanceof ApiRequestError && error.status === 401) {
     return "인증이 만료되었습니다. 다시 GitHub 로그인 후 시도해 주세요.";
   }
-  return "Project registration에 실패했습니다. backend body, token, credential 값은 표시하지 않습니다.";
+  return "Project registration에 실패했습니다. 민감한 인증 정보는 화면에 표시하지 않습니다.";
 }
 
 function credentialErrorCopy(error: Error): string {
@@ -1438,36 +1465,36 @@ function SnapshotHistoryPanel({
   const history = current ? resource.data : null;
 
   return (
-    <div className="border border-neutral-200">
+    <div className="border border-neutral-200 bg-white">
       <div className="px-3 py-2.5 border-b border-neutral-200 flex items-center justify-between gap-2">
-        <SectionLabel icon={History}>Snapshot / events</SectionLabel>
-        <StatusBadge>{preset}</StatusBadge>
+        <SectionLabel icon={History}>스냅샷 기록</SectionLabel>
+        <StatusBadge>{presetDisplayText(preset)}</StatusBadge>
       </div>
       <div className="border-b border-neutral-100 p-3">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {(["24h", "7d", "14d"] as const).map((candidate) => (
             <Button
               key={candidate}
               variant={preset === candidate ? "default" : "outline"}
               size="sm"
-              className="h-8 flex-1 border-neutral-300"
+              className="h-8 min-w-24 border-neutral-300"
               onClick={() => {
                 setPreset(candidate);
                 setDetailTarget(null);
               }}
             >
-              {candidate}
+              {presetDisplayText(candidate)}
             </Button>
           ))}
         </div>
       </div>
-      <div className="p-3 text-[12px] text-neutral-600 space-y-3">
+      <div className="p-4 text-[12px] text-neutral-600 space-y-4">
         {dashboard.snapshot === null && (
           <div className="border border-neutral-200 bg-neutral-50 p-2">
-            current dashboard snapshot handoff가 없습니다. history/detail은 별도 stored snapshot API 결과만 사용합니다.
+            현재 상태에서 바로 연결된 스냅샷은 없습니다. 저장된 기록이 있으면 아래에서 따로 불러옵니다.
           </div>
         )}
-        {loading && <ResourceMessage title="History 로딩 중" body={`${preset} fixed preset으로 event와 marker를 불러오는 중입니다.`} />}
+        {loading && <ResourceMessage title="기록 로딩 중" body={`${presetDisplayText(preset)} 범위의 상태 변화와 스냅샷을 불러오는 중입니다.`} />}
         {error && <SnapshotHistoryError error={error} onReload={resource.reload} />}
         {!loading && !error && history && (
           <SnapshotHistoryReady
@@ -1480,7 +1507,6 @@ function SnapshotHistoryPanel({
         )}
         <SnapshotDetailSurface
           applicationId={selectedApplication.applicationId}
-          compact
           projectId={selectedProject.projectId}
           target={detailTarget}
         />
@@ -1502,37 +1528,47 @@ function SnapshotHistoryReady({
   onSelectDetail: (target: SnapshotDetailTarget) => void;
   projectId: string;
 }) {
+  const sortedEvents = useMemo(
+    () => [...events.events].sort((a, b) => compareTimestampDesc(a.occurredAt, b.occurredAt)),
+    [events.events],
+  );
+  const sortedMarkers = useMemo(
+    () => [...markers.markers].sort((a, b) => compareTimestampDesc(a.capturedAt, b.capturedAt)),
+    [markers.markers],
+  );
+
   return (
     <>
       <div className="border border-neutral-200 bg-white">
-        <div className="border-b border-neutral-100 px-3 py-2 text-[11px] uppercase text-neutral-500">
-          Operational events · {events.source} · {events.horizon.order}
+        <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-3 py-2 text-[11px] text-neutral-500">
+          <span className="uppercase">상태 변화 기록</span>
+          <span>{humanizeOrderCode(events.horizon.order)}</span>
         </div>
-        {events.events.length === 0 ? (
+        {sortedEvents.length === 0 ? (
           <div className="p-3 text-[12px] text-neutral-500">
-            retention/source absence 또는 event 후보 없음입니다. 현재 문제 없음이나 복구 완료로 표현하지 않습니다.
+            이 범위에 표시할 상태 변화 기록이 없습니다.
           </div>
         ) : (
           <ul>
-            {events.events.map((event) => (
+            {sortedEvents.map((event) => (
               <li key={event.eventId} className="border-b border-neutral-100 p-3 last:border-b-0">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-neutral-900">{event.title}</div>
                     <div className="mt-0.5 text-neutral-600">{event.summary}</div>
                     <div className="mt-1 text-[11px] text-neutral-500">
-                      {event.type} · {event.stateCode} · occurred {event.occurredAt} · resolved {formatOptionalDateTime(event.resolvedAt)}
+                      {humanizeStatusCode(event.type)} · 저장 당시 상태 {humanizeStatusCode(event.stateCode)} · 발생 {formatOptionalDateTime(event.occurredAt)} · 해결 {formatOptionalDateTime(event.resolvedAt)}
                     </div>
                   </div>
-                  <StatusBadge className={statusBadgeClassName(event.severity)}>{event.severity}</StatusBadge>
+                  <StatusBadge className={severityBadgeClassName(event.severity)}>{severityDisplayText(event.severity)}</StatusBadge>
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500">
-                  <InfoCell label="event id" value={event.eventId} />
-                  <InfoCell label="confidence" value={formatNullableRatio(event.confidence)} />
-                  <InfoCell label="rule" value={event.evidence.ruleId ?? "rule 없음"} />
-                  <InfoCell label="endpoint" value={event.evidence.endpointKey ?? "endpoint 없음"} />
-                  <InfoCell label="anchor" value={event.evidence.snapshotDetailAnchor ?? "anchor 없음"} />
-                  <InfoCell label="anchor status" value={event.evidence.anchorStatus ?? "source 없음"} />
+                  <InfoCell label="기록 ID" value={event.eventId} />
+                  <InfoCell label="신뢰도" value={formatNullableRatio(event.confidence)} />
+                  <InfoCell label="판단 기준" value={event.evidence.ruleId ?? "적용된 판단 기준 없음"} />
+                  <InfoCell label="엔드포인트" value={event.evidence.endpointKey ?? "해당 엔드포인트 없음"} />
+                  <InfoCell label="상세 근거" value={event.evidence.snapshotDetailAnchor ?? "연결된 상세 근거 없음"} />
+                  <InfoCell label="근거 연결" value={humanizeAnchorStatus(event.evidence.anchorStatus)} />
                 </div>
                 <Button
                   variant="outline"
@@ -1546,7 +1582,7 @@ function SnapshotHistoryReady({
                     });
                   }}
                 >
-                  <History className="h-3.5 w-3.5" strokeWidth={1.5} /> Detail
+                  <History className="h-3.5 w-3.5" strokeWidth={1.5} /> 상세 보기
                 </Button>
               </li>
             ))}
@@ -1554,34 +1590,35 @@ function SnapshotHistoryReady({
         )}
       </div>
       <div className="border border-neutral-200 bg-white">
-        <div className="border-b border-neutral-100 px-3 py-2 text-[11px] uppercase text-neutral-500">
-          Snapshot markers · {markers.source} · {markers.horizon.order}
+        <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-3 py-2 text-[11px] text-neutral-500">
+          <span className="uppercase">저장된 스냅샷</span>
+          <span>{humanizeOrderCode(markers.horizon.order)}</span>
         </div>
-        {markers.markers.length === 0 ? (
+        {sortedMarkers.length === 0 ? (
           <div className="p-3 text-[12px] text-neutral-500">
-            {markers.emptyState?.message ?? "marker source가 없습니다."} {markers.emptyState?.recommendedAction ?? ""}
+            {markers.emptyState?.message ?? "저장된 스냅샷이 없습니다."} {markers.emptyState?.recommendedAction ?? ""}
           </div>
         ) : (
           <ul>
-            {markers.markers.map((marker) => (
+            {sortedMarkers.map((marker) => (
               <li key={marker.markerId} className="border-b border-neutral-100 p-3 last:border-b-0">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-neutral-900">{marker.title}</div>
                     <div className="mt-0.5 text-neutral-600">{marker.summary}</div>
                     <div className="mt-1 text-[11px] text-neutral-500">
-                      {marker.type} · {marker.readMeaning} · {marker.captureReason ?? "opaque reason 없음"}
+                      {humanizeStatusCode(marker.type)} · {humanizeStatusCode(marker.readMeaning)} · 저장 이유 {humanizeCaptureReason(marker.captureReason)}
                     </div>
                   </div>
-                  <StatusBadge className={statusBadgeClassName(marker.severity)}>{marker.severity}</StatusBadge>
+                  <StatusBadge className={severityBadgeClassName(marker.severity)}>{severityDisplayText(marker.severity)}</StatusBadge>
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500">
-                  <InfoCell label="marker id" value={marker.markerId} />
-                  <InfoCell label="captured" value={marker.capturedAt} />
-                  <InfoCell label="stored state" value={marker.storedApplicationStateCode} />
-                  <InfoCell label="confidence" value={formatNullableRatio(marker.confidence)} />
-                  <InfoCell label="rule" value={marker.primaryRuleId ?? "rule 없음"} />
-                  <InfoCell label="endpoint" value={marker.primaryEndpointKey ?? "endpoint 없음"} />
+                  <InfoCell label="스냅샷 ID" value={marker.markerId} />
+                  <InfoCell label="저장 시각" value={formatOptionalDateTime(marker.capturedAt)} />
+                  <InfoCell label="저장 당시 상태" value={humanizeStatusCode(marker.storedApplicationStateCode)} />
+                  <InfoCell label="신뢰도" value={formatNullableRatio(marker.confidence)} />
+                  <InfoCell label="판단 기준" value={marker.primaryRuleId ?? "적용된 판단 기준 없음"} />
+                  <InfoCell label="엔드포인트" value={marker.primaryEndpointKey ?? "해당 엔드포인트 없음"} />
                 </div>
                 <Button
                   variant="outline"
@@ -1594,7 +1631,7 @@ function SnapshotHistoryReady({
                     });
                   }}
                 >
-                  <History className="h-3.5 w-3.5" strokeWidth={1.5} /> Detail
+                  <History className="h-3.5 w-3.5" strokeWidth={1.5} /> 상세 보기
                 </Button>
               </li>
             ))}
@@ -1706,7 +1743,7 @@ function snapshotHistoryErrorCopy(error: Error): { title: string; body: string }
   if (error instanceof ApiRequestError && error.status === 404) {
     return {
       title: "History scope 확인 필요",
-      body: "membership mismatch, scope mismatch, retention absence일 수 있습니다. application/instance down이나 복구 완료로 해석하지 않습니다.",
+      body: "선택한 앱의 저장 기록을 찾지 못했습니다. 권한이나 보관 기간을 확인해 주세요.",
     };
   }
   if (error instanceof ApiRequestError && error.status === 400) {
@@ -1716,8 +1753,8 @@ function snapshotHistoryErrorCopy(error: Error): { title: string; body: string }
     };
   }
   return {
-    title: "History 로드 실패",
-    body: "stored snapshot source를 불러오지 못했습니다. backend detail, token, provider payload는 표시하지 않습니다.",
+    title: "기록 로드 실패",
+    body: "저장된 스냅샷 기록을 불러오지 못했습니다.",
   };
 }
 
@@ -1756,15 +1793,74 @@ function statusDisplayText(status: string | null | undefined): string {
     case "":
       return "해당 없음";
     default:
-      return status ?? "해당 없음";
+      return humanizeStatusCode(status);
   }
+}
+
+function applicationStateDisplayText(status: string | null | undefined): string {
+  switch ((status ?? "").toLowerCase()) {
+    case "active":
+      return "정상";
+    case "degraded":
+      return "주의 필요";
+    case "down":
+      return "수집 중단";
+    case "idle":
+      return "대기 중";
+    case "stale":
+      return "데이터 지연";
+    case "waiting_first_data":
+      return "첫 데이터 대기";
+    case "unknown":
+      return "확인 필요";
+    default:
+      return humanizeStatusCode(status);
+  }
+}
+
+function applicationStateSummary(dashboard: DashboardPresentation): string {
+  switch ((dashboard.state.code ?? "").toLowerCase()) {
+    case "active":
+      return "최근 수집 데이터 기준으로 앱이 정상 동작 중입니다.";
+    case "degraded":
+      return "일부 지표가 평소보다 나빠져 먼저 확인이 필요합니다.";
+    case "down":
+      return "수집 데이터가 끊긴 것 같아요. 앱 연결과 트래픽을 함께 확인해 주세요.";
+    case "idle":
+      return "최근 트래픽이 적어 상태를 단정하기 어렵습니다.";
+    case "stale":
+      return "최근 수집 데이터가 늦게 들어오고 있습니다.";
+    case "waiting_first_data":
+      return "앱의 첫 수집 데이터를 기다리는 중입니다.";
+    default:
+      return dashboard.state.rationale || "상태 판단에 필요한 데이터를 확인하고 있습니다.";
+  }
+}
+
+function presetDisplayText(preset: HistoryPreset | TrendPreset): string {
+  switch (preset) {
+    case "24h":
+      return "24시간";
+    case "7d":
+      return "7일";
+    case "14d":
+      return "14일";
+    default:
+      return preset;
+  }
+}
+
+function compareTimestampDesc(a: string | null | undefined, b: string | null | undefined): number {
+  const left = a ? Date.parse(a) : Number.NEGATIVE_INFINITY;
+  const right = b ? Date.parse(b) : Number.NEGATIVE_INFINITY;
+  return (Number.isFinite(right) ? right : Number.NEGATIVE_INFINITY) - (Number.isFinite(left) ? left : Number.NEGATIVE_INFINITY);
 }
 
 function starterStateImpactText(stateImpact: string): string {
   if (stateImpact === "none") {
-    return "상태 판단 영향 없음: starter heartbeat 신호가 현재 정상/주의/지연/끊김 판단을 직접 바꾸지 않습니다.";
+    return "상태 판단 영향 없음: 앱 연결 신호가 현재 정상/주의/지연/끊김 판단을 직접 바꾸지 않습니다.";
   }
-  return `상태 판단 영향: ${stateImpact}`;
+  return `상태 판단 영향: ${humanizeStatusCode(stateImpact)}`;
 }
 
 function sourceScopedEmptyText(status: string, reason: string | null): string {
@@ -1774,7 +1870,7 @@ function sourceScopedEmptyText(status: string, reason: string | null): string {
   if (status === "insufficient") {
     return "인스턴스별 응답 시간 표본이 아직 충분하지 않습니다.";
   }
-  return reason && reason !== "source 없음" ? reason : "인스턴스별 응답 시간 데이터를 확인할 수 없습니다.";
+  return reason && reason !== "확인할 수 없음" ? reason : "인스턴스별 응답 시간 데이터를 확인할 수 없습니다.";
 }
 
 function formatLatencyThreshold(leMs: number): string {
@@ -1878,10 +1974,10 @@ function resourceErrorCopy(scope: ResourceScope, error: Error): { title: string;
   }
   return {
     title: "Resource 로드 실패",
-    body: "read model을 불러오지 못했습니다. token, provider payload, 내부 응답 내용은 표시하지 않습니다.",
+    body: "화면에 필요한 데이터를 불러오지 못했습니다. 인증 정보나 내부 응답 내용은 표시하지 않습니다.",
   };
 }
 
 function formatOptionalNumber(value: number | null | undefined): string {
-  return value === null || value === undefined || !Number.isFinite(value) ? "source 없음" : formatCount(value);
+  return value === null || value === undefined || !Number.isFinite(value) ? "확인할 수 없음" : formatCount(value);
 }

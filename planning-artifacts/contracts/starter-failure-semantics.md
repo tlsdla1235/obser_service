@@ -86,7 +86,9 @@ starter가 portal로 보내지 못한 bucket은 portal accepted bucket이 아니
 
 HealthIndicator를 제공하는 경우 기본값에서는 host application 전체 health를 `DOWN`으로 만들지 않는다. 별도의 component health 또는 detail field로 관측 전송 상태를 표현한다.
 
-Starter heartbeat도 같은 fail-open 원칙을 따른다. heartbeat는 starter/application process liveness, portal reachability, project key validity, metadata validity의 control-plane source다. heartbeat 실패, timeout, 미수신은 host application down 판정이 아니며, accepted bucket freshness나 metric state의 source-of-truth도 아니다. heartbeat 성공은 accepted bucket, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 만들거나 암시하지 않는다.
+Starter heartbeat도 같은 fail-open 원칙을 따른다. heartbeat는 starter/application process liveness, portal reachability, project key validity, metadata validity의 control-plane source다. heartbeat 실패, timeout, 미수신은 host application down 판정이 아니며, accepted bucket freshness나 metric state의 source-of-truth도 아니다. heartbeat 성공만으로 accepted bucket, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 만들거나 암시하지 않는다.
+
+Snapshot capture 정책에서 recent heartbeat는 새 `hourly_scheduled`/`query_fallback` snapshot 저장 eligibility gate로만 사용할 수 있다. 이때도 active application과 retention horizon 안의 accepted bucket 조건이 함께 필요하며, heartbeat-only application은 snapshot 대상이 아니다. heartbeat가 missing/stale이면 fallback snapshot 저장만 건너뛰고 dashboard current response는 fail-open으로 성공한다.
 
 UI가 heartbeat telemetry를 보여줄 경우에는 `starter heartbeat/연결 상태`를 `accepted bucket freshness/application state`와 분리해서 표현한다. 예를 들어 heartbeat가 최근 수신됐더라도 accepted bucket이 없으면 application state는 계속 `waiting_first_data`일 수 있고, copy는 `starter connected but no accepted bucket`, `waiting for traffic`, `metric data idle`처럼 표현한다.
 
@@ -118,7 +120,8 @@ Recovery guidance도 같은 분리 원칙을 따른다. stale/down 이후 새 ac
 - heartbeat timeout이 host startup/request path를 막지 않는 test
 - heartbeat 미수신이 host application down 판정으로 변환되지 않고 starter disconnected/telemetry unreachable/unknown 계열로 남는 test
 - 최근 heartbeat와 오래된 accepted bucket 조합이 no recent traffic/waiting for traffic/metric data idle 계열로 표현되는 test
-- heartbeat 성공이 bucket/snapshot/event/read-model 계산을 호출하지 않는 test
+- heartbeat ingest 성공만으로 bucket/snapshot/event/read-model 계산을 호출하지 않는 test
+- heartbeat missing/stale 시 query fallback snapshot 저장만 건너뛰고 dashboard current response는 성공하는 test
 
 ## 9. Non-Goals
 
@@ -128,3 +131,4 @@ Recovery guidance도 같은 분리 원칙을 따른다. stale/down 이후 새 ac
 - portal 장애를 host app 장애로 간주하는 기본 정책
 - build phase에서 portal availability를 검증하는 정책
 - heartbeat를 metric ingest 성공, accepted bucket freshness, host business health 판정으로 사용하는 정책
+- heartbeat-only application을 snapshot 대상으로 삼거나 heartbeat를 snapshot/read-model source로 사용하는 정책

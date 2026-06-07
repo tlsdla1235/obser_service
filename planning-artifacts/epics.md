@@ -81,7 +81,7 @@ Epic 3은 `accepted_metric_buckets` 저장과 idempotent acceptance까지만 닫
 0. Starter heartbeat and instance-level ingest contract gate
    - Story 4-0은 구현 story가 아니라 contract gate다.
    - `POST /api/ingest/v1/heartbeat`는 bucket ingest와 분리된 periodic control-plane/liveness signal로 문서화한다.
-   - heartbeat 성공은 accepted bucket, host business health, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 생성하거나 암시하지 않는다.
+   - heartbeat 성공만으로 accepted bucket, host business health, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 생성하거나 암시하지 않는다. 최근 heartbeat는 snapshot 저장 eligibility gate로만 사용할 수 있다.
    - heartbeat는 starter/application process liveness, portal reachability, project key validity, metadata validity의 control-plane source다.
    - heartbeat 미수신은 host application down 판정이 아니며 starter connection status와 accepted bucket freshness/application state를 분리한다.
    - `localPercentiles`는 instance-local 30초 bucket의 starter canonical p95/p99로 허용한다.
@@ -378,7 +378,7 @@ Epic 12의 기본 consumer는 Spring Boot portal 내부 worker다. Lambda consum
 - MVP 필수 경로에 Prometheus 설치, scrape config, selector 등록, PromQL query가 없다.
 - host app build/startup/request path는 portal 장애에 의해 막히지 않는다.
 - starter heartbeat는 bucket ingest와 분리된 periodic control-plane/liveness signal이다.
-- heartbeat 성공 또는 미수신은 accepted bucket, host business health, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 생성하거나 암시하지 않는다.
+- heartbeat 성공 또는 미수신만으로 accepted bucket, host business health, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 생성하거나 암시하지 않는다. 최근 heartbeat는 snapshot 저장 eligibility gate로만 사용할 수 있다.
 - accepted bucket은 application metric freshness/state/read-model source-of-truth다.
 - heartbeat는 starter/application process liveness, portal reachability, project key validity, metadata validity의 control-plane source다.
 - 최근 heartbeat와 없음/오래된 accepted bucket 조합은 no recent traffic/waiting for traffic/metric data idle 계열로 표현하고 host application down으로 단정하지 않는다.

@@ -42,10 +42,11 @@ class DashboardSnapshotSchedulerTest {
                 OffsetDateTime.parse("2026-05-27T13:00:00Z"),
                 OffsetDateTime.parse("2026-05-27T12:00:00Z"),
                 OffsetDateTime.parse("2026-05-27T13:00:00Z"));
-        when(applicationRepository.findActiveApplicationsWithAcceptedBucketSince(
+        when(applicationRepository.findActiveApplicationsEligibleForScheduledSnapshot(
                 OffsetDateTime.parse("2026-05-13T13:05:21Z"),
                 OffsetDateTime.parse("2026-05-27T13:00:00Z"),
-                OffsetDateTime.parse("2026-05-27T13:02:00Z")))
+                OffsetDateTime.parse("2026-05-27T13:02:00Z"),
+                OffsetDateTime.parse("2026-05-27T13:05:21Z")))
                 .thenReturn(List.of(application));
 
         DashboardSnapshotScheduler scheduler = new DashboardSnapshotScheduler(
@@ -85,9 +86,10 @@ class DashboardSnapshotSchedulerTest {
                 OffsetDateTime.parse("2026-05-27T13:00:00Z"),
                 OffsetDateTime.parse("2026-05-27T12:00:00Z"),
                 OffsetDateTime.parse("2026-05-27T13:00:00Z"));
-        when(applicationRepository.findActiveApplicationsWithAcceptedBucketSince(
+        when(applicationRepository.findActiveApplicationsEligibleForScheduledSnapshot(
                 OffsetDateTime.parse("2026-05-13T13:02:00Z"),
                 OffsetDateTime.parse("2026-05-27T13:00:00Z"),
+                OffsetDateTime.parse("2026-05-27T13:02:00Z"),
                 OffsetDateTime.parse("2026-05-27T13:02:00Z")))
                 .thenReturn(List.of(application));
         DashboardSnapshotScheduler scheduler = new DashboardSnapshotScheduler(
@@ -107,9 +109,10 @@ class DashboardSnapshotSchedulerTest {
         clock.setInstant(Instant.parse("2026-05-27T13:03:00Z"));
         scheduler.dispatchHourlyScheduledCaptures();
 
-        verify(applicationRepository).findActiveApplicationsWithAcceptedBucketSince(
+        verify(applicationRepository).findActiveApplicationsEligibleForScheduledSnapshot(
                 OffsetDateTime.parse("2026-05-13T13:02:00Z"),
                 OffsetDateTime.parse("2026-05-27T13:00:00Z"),
+                OffsetDateTime.parse("2026-05-27T13:02:00Z"),
                 OffsetDateTime.parse("2026-05-27T13:02:00Z"));
         verify(captureService).capture(org.mockito.ArgumentMatchers.any());
     }
@@ -131,9 +134,10 @@ class DashboardSnapshotSchedulerTest {
                 OffsetDateTime.parse("2026-05-27T13:00:00Z"),
                 OffsetDateTime.parse("2026-05-27T12:00:00Z"),
                 OffsetDateTime.parse("2026-05-27T13:00:00Z"));
-        when(applicationRepository.findActiveApplicationsWithAcceptedBucketSince(
+        when(applicationRepository.findActiveApplicationsEligibleForScheduledSnapshot(
                 OffsetDateTime.parse("2026-05-13T13:30:00Z"),
                 OffsetDateTime.parse("2026-05-27T12:00:00Z"),
+                OffsetDateTime.parse("2026-05-27T13:30:00Z"),
                 OffsetDateTime.parse("2026-05-27T13:30:00Z")))
                 .thenReturn(List.of(application));
 

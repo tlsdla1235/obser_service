@@ -29,7 +29,7 @@ const steps = [
     n: "03",
     title: "Dashboard 확인",
     body:
-      "Project → Application → Dashboard로 들어가 accepted bucket freshness와 starter heartbeat를 분리해서 확인한다.",
+      "Project → Application → Dashboard로 들어가 수집 데이터 최신성과 앱 연결 신호를 분리해서 확인한다.",
   },
 ];
 
@@ -37,17 +37,17 @@ const values = [
   {
     icon: Gauge,
     title: "설치는 starter 중심으로 간단하다",
-    body: "dependency 한 줄과 yaml 설정으로 30초 metric bucket과 heartbeat를 portal로 보낸다.",
+    body: "dependency 한 줄과 yaml 설정으로 30초마다 수집 데이터와 연결 신호를 portal로 보낸다.",
   },
   {
     icon: Radio,
-    title: "data-plane과 control-plane을 분리한다",
-    body: "metric accepted bucket과 starter heartbeat를 한 health로 합치지 않고 분리해서 보여준다.",
+    title: "수집 데이터와 앱 연결을 분리한다",
+    body: "최근 수집 데이터와 앱 연결 신호를 하나의 상태로 뭉개지 않고 따로 보여준다.",
   },
   {
     icon: ListChecks,
-    title: "서버가 계산한 read model을 그대로 보여준다",
-    body: "lifecycle state, percentile, endpoint priority를 UI가 재계산하지 않는다.",
+    title: "서버가 계산한 상태 요약을 그대로 보여준다",
+    body: "앱 상태, 응답시간 지표, 먼저 볼 엔드포인트를 UI가 임의로 다시 계산하지 않는다.",
   },
   {
     icon: Server,
@@ -58,8 +58,8 @@ const values = [
 
 const questions = [
   "지금 데이터가 들어오고 있는가?",
-  "starter 연결은 살아 있는가?",
-  "application metric state는 무엇인가?",
+  "앱 연결은 살아 있는가?",
+  "현재 앱 상태는 무엇인가?",
   "느려졌나, 에러가 늘었나?",
   "어디부터 확인하면 되는가?",
 ];
@@ -81,7 +81,7 @@ export function Landing() {
               Observation Portal
             </h1>
             <p className="mt-5 text-neutral-700 max-w-xl">
-              Spring Boot 앱에 starter를 붙이면 30초 metric bucket과 heartbeat를 모아,
+              Spring Boot 앱에 starter를 붙이면 30초마다 수집 데이터와 연결 신호를 모아,
               지금 데이터가 들어오는지와 어디부터 확인할지 한 화면에서 보여줍니다.
             </p>
             <div className="mt-8 flex items-center gap-3">
@@ -106,48 +106,48 @@ export function Landing() {
                 <span className="text-[13px]">orders-api · prod</span>
               </div>
               <span className="text-[11px] uppercase tracking-wider text-neutral-500 border border-neutral-300 px-2 py-0.5">
-                read model
+                상태 요약
               </span>
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-[13px]">
               <div className="border border-neutral-200 bg-white p-3">
                 <div className="flex items-center gap-1.5 text-neutral-500 text-[11px] uppercase tracking-wider">
-                  <Activity className="h-3 w-3" strokeWidth={1.5} /> metric data
+                  <Activity className="h-3 w-3" strokeWidth={1.5} /> 수집 데이터
                 </div>
-                <div className="mt-1.5 text-neutral-900">accepted_bucket</div>
-                <div className="text-neutral-500 text-[12px]">fresh · 12s ago</div>
+                <div className="mt-1.5 text-neutral-900">최근 수집 데이터</div>
+                <div className="text-neutral-500 text-[12px]">최신 · 12초 전</div>
               </div>
               <div className="border border-neutral-200 bg-white p-3">
                 <div className="flex items-center gap-1.5 text-neutral-500 text-[11px] uppercase tracking-wider">
-                  <Radio className="h-3 w-3" strokeWidth={1.5} /> starter connection
+                  <Radio className="h-3 w-3" strokeWidth={1.5} /> 앱 연결
                 </div>
-                <div className="mt-1.5 text-neutral-900">heartbeat ok</div>
-                <div className="text-neutral-500 text-[12px]">last 22s ago</div>
+                <div className="mt-1.5 text-neutral-900">연결 신호 정상</div>
+                <div className="text-neutral-500 text-[12px]">마지막 확인 22초 전</div>
               </div>
               <div className="border border-neutral-200 bg-white p-3 col-span-2">
                 <div className="flex items-center justify-between">
                   <div className="text-neutral-500 text-[11px] uppercase tracking-wider">
-                    state
+                    상태
                   </div>
                   <span className="text-[11px] border border-neutral-400 px-1.5 py-0.5">
-                    degraded
+                    주의
                   </span>
                 </div>
                 <div className="mt-1.5 text-neutral-900">
-                  source-scoped signal on /orders/{`{orderId}`}
+                  /orders/{`{orderId}`} 요청에서 오류가 늘었어요
                 </div>
                 <div className="text-neutral-500 text-[12px]">
-                  먼저 확인할 endpoint · 3건
+                  먼저 확인할 엔드포인트 · 3건
                 </div>
               </div>
               <div className="border border-neutral-200 bg-white p-3">
-                <div className="text-neutral-500 text-[11px] uppercase tracking-wider">source</div>
-                <div className="mt-1.5 text-neutral-900">starter_local</div>
+                <div className="text-neutral-500 text-[11px] uppercase tracking-wider">근거</div>
+                <div className="mt-1.5 text-neutral-900">앱이 보낸 데이터</div>
               </div>
               <div className="border border-neutral-200 bg-white p-3">
-                <div className="text-neutral-500 text-[11px] uppercase tracking-wider">scope</div>
-                <div className="mt-1.5 text-neutral-900">instance_bucket</div>
+                <div className="text-neutral-500 text-[11px] uppercase tracking-wider">범위</div>
+                <div className="mt-1.5 text-neutral-900">인스턴스별 최근 구간</div>
               </div>
             </div>
           </div>
@@ -236,7 +236,7 @@ export function Landing() {
               <h2 className="text-neutral-900">지금 starter를 연결해 보세요</h2>
               <p className="mt-2 text-neutral-700 max-w-xl text-[14px]">
                 Project를 만들면 starter credential을 1회 발급합니다. yaml 두 블록을 설정하면
-                30초 안에 첫 bucket이 portal로 들어옵니다.
+                30초 안에 첫 수집 데이터가 portal로 들어옵니다.
               </p>
             </div>
             <div className="flex items-center gap-3">

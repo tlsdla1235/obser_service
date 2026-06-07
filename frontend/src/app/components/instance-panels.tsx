@@ -7,11 +7,17 @@ import { useApiResource } from "../lib/use-api-resource";
 import {
   buildInstanceSnapshotTrendPath,
   formatCount,
+  formatDateRange,
   formatNullableRatio,
   formatOptionalDateTime,
   formatRatio,
-  histogramBarWidth,
+  histogramRangeBarWidth,
+  humanizeCaptureReason,
+  humanizeOrderCode,
+  humanizeSourceCode,
+  humanizeStatusCode,
   statusBadgeClassName,
+  toDisplayLatencyBuckets,
   trendPathWithPreset,
   validateInstanceEvidencePath,
   validateInstanceSnapshotTrendPath,
@@ -153,8 +159,8 @@ function InstanceEvidenceView({
       <InstanceHeader
         icon={Server}
         title={target.instanceName}
-        description="Dashboard instance handoff의 evidence link만 사용해 bounded evidence bundle을 불러옵니다."
-        actionLabel="Trend"
+        description="이 인스턴스가 현재 상태 판단에 어떤 근거를 보탰는지 확인합니다."
+        actionLabel="변화 기록"
         actionIcon={History}
         actionDisabled={!evidence?.links.snapshotTrend}
         onAction={() => {
@@ -164,7 +170,7 @@ function InstanceEvidenceView({
         }}
       />
       <div className="p-5 space-y-4 text-[13px]">
-        {loading && <PanelMessage title="Evidence 로딩 중" body="server-provided evidence link를 검증한 뒤 호출하는 중입니다." />}
+        {loading && <PanelMessage title="근거 로딩 중" body="선택한 인스턴스의 상태 판단 근거를 불러오는 중입니다." />}
         {error && <InstanceResourceError error={error} onReload={resource.reload} />}
         {!loading && !error && evidence && (
           <EvidenceReadyView
@@ -193,7 +199,7 @@ function EvidenceReadyView({
       <div className="border border-neutral-900 bg-white p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-[11px] uppercase text-neutral-500">identity</div>
+            <div className="text-[11px] uppercase text-neutral-500">인스턴스</div>
             <div className="mt-1 text-neutral-900">{evidence.instance.instanceName}</div>
             <div className="mt-0.5 text-[12px] text-neutral-500">
               {evidence.application.name} · {evidence.application.environment}
@@ -206,14 +212,14 @@ function EvidenceReadyView({
             disabled={!evidence.links.snapshotTrend}
             onClick={onOpenTrend}
           >
-            <History className="h-3.5 w-3.5" strokeWidth={1.5} /> Trend
+            <History className="h-3.5 w-3.5" strokeWidth={1.5} /> 변화 기록
           </Button>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] md:grid-cols-4">
-          <InfoCell label="generated" value={formatOptionalDateTime(evidence.generatedAt)} />
-          <InfoCell label="first seen" value={formatOptionalDateTime(evidence.instance.firstSeenAt)} />
-          <InfoCell label="last seen" value={formatOptionalDateTime(evidence.instance.lastSeenAt)} />
-          <InfoCell label="trend link" value={evidence.links.snapshotTrend ? "server link 있음" : "server link 없음"} />
+          <InfoCell label="생성 시각" value={formatOptionalDateTime(evidence.generatedAt)} />
+          <InfoCell label="처음 관측" value={formatOptionalDateTime(evidence.instance.firstSeenAt)} />
+          <InfoCell label="마지막 관측" value={formatOptionalDateTime(evidence.instance.lastSeenAt)} />
+          <InfoCell label="변화 기록" value={evidence.links.snapshotTrend ? "확인 가능" : "아직 없음"} />
         </div>
       </div>
       <AxisGrid evidence={evidence} />
@@ -230,25 +236,25 @@ function AxisGrid({ evidence }: { evidence: InstanceEvidenceReadModel }) {
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <div className="border border-neutral-200 bg-white p-3">
-        <SectionLabel icon={Activity}>Metric data axis</SectionLabel>
+        <SectionLabel icon={Activity}>수집 데이터 상태</SectionLabel>
         <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
-          <InfoCell label="source" value={evidence.metricData.statusSource} />
-          <InfoCell label="freshness" value={evidence.metricData.freshnessLabel} />
-          <InfoCell label="sample" value={evidence.metricData.sampleReadiness} />
-          <InfoCell label="reason" value={evidence.metricData.reason ?? "reason 없음"} />
-          <InfoCell label="requests" value={formatCount(evidence.metricData.requestCount)} />
-          <InfoCell label="error rate" value={formatRatio(evidence.metricData.errorRate)} />
+          <InfoCell label="근거" value={humanizeSourceCode(evidence.metricData.statusSource)} />
+          <InfoCell label="데이터 최신성" value={humanizeStatusCode(evidence.metricData.freshnessLabel)} />
+          <InfoCell label="표본 상태" value={humanizeStatusCode(evidence.metricData.sampleReadiness)} />
+          <InfoCell label="설명" value={evidence.metricData.reason ? humanizeStatusCode(evidence.metricData.reason) : "추가 설명 없음"} />
+          <InfoCell label="요청 수" value={formatCount(evidence.metricData.requestCount)} />
+          <InfoCell label="오류율" value={formatRatio(evidence.metricData.errorRate)} />
         </div>
       </div>
       <div className="border border-neutral-200 bg-white p-3">
-        <SectionLabel icon={Gauge}>Starter connection axis</SectionLabel>
+        <SectionLabel icon={Gauge}>앱 연결 상태</SectionLabel>
         <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
-          <InfoCell label="source" value={evidence.starterConnection.statusSource} />
-          <InfoCell label="heartbeat" value={evidence.starterConnection.lastHeartbeatStatus} />
-          <InfoCell label="freshness" value={evidence.starterConnection.freshnessLabel} />
-          <InfoCell label="meaning" value={evidence.starterConnection.connectionMeaning} />
-          <InfoCell label="state impact" value={evidence.starterConnection.stateImpact} />
-          <InfoCell label="last heartbeat" value={formatOptionalDateTime(evidence.starterConnection.lastHeartbeatAt)} />
+          <InfoCell label="근거" value={humanizeSourceCode(evidence.starterConnection.statusSource)} />
+          <InfoCell label="연결 신호" value={humanizeStatusCode(evidence.starterConnection.lastHeartbeatStatus)} />
+          <InfoCell label="신호 최신성" value={humanizeStatusCode(evidence.starterConnection.freshnessLabel)} />
+          <InfoCell label="연결 의미" value={humanizeStatusCode(evidence.starterConnection.connectionMeaning)} />
+          <InfoCell label="상태 영향" value={humanizeStatusCode(evidence.starterConnection.stateImpact)} />
+          <InfoCell label="마지막 연결 확인" value={formatOptionalDateTime(evidence.starterConnection.lastHeartbeatAt)} />
         </div>
       </div>
     </div>
@@ -259,12 +265,12 @@ function TriageContributionPanel({ evidence }: { evidence: InstanceEvidenceReadM
   const contribution = evidence.applicationTriageContribution;
   return (
     <div className="border border-neutral-200 bg-white p-3">
-      <SectionLabel icon={Activity}>Application triage contribution</SectionLabel>
+      <SectionLabel icon={Activity}>전체 상태 판단에 반영된 내용</SectionLabel>
       <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] md:grid-cols-4">
-        <InfoCell label="status" value={contribution.status} />
-        <InfoCell label="contributed" value={contribution.contributed ? "true" : "false"} />
-        <InfoCell label="rules" value={contribution.relatedRuleIds.join(", ") || "related rule 없음"} />
-        <InfoCell label="reason" value={contribution.reason ?? "기여 evidence 없음"} />
+        <InfoCell label="반영 상태" value={humanizeStatusCode(contribution.status)} />
+        <InfoCell label="반영 여부" value={contribution.contributed ? "반영됨" : "반영 안 됨"} />
+        <InfoCell label="판단 기준" value={contribution.relatedRuleIds.join(", ") || "적용된 판단 기준 없음"} />
+        <InfoCell label="설명" value={contribution.reason ? humanizeStatusCode(contribution.reason) : "추가 근거 없음"} />
       </div>
     </div>
   );
@@ -280,27 +286,30 @@ function PercentileSeriesPanel({
   return (
     <div className="border border-neutral-200 bg-white">
       <div className="border-b border-neutral-200 px-3 py-2.5 flex items-center justify-between gap-2">
-        <SectionLabel icon={Gauge}>Starter percentile series</SectionLabel>
+        <SectionLabel icon={Gauge}>최근 응답시간 p95/p99</SectionLabel>
         <StatusBadge className={statusBadgeClassName(evidence.starterPercentiles.status)}>
-          {evidence.starterPercentiles.status}
+          {humanizeStatusCode(evidence.starterPercentiles.status)}
         </StatusBadge>
       </div>
-      <div className="grid grid-cols-2 gap-2 border-b border-neutral-100 p-3 text-[11px] md:grid-cols-4">
-        <InfoCell label="window" value={evidence.starterPercentiles.window} />
-        <InfoCell label="bucket seconds" value={String(evidence.starterPercentiles.bucketDurationSeconds)} />
-        <InfoCell label="max points" value={String(evidence.starterPercentiles.maxPointCount)} />
-        <InfoCell label="aggregate policy" value={evidence.starterPercentiles.aggregatePolicy} />
-      </div>
+      <details className="border-b border-neutral-100 p-3 text-[11px] text-neutral-500">
+        <summary className="cursor-pointer text-neutral-700">기술 세부 정보</summary>
+        <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+          <InfoCell label="조회 범위" value={evidence.starterPercentiles.window} />
+          <InfoCell label="수집 간격" value={`${evidence.starterPercentiles.bucketDurationSeconds}초`} />
+          <InfoCell label="최대 표시 수" value={String(evidence.starterPercentiles.maxPointCount)} />
+          <InfoCell label="집계 방식" value={humanizeStatusCode(evidence.starterPercentiles.aggregatePolicy)} />
+        </div>
+      </details>
       {points.length === 0 ? (
         <div className="p-3 text-[12px] text-neutral-500">
-          {evidence.starterPercentiles.reason ?? "starter percentile series source가 없습니다."}
+          {evidence.starterPercentiles.reason ? humanizeStatusCode(evidence.starterPercentiles.reason) : "최근 응답시간 데이터가 없습니다."}
         </div>
       ) : (
         <table className="w-full text-[12px]">
           <thead>
             <tr className="text-left text-neutral-500">
-              <th className="px-3 py-2">bucket</th>
-              <th className="px-3 py-2">requests</th>
+              <th className="px-3 py-2">측정 구간</th>
+              <th className="px-3 py-2">요청 수</th>
               <th className="px-3 py-2">p95</th>
               <th className="px-3 py-2">p99</th>
             </tr>
@@ -308,7 +317,7 @@ function PercentileSeriesPanel({
           <tbody>
             {points.map((point) => (
               <tr key={`${point.bucketStartUtc}-${point.bucketEndUtc}`} className="border-t border-neutral-100">
-                <td className="px-3 py-2 text-neutral-500">{`${point.bucketStartUtc} -> ${point.bucketEndUtc}`}</td>
+                <td className="px-3 py-2 text-neutral-500">{formatDateRange(point.bucketStartUtc, point.bucketEndUtc)}</td>
                 <td className="px-3 py-2">{formatCount(point.requestCount)}</td>
                 <td className="px-3 py-2">{point.p95Ms} ms</td>
                 <td className="px-3 py-2">{point.p99Ms} ms</td>
@@ -322,30 +331,39 @@ function PercentileSeriesPanel({
 }
 
 function EvidenceHistogramPanel({ histogram }: { histogram: EvidenceHistogramDistribution }) {
+  const buckets = toDisplayLatencyBuckets(histogram.buckets);
   return (
     <div className="border border-neutral-200 bg-white p-3">
       <div className="flex items-center justify-between gap-2">
-        <SectionLabel icon={Activity}>Histogram distribution evidence</SectionLabel>
-        <StatusBadge className={statusBadgeClassName(histogram.status)}>{histogram.status}</StatusBadge>
+        <SectionLabel icon={Activity}>응답시간 분포</SectionLabel>
+        <StatusBadge className={statusBadgeClassName(histogram.status)}>{humanizeStatusCode(histogram.status)}</StatusBadge>
       </div>
       <div className="mt-1 text-[11px] text-neutral-500">
-        {histogram.source} · {histogram.scope} · total {formatCount(histogram.totalCount)} · {histogram.reason ?? "reason 없음"}
+        총 요청 수 {formatCount(histogram.totalCount)}
+        {histogram.reason ? ` · ${humanizeStatusCode(histogram.reason)}` : ""}
       </div>
-      {histogram.buckets.length === 0 ? (
-        <div className="mt-3 text-[12px] text-neutral-500">bucket distribution source가 없습니다.</div>
+      {buckets.length === 0 ? (
+        <div className="mt-3 text-[12px] text-neutral-500">응답시간 구간 데이터가 아직 없습니다.</div>
       ) : (
         <div className="mt-3 space-y-1.5">
-          {histogram.buckets.map((bucket) => (
-            <div key={bucket.leMs} className="flex items-center gap-2 text-[11px]">
-              <span className="w-20 text-neutral-500 tabular-nums">≤ {bucket.leMs} ms</span>
+          {buckets.map((bucket) => (
+            <div key={bucket.key} className="flex items-center gap-2 text-[11px]">
+              <span className="w-44 text-neutral-500 tabular-nums">{bucket.label}</span>
               <div className="h-3 flex-1 border border-neutral-200 bg-neutral-100">
-                <div className="h-full bg-neutral-800" style={{ width: histogramBarWidth(bucket.count, { status: histogram.status, reason: histogram.reason, totalCount: histogram.totalCount, buckets: histogram.buckets }) }} />
+                <div className="h-full bg-neutral-800" style={{ width: histogramRangeBarWidth(bucket.count, buckets) }} />
               </div>
               <span className="w-16 text-right text-neutral-700 tabular-nums">{formatCount(bucket.count)}</span>
             </div>
           ))}
         </div>
       )}
+      <details className="mt-3 text-[11px] text-neutral-500">
+        <summary className="cursor-pointer text-neutral-700">기술 세부 정보</summary>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <InfoCell label="근거" value={humanizeSourceCode(histogram.source)} />
+          <InfoCell label="범위" value={humanizeStatusCode(histogram.scope)} />
+        </div>
+      </details>
     </div>
   );
 }
@@ -353,15 +371,15 @@ function EvidenceHistogramPanel({ histogram }: { histogram: EvidenceHistogramDis
 function ResourceHintsPanel({ hints }: { hints: EvidenceResourceHints }) {
   return (
     <div className="border border-neutral-200 bg-white p-3">
-      <SectionLabel icon={Activity}>Resource hints</SectionLabel>
+      <SectionLabel icon={Activity}>리소스 참고 신호</SectionLabel>
       <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] md:grid-cols-4">
-        <InfoCell label="source" value={hints.source} />
-        <InfoCell label="status" value={hints.status} />
-        <InfoCell label="reason" value={hints.reason ?? "reason 없음"} />
-        <InfoCell label="bucket end" value={formatOptionalDateTime(hints.bucketEndUtc)} />
-        <InfoCell label="cpu" value={formatNullableRatio(hints.cpuUsageRatio)} />
-        <InfoCell label="heap" value={formatNullableRatio(hints.heapUsedRatio)} />
-        <InfoCell label="datasource" value={formatNullableRatio(hints.datasourcePoolUsageRatio)} />
+        <InfoCell label="근거" value={humanizeSourceCode(hints.source)} />
+        <InfoCell label="상태" value={humanizeStatusCode(hints.status)} />
+        <InfoCell label="설명" value={hints.reason ? humanizeStatusCode(hints.reason) : "추가 설명 없음"} />
+        <InfoCell label="마지막 측정" value={formatOptionalDateTime(hints.bucketEndUtc)} />
+        <InfoCell label="CPU" value={formatNullableRatio(hints.cpuUsageRatio)} />
+        <InfoCell label="Heap" value={formatNullableRatio(hints.heapUsedRatio)} />
+        <InfoCell label="DB 연결 풀" value={formatNullableRatio(hints.datasourcePoolUsageRatio)} />
       </div>
     </div>
   );
@@ -377,17 +395,21 @@ function EndpointEvidencePanel({
   return (
     <div className="border border-neutral-200 bg-white">
       <div className="border-b border-neutral-200 px-3 py-2.5 flex items-center justify-between gap-2">
-        <SectionLabel icon={Server}>Endpoint evidence</SectionLabel>
+        <SectionLabel icon={Server}>엔드포인트별 근거</SectionLabel>
         <StatusBadge className={statusBadgeClassName(evidence.endpointEvidence.status)}>
-          {evidence.endpointEvidence.status}
+          {humanizeStatusCode(evidence.endpointEvidence.status)}
         </StatusBadge>
       </div>
-      <div className="border-b border-neutral-100 p-3 text-[11px] text-neutral-500">
-        {evidence.endpointEvidence.selectionPolicy} · {evidence.endpointEvidence.displayOrderingPolicy}
-      </div>
+      <details className="border-b border-neutral-100 p-3 text-[11px] text-neutral-500">
+        <summary className="cursor-pointer text-neutral-700">기술 세부 정보</summary>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <InfoCell label="선택 방식" value={humanizeStatusCode(evidence.endpointEvidence.selectionPolicy)} />
+          <InfoCell label="정렬 방식" value={humanizeStatusCode(evidence.endpointEvidence.displayOrderingPolicy)} />
+        </div>
+      </details>
       {items.length === 0 ? (
         <div className="p-3 text-[12px] text-neutral-500">
-          {evidence.endpointEvidence.reason ?? "selected instance endpoint evidence source가 없습니다."}
+          {evidence.endpointEvidence.reason ? humanizeStatusCode(evidence.endpointEvidence.reason) : "이 인스턴스에서 확인할 엔드포인트 근거가 없습니다."}
         </div>
       ) : (
         <ul>
@@ -407,20 +429,20 @@ function EndpointEvidenceRow({ item }: { item: EvidenceEndpointEvidenceItem }) {
         <div className="min-w-0">
           <div className="truncate text-neutral-900">{item.endpointKey}</div>
           <div className="mt-0.5 text-[11px] text-neutral-500">
-            local order {item.localDisplayOrder} · app rank {item.relatedApplicationPriorityRank ?? "참조 없음"}
+            표시 순서 {item.localDisplayOrder} · 앱 우선순위 {item.relatedApplicationPriorityRank ?? "참조 없음"}
           </div>
         </div>
-        <StatusBadge className={statusBadgeClassName(item.status)}>{item.presenceOnSelectedInstance}</StatusBadge>
+        <StatusBadge className={statusBadgeClassName(item.status)}>{humanizeStatusCode(item.presenceOnSelectedInstance)}</StatusBadge>
       </div>
       <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500 md:grid-cols-4">
-        <InfoCell label="instance requests" value={formatCount(item.instanceRequestCount)} />
-        <InfoCell label="instance errors" value={formatCount(item.instanceErrorCount)} />
-        <InfoCell label="instance error rate" value={formatRatio(item.instanceErrorRate)} />
-        <InfoCell label="bucket source" value={item.bucketDistributionSource} />
-        <InfoCell label="app requests" value={formatOptionalCount(item.applicationEndpointRequestCount)} />
-        <InfoCell label="app error rate" value={formatNullableRatio(item.applicationEndpointErrorRate)} />
-        <InfoCell label="request share" value={formatNullableRatio(item.instanceRequestShare)} />
-        <InfoCell label="reason" value={item.reason ?? "reason 없음"} />
+        <InfoCell label="인스턴스 요청" value={formatCount(item.instanceRequestCount)} />
+        <InfoCell label="인스턴스 오류" value={formatCount(item.instanceErrorCount)} />
+        <InfoCell label="인스턴스 오류율" value={formatRatio(item.instanceErrorRate)} />
+        <InfoCell label="분포 기준" value={humanizeSourceCode(item.bucketDistributionSource)} />
+        <InfoCell label="앱 전체 요청" value={formatOptionalCount(item.applicationEndpointRequestCount)} />
+        <InfoCell label="앱 전체 오류율" value={formatNullableRatio(item.applicationEndpointErrorRate)} />
+        <InfoCell label="요청 비중" value={formatNullableRatio(item.instanceRequestShare)} />
+        <InfoCell label="설명" value={item.reason ? humanizeStatusCode(item.reason) : "추가 설명 없음"} />
       </div>
     </li>
   );
@@ -481,8 +503,8 @@ function InstanceTrendView({
       <InstanceHeader
         icon={History}
         title={target.instanceName}
-        description="Stored dashboard snapshot projection입니다. 현재 instance health나 recovery proof로 재해석하지 않습니다."
-        actionLabel="Evidence"
+        description="과거에 저장된 상태 기록입니다. 현재 상태와 다를 수 있습니다."
+        actionLabel="현재 근거"
         actionIcon={ArrowLeft}
         onAction={onSwitch}
       />
@@ -500,11 +522,11 @@ function InstanceTrendView({
                 onOpenTrend({ ...target, snapshotTrendLink: trendLinkSource });
               }}
             >
-              {candidate}
+              {trendPresetDisplayText(candidate)}
             </Button>
           ))}
         </div>
-        {loading && <PanelMessage title="Trend 로딩 중" body={`${preset} fixed query를 호출하는 중입니다.`} />}
+        {loading && <PanelMessage title="변화 기록 로딩 중" body={`${trendPresetDisplayText(preset)} 범위의 저장된 상태 기록을 불러오는 중입니다.`} />}
         {error && <InstanceResourceError error={error} onReload={resource.reload} />}
         {!loading && !error && trend && (
           <TrendReadyView
@@ -533,32 +555,42 @@ function TrendReadyView({
   target: InstancePanelTarget;
   trend: InstanceSnapshotTrendReadModel;
 }) {
+  const sortedPoints = useMemo(
+    () => [...trend.points].sort((a, b) => compareTimestampDesc(a.capturedAt, b.capturedAt)),
+    [trend.points],
+  );
+
   return (
     <>
       <div className="border border-neutral-200 bg-white p-3">
         <div className="flex items-center justify-between gap-3">
-          <SectionLabel icon={History}>Snapshot trend</SectionLabel>
-          <StatusBadge>{preset}</StatusBadge>
+          <SectionLabel icon={History}>저장된 상태 기록</SectionLabel>
+          <StatusBadge>{trendPresetDisplayText(preset)}</StatusBadge>
         </div>
         <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] md:grid-cols-4">
-          <InfoCell label="source" value={trend.source} />
-          <InfoCell label="order" value={trend.horizon.order} />
-          <InfoCell label="default since" value={trend.horizon.defaultSince} />
-          <InfoCell label="max limit" value={String(trend.horizon.maxLimit)} />
-          <InfoCell label="since" value={formatOptionalDateTime(trend.horizon.since)} />
-          <InfoCell label="until" value={formatOptionalDateTime(trend.horizon.until)} />
-          <InfoCell label="requested" value={trend.horizon.requestedSince} />
-          <InfoCell label="points" value={formatCount(trend.points.length)} />
+          <InfoCell label="조회 시작" value={formatOptionalDateTime(trend.horizon.since)} />
+          <InfoCell label="조회 끝" value={formatOptionalDateTime(trend.horizon.until)} />
+          <InfoCell label="표시 순서" value={humanizeOrderCode(trend.horizon.order)} />
+          <InfoCell label="기록 수" value={formatCount(sortedPoints.length)} />
         </div>
+        <details className="mt-2 text-[11px] text-neutral-500">
+          <summary className="cursor-pointer text-neutral-700">기술 세부 정보</summary>
+          <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+            <InfoCell label="근거" value={humanizeSourceCode(trend.source)} />
+            <InfoCell label="기본 범위" value={trend.horizon.defaultSince} />
+            <InfoCell label="최대 범위" value={trend.horizon.maxSince} />
+            <InfoCell label="최대 표시 수" value={String(trend.horizon.maxLimit)} />
+          </div>
+        </details>
       </div>
-      {trend.points.length === 0 ? (
+      {sortedPoints.length === 0 ? (
         <PanelMessage
-          title="Trend point 없음"
-          body="snapshot source absence, retention gap, target instance absence일 수 있습니다. 정상/복구 완료로 표현하지 않습니다."
+          title="저장된 기록 없음"
+          body="이 범위에 표시할 인스턴스 상태 기록이 없습니다."
         />
       ) : (
         <ul className="space-y-3">
-          {trend.points.map((point) => (
+          {sortedPoints.map((point) => (
             <TrendPointCard
               key={`${point.snapshotId}-${point.capturedAt}`}
               onSelectDetail={onSelectDetail}
@@ -588,9 +620,9 @@ function TrendPointCard({
     <li className="border border-neutral-200 bg-white p-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-neutral-900">{point.capturedAt}</div>
+          <div className="text-neutral-900">{formatOptionalDateTime(point.capturedAt)}</div>
           <div className="mt-0.5 text-[11px] text-neutral-500">
-            stored application state {point.storedApplicationStateCode} · capture reason {point.captureReason ?? "opaque reason 없음"}
+            저장 당시 상태: {humanizeStatusCode(point.storedApplicationStateCode)} · 저장 이유: {humanizeCaptureReason(point.captureReason)}
           </div>
         </div>
         <Button
@@ -599,22 +631,22 @@ function TrendPointCard({
           className="gap-2 border-neutral-300"
           onClick={() => onSelectDetail({ snapshotId: point.snapshotId })}
         >
-          <History className="h-3.5 w-3.5" strokeWidth={1.5} /> Detail
+          <History className="h-3.5 w-3.5" strokeWidth={1.5} /> 상세 보기
         </Button>
       </div>
       <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] md:grid-cols-4">
-        <InfoCell label="metric source" value={point.metricData.statusSource} />
-        <InfoCell label="metric freshness" value={point.metricData.freshnessLabel} />
-        <InfoCell label="last bucket" value={formatOptionalDateTime(point.metricData.lastAcceptedBucketAt)} />
-        <InfoCell label="starter meaning" value={point.starterConnection.connectionMeaning} />
-        <InfoCell label="starter impact" value={point.starterConnection.stateImpact} />
-        <InfoCell label="triage contributed" value={point.applicationTriageContribution.contributed ? "true" : "false"} />
-        <InfoCell label="resource" value={point.resourceHints.status} />
-        <InfoCell label="endpoint refs" value={formatCount(point.endpointEvidenceRefs.length)} />
+        <InfoCell label="수집 근거" value={humanizeSourceCode(point.metricData.statusSource)} />
+        <InfoCell label="데이터 상태" value={humanizeStatusCode(point.metricData.freshnessLabel)} />
+        <InfoCell label="마지막 수집" value={formatOptionalDateTime(point.metricData.lastAcceptedBucketAt)} />
+        <InfoCell label="앱 연결" value={humanizeStatusCode(point.starterConnection.connectionMeaning)} />
+        <InfoCell label="연결 영향" value={humanizeStatusCode(point.starterConnection.stateImpact)} />
+        <InfoCell label="상태 판단 반영" value={point.applicationTriageContribution.contributed ? "반영됨" : "반영 안 됨"} />
+        <InfoCell label="리소스" value={humanizeStatusCode(point.resourceHints.status)} />
+        <InfoCell label="상세 근거" value={formatCount(point.endpointEvidenceRefs.length)} />
       </div>
       {point.starterPercentilePoint && (
         <div className="mt-2 border border-neutral-100 bg-neutral-50 p-2 text-[11px] text-neutral-600">
-          stored starter percentile point · {point.starterPercentilePoint.source} · {point.starterPercentilePoint.scope} ·
+          저장된 응답시간 · {formatDateRange(point.starterPercentilePoint.bucketStartUtc, point.starterPercentilePoint.bucketEndUtc)} ·
           {" "}p95 {point.starterPercentilePoint.p95Ms}ms · p99 {point.starterPercentilePoint.p99Ms}ms
         </div>
       )}
@@ -643,7 +675,7 @@ function EndpointRefButton({
       className="block w-full border border-neutral-200 px-2 py-1 text-left text-[11px] text-neutral-600 hover:bg-neutral-50"
       onClick={() => onSelectDetail({ activeAnchor: refItem.snapshotDetailAnchor, snapshotId })}
     >
-      {refItem.endpointKey} · anchor {refItem.snapshotDetailAnchor ?? "없음"} · app rank {refItem.relatedApplicationPriorityRank ?? "참조 없음"}
+      {refItem.endpointKey} · 상세 근거 {refItem.snapshotDetailAnchor ?? "없음"} · 앱 우선순위 {refItem.relatedApplicationPriorityRank ?? "참조 없음"}
     </button>
   );
 }
@@ -718,6 +750,23 @@ function InfoCell({ label, value }: { label: string; value: string }) {
   );
 }
 
+function trendPresetDisplayText(preset: TrendPreset): string {
+  switch (preset) {
+    case "7d":
+      return "7일";
+    case "14d":
+      return "14일";
+    default:
+      return preset;
+  }
+}
+
+function compareTimestampDesc(a: string | null | undefined, b: string | null | undefined): number {
+  const left = a ? Date.parse(a) : Number.NEGATIVE_INFINITY;
+  const right = b ? Date.parse(b) : Number.NEGATIVE_INFINITY;
+  return (Number.isFinite(right) ? right : Number.NEGATIVE_INFINITY) - (Number.isFinite(left) ? left : Number.NEGATIVE_INFINITY);
+}
+
 function validateEvidenceContext(model: InstanceEvidenceReadModel, target: InstancePanelTarget) {
   if (
     model.application.projectId !== target.projectId ||
@@ -753,27 +802,27 @@ function instanceResourceErrorCopy(error: Error): { title: string; body: string 
   if (error instanceof ApiRequestError && error.status === 404) {
     return {
       title: "Instance scope 확인 필요",
-      body: "membership mismatch, scope mismatch, missing resource일 수 있습니다. instance down/deleted 또는 host down으로 단정하지 않습니다.",
+      body: "선택한 인스턴스의 근거를 찾지 못했습니다. 권한이나 보관 기간을 확인해 주세요.",
     };
   }
   if (error instanceof ApiRequestError && error.status === 400) {
     return {
       title: "조회 조건 확인 필요",
-      body: "Story 10.4는 trend 7d/14d fixed query만 호출합니다.",
+      body: "지원하는 조회 범위는 7일과 14일입니다.",
     };
   }
   if (error instanceof ApiRequestError && !error.status) {
     return {
       title: "Link 검증 실패",
-      body: "현재 선택한 Project/Application/Instance context와 server-provided link가 일치하지 않아 API call을 만들지 않았습니다.",
+      body: "현재 선택한 프로젝트, 앱, 인스턴스와 연결 정보가 맞지 않습니다.",
     };
   }
   return {
-    title: "Instance resource 로드 실패",
-    body: "resource를 불러오지 못했습니다. backend detail, token, provider payload, raw secret은 표시하지 않습니다.",
+    title: "인스턴스 정보 로드 실패",
+    body: "선택한 인스턴스 정보를 불러오지 못했습니다.",
   };
 }
 
 function formatOptionalCount(value: number | null): string {
-  return value === null || !Number.isFinite(value) ? "source 없음" : formatCount(value);
+  return value === null || !Number.isFinite(value) ? "확인할 수 없음" : formatCount(value);
 }

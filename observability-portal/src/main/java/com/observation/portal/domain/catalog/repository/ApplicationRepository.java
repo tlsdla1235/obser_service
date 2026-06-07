@@ -33,25 +33,39 @@ public interface ApplicationRepository extends JpaRepository<ApplicationEntity, 
     List<ApplicationEntity> findByProjectIdOrderByNameAscEnvironmentAsc(UUID projectId);
 
     /**
-     * UTC hourly scheduled snapshot 후보 application을 accepted bucket axis와 snapshot cutoff로만 조회한다.
+     * UTC hourly scheduled snapshot 후보 application을 accepted bucket과 최근 starter heartbeat 조건으로 조회한다.
      *
-     * <p>heartbeat, queue backlog, worker lag는 eligibility source로 사용하지 않으며, repository는 snapshot/read model/state
-     * 판단을 계산하지 않는다.</p>
+     * <p>heartbeat는 snapshot 저장 가능 여부만 제한하며, read model/state 계산이나 metric freshness source로 합성하지 않는다.</p>
      */
-    @Query("select distinct application "
-            + "from ApplicationEntity application "
-            + "where application.status = 'active' "
-            + "and exists ("
-            + "  select 1 "
-            + "  from AcceptedMetricBucketEntity bucket "
-            + "  where bucket.applicationId = application.id "
-            + "  and bucket.bucketEndUtc >= :retentionCutoffUtc"
-            + "  and bucket.bucketEndUtc <= :targetWindowEndUtc"
-            + "  and bucket.acceptedAt <= :snapshotCutoffAt"
-            + ") "
-            + "order by application.projectId asc, application.id asc")
-    List<ApplicationEntity> findActiveApplicationsWithAcceptedBucketSince(
+    @Query(value = """
+            select distinct app.*
+            from applications app
+            where app.status = 'active'
+              and exists (
+                select 1
+                from accepted_metric_buckets bucket
+                where bucket.application_id = app.id
+                  and bucket.bucket_end_utc >= :retentionCutoffUtc
+                  and bucket.bucket_end_utc <= :targetWindowEndUtc
+                  and bucket.accepted_at <= :snapshotCutoffAt
+              )
+              and exists (
+                select 1
+                from starter_heartbeat_telemetry heartbeat
+                where heartbeat.project_id = app.project_id
+                  and heartbeat.application_name = app.name
+                  and heartbeat.environment = app.environment
+                  and heartbeat.last_received_at_utc <= cast(:heartbeatFreshnessReferenceUtc as timestamptz)
+                  and heartbeat.last_received_at_utc >= (
+                    cast(:heartbeatFreshnessReferenceUtc as timestamptz)
+                      - (greatest(90, heartbeat.interval_seconds * 3) * interval '1 second')
+                  )
+              )
+            order by app.project_id asc, app.id asc
+            """, nativeQuery = true)
+    List<ApplicationEntity> findActiveApplicationsEligibleForScheduledSnapshot(
             @Param("retentionCutoffUtc") OffsetDateTime retentionCutoffUtc,
             @Param("targetWindowEndUtc") OffsetDateTime targetWindowEndUtc,
-            @Param("snapshotCutoffAt") OffsetDateTime snapshotCutoffAt);
+            @Param("snapshotCutoffAt") OffsetDateTime snapshotCutoffAt,
+            @Param("heartbeatFreshnessReferenceUtc") OffsetDateTime heartbeatFreshnessReferenceUtc);
 }

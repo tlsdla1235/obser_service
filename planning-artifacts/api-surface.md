@@ -235,7 +235,7 @@ Response 후보:
 
 Boundary:
 
-- heartbeat 성공은 accepted bucket, host business health, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 생성하거나 암시하지 않는다.
+- heartbeat 성공만으로 accepted bucket, host business health, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 생성하거나 암시하지 않는다. 최근 heartbeat는 snapshot 저장 eligibility gate로만 사용할 수 있다.
 - heartbeat 미수신은 host application down 판정이 아니다.
 - heartbeat는 application/instance catalog upsert source가 아니다. 첫 accepted bucket이 catalog upsert source다.
 - heartbeat telemetry를 저장하더라도 `lastHeartbeatAt`, `lastHeartbeatStatus`, failure category 같은 lightweight connection field로 제한한다.

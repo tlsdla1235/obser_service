@@ -306,7 +306,7 @@ portal 구현자로서, Application Dashboard read model이 앱 단위 triage ca
 - Controller는 lifecycle state, starter connection diagnosis, zeroInsight, recovery, rule, p95/p99, endpoint priority를 재계산하지 않는다.
 - Repository는 lifecycle state, starter connection diagnosis, zeroInsight, recovery, rule, confidence, p95/p99, endpoint priority를 계산하지 않는다.
 - heartbeat를 accepted bucket freshness, host application health, degraded 판단, recovery source로 합치지 않는다.
-- heartbeat 성공은 accepted bucket, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 만들지 않는다.
+- heartbeat 성공만으로 accepted bucket, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 만들지 않는다. 최근 heartbeat는 snapshot 저장 eligibility gate로만 사용할 수 있다.
 - accepted bucket은 metric data freshness/state/read-model source-of-truth다.
 - latest accepted bucket `endUtc`는 freshness source일 뿐 dashboard current window end가 아니다.
 - recovery previous state 후보는 accepted bucket gap 기반 lightweight context이며, 현재 bucket 하나만으로 만들지 않는다.

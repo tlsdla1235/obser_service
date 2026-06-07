@@ -243,7 +243,7 @@ UI는 아래를 재계산하지 않는다.
 ### 7.4 Heartbeat Boundary
 
 - heartbeat는 `POST /api/ingest/v1/heartbeat` control-plane signal이다.
-- heartbeat 성공은 accepted bucket, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 생성하지 않는다.
+- heartbeat 성공만으로 accepted bucket, dashboard snapshot, operational event, p95/p99, rule/read-model calculation을 생성하지 않는다. 최근 heartbeat는 새 scheduled/fallback snapshot 저장 eligibility gate로만 사용할 수 있다.
 - heartbeat 미수신은 host application down 확정이 아니다.
 - heartbeat와 accepted bucket freshness는 같은 화면에 보여줄 수 있지만 같은 상태축으로 합치지 않는다.
 

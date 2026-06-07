@@ -42,7 +42,7 @@ alignmentAuthority: latest-clarification-wins
 - 권장 endpoint 후보는 `POST /api/ingest/v1/heartbeat`다.
 - heartbeat는 starter가 일정 interval로 portal 도달성, project key 유효성, `application/environment/instance` metadata shape, starter liveness를 알리는 control-plane 신호다.
 - heartbeat는 gossip protocol이 아니며 peer-to-peer membership 전파를 하지 않는다.
-- heartbeat 성공은 accepted bucket, host application health, dashboard snapshot, operational event, state/read-model calculation을 생성하거나 암시하지 않는다.
+- heartbeat 성공만으로 accepted bucket, host application health, dashboard snapshot, operational event, state/read-model calculation을 생성하거나 암시하지 않는다. 최근 heartbeat는 snapshot 저장 eligibility gate로만 사용할 수 있다.
 - heartbeat 미수신도 host application down을 의미하지 않는다. starter connection 상태와 accepted bucket 기반 application operational state는 별도로 판단한다.
 - heartbeat는 별도 lightweight telemetry로 `lastHeartbeatAt`, `lastHeartbeatStatus`, failure category를 저장할 수 있지만, application operational state와 freshness source-of-truth는 계속 accepted bucket이다.
 - UI가 heartbeat를 표시할 경우 “starter heartbeat/연결 상태”와 “수집 bucket freshness/application state”를 분리해서 표현한다.

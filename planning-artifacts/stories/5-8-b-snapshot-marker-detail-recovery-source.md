@@ -98,7 +98,7 @@ portal 구현자로서, 저장된 dashboard snapshot을 detail API와 marker API
 - raw snapshot explorer, raw bucket explorer, endpoint timeseries 제공
 - endpoint p95/p99 계산, endpoint percentile rollup, endpoint p99 alert 기준
 - UI-side lifecycle state/rule/p95/p99/endpoint priority/event 계산
-- heartbeat를 accepted bucket freshness, host application health, dashboard snapshot, recovery source, operational event source로 합성
+- heartbeat를 accepted bucket freshness, host application health, dashboard read model/source, recovery source, operational event source로 합성. 최근 heartbeat가 5.8-a snapshot 저장 gate로 쓰였더라도 5.8-b read source로 재해석하지 않는다.
 
 ## Acceptance Criteria
 
