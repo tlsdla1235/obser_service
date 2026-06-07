@@ -8,6 +8,12 @@ import {
   formatCount,
   formatNullableRatio,
   formatOptionalDateTime,
+  humanizeAnchorStatus,
+  humanizeCaptureReason,
+  humanizeSourceCode,
+  humanizeStatusCode,
+  severityBadgeClassName,
+  severityDisplayText,
   snapshotIdFromDetailPath,
   statusBadgeClassName,
   validateSnapshotDetailPath,
@@ -90,18 +96,18 @@ export function SnapshotDetailSurface({
   if (!target) {
     return (
       <div className="border border-neutral-200 bg-white p-3 text-[12px] text-neutral-500">
-        event, marker, trend point에서 snapshot detail을 선택하면 저장된 read model projection을 불러옵니다.
+        상태 변화 기록이나 저장된 스냅샷을 선택하면 당시의 상세 근거를 불러옵니다.
       </div>
     );
   }
   if (loading) {
-    return <SnapshotDetailMessage title="Snapshot detail 로딩 중" body="저장된 dashboard snapshot projection을 불러오는 중입니다." compact={compact} />;
+    return <SnapshotDetailMessage title="스냅샷 상세 로딩 중" body="저장된 상태 기록의 상세 근거를 불러오는 중입니다." compact={compact} />;
   }
   if (error) {
     return <SnapshotDetailError error={error} onReload={resource.reload} compact={compact} />;
   }
   if (!detail) {
-    return <SnapshotDetailMessage title="Snapshot detail 선택 대기" body="선택한 snapshot detail을 아직 불러오지 않았습니다." compact={compact} />;
+    return <SnapshotDetailMessage title="스냅샷 상세 선택 대기" body="선택한 스냅샷 상세를 아직 불러오지 않았습니다." compact={compact} />;
   }
 
   const activeAnchor = target.activeAnchor ?? null;
@@ -115,39 +121,43 @@ export function SnapshotDetailSurface({
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 text-[11px] uppercase text-neutral-500">
             <FileSearch className="h-3.5 w-3.5" strokeWidth={1.5} />
-            Snapshot detail
+            스냅샷 상세
           </div>
-          <StatusBadge className={statusBadgeClassName(detail.source)}>{detail.source}</StatusBadge>
+          <StatusBadge className={statusBadgeClassName(detail.source)}>{humanizeSourceCode(detail.source)}</StatusBadge>
         </div>
-        <div className="mt-1 break-all text-[11px] text-neutral-500">{detail.links.self}</div>
       </div>
       <div className="grid grid-cols-2 gap-2 border-b border-neutral-100 p-3 text-[11px] md:grid-cols-4">
-        <InfoCell label="snapshot" value={detail.snapshot.snapshotId} />
-        <InfoCell label="captured" value={formatOptionalDateTime(detail.snapshot.capturedAt)} />
-        <InfoCell label="stored state" value={detail.snapshot.storedApplicationStateCode} />
-        <InfoCell label="capture reason" value={detail.snapshot.captureReason ?? "opaque reason 없음"} />
-        <InfoCell label="semantics" value={detail.readSemantics.mode} />
-        <InfoCell label="recalculated" value={String(detail.readSemantics.currentStateRecalculated)} />
-        <InfoCell label="live joins" value={formatCount(detail.readSemantics.liveSourcesJoined.length)} />
-        <InfoCell label="raw JSON exposed" value={String(detail.readSemantics.rawReadModelJsonExposed)} />
+        <InfoCell label="스냅샷 ID" value={detail.snapshot.snapshotId} />
+        <InfoCell label="저장 시각" value={formatOptionalDateTime(detail.snapshot.capturedAt)} />
+        <InfoCell label="저장 당시 상태" value={humanizeStatusCode(detail.snapshot.storedApplicationStateCode)} />
+        <InfoCell label="저장 이유" value={humanizeCaptureReason(detail.snapshot.captureReason)} />
+        <InfoCell label="이전 상태" value={humanizeStatusCode(detail.previousState.stateCode)} />
+        <InfoCell label="마지막 정상 시각" value={formatOptionalDateTime(detail.lastHealthyAt.value)} />
+        <InfoCell label="주요 판단 기준" value={detail.snapshot.primaryRuleId ?? "적용된 판단 기준 없음"} />
+        <InfoCell label="주요 엔드포인트" value={detail.snapshot.primaryEndpointKey ?? "해당 엔드포인트 없음"} />
       </div>
       {detail.recoveryMarker && (
         <Alert className="m-3 border-amber-300">
           <AlertCircle className="h-4 w-4" strokeWidth={1.5} />
-          <AlertTitle>{detail.recoveryMarker.title}</AlertTitle>
+          <AlertTitle className="flex items-center gap-2">
+            {detail.recoveryMarker.title}
+            <StatusBadge className={severityBadgeClassName(detail.recoveryMarker.severity)}>
+              {severityDisplayText(detail.recoveryMarker.severity)}
+            </StatusBadge>
+          </AlertTitle>
           <AlertDescription>{detail.recoveryMarker.summary} {detail.recoveryMarker.recommendedAction}</AlertDescription>
         </Alert>
       )}
       {activeAnchor && (
         <div className="mx-3 mt-3 border border-neutral-200 bg-neutral-50 p-2 text-[11px] text-neutral-600">
-          anchor {activeAnchor}: {anchorExists ? "resolved" : "missing"}
+          상세 근거 {activeAnchor}: {humanizeAnchorStatus(anchorExists ? "resolved" : "missing")}
         </div>
       )}
       <div className="p-3">
-        <div className="text-[11px] uppercase text-neutral-500">Endpoint evidence</div>
+        <div className="text-[11px] uppercase text-neutral-500">엔드포인트 근거</div>
         {detail.snapshotEndpointEvidence.items.length === 0 ? (
           <div className="mt-2 text-[12px] text-neutral-500">
-            bounded endpoint evidence가 없습니다. source absence로만 표시합니다.
+            이 스냅샷에 연결된 엔드포인트 근거가 없습니다.
           </div>
         ) : (
           <ul className="mt-2 space-y-2">
@@ -159,16 +169,16 @@ export function SnapshotDetailSurface({
                     <div className="min-w-0">
                       <div className="truncate text-neutral-900">{item.endpointKey}</div>
                       <div className="mt-0.5 text-[11px] text-neutral-500">
-                        {item.anchorId} · rank {item.rank ?? "source 없음"} · {item.reason ?? "reason 없음"}
+                        상세 근거 {item.anchorId} · 우선순위 {item.rank ?? "참조 없음"} · {item.reason ? humanizeStatusCode(item.reason) : "추가 설명 없음"}
                       </div>
                     </div>
-                    <StatusBadge>{active ? "active" : "stored"}</StatusBadge>
+                    <StatusBadge>{active ? "선택됨" : "저장됨"}</StatusBadge>
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500">
-                    <InfoCell label="requests" value={item.requestCount === null ? "source 없음" : formatCount(item.requestCount)} />
-                    <InfoCell label="error rate" value={formatNullableRatio(item.errorRate)} />
-                    <InfoCell label="confidence" value={formatNullableRatio(item.confidence)} />
-                    <InfoCell label="bucket source" value={item.bucketDistributionSource ?? "source 없음"} />
+                    <InfoCell label="요청 수" value={item.requestCount === null ? "확인할 수 없음" : formatCount(item.requestCount)} />
+                    <InfoCell label="오류율" value={formatNullableRatio(item.errorRate)} />
+                    <InfoCell label="신뢰도" value={formatNullableRatio(item.confidence)} />
+                    <InfoCell label="분포 기준" value={humanizeSourceCode(item.bucketDistributionSource)} />
                   </div>
                 </li>
               );
@@ -177,11 +187,24 @@ export function SnapshotDetailSurface({
         )}
       </div>
       <div className="border-t border-neutral-100 p-3">
-        <div className="text-[11px] uppercase text-neutral-500">Instance summary refs</div>
+        <div className="text-[11px] uppercase text-neutral-500">인스턴스 요약</div>
         <div className="mt-1 text-[12px] text-neutral-600">
-          {formatCount(detail.instanceSummary.items.length)} stored instance summary item · {detail.instanceSummary.source}
+          저장 당시 인스턴스 {formatCount(detail.instanceSummary.items.length)}개
         </div>
       </div>
+      <details className="border-t border-neutral-100 p-3 text-[11px] text-neutral-500">
+        <summary className="cursor-pointer text-neutral-700">기술 세부 정보</summary>
+        <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+          <InfoCell label="상세 링크" value={detail.links.self} />
+          <InfoCell label="읽기 방식" value={humanizeStatusCode(detail.readSemantics.mode)} />
+          <InfoCell label="현재 상태 재계산" value={detail.readSemantics.currentStateRecalculated ? "예" : "아니오"} />
+          <InfoCell label="실시간 데이터 결합" value={formatCount(detail.readSemantics.liveSourcesJoined.length)} />
+          <InfoCell label="원본 데이터 노출" value={detail.readSemantics.rawReadModelJsonExposed ? "예" : "아니오"} />
+          <InfoCell label="이전 상태 근거" value={humanizeSourceCode(detail.previousState.source)} />
+          <InfoCell label="마지막 정상 근거" value={humanizeSourceCode(detail.lastHealthyAt.source)} />
+          <InfoCell label="인스턴스 요약 근거" value={humanizeSourceCode(detail.instanceSummary.source)} />
+        </div>
+      </details>
     </div>
   );
 }
@@ -236,19 +259,19 @@ function snapshotDetailErrorCopy(error: Error): { title: string; body: string } 
   }
   if (error instanceof ApiRequestError && error.status === 404) {
     return {
-      title: "Snapshot detail 없음",
-      body: "저장된 detail이 없거나 retention에서 사라졌을 수 있습니다. current dashboard fallback은 만들지 않습니다.",
+      title: "스냅샷 상세 없음",
+      body: "저장된 상세 기록이 없거나 보관 기간이 지났을 수 있습니다.",
     };
   }
   if (error instanceof ApiRequestError && error.status === 400) {
     return {
-      title: "Snapshot id 확인 필요",
-      body: "snapshot marker나 trend point에서 받은 bounded id/link만 사용할 수 있습니다.",
+      title: "스냅샷 ID 확인 필요",
+      body: "상태 변화 기록이나 저장된 스냅샷에서 선택한 항목만 상세로 열 수 있습니다.",
     };
   }
   return {
-    title: "Snapshot detail 로드 실패",
-    body: "저장된 detail을 불러오지 못했습니다. backend detail, token, raw payload는 표시하지 않습니다.",
+    title: "스냅샷 상세 로드 실패",
+    body: "저장된 상세 기록을 불러오지 못했습니다.",
   };
 }
 
