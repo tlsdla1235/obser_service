@@ -6,6 +6,8 @@ date: 2026-06-07
 source: BMAD party mode discussion
 ---
 
+> Reference-only note: 2026-06-08 기준 MVP dashboard/snapshot 관계와 구현 우선순위는 `planning-artifacts/dashboard-snapshot-mvp-source-of-truth.md`를 우선한다. 이 문서는 폐기하지 않지만, 아직 논의가 닫히지 않은 UX 확장 아이디어 참고 자료로 둔다.
+
 # Observation Portal 운영 판단 대시보드 재설계
 
 작성일: 2026-06-07

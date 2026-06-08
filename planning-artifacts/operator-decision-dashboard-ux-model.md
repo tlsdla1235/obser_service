@@ -7,6 +7,8 @@ relatedDesignNote: planning-artifacts/operator-decision-dashboard-redesign.md
 relatedMockup: planning-artifacts/mockups/operator-decision-dashboard-mockup.html
 ---
 
+> Reference-only note: 2026-06-08 기준 MVP dashboard/snapshot 관계와 구현 우선순위는 `planning-artifacts/dashboard-snapshot-mvp-source-of-truth.md`를 우선한다. 이 문서는 폐기하지 않지만, 아직 논의가 닫히지 않은 UX 모델 참고 자료로 둔다.
+
 # Observation Portal 운영 판단 UX 모델
 
 ## 목적
@@ -500,4 +502,3 @@ Snapshot은 current dashboard를 다시 계산하지 않고 저장 당시 판단
 - endpoint p95/p99를 억지로 만들지 않는다.
 - resource signal은 원인 확정이 아니라 가설과 다음 확인 지점으로 표현한다.
 - snapshot은 과거 화면이 아니라 저장된 판단 증거 번들이다.
-
