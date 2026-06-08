@@ -1,0 +1,1136 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Observation Portal - 운영 판단 대시보드 목업</title>
+  <style>
+    :root {
+      --bg: #fafafa;
+      --panel: #ffffff;
+      --line: #e5e5e5;
+      --line-strong: #171717;
+      --text: #171717;
+      --muted: #737373;
+      --soft: #f5f5f5;
+      --soft-2: #f0f0f0;
+      --warn: #92400e;
+      --warn-bg: #fffbeb;
+      --danger: #991b1b;
+      --danger-bg: #fef2f2;
+      --ok: #166534;
+      --ok-bg: #f0fdf4;
+      --info: #075985;
+      --info-bg: #f0f9ff;
+      --purple: #5b21b6;
+      --purple-bg: #f5f3ff;
+      --shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+      --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    .app-shell {
+      min-height: 100vh;
+      background: var(--bg);
+    }
+
+    .topbar {
+      height: 56px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .topbar-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 100%;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--text);
+      text-decoration: none;
+      letter-spacing: 0;
+    }
+
+    .brand-mark {
+      display: inline-grid;
+      width: 18px;
+      height: 18px;
+      place-items: center;
+      border: 1px solid var(--line-strong);
+      color: var(--text);
+      font-size: 11px;
+      line-height: 1;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .nav-link,
+    .outline-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      height: 32px;
+      border: 1px solid transparent;
+      background: var(--panel);
+      color: #525252;
+      padding: 0 10px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .nav-link.active {
+      border-color: var(--line-strong);
+      color: var(--text);
+    }
+
+    .outline-button {
+      border-color: #d4d4d4;
+      color: var(--text);
+    }
+
+    .breadcrumb {
+      height: 48px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .breadcrumb-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 100%;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 24px;
+      color: #525252;
+      font-size: 12px;
+    }
+
+    .crumbs {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .crumb-current {
+      color: var(--text);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 230px 330px minmax(0, 1fr);
+      max-width: 1400px;
+      margin: 0 auto;
+      min-height: calc(100vh - 104px);
+    }
+
+    .rail {
+      border-right: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .rail-header {
+      border-bottom: 1px solid var(--line);
+      padding: 12px;
+    }
+
+    .section-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    .search {
+      width: 100%;
+      height: 32px;
+      margin-top: 9px;
+      border: 1px solid #d4d4d4;
+      background: var(--panel);
+      padding: 0 10px;
+      color: var(--text);
+    }
+
+    .rail-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .rail-item {
+      display: block;
+      width: 100%;
+      border: 0;
+      border-bottom: 1px solid #f0f0f0;
+      background: var(--panel);
+      padding: 12px;
+      color: inherit;
+      text-align: left;
+    }
+
+    .rail-item.active {
+      background: #fafafa;
+      box-shadow: inset 2px 0 0 var(--line-strong);
+    }
+
+    .rail-title-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .rail-title {
+      min-width: 0;
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .rail-meta {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .rail-note {
+      margin-top: 8px;
+      border-left: 2px solid #d4d4d4;
+      padding-left: 8px;
+      color: #404040;
+      font-size: 11px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid #d4d4d4;
+      color: #404040;
+      background: var(--panel);
+      padding: 1px 6px;
+      font-size: 11px;
+      line-height: 18px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .badge.danger {
+      border-color: #fecaca;
+      background: var(--danger-bg);
+      color: var(--danger);
+    }
+
+    .badge.warn {
+      border-color: #fde68a;
+      background: var(--warn-bg);
+      color: var(--warn);
+    }
+
+    .badge.ok {
+      border-color: #bbf7d0;
+      background: var(--ok-bg);
+      color: var(--ok);
+    }
+
+    .badge.info {
+      border-color: #bae6fd;
+      background: var(--info-bg);
+      color: var(--info);
+    }
+
+    .badge.purple {
+      border-color: #ddd6fe;
+      background: var(--purple-bg);
+      color: var(--purple);
+    }
+
+    .main {
+      min-width: 0;
+      background: var(--bg);
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      gap: 0;
+      min-height: 100%;
+    }
+
+    .content {
+      min-width: 0;
+      padding: 20px;
+    }
+
+    .right-column {
+      border-left: 1px solid var(--line);
+      background: var(--panel);
+      padding: 20px;
+    }
+
+    .panel {
+      min-width: 0;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .panel + .panel,
+    .stack > .panel + .panel {
+      margin-top: 16px;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--line);
+      padding: 12px 14px;
+    }
+
+    .panel-body {
+      padding: 14px;
+    }
+
+    .operator-panel {
+      border-color: var(--line-strong);
+    }
+
+    .operator-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 220px;
+      gap: 18px;
+      border-bottom: 1px solid var(--line);
+      padding: 16px;
+    }
+
+    .finding-kicker {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .finding-title {
+      max-width: 720px;
+      margin-top: 5px;
+      color: var(--text);
+      font-size: 20px;
+      font-weight: 500;
+      line-height: 1.35;
+    }
+
+    .finding-body {
+      max-width: 760px;
+      margin-top: 7px;
+      color: #525252;
+      font-size: 13px;
+    }
+
+    .score-box {
+      border-left: 1px solid var(--line);
+      padding-left: 18px;
+    }
+
+    .score-number {
+      font-size: 34px;
+      font-weight: 500;
+      line-height: 1;
+      color: var(--text);
+    }
+
+    .score-label {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .score-sub {
+      margin-top: 10px;
+      color: #525252;
+      font-size: 12px;
+    }
+
+    .operator-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border-top: 0;
+    }
+
+    .metric-cell {
+      min-width: 0;
+      border-right: 1px solid var(--line);
+      padding: 12px 14px;
+    }
+
+    .metric-cell:last-child {
+      border-right: 0;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .metric-value {
+      margin-top: 5px;
+      color: var(--text);
+      font-size: 18px;
+      font-weight: 500;
+    }
+
+    .metric-desc {
+      margin-top: 4px;
+      color: #737373;
+      font-size: 11px;
+    }
+
+    .look-first {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .suspect {
+      min-width: 0;
+      border-right: 1px solid var(--line);
+      padding: 14px;
+    }
+
+    .suspect:last-child {
+      border-right: 0;
+    }
+
+    .suspect-rank {
+      color: #a3a3a3;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .suspect-title {
+      margin-top: 6px;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 500;
+      overflow-wrap: anywhere;
+    }
+
+    .suspect-copy {
+      margin-top: 6px;
+      min-height: 40px;
+      color: #525252;
+      font-size: 12px;
+    }
+
+    .suspect-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+      margin-top: 16px;
+      min-width: 0;
+    }
+
+    .split > * {
+      min-width: 0;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 12px;
+    }
+
+    .table th,
+    .table td {
+      border-bottom: 1px solid #f0f0f0;
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+    }
+
+    .table th {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 400;
+      text-transform: uppercase;
+    }
+
+    .table .num {
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 86px minmax(0, 1fr) 54px;
+      align-items: center;
+      gap: 9px;
+      margin-top: 8px;
+      font-size: 11px;
+    }
+
+    .bar {
+      height: 10px;
+      border: 1px solid var(--line);
+      background: #f5f5f5;
+    }
+
+    .bar-fill {
+      height: 100%;
+      background: #262626;
+    }
+
+    .bar-fill.warn {
+      background: #b45309;
+    }
+
+    .bar-fill.danger {
+      background: #b91c1c;
+    }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 4px;
+      margin-top: 12px;
+    }
+
+    .tick {
+      min-height: 78px;
+      border: 1px solid var(--line);
+      background: #fafafa;
+      padding: 6px 4px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .tick.bad {
+      border-color: #fecaca;
+      background: #fff7f7;
+      color: var(--danger);
+    }
+
+    .tick.warn {
+      border-color: #fde68a;
+      background: #fffbeb;
+      color: var(--warn);
+    }
+
+    .tick.active {
+      border-color: var(--line-strong);
+      background: #fff;
+      color: var(--text);
+    }
+
+    .mini-label {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .mini-value {
+      margin-top: 3px;
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .incident-box {
+      border: 1px solid var(--line);
+      padding: 12px;
+    }
+
+    .incident-box + .incident-box {
+      margin-top: 10px;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .kv {
+      min-width: 0;
+      border: 1px solid var(--line);
+      padding: 9px;
+    }
+
+    .kv .k {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .kv .v {
+      margin-top: 4px;
+      overflow: hidden;
+      color: var(--text);
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .data-quality {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .quality-item {
+      border: 1px solid var(--line);
+      padding: 10px;
+      background: var(--panel);
+    }
+
+    .quality-item.warn {
+      border-color: #fde68a;
+      background: var(--warn-bg);
+    }
+
+    .snapshot-summary {
+      display: grid;
+      grid-template-columns: 130px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+
+    .snapshot-stamp {
+      border: 1px solid var(--line-strong);
+      padding: 10px;
+      text-align: center;
+    }
+
+    .snapshot-stamp .day {
+      font-size: 24px;
+      font-weight: 500;
+    }
+
+    .snapshot-stamp .month {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    @media (max-width: 1180px) {
+      .layout {
+        grid-template-columns: 210px 280px minmax(0, 1fr);
+      }
+
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .right-column {
+        border-top: 1px solid var(--line);
+        border-left: 0;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .rail {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .operator-head,
+      .operator-metrics,
+      .look-first,
+      .split,
+      .data-quality {
+        grid-template-columns: 1fr;
+      }
+
+      .score-box,
+      .metric-cell,
+      .suspect {
+        border-left: 0;
+        border-right: 0;
+        border-top: 1px solid var(--line);
+        padding-left: 14px;
+      }
+
+      .timeline {
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+      }
+
+      .nav-actions .nav-link span,
+      .nav-actions .outline-button span {
+        display: none;
+      }
+
+      .table .badge {
+        display: inline;
+        white-space: normal;
+        line-height: 1.4;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="#">
+          <span class="brand-mark">A</span>
+          <span>Observation Portal</span>
+        </a>
+        <nav class="nav-actions" aria-label="primary">
+          <a class="nav-link active" href="#">Dashboard</a>
+          <a class="nav-link" href="#">Docs</a>
+          <button class="outline-button" type="button">GitHub 인증됨</button>
+        </nav>
+      </div>
+    </header>
+
+    <div class="breadcrumb">
+      <div class="breadcrumb-inner">
+        <div class="crumbs">
+          <span>Projects</span>
+          <span>/</span>
+          <span class="crumb-current">Commerce Platform</span>
+          <span>/</span>
+          <span class="crumb-current">orders-api</span>
+          <span class="muted">prod</span>
+        </div>
+        <button class="outline-button" type="button">Reload</button>
+      </div>
+    </div>
+
+    <div class="layout">
+      <aside class="rail">
+        <div class="rail-header">
+          <div class="section-label">Projects</div>
+          <input class="search" value="Commerce" aria-label="project search">
+        </div>
+        <ul class="rail-list">
+          <li>
+            <button class="rail-item active" type="button">
+              <div class="rail-title-row">
+                <div class="rail-title">Commerce Platform</div>
+                <span class="badge danger">2 watch</span>
+              </div>
+              <div class="rail-meta">4 apps · prod focus</div>
+              <div class="rail-note">orders-api 영향 점수 84 · checkout journey</div>
+            </button>
+          </li>
+          <li>
+            <button class="rail-item" type="button">
+              <div class="rail-title-row">
+                <div class="rail-title">Internal Ops</div>
+                <span class="badge ok">quiet</span>
+              </div>
+              <div class="rail-meta">3 apps · low traffic</div>
+              <div class="rail-note">판단 보류 1개 · 테스트성 트래픽</div>
+            </button>
+          </li>
+        </ul>
+      </aside>
+
+      <aside class="rail">
+        <div class="rail-header">
+          <div class="section-label">Applications</div>
+          <input class="search" value="orders" aria-label="application search">
+        </div>
+        <ul class="rail-list">
+          <li>
+            <button class="rail-item active" type="button">
+              <div class="rail-title-row">
+                <div class="rail-title">orders-api <span class="muted">· prod</span></div>
+                <span class="badge danger">degraded</span>
+              </div>
+              <div class="rail-meta">metric current · starter connected</div>
+              <div class="rail-note">POST /orders 지연 + datasource pool 압박</div>
+            </button>
+          </li>
+          <li>
+            <button class="rail-item" type="button">
+              <div class="rail-title-row">
+                <div class="rail-title">checkout-web <span class="muted">· prod</span></div>
+                <span class="badge warn">watch</span>
+              </div>
+              <div class="rail-meta">metric current · starter connected</div>
+              <div class="rail-note">GET /cart recent error · 낮은 confidence</div>
+            </button>
+          </li>
+          <li>
+            <button class="rail-item" type="button">
+              <div class="rail-title-row">
+                <div class="rail-title">inventory-api <span class="muted">· staging</span></div>
+                <span class="badge info">low</span>
+              </div>
+              <div class="rail-meta">sample 부족 · test traffic</div>
+              <div class="rail-note">운영 영향 점수에서 제외</div>
+            </button>
+          </li>
+        </ul>
+      </aside>
+
+      <main class="main">
+        <div class="main-grid">
+          <section class="content">
+            <section class="panel operator-panel">
+              <div class="operator-head">
+                <div>
+                  <div class="finding-kicker">Operator judgment</div>
+                  <h1 class="finding-title">POST /orders 지연 증가와 datasource pool 포화가 함께 발생 중입니다.</h1>
+                  <p class="finding-body">
+                    checkout 핵심 여정의 주문 생성 endpoint에서 오류율과 500ms 초과 요청 비중이 동시에 증가했습니다.
+                    같은 window의 datasource pool 사용률이 91%로 관찰되어 DB connection wait 가능성을 먼저 확인하는 판단입니다.
+                  </p>
+                  <div class="suspect-meta">
+                    <span class="badge danger">degraded</span>
+                    <span class="badge purple">checkout core</span>
+                    <span class="badge">rule endpoint_error_and_latency</span>
+                    <span class="badge">window 11:45-12:00</span>
+                  </div>
+                </div>
+                <div class="score-box">
+                  <div class="score-number">84</div>
+                  <div class="score-label">운영 우선순위</div>
+                  <div class="score-sub">confidence 0.82 · 영향 요청 12.4k · metadata critical</div>
+                </div>
+              </div>
+
+              <div class="operator-metrics">
+                <div class="metric-cell">
+                  <div class="metric-label">요청량</div>
+                  <div class="metric-value">42.0k</div>
+                  <div class="metric-desc">baseline 대비 +7.6%</div>
+                </div>
+                <div class="metric-cell">
+                  <div class="metric-label">실패</div>
+                  <div class="metric-value">6.4%</div>
+                  <div class="metric-desc">baseline 1.8% · +4.6%p</div>
+                </div>
+                <div class="metric-cell">
+                  <div class="metric-label">느려짐</div>
+                  <div class="metric-value">31%</div>
+                  <div class="metric-desc">500ms 초과 slow share</div>
+                </div>
+                <div class="metric-cell">
+                  <div class="metric-label">자원 압박</div>
+                  <div class="metric-value">91%</div>
+                  <div class="metric-desc">datasource pool latest sample</div>
+                </div>
+              </div>
+
+              <div class="look-first">
+                <article class="suspect">
+                  <div class="suspect-rank">01 · endpoint</div>
+                  <div class="suspect-title">POST /orders</div>
+                  <div class="suspect-copy">오류와 지연이 동시에 증가했습니다. 최근 배포와 5xx 로그를 먼저 확인하세요.</div>
+                  <div class="suspect-meta">
+                    <span class="badge danger">impact 84</span>
+                    <span class="badge">12.4k req</span>
+                  </div>
+                </article>
+                <article class="suspect">
+                  <div class="suspect-rank">02 · resource</div>
+                  <div class="suspect-title">Datasource pool</div>
+                  <div class="suspect-copy">지연 증가 window와 같은 시점에 pool 사용률이 91%까지 올랐습니다.</div>
+                  <div class="suspect-meta">
+                    <span class="badge warn">saturation</span>
+                    <span class="badge">rule db_pool_high</span>
+                  </div>
+                </article>
+                <article class="suspect">
+                  <div class="suspect-rank">03 · instance</div>
+                  <div class="suspect-title">orders-api-7f9c-x2p4k</div>
+                  <div class="suspect-copy">endpoint evidence ref 2개와 latest p99 1.8s가 같은 인스턴스에 연결됩니다.</div>
+                  <div class="suspect-meta">
+                    <span class="badge">1 of 3</span>
+                    <span class="badge info">evidence ref</span>
+                  </div>
+                </article>
+              </div>
+            </section>
+
+            <div class="split">
+              <section class="panel">
+                <div class="panel-header">
+                  <div class="section-label">먼저 확인할 endpoint</div>
+                  <span class="muted">server ranked · Top 5</span>
+                </div>
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>endpoint</th>
+                      <th class="num">req</th>
+                      <th class="num">err</th>
+                      <th class="num">slow</th>
+                      <th>reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><span class="strong">POST /orders</span><br><span class="muted">주문 생성 · checkout</span></td>
+                      <td class="num">12.4k</td>
+                      <td class="num">6.4%</td>
+                      <td class="num">31%</td>
+                      <td><span class="badge danger">error + latency</span></td>
+                    </tr>
+                    <tr>
+                      <td><span class="strong">GET /orders/{id}</span><br><span class="muted">주문 상세</span></td>
+                      <td class="num">8.2k</td>
+                      <td class="num">1.2%</td>
+                      <td class="num">18%</td>
+                      <td><span class="badge warn">latency spike</span></td>
+                    </tr>
+                    <tr>
+                      <td><span class="strong">POST /payments/confirm</span><br><span class="muted">결제 승인 · external</span></td>
+                      <td class="num">2.1k</td>
+                      <td class="num">2.8%</td>
+                      <td class="num">12%</td>
+                      <td><span class="badge">recent error</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </section>
+
+              <section class="panel">
+                <div class="panel-header">
+                  <div class="section-label">증거 타임라인</div>
+                  <span class="muted">최근 30분</span>
+                </div>
+                <div class="panel-body">
+                  <div class="timeline" aria-label="evidence timeline">
+                    <div class="tick">11:30<br>ok<br>1.5%</div>
+                    <div class="tick">11:32<br>ok<br>1.7%</div>
+                    <div class="tick warn">11:35<br>slow<br>19%</div>
+                    <div class="tick warn">11:37<br>slow<br>22%</div>
+                    <div class="tick bad">11:40<br>err<br>4.8%</div>
+                    <div class="tick bad">11:42<br>err<br>5.6%</div>
+                    <div class="tick active">11:45<br>pool<br>88%</div>
+                    <div class="tick bad">11:47<br>err<br>6.1%</div>
+                    <div class="tick bad">11:50<br>slow<br>31%</div>
+                    <div class="tick active">11:52<br>snap<br>0.82</div>
+                    <div class="tick bad">11:55<br>pool<br>91%</div>
+                    <div class="tick active">12:00<br>now<br>84</div>
+                  </div>
+                  <div class="two-col" style="margin-top: 12px;">
+                    <div class="kv">
+                      <div class="k">현재 window</div>
+                      <div class="v">2026-06-07 11:45-12:00</div>
+                    </div>
+                    <div class="kv">
+                      <div class="k">baseline window</div>
+                      <div class="v">2026-06-07 11:30-11:45</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <div class="split">
+              <section class="panel">
+                <div class="panel-header">
+                  <div class="section-label">요청 증상 · RED 번역</div>
+                  <span class="badge info">사용자 요청 기준</span>
+                </div>
+                <div class="panel-body">
+                  <div class="bar-row">
+                    <span>요청량</span>
+                    <div class="bar"><div class="bar-fill" style="width: 74%"></div></div>
+                    <span>42k</span>
+                  </div>
+                  <div class="bar-row">
+                    <span>실패율</span>
+                    <div class="bar"><div class="bar-fill danger" style="width: 64%"></div></div>
+                    <span>6.4%</span>
+                  </div>
+                  <div class="bar-row">
+                    <span>느린 요청</span>
+                    <div class="bar"><div class="bar-fill warn" style="width: 31%"></div></div>
+                    <span>31%</span>
+                  </div>
+                  <p class="muted" style="margin: 12px 0 0;">화면에서는 RED라는 용어보다 요청량, 실패, 느려짐으로 노출합니다.</p>
+                </div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-header">
+                  <div class="section-label">자원 압박 · USE 번역</div>
+                  <span class="badge warn">saturation hint</span>
+                </div>
+                <div class="panel-body">
+                  <div class="bar-row">
+                    <span>CPU</span>
+                    <div class="bar"><div class="bar-fill" style="width: 64%"></div></div>
+                    <span>64%</span>
+                  </div>
+                  <div class="bar-row">
+                    <span>Heap</span>
+                    <div class="bar"><div class="bar-fill" style="width: 73%"></div></div>
+                    <span>73%</span>
+                  </div>
+                  <div class="bar-row">
+                    <span>DB pool</span>
+                    <div class="bar"><div class="bar-fill warn" style="width: 91%"></div></div>
+                    <span>91%</span>
+                  </div>
+                  <p class="muted" style="margin: 12px 0 0;">자원 압박은 원인 확정이 아니라 다음 확인 위치를 좁히는 근거입니다.</p>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <aside class="right-column">
+            <section class="panel">
+              <div class="panel-header">
+                <div class="section-label">Data quality</div>
+                <span class="badge ok">sufficient</span>
+              </div>
+              <div class="panel-body">
+                <div class="data-quality">
+                  <div class="quality-item">
+                    <div class="mini-label">sample</div>
+                    <div class="mini-value">30 buckets</div>
+                  </div>
+                  <div class="quality-item">
+                    <div class="mini-label">traffic</div>
+                    <div class="mini-value">충분</div>
+                  </div>
+                  <div class="quality-item warn">
+                    <div class="mini-label">metadata</div>
+                    <div class="mini-value">critical</div>
+                  </div>
+                </div>
+                <p class="muted" style="margin: 12px 0 0;">저활동/초기/테스트 상태면 이 영역에서 판단 보류를 먼저 보여줍니다.</p>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div class="section-label">Affected scope</div>
+                <span class="muted">spread</span>
+              </div>
+              <div class="panel-body">
+                <div class="two-col">
+                  <div class="kv">
+                    <div class="k">endpoints</div>
+                    <div class="v">3 affected</div>
+                  </div>
+                  <div class="kv">
+                    <div class="k">instances</div>
+                    <div class="v">1 of 3 primary</div>
+                  </div>
+                  <div class="kv">
+                    <div class="k">journey</div>
+                    <div class="v">checkout</div>
+                  </div>
+                  <div class="kv">
+                    <div class="k">owner</div>
+                    <div class="v">order-platform</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div class="section-label">Flight recorder</div>
+                <span class="badge">snapshot</span>
+              </div>
+              <div class="panel-body">
+                <div class="snapshot-summary">
+                  <div class="snapshot-stamp">
+                    <div class="month">JUN</div>
+                    <div class="day">07</div>
+                    <div class="muted">12:00 KST</div>
+                  </div>
+                  <div>
+                    <div class="strong">high_confidence_concern</div>
+                    <p class="muted" style="margin: 6px 0 0;">현재 판단, endpoint evidence, instance summary, data quality를 하나의 사건 봉투로 저장합니다.</p>
+                    <div class="suspect-meta">
+                      <span class="badge">evidence v2</span>
+                      <span class="badge">score v1</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div class="section-label">다음 행동</div>
+              </div>
+              <div class="panel-body">
+                <div class="incident-box">
+                  <div class="strong">1. POST /orders 5xx 로그 확인</div>
+                  <div class="muted">최근 배포와 외부 dependency timeout을 함께 확인합니다.</div>
+                </div>
+                <div class="incident-box">
+                  <div class="strong">2. DB pool wait 확인</div>
+                  <div class="muted">pool usage 91%와 지연 증가가 같은 window에 발생했습니다.</div>
+                </div>
+                <div class="incident-box">
+                  <div class="strong">3. Snapshot 회고 링크 공유</div>
+                  <div class="muted">stored snapshot detail에서 당시 판단 근거를 재현합니다.</div>
+                </div>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>
