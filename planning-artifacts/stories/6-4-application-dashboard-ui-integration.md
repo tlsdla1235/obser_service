@@ -34,7 +34,7 @@ portal 사용자는 Application List에서 선택한 Application의 Dashboard를
 6. `planning-artifacts/api-surface.md`
 7. `planning-artifacts/epics.md`
 8. `planning-artifacts/sprint-plan.md`
-9. `planning-artifacts/current-product-source-of-truth.md`
+9. `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 10. 현재 static dashboard 코드
     - `observability-portal/src/main/resources/static/dashboard/index.html`
     - `observability-portal/src/main/resources/static/dashboard/styles.css`

@@ -27,7 +27,7 @@ Story 6.2는 기존 static dashboard asset 기반으로 MVP Project selection UI
 - `planning-artifacts/stories/5-1-project-application-navigation-read-model.md`
 - `planning-artifacts/epics.md`
 - `planning-artifacts/sprint-plan.md`
-- `planning-artifacts/current-product-source-of-truth.md`
+- `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 - `planning-artifacts/api-surface.md`
 - `planning-artifacts/project-structure.md`
 - `planning-artifacts/contracts/account-auth-policy.md`

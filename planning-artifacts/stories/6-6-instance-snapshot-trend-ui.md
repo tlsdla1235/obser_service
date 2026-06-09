@@ -30,7 +30,7 @@ portal 사용자는 Instance Evidence 화면에서 selected instance의 bounded 
 2. `implementation-artifacts/epic-6-context.md`
 3. `planning-artifacts/epics.md`
 4. `planning-artifacts/sprint-plan.md`
-5. `planning-artifacts/current-product-source-of-truth.md`
+5. `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 6. `planning-artifacts/stories/5-7-instance-snapshot-trend-projection.md`
 7. `implementation-artifacts/spec-story-5-7-instance-snapshot-trend-contract-decisions.md`
 8. `planning-artifacts/stories/6-5-instance-evidence-ui.md`

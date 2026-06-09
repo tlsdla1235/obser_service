@@ -28,7 +28,7 @@ portal 사용자는 green path 이후에도 portal down, duplicate ingest, stale
 1. `_bmad/custom/project-context.md`
 2. `implementation-artifacts/sprint-status.yaml`
 3. `implementation-artifacts/epic-6-context.md`
-4. `planning-artifacts/current-product-source-of-truth.md`
+4. `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 5. `planning-artifacts/api-surface.md`
 6. `planning-artifacts/database-schema.md`
 7. `planning-artifacts/contracts/account-auth-policy.md`

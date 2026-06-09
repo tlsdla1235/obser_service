@@ -35,7 +35,7 @@ local smoke operator는 실제 GitHub OAuth 로그인을 완료한 portal accoun
 8. `planning-artifacts/architecture.md`
 9. `planning-artifacts/architecture-implementation-supplement.md`
 10. `planning-artifacts/project-structure.md`
-11. `planning-artifacts/current-product-source-of-truth.md`
+11. `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 12. `planning-artifacts/stories/6-1-account-project-entry-and-setup-guide.md`
 13. `planning-artifacts/stories/6-8-demo-green-path.md`
 14. `planning-artifacts/stories/6-9-failure-recovery-path-demo-hardening.md`

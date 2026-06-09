@@ -32,7 +32,7 @@ Story 5-8-b는 5-8-a가 저장한 dashboard snapshot을 사용자-facing marker,
 - `planning-artifacts/contracts/operational-event-history.md`
 - `planning-artifacts/database-schema.md`
 - `planning-artifacts/api-surface.md`
-- `planning-artifacts/current-product-source-of-truth.md`
+- `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 - `planning-artifacts/sprint-plan.md`
 
 Story 5.7이 고정한 아래 계약은 5-8-b에서 다시 열지 않는다.

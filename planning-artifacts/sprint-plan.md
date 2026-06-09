@@ -17,7 +17,7 @@ supersedes: Epic 3 Portal Ingest Acceptance sprint plan dated 2026-05-18
 
 기준 source of truth는 아래 순서다.
 
-1. `planning-artifacts/current-product-source-of-truth.md`
+1. `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 2. 최신 `planning-artifacts/contracts/*`
 3. `planning-artifacts/prototypes/epic5-6-dashboard-flow-prototype.html`
 4. 재정렬된 `planning-artifacts/epics.md`

@@ -30,7 +30,7 @@ portal 사용자는 starter를 추가한 뒤 30~60초 안에 Project Selection, 
 3. `planning-artifacts/epics.md`
 4. `planning-artifacts/sprint-plan.md`
 5. `implementation-artifacts/epic-6-context.md`
-6. `planning-artifacts/current-product-source-of-truth.md`
+6. `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 7. `planning-artifacts/api-surface.md`
 8. `planning-artifacts/database-schema.md`
 9. `planning-artifacts/contracts/account-auth-policy.md`

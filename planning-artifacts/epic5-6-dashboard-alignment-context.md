@@ -4,7 +4,7 @@ projectName: Spring Boot 운영 첫 화면 포털
 status: handoff-ready
 date: 2026-05-25
 scope: Epic 5/6 dashboard source-of-truth, planning docs, sprint status alignment
-primarySourceOfTruth: planning-artifacts/current-product-source-of-truth.md
+primarySourceOfTruth: planning-artifacts/source-of-truth/current-product-source-of-truth.md
 uxBaselinePrototype: planning-artifacts/prototypes/epic5-6-dashboard-flow-prototype.html
 ---
 
@@ -26,7 +26,7 @@ Source of truth lock은 현재 컨텍스트에서 완료한다.
 
 새 컨텍스트는 아래 순서로 읽는다.
 
-1. `planning-artifacts/current-product-source-of-truth.md`
+1. `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 2. `planning-artifacts/prototypes/epic5-6-dashboard-flow-prototype.html`
 3. `planning-artifacts/contracts/read-model-contract.md`
 4. `planning-artifacts/contracts/state-semantics.md`
@@ -42,7 +42,7 @@ Source of truth lock은 현재 컨텍스트에서 완료한다.
 
 문서가 충돌하면 아래 순서를 따른다.
 
-1. `planning-artifacts/current-product-source-of-truth.md`
+1. `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 2. 최신 `planning-artifacts/contracts/*`
 3. `planning-artifacts/prototypes/epic5-6-dashboard-flow-prototype.html`
 4. 재정렬된 `planning-artifacts/epics.md`와 `implementation-artifacts/sprint-status.yaml`
@@ -98,7 +98,7 @@ Prototype 기준 화면은 아래와 같다.
 
 ### 8.1 Already Close To Target
 
-- `planning-artifacts/current-product-source-of-truth.md`: 최신 baseline 역할을 하도록 상단에 prototype 우선순위가 추가됐다.
+- `planning-artifacts/source-of-truth/current-product-source-of-truth.md`: 최신 baseline 역할을 하도록 상단에 prototype 우선순위가 추가됐다.
 - `planning-artifacts/contracts/read-model-contract.md`: instance snapshot trend 후보와 read model 경계가 반영돼 있다.
 - `planning-artifacts/contracts/operational-event-history.md`: snapshot/history와 instance trend projection 경계가 반영돼 있다.
 - `planning-artifacts/api-surface.md`: instance snapshot trend endpoint 후보가 반영돼 있다.

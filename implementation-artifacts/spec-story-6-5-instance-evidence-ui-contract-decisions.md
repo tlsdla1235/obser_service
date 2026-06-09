@@ -30,7 +30,7 @@ Story 6.5는 Epic 5 Story 5.6에서 구현한 current Instance Evidence API를 s
 - `planning-artifacts/stories/6-4-application-dashboard-ui-integration.md`
 - `planning-artifacts/epics.md`
 - `planning-artifacts/sprint-plan.md`
-- `planning-artifacts/current-product-source-of-truth.md`
+- `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 - `planning-artifacts/api-surface.md`
 - `planning-artifacts/project-structure.md`
 - `planning-artifacts/contracts/account-auth-policy.md`

@@ -30,7 +30,7 @@ portal 사용자는 Application Dashboard와 Instance Snapshot Trend 흐름에�
 2. `implementation-artifacts/epic-6-context.md`
 3. `planning-artifacts/epics.md`
 4. `planning-artifacts/sprint-plan.md`
-5. `planning-artifacts/current-product-source-of-truth.md`
+5. `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 6. `planning-artifacts/stories/6-6-instance-snapshot-trend-ui.md`
 7. `planning-artifacts/stories/5-8-b-snapshot-marker-detail-recovery-source.md`
 8. `planning-artifacts/stories/5-9-a-operational-event-history-api-skeleton-and-source-boundary.md`

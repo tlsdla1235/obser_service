@@ -49,7 +49,7 @@ GitHub OAuth로 로그인한 portal 사용자가 public onboarding UI에서 proj
 1. `planning-artifacts/epic-9-product-onboarding-and-project-seed-issuance-ui.md`
 2. `planning-artifacts/contracts/account-auth-policy.md`
 3. `planning-artifacts/api-surface.md`
-4. `planning-artifacts/current-product-source-of-truth.md`
+4. `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 5. `planning-artifacts/stories/6-1-account-project-entry-and-setup-guide.md`
 6. `planning-artifacts/stories/6-10-account-project-membership-and-scoped-project-entry.md`
 7. `planning-artifacts/stories/7-1-real-github-oauth-smoke-seed-and-operator-runbook.md`
@@ -338,7 +338,7 @@ Backend/API/schema/credential core만 구현한다. Authenticated public project
 3. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/stories/9-2-project-registration-and-seed-issuance-ui.md
 4. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/contracts/account-auth-policy.md
 5. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/api-surface.md
-6. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/current-product-source-of-truth.md
+6. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/source-of-truth/current-product-source-of-truth.md
 7. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/stories/6-10-account-project-membership-and-scoped-project-entry.md
 8. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/stories/7-1-real-github-oauth-smoke-seed-and-operator-runbook.md
 9. /Users/tlsdla1235/Desktop/study/observation/implementation-artifacts/real-github-oauth-smoke-runbook.md
@@ -476,7 +476,7 @@ Stage 1 완료 조건을 먼저 확인해:
 3. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/stories/9-2-project-registration-and-seed-issuance-ui.md
 4. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/contracts/account-auth-policy.md
 5. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/api-surface.md
-6. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/current-product-source-of-truth.md
+6. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/source-of-truth/current-product-source-of-truth.md
 7. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/stories/6-1-account-project-entry-and-setup-guide.md
 8. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/stories/6-10-account-project-membership-and-scoped-project-entry.md
 9. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/stories/7-1-real-github-oauth-smoke-seed-and-operator-runbook.md

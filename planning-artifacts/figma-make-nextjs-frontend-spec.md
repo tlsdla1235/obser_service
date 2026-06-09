@@ -399,7 +399,7 @@ Reference sources:
 
 - `README.md`
 - `docs/project-owner-guide.html`
-- `planning-artifacts/current-product-source-of-truth.md`
+- `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 - `planning-artifacts/api-surface.md`
 - `observability-spring-boot-starter/src/main/java/com/observation/starter/config/RouteAttributionProperties.java`
 - `observability-spring-boot-starter/src/main/java/com/observation/starter/config/MetricDrainProperties.java`
@@ -695,7 +695,7 @@ Use lucide-react, monochrome stroke:
 - Current static runtime: `observability-portal/src/main/resources/static/dashboard/app.js`
 - Current static styles: `observability-portal/src/main/resources/static/dashboard/styles.css`
 - API surface: `planning-artifacts/api-surface.md`
-- Product source of truth: `planning-artifacts/current-product-source-of-truth.md`
+- Product source of truth: `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 - Project owner guide: `docs/project-owner-guide.html`
 - Dashboard model: `observability-portal/src/main/java/com/observation/portal/domain/dashboard/model/ApplicationDashboardReadModel.java`
 - Project navigation model: `observability-portal/src/main/java/com/observation/portal/domain/catalog/model/ProjectNavigationReadModel.java`

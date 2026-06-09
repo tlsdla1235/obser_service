@@ -38,7 +38,7 @@ portal 구현자로서, 저장된 dashboard snapshot을 detail API와 marker API
 9. `planning-artifacts/contracts/operational-event-history.md`
 10. `planning-artifacts/database-schema.md`
 11. `planning-artifacts/api-surface.md`
-12. `planning-artifacts/current-product-source-of-truth.md`
+12. `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 13. `planning-artifacts/sprint-plan.md`
 14. `implementation-artifacts/sprint-status.yaml`
 

@@ -1,0 +1,167 @@
+# Observation Portal 운영 판단 대시보드 API 스케치
+#
+# 이 파일은 `planning-artifacts/operator-decision-dashboard-redesign.md`를 바탕으로 만든 HTTP 요청 스케치다.
+# `현재 구현 API` 섹션은 현재 컨트롤러 매핑에 맞춘 요청이고,
+# `제안 API 후보` 섹션은 운영 판단 콘솔 개편을 위한 계약 초안이다.
+
+@baseUrl = http://localhost:8080
+@accessToken = replace-with-access-token
+@projectId = 00000000-0000-0000-0000-000000000001
+@applicationId = 00000000-0000-0000-0000-000000000002
+@instanceId = 00000000-0000-0000-0000-000000000003
+@snapshotId = 00000000-0000-0000-0000-000000000004
+
+### 현재 구현 API - 프로젝트 목록
+GET {{baseUrl}}/api/projects
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### 현재 구현 API - 애플리케이션 목록
+GET {{baseUrl}}/api/projects/{{projectId}}/applications
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### 현재 구현 API - 애플리케이션 대시보드 current read model
+GET {{baseUrl}}/api/projects/{{projectId}}/applications/{{applicationId}}/dashboard
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### 현재 구현 API - 인스턴스 evidence
+GET {{baseUrl}}/api/projects/{{projectId}}/applications/{{applicationId}}/instances/{{instanceId}}/evidence
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### 현재 구현 API - 인스턴스 snapshot trend
+GET {{baseUrl}}/api/projects/{{projectId}}/applications/{{applicationId}}/instances/{{instanceId}}/snapshot-trend
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### 현재 구현 API - snapshot marker 목록
+GET {{baseUrl}}/api/projects/{{projectId}}/applications/{{applicationId}}/dashboard/snapshot-markers?since=24h&limit=20
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### 현재 구현 API - snapshot detail
+GET {{baseUrl}}/api/projects/{{projectId}}/applications/{{applicationId}}/dashboard/snapshots/{{snapshotId}}
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### 현재 구현 API - operational event history
+GET {{baseUrl}}/api/projects/{{projectId}}/applications/{{applicationId}}/operational-events?since=24h&limit=20
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### 제안 API 후보 - 프로젝트 운영 판단 홈
+# 아직 구현되지 않은 계약 후보.
+# 목적: 여러 application 중 지금 먼저 봐야 할 Top N만 반환한다.
+GET {{baseUrl}}/api/projects/{{projectId}}/operator-dashboard?limit=5
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### 제안 API 후보 - 애플리케이션 운영 판단 콘솔
+# 아직 구현되지 않은 계약 후보.
+# 목적: 기존 dashboard read model을 운영자 질문 순서로 재구성한다.
+GET {{baseUrl}}/api/projects/{{projectId}}/applications/{{applicationId}}/operator-dashboard
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### 제안 API 후보 - 먼저 볼 지점 Top N
+# 아직 구현되지 않은 계약 후보.
+# 목적: endpoint, instance, resource hint를 같은 작업 큐로 섞어 반환한다.
+GET {{baseUrl}}/api/projects/{{projectId}}/applications/{{applicationId}}/dashboard/look-first?limit=5
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### 제안 API 후보 - 문제 상세
+# 아직 구현되지 않은 계약 후보.
+# purpose 값은 endpoint, instance, resource 중 하나로 제한하는 방향을 제안한다.
+GET {{baseUrl}}/api/projects/{{projectId}}/applications/{{applicationId}}/dashboard/problems/endpoint/POST%20%2Forders
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### 제안 API 후보 - flight recorder snapshot report
+# 아직 구현되지 않은 계약 후보.
+# 목적: snapshot detail을 회고 가능한 사건 보고서 형태로 반환한다.
+GET {{baseUrl}}/api/projects/{{projectId}}/applications/{{applicationId}}/dashboard/snapshots/{{snapshotId}}/flight-recorder
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### 제안 API 후보 - endpoint metadata 목록
+# 아직 구현되지 않은 계약 후보.
+# 목적: endpoint criticality, journey, owner, runbook 맥락을 운영 판단 score에 반영한다.
+GET {{baseUrl}}/api/projects/{{projectId}}/applications/{{applicationId}}/endpoint-metadata
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### 제안 API 후보 - endpoint metadata upsert
+# 아직 구현되지 않은 계약 후보.
+PUT {{baseUrl}}/api/projects/{{projectId}}/applications/{{applicationId}}/endpoint-metadata/POST%20%2Forders
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+Accept: application/json
+
+{
+  "endpointKey": "POST /orders",
+  "displayName": "주문 생성",
+  "businessCriticality": "critical",
+  "journeyName": "checkout",
+  "ownerTeam": "order-platform",
+  "runbookUrl": "https://example.com/runbooks/orders-api",
+  "sloTargetMs": 500,
+  "sloErrorRate": 0.01,
+  "isCore": true,
+  "isSyntheticOrTest": false,
+  "tags": ["checkout", "customer-facing"]
+}
+
+### 제안 응답 예시 - operator dashboard shape
+# REST Client에서 실행하는 요청은 아니며, 계약 논의용 예시다.
+# {
+#   "generatedAt": "2026-06-07T12:00:00Z",
+#   "operatorSummary": {
+#     "primaryFindingText": "POST /orders 지연 증가와 datasource pool 포화가 함께 발생 중입니다.",
+#     "recommendedFirstLook": "POST /orders 오류 로그와 DB connection pool wait를 먼저 확인하세요.",
+#     "impactScore": 84,
+#     "confidence": 0.82,
+#     "dataQuality": {
+#       "state": "sufficient",
+#       "reason": null
+#     }
+#   },
+#   "lookFirst": [
+#     {
+#       "rank": 1,
+#       "type": "endpoint",
+#       "key": "POST /orders",
+#       "label": "주문 생성",
+#       "reason": "error_and_latency",
+#       "impactScore": 84,
+#       "confidence": 0.82,
+#       "signals": ["failure", "latency", "datasource_pool_pressure"],
+#       "recommendedAction": "최근 배포, 5xx 로그, DB pool wait를 확인하세요."
+#     }
+#   ],
+#   "signalSummary": {
+#     "request": {
+#       "label": "요청량",
+#       "currentCount": 42000,
+#       "baselineCount": 39000
+#     },
+#     "failure": {
+#       "label": "실패",
+#       "currentErrorRate": 0.064,
+#       "baselineErrorRate": 0.018
+#     },
+#     "latency": {
+#       "label": "느려짐",
+#       "currentSlowShare": 0.31,
+#       "baselineSlowShare": 0.12
+#     },
+#     "resourcePressure": {
+#       "label": "자원 압박",
+#       "datasourcePoolUsageRatio": 0.91,
+#       "cpuUsageRatio": 0.64,
+#       "heapUsedRatio": 0.73
+#     }
+#   }
+# }

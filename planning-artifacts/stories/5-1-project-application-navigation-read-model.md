@@ -188,7 +188,7 @@ Shape는 구현 중 코드 스타일에 맞게 record/class 이름을 조정할 
 
 - `_bmad/custom/project-context.md`
   - Traditional MVC + Service/Repository Layering, feature-first MVC, Spring Data JPA/Flyway 기준을 우선한다.
-- `planning-artifacts/current-product-source-of-truth.md`
+- `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
   - `project -> application -> instance` 흐름, Project Entry/Application List 역할, heartbeat boundary를 우선한다.
 - `planning-artifacts/contracts/read-model-contract.md`
   - first-screen UI source-of-truth, accepted bucket/heartbeat 분리, UI recomputation 금지, navigation API 후보를 따른다.

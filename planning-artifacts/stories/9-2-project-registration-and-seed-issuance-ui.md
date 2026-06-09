@@ -28,7 +28,7 @@ GitHub OAuth로 로그인한 portal 사용자는 public onboarding UI에서 proj
 1. `planning-artifacts/epic-9-product-onboarding-and-project-seed-issuance-ui.md`
 2. `planning-artifacts/contracts/account-auth-policy.md`
 3. `planning-artifacts/api-surface.md`
-4. `planning-artifacts/current-product-source-of-truth.md`
+4. `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 5. `planning-artifacts/stories/6-1-account-project-entry-and-setup-guide.md`
 6. `planning-artifacts/stories/6-10-account-project-membership-and-scoped-project-entry.md`
 7. `planning-artifacts/stories/7-1-real-github-oauth-smoke-seed-and-operator-runbook.md`
