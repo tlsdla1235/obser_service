@@ -19,6 +19,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Objects;
@@ -84,6 +85,7 @@ public class DashboardSnapshotWriterService {
             DashboardSnapshotReadModelEnricher.EnrichedSnapshotReadModel enriched = enricher.enrich(command);
             ApplicationDashboardReadModel readModel = command.readModel();
             ApplicationDashboardReadModel.SourceWindow sourceWindow = readModel.application().sourceWindow();
+            ApplicationDashboardReadModel.Window baselineWindow = compatibilityBaselineWindow(sourceWindow);
             OffsetDateTime lastObservedAt = toUtc(readModel.application().lastAcceptedBucketAt());
             return new DashboardSnapshotWriteValues(
                     UUID.randomUUID(),
@@ -92,8 +94,8 @@ public class DashboardSnapshotWriterService {
                     toUtc(readModel.generatedAt()),
                     toUtc(sourceWindow.current().startUtc()),
                     toUtc(command.currentWindowEndUtc()),
-                    toUtc(sourceWindow.baseline().startUtc()),
-                    toUtc(sourceWindow.baseline().endUtc()),
+                    toUtc(baselineWindow.startUtc()),
+                    toUtc(baselineWindow.endUtc()),
                     lastObservedAt,
                     lastObservedAt,
                     readModel.state().code(),
@@ -250,15 +252,17 @@ public class DashboardSnapshotWriterService {
             DashboardSnapshotWriteCommand command,
             DashboardSnapshotCaptureReason representativeReason) {
         ApplicationDashboardReadModel readModel = command.readModel();
+        ApplicationDashboardReadModel.SourceWindow sourceWindow = readModel.application().sourceWindow();
+        ApplicationDashboardReadModel.Window baselineWindow = compatibilityBaselineWindow(sourceWindow);
         return new DashboardSnapshotWriteValues(
                 UUID.randomUUID(),
                 command.projectId(),
                 command.applicationId(),
                 toUtc(readModel.generatedAt()),
-                toUtc(readModel.application().sourceWindow().current().startUtc()),
+                toUtc(sourceWindow.current().startUtc()),
                 toUtc(command.currentWindowEndUtc()),
-                toUtc(readModel.application().sourceWindow().baseline().startUtc()),
-                toUtc(readModel.application().sourceWindow().baseline().endUtc()),
+                toUtc(baselineWindow.startUtc()),
+                toUtc(baselineWindow.endUtc()),
                 toUtc(readModel.application().lastAcceptedBucketAt()),
                 toUtc(readModel.application().lastAcceptedBucketAt()),
                 readModel.state().code(),
@@ -268,6 +272,22 @@ public class DashboardSnapshotWriterService {
                 null,
                 "{}",
                 toUtc(command.requestedAt()));
+    }
+
+    /**
+     * public read model에서는 baseline을 null로 둘 수 있지만, 기존 snapshot schema의 not-null helper column에는
+     * legacy compatibility window를 채운다. 이 값은 MVP 판단 근거가 아니라 row shape 보존용 metadata다.
+     */
+    private static ApplicationDashboardReadModel.Window compatibilityBaselineWindow(
+            ApplicationDashboardReadModel.SourceWindow sourceWindow) {
+        if (sourceWindow.baseline() != null) {
+            return sourceWindow.baseline();
+        }
+        ApplicationDashboardReadModel.Window currentWindow = sourceWindow.current();
+        Duration currentDuration = Duration.between(currentWindow.startUtc(), currentWindow.endUtc());
+        return new ApplicationDashboardReadModel.Window(
+                currentWindow.startUtc().minus(currentDuration),
+                currentWindow.startUtc());
     }
 
     private static OffsetDateTime toUtc(OffsetDateTime value) {

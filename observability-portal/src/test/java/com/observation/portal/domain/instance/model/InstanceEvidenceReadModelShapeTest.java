@@ -39,16 +39,16 @@ class InstanceEvidenceReadModelShapeTest {
         InstanceEvidenceReadModel readModel = readModel();
 
         assertThat(readModel.metricData().statusSource()).isEqualTo("accepted_bucket");
-        assertThat(readModel.metricData().window().name()).isEqualTo("current_15m");
+        assertThat(readModel.metricData().window().name()).isEqualTo("recent_30_minutes");
         assertThat(readModel.metricData().window().bucketDurationSeconds()).isEqualTo(30);
         assertThat(readModel.metricData().errorRate()).isNull();
         assertThat(readModel.starterConnection().statusSource()).isEqualTo("starter_heartbeat");
         assertThat(readModel.starterConnection().stateImpact()).isEqualTo("none");
         assertThat(readModel.starterPercentiles().source()).isEqualTo("starter_canonical_percentile");
         assertThat(readModel.starterPercentiles().points()).isEmpty();
-        assertThat(readModel.histogramDistribution().source()).isEqualTo("histogram_bucket_distribution");
+        assertThat(readModel.histogramDistribution().source()).isEqualTo("accepted_bucket");
         assertThat(readModel.histogramDistribution().buckets()).isEmpty();
-        assertThat(readModel.resourceHints().source()).isEqualTo("accepted_bucket_latest_sample");
+        assertThat(readModel.resourceHints().source()).isEqualTo("accepted_bucket");
         assertThat(readModel.applicationTriageContribution().relatedRuleIds()).isEmpty();
         assertThat(readModel.endpointEvidence().source()).isEqualTo("accepted_metric_buckets.endpoints_json");
         assertThat(readModel.endpointEvidence().reason()).isNull();
@@ -76,7 +76,7 @@ class InstanceEvidenceReadModelShapeTest {
                 null))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new InstanceEvidenceReadModel.ResourceHints(
-                "accepted_bucket_latest_sample",
+                "accepted_bucket",
                 "available",
                 null,
                 null,
@@ -86,9 +86,9 @@ class InstanceEvidenceReadModelShapeTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new InstanceEvidenceReadModel.EndpointEvidence(
                 "accepted_metric_buckets.endpoints_json",
-                "instance_current_15m",
-                "application_priority_presence_then_triage_then_instance_request_count",
-                "selected_instance_signal_then_application_priority_reference",
+                "instance_recent_30_minutes",
+                "application_evidence_presence_then_instance_symptom",
+                "server_order",
                 "available",
                 null,
                 List.of(
@@ -106,9 +106,9 @@ class InstanceEvidenceReadModelShapeTest {
         assertThatThrownBy(() -> new InstanceEvidenceReadModel.StarterPercentiles(
                 "starter_canonical_percentile",
                 "application",
-                "current_15m",
+                "recent_30_minutes",
                 30,
-                30,
+                60,
                 "source_scoped_series",
                 "no_average_no_max_no_merge_no_histogram_recalculation",
                 "missing",
@@ -117,10 +117,10 @@ class InstanceEvidenceReadModelShapeTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new InstanceEvidenceReadModel.StarterPercentiles(
                 "starter_canonical_percentile",
-                "instance",
-                "current_15m",
+                "instance_bucket",
+                "recent_30_minutes",
                 30,
-                30,
+                60,
                 "source_scoped_points",
                 "no_average_no_max_no_merge_no_histogram_recalculation",
                 "missing",
@@ -129,10 +129,10 @@ class InstanceEvidenceReadModelShapeTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new InstanceEvidenceReadModel.StarterPercentiles(
                 "starter_canonical_percentile",
-                "instance",
-                "current_15m",
+                "instance_bucket",
+                "recent_30_minutes",
                 30,
-                30,
+                60,
                 "source_scoped_series",
                 "no_average_no_max_no_merge_no_histogram_recalculation",
                 "stale",
@@ -141,18 +141,18 @@ class InstanceEvidenceReadModelShapeTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new InstanceEvidenceReadModel.EndpointEvidence(
                 "accepted_metric_buckets.endpoints_json",
-                "instance_current_15m",
-                "application_priority_presence_then_triage_then_instance_request_count",
-                "selected_instance_signal_then_application_priority_reference",
+                "instance_recent_30_minutes",
+                "application_evidence_presence_then_instance_symptom",
+                "server_order",
                 "stale",
                 null,
                 List.of()))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new InstanceEvidenceReadModel.EndpointEvidence(
                 "accepted_metric_buckets.endpoints_json",
-                "instance_current_15m",
-                "application_priority_presence_then_triage_then_instance_request_count",
-                "selected_instance_signal_then_application_priority_reference",
+                "instance_recent_30_minutes",
+                "application_evidence_presence_then_instance_symptom",
+                "server_order",
                 "available",
                 "raw_json_parse_failed",
                 List.of()))
@@ -160,25 +160,25 @@ class InstanceEvidenceReadModelShapeTest {
         assertThatThrownBy(() -> new InstanceEvidenceReadModel.EndpointEvidence(
                 "accepted_metric_buckets.endpoints_json",
                 "application_current_15m",
-                "application_priority_presence_then_triage_then_instance_request_count",
-                "selected_instance_signal_then_application_priority_reference",
+                "application_evidence_presence_then_instance_symptom",
+                "server_order",
                 "available",
                 null,
                 List.of()))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new InstanceEvidenceReadModel.EndpointEvidence(
                 "accepted_metric_buckets.endpoints_json",
-                "instance_current_15m",
+                "instance_recent_30_minutes",
                 "selected_instance_request_count",
-                "selected_instance_signal_then_application_priority_reference",
+                "server_order",
                 "available",
                 null,
                 List.of()))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new InstanceEvidenceReadModel.EndpointEvidence(
                 "accepted_metric_buckets.endpoints_json",
-                "instance_current_15m",
-                "application_priority_presence_then_triage_then_instance_request_count",
+                "instance_recent_30_minutes",
+                "application_evidence_presence_then_instance_symptom",
                 "priority_rank",
                 "available",
                 null,
@@ -294,8 +294,8 @@ class InstanceEvidenceReadModelShapeTest {
 
     private static InstanceEvidenceReadModel.MetricWindow metricWindow() {
         return new InstanceEvidenceReadModel.MetricWindow(
-                "current_15m",
-                OffsetDateTime.parse("2026-05-26T05:55:30Z"),
+                "recent_30_minutes",
+                OffsetDateTime.parse("2026-05-26T05:40:30Z"),
                 OffsetDateTime.parse("2026-05-26T06:10:30Z"),
                 30);
     }
@@ -315,7 +315,7 @@ class InstanceEvidenceReadModelShapeTest {
                 BigDecimal.ONE,
                 null,
                 List.of(),
-                "histogram_bucket_distribution",
+                "accepted_bucket",
                 null,
                 displayOrder,
                 List.of(),

@@ -51,8 +51,8 @@ class InstanceEvidenceReadModelServiceTest {
     private static final UUID INSTANCE_ID = UUID.fromString("00000000-0000-0000-0000-000000005221");
     private static final Instant QUERY_AT = Instant.parse("2026-05-26T06:10:35Z");
     private static final Instant EVALUATION_AT = Instant.parse("2026-05-26T06:10:30Z");
-    private static final Instant CURRENT_START = Instant.parse("2026-05-26T05:55:30Z");
-    private static final Instant BASELINE_START = Instant.parse("2026-05-26T05:40:30Z");
+    private static final Instant CURRENT_START = Instant.parse("2026-05-26T05:40:30Z");
+    private static final Instant BASELINE_START = Instant.parse("2026-05-26T05:10:30Z");
     private static final Clock CLOCK = Clock.fixed(QUERY_AT, ZoneOffset.UTC);
 
     private final ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
@@ -347,9 +347,9 @@ class InstanceEvidenceReadModelServiceTest {
                 .status())
                 .isEqualTo("insufficient");
 
-        List<LocalPercentileEvidenceRow> thirtyOneRows = IntStream.range(0, 31)
+        List<LocalPercentileEvidenceRow> sixtyOneRows = IntStream.range(0, 61)
                 .mapToObj(index -> localPercentileRow(
-                        OffsetDateTime.parse("2026-05-26T05:55:00Z").plusSeconds(index * 30L).toString(),
+                        OffsetDateTime.parse("2026-05-26T05:40:00Z").plusSeconds(index * 30L).toString(),
                         10L,
                         100L + index,
                         200L + index))
@@ -358,7 +358,7 @@ class InstanceEvidenceReadModelServiceTest {
                 INSTANCE_ID,
                 CURRENT_START,
                 EVALUATION_AT))
-                .thenReturn(thirtyOneRows);
+                .thenReturn(sixtyOneRows);
 
         InstanceEvidenceReadModel.StarterPercentiles percentiles = service.getEvidence(
                         PROJECT_ID,
@@ -367,9 +367,9 @@ class InstanceEvidenceReadModelServiceTest {
                 .orElseThrow()
                 .starterPercentiles();
 
-        assertThat(percentiles.points()).hasSize(30);
-        assertThat(percentiles.points().get(0).bucketEndUtc()).isEqualTo(offset("2026-05-26T05:56:00Z"));
-        assertThat(percentiles.points().get(29).bucketEndUtc()).isEqualTo(offset("2026-05-26T06:10:30Z"));
+        assertThat(percentiles.points()).hasSize(60);
+        assertThat(percentiles.points().get(0).bucketEndUtc()).isEqualTo(offset("2026-05-26T05:41:00Z"));
+        assertThat(percentiles.points().get(59).bucketEndUtc()).isEqualTo(offset("2026-05-26T06:10:30Z"));
     }
 
     @Test
@@ -503,7 +503,7 @@ class InstanceEvidenceReadModelServiceTest {
         when(triageSummaryService.summarize(any(TriageSummaryService.TriageSummaryInput.class)))
                 .thenReturn(new TriageSummaryService.TriageSummary(
                         List.of(
-                                triageCard("global_error_spike"),
+                                triageCard("application_error_rate_high"),
                                 triageCard("synthetic_new_rule")),
                         DegradedHysteresisInput.noConcern()));
 
@@ -516,7 +516,7 @@ class InstanceEvidenceReadModelServiceTest {
 
         assertThat(contribution.status()).isEqualTo("observed");
         assertThat(contribution.contributed()).isTrue();
-        assertThat(contribution.relatedRuleIds()).containsExactly("global_error_spike");
+        assertThat(contribution.relatedRuleIds()).containsExactly("application_error_rate_high");
         assertThat(contribution.reason()).isEqualTo("selected_instance_has_evidence_for_application_triage");
     }
 
@@ -533,7 +533,7 @@ class InstanceEvidenceReadModelServiceTest {
                 .thenReturn(new WindowBucketAggregate(90L, 0L));
         when(triageSummaryService.summarize(any(TriageSummaryService.TriageSummaryInput.class)))
                 .thenReturn(new TriageSummaryService.TriageSummary(
-                        List.of(triageCard("global_latency_spike")),
+                        List.of(triageCard("application_slow_share_high")),
                         DegradedHysteresisInput.noConcern()));
 
         InstanceEvidenceReadModel.ApplicationTriageContribution contribution = service.getEvidence(
@@ -562,7 +562,7 @@ class InstanceEvidenceReadModelServiceTest {
                 .thenReturn(new WindowBucketAggregate(90L, 0L));
         when(triageSummaryService.summarize(any(TriageSummaryService.TriageSummaryInput.class)))
                 .thenReturn(new TriageSummaryService.TriageSummary(
-                        List.of(triageCard("global_error_spike")),
+                        List.of(triageCard("application_error_rate_high")),
                         DegradedHysteresisInput.noConcern()));
 
         InstanceEvidenceReadModel.ApplicationTriageContribution contribution = service.getEvidence(
@@ -658,15 +658,15 @@ class InstanceEvidenceReadModelServiceTest {
                         org.assertj.core.groups.Tuple.tuple(2, "POST /orders", "observed"),
                         org.assertj.core.groups.Tuple.tuple(3, "GET /payments", "not_observed"));
         assertThat(items.get(0)).satisfies(item -> {
-            assertThat(item.relatedApplicationPriorityRank()).isEqualTo(3);
-            assertThat(item.relatedRuleIds()).containsExactly("endpoint_recent_error");
+            assertThat(item.relatedApplicationPriorityRank()).isEqualTo(2);
+            assertThat(item.relatedRuleIds()).containsExactly("endpoint_error_rate_high", "endpoint_slow_share_high");
             assertThat(item.instanceRequestShare()).isEqualByComparingTo("1");
             assertThat(item.instanceErrorShare()).isEqualByComparingTo("1");
             assertThat(item.reason()).isEqualTo("application_priority_endpoint_observed_on_selected_instance");
         });
         assertThat(items.get(1)).satisfies(item -> {
             assertThat(item.relatedApplicationPriorityRank()).isEqualTo(1);
-            assertThat(item.relatedRuleIds()).containsExactly("endpoint_error_spike", "endpoint_latency_spike");
+            assertThat(item.relatedRuleIds()).containsExactly("endpoint_error_rate_high", "endpoint_slow_share_high");
             assertThat(item.instanceRequestCount()).isEqualTo(50L);
             assertThat(item.instanceErrorCount()).isEqualTo(10L);
             assertThat(item.instanceErrorRate()).isEqualByComparingTo("0.2");
@@ -685,8 +685,8 @@ class InstanceEvidenceReadModelServiceTest {
             assertThat(item.reason()).isEqualTo("application_priority_endpoint_observed_on_selected_instance");
         });
         assertThat(items.get(2)).satisfies(item -> {
-            assertThat(item.relatedApplicationPriorityRank()).isEqualTo(2);
-            assertThat(item.relatedRuleIds()).containsExactly("endpoint_error_spike");
+            assertThat(item.relatedApplicationPriorityRank()).isEqualTo(3);
+            assertThat(item.relatedRuleIds()).containsExactly("endpoint_error_rate_high");
             assertThat(item.instanceRequestCount()).isZero();
             assertThat(item.instanceErrorCount()).isZero();
             assertThat(item.instanceErrorRate()).isNull();
@@ -701,7 +701,7 @@ class InstanceEvidenceReadModelServiceTest {
         stubCurrentApplicationMetricData();
         when(triageSummaryService.summarize(any(TriageSummaryService.TriageSummaryInput.class)))
                 .thenReturn(new TriageSummaryService.TriageSummary(
-                        List.of(triageCard("global_error_spike", "PATCH /triage")),
+                        List.of(triageCard("application_error_rate_high", "PATCH /triage")),
                         DegradedHysteresisInput.noConcern()));
         when(metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
                 APPLICATION_ID,
@@ -729,7 +729,7 @@ class InstanceEvidenceReadModelServiceTest {
                 .containsExactly("GET /selected", "PATCH /triage");
         assertThat(items.get(1).presenceOnSelectedInstance()).isEqualTo("not_observed");
         assertThat(items.get(1).relatedApplicationPriorityRank()).isEqualTo(1);
-        assertThat(items.get(1).relatedRuleIds()).containsExactly("endpoint_recent_error");
+        assertThat(items.get(1).relatedRuleIds()).containsExactly("endpoint_error_rate_high");
     }
 
     @Test
@@ -772,7 +772,7 @@ class InstanceEvidenceReadModelServiceTest {
         assertThat(items).singleElement().satisfies(item -> {
             assertThat(item.endpointKey()).isEqualTo("GET /health");
             assertThat(item.relatedApplicationPriorityRank()).isEqualTo(1);
-            assertThat(item.relatedRuleIds()).containsExactly("endpoint_recent_error");
+            assertThat(item.relatedRuleIds()).containsExactly("endpoint_recent_server_error");
             assertThat(item.reason()).isEqualTo("application_priority_endpoint_observed_on_selected_instance");
         });
     }
@@ -875,7 +875,7 @@ class InstanceEvidenceReadModelServiceTest {
         stubCurrentApplicationMetricData();
         when(triageSummaryService.summarize(any(TriageSummaryService.TriageSummaryInput.class)))
                 .thenReturn(new TriageSummaryService.TriageSummary(
-                        List.of(triageCard("global_error_spike", "GET UNKNOWN")),
+                        List.of(triageCard("application_error_rate_high", "GET UNKNOWN")),
                         DegradedHysteresisInput.noConcern()));
         when(metricBucketRepository.findEndpointEvidenceRowsByApplicationInstanceId(
                 INSTANCE_ID,

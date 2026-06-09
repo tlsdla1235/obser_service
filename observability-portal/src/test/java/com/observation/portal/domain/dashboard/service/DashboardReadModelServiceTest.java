@@ -48,8 +48,8 @@ class DashboardReadModelServiceTest {
     private static final UUID INSTANCE_ID = UUID.fromString("00000000-0000-0000-0000-000000005221");
     private static final Instant QUERY_AT = Instant.parse("2026-05-25T10:32:38.421Z");
     private static final Instant EVALUATION_AT = Instant.parse("2026-05-25T10:32:30Z");
-    private static final Instant CURRENT_START = Instant.parse("2026-05-25T10:17:30Z");
-    private static final Instant BASELINE_START = Instant.parse("2026-05-25T10:02:30Z");
+    private static final Instant CURRENT_START = Instant.parse("2026-05-25T10:02:30Z");
+    private static final Instant BASELINE_START = Instant.parse("2026-05-25T09:32:30Z");
     private static final OffsetDateTime SNAPSHOT_CUTOFF_AT = OffsetDateTime.parse("2026-05-25T10:34:30Z");
     private static final Clock CLOCK = Clock.fixed(QUERY_AT, ZoneOffset.UTC);
     private static final List<String> UNSAFE_OPERATIONAL_OUTCOME_COPY = List.of(
@@ -97,23 +97,11 @@ class DashboardReadModelServiceTest {
                 CURRENT_START,
                 EVALUATION_AT))
                 .thenReturn(List.of());
-        when(metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
-                APPLICATION_ID,
-                BASELINE_START,
-                CURRENT_START))
-                .thenReturn(List.of());
         when(metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
                 APPLICATION_ID,
                 CURRENT_START,
                 EVALUATION_AT))
                 .thenReturn(List.of());
-        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
-                APPLICATION_ID,
-                BASELINE_START,
-                CURRENT_START))
-                .thenReturn(List.of());
-        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, BASELINE_START, CURRENT_START))
-                .thenReturn(WindowBucketAggregate.zero());
         when(metricBucketRepository.findAcceptedBucketGapEvidenceByApplicationIdAtOrBefore(
                 APPLICATION_ID,
                 EVALUATION_AT))
@@ -222,11 +210,6 @@ class DashboardReadModelServiceTest {
                 CURRENT_START,
                 EVALUATION_AT,
                 SNAPSHOT_CUTOFF_AT);
-        verify(metricBucketRepository).findWindowAggregateByApplicationIdAcceptedAtOrBefore(
-                APPLICATION_ID,
-                BASELINE_START,
-                CURRENT_START,
-                SNAPSHOT_CUTOFF_AT);
         verify(metricBucketRepository).findEndpointEvidenceRowsByApplicationIdAcceptedAtOrBefore(
                 APPLICATION_ID,
                 CURRENT_START,
@@ -267,8 +250,7 @@ class DashboardReadModelServiceTest {
         assertThat(dashboard.application().lastHealthyAt()).isNull();
         assertThat(dashboard.application().sourceWindow().current().startUtc()).isEqualTo(offset(CURRENT_START));
         assertThat(dashboard.application().sourceWindow().current().endUtc()).isEqualTo(offset(EVALUATION_AT));
-        assertThat(dashboard.application().sourceWindow().baseline().startUtc()).isEqualTo(offset(BASELINE_START));
-        assertThat(dashboard.application().sourceWindow().baseline().endUtc()).isEqualTo(offset(CURRENT_START));
+        assertThat(dashboard.application().sourceWindow().baseline()).isNull();
         assertThat(dashboard.application().freshness().lastObservedAt()).isEqualTo(offset("2026-05-25T10:31:30Z"));
         assertThat(dashboard.application().freshness().staleAt()).isEqualTo(offset("2026-05-25T10:33:00Z"));
         assertThat(dashboard.application().freshness().downAt()).isEqualTo(offset("2026-05-25T10:34:30Z"));
@@ -284,25 +266,25 @@ class DashboardReadModelServiceTest {
         assertThat(dashboard.metrics().requestCount()).isEqualTo(100L);
         assertThat(dashboard.metrics().errorCount()).isEqualTo(3L);
         assertThat(dashboard.metrics().errorRate()).isEqualByComparingTo("0.03");
-        assertThat(dashboard.sourceScopedPercentiles().source()).isEqualTo("starter_local");
+        assertThat(dashboard.sourceScopedPercentiles().source()).isEqualTo("starter_canonical_percentile");
         assertThat(dashboard.sourceScopedPercentiles().scope()).isEqualTo("instance_bucket");
         assertThat(dashboard.sourceScopedPercentiles().displayPolicy())
-                .isEqualTo("latest_starter_point_per_instance_in_current_window");
+                .isEqualTo("source_scoped_points");
         assertThat(dashboard.sourceScopedPercentiles().aggregatePolicy())
                 .isEqualTo("no_average_no_max_no_merge_no_histogram_recalculation");
         assertThat(dashboard.sourceScopedPercentiles().status()).isEqualTo("missing");
         assertThat(dashboard.sourceScopedPercentiles().reason())
-                .isEqualTo("no_percentile_points_in_current_window");
+                .isEqualTo("no_percentile_points_in_recent_30_minutes");
         assertThat(dashboard.sourceScopedPercentiles().items()).isEmpty();
-        assertThat(dashboard.histogramDistribution().source()).isEqualTo("histogram_bucket_distribution");
+        assertThat(dashboard.histogramDistribution().source()).isEqualTo("accepted_bucket");
         assertThat(dashboard.histogramDistribution().scope()).isEqualTo("application");
         assertThat(dashboard.histogramDistribution().current().status()).isEqualTo("missing");
         assertThat(dashboard.histogramDistribution().current().reason())
-                .isEqualTo("no_histogram_buckets_in_current_window");
+                .isEqualTo("no_histogram_buckets_in_recent_30_minutes");
         assertThat(dashboard.histogramDistribution().current().buckets()).isEmpty();
-        assertThat(dashboard.histogramDistribution().baseline().status()).isEqualTo("missing");
+        assertThat(dashboard.histogramDistribution().baseline().status()).isEqualTo("unavailable");
         assertThat(dashboard.histogramDistribution().baseline().reason())
-                .isEqualTo("no_histogram_buckets_in_baseline_window");
+                .isEqualTo("baseline_comparison_not_used_for_mvp");
         assertThat(dashboard.histogramDistribution().baseline().buckets()).isEmpty();
         assertThat(dashboard.triageCards()).isEmpty();
         assertThat(dashboard.endpointPriority()).isEmpty();
@@ -380,7 +362,7 @@ class DashboardReadModelServiceTest {
                                 1100L));
         assertThat(dashboard.sourceScopedPercentiles().items())
                 .allSatisfy(item -> {
-                    assertThat(item.source()).isEqualTo("starter_local");
+                    assertThat(item.source()).isEqualTo("starter_canonical_percentile");
                     assertThat(item.application()).isEqualTo("orders-api");
                     assertThat(item.environment()).isEqualTo("prod");
                 });
@@ -417,7 +399,7 @@ class DashboardReadModelServiceTest {
         assertThat(dashboard.sourceScopedPercentiles().items()).isEmpty();
         assertThat(dashboard.sourceScopedPercentiles().status()).isEqualTo("insufficient");
         assertThat(dashboard.sourceScopedPercentiles().reason())
-                .isEqualTo("no_valid_percentile_points_in_current_window");
+                .isEqualTo("no_valid_percentile_points_in_recent_30_minutes");
     }
 
     @Test
@@ -472,7 +454,7 @@ class DashboardReadModelServiceTest {
         assertThat(dashboard.sourceScopedPercentiles().items()).isEmpty();
         assertThat(dashboard.sourceScopedPercentiles().status()).isEqualTo("insufficient");
         assertThat(dashboard.sourceScopedPercentiles().reason())
-                .isEqualTo("no_valid_percentile_points_in_current_window");
+                .isEqualTo("no_valid_percentile_points_in_recent_30_minutes");
     }
 
     @Test
@@ -510,8 +492,9 @@ class DashboardReadModelServiceTest {
                 .containsExactly(
                         org.assertj.core.groups.Tuple.tuple(50L, 22L),
                         org.assertj.core.groups.Tuple.tuple(100L, 42L));
-        assertThat(dashboard.histogramDistribution().baseline().status()).isEqualTo("available");
-        assertThat(dashboard.histogramDistribution().baseline().totalCount()).isEqualTo(9L);
+        assertThat(dashboard.histogramDistribution().baseline().status()).isEqualTo("unavailable");
+        assertThat(dashboard.histogramDistribution().baseline().reason())
+                .isEqualTo("baseline_comparison_not_used_for_mvp");
     }
 
     @Test
@@ -543,8 +526,8 @@ class DashboardReadModelServiceTest {
         assertThat(dashboard.histogramDistribution().current().reason()).isEqualTo("histogram_boundary_mismatch");
         assertThat(dashboard.histogramDistribution().current().totalCount()).isZero();
         assertThat(dashboard.histogramDistribution().current().buckets()).isEmpty();
-        assertThat(dashboard.histogramDistribution().baseline().status()).isEqualTo("available");
-        assertThat(dashboard.histogramDistribution().baseline().buckets()).isNotEmpty();
+        assertThat(dashboard.histogramDistribution().baseline().status()).isEqualTo("unavailable");
+        assertThat(dashboard.histogramDistribution().baseline().buckets()).isEmpty();
     }
 
     @Test
@@ -758,7 +741,7 @@ class DashboardReadModelServiceTest {
 
         assertThat(dashboard.triageCards())
                 .extracting(ApplicationDashboardReadModel.TriageCard::ruleId)
-                .contains("global_error_spike");
+                .contains("application_error_rate_high");
         assertThat(dashboard.triageCards().get(0).confidence()).isLessThan(0.75d);
         assertThat(dashboard.state().code()).isEqualTo("active");
         assertThat(dashboard.zeroInsight()).isNull();
@@ -766,14 +749,12 @@ class DashboardReadModelServiceTest {
     }
 
     @Test
-    void assemblesEndpointPriorityFromCurrentAndBaselineEndpointEvidence() {
+    void assemblesEndpointPriorityFromRecentEndpointEvidenceWithoutBaselineComparison() {
         when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
                 .thenReturn(Optional.of(application()));
         when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
                 .thenReturn(Optional.of(offset("2026-05-25T10:32:00Z")));
         when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, CURRENT_START, EVALUATION_AT))
-                .thenReturn(new WindowBucketAggregate(200L, 0L));
-        when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, BASELINE_START, CURRENT_START))
                 .thenReturn(new WindowBucketAggregate(200L, 0L));
         when(metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
                 APPLICATION_ID,
@@ -782,13 +763,6 @@ class DashboardReadModelServiceTest {
                 .thenReturn(List.of(endpointEvidenceRow(
                         "2026-05-25T10:31:30Z",
                         endpointJson("POST", "/orders", 120L, 12L, 70L, 120L))));
-        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
-                APPLICATION_ID,
-                BASELINE_START,
-                CURRENT_START))
-                .thenReturn(List.of(endpointEvidenceRow(
-                        "2026-05-25T10:16:30Z",
-                        endpointJson("POST", "/orders", 120L, 1L, 114L, 120L))));
         when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
                 .thenReturn(Optional.of(heartbeat("2026-05-25T10:32:20Z")));
 
@@ -799,18 +773,18 @@ class DashboardReadModelServiceTest {
             assertThat(item.endpointKey()).isEqualTo("POST /orders");
             assertThat(item.reason())
                     .isEqualTo(ApplicationDashboardReadModel.EndpointPriorityReason.ERROR_AND_LATENCY);
-            assertThat(item.ruleIds()).containsExactly("endpoint_error_spike", "endpoint_latency_spike");
+            assertThat(item.ruleIds()).containsExactly("endpoint_error_rate_high", "endpoint_slow_share_high");
             assertThat(item.freshness().lastObservedAt()).isEqualTo(offset("2026-05-25T10:32:00Z"));
             assertThat(item.evidence().requestCount()).isEqualTo(120L);
-            assertThat(item.evidence().baselineRequestCount()).isEqualTo(120L);
-            assertThat(item.evidence().bucketDistributionSource()).isEqualTo("histogram_bucket_distribution");
-            assertThat(item.recommendedAction()).contains("먼저 확인");
+            assertThat(item.evidence().baselineRequestCount()).isNull();
+            assertThat(item.evidence().bucketDistributionSource()).isEqualTo("accepted_bucket");
+            assertThat(item.recommendedAction()).contains("최근 30분");
         });
         verify(metricBucketRepository).findEndpointEvidenceRowsByApplicationId(
                 APPLICATION_ID,
                 CURRENT_START,
                 EVALUATION_AT);
-        verify(metricBucketRepository).findEndpointEvidenceRowsByApplicationId(
+        verify(metricBucketRepository, never()).findEndpointEvidenceRowsByApplicationId(
                 APPLICATION_ID,
                 BASELINE_START,
                 CURRENT_START);
@@ -885,7 +859,7 @@ class DashboardReadModelServiceTest {
         assertThat(dashboard.endpointPriority()).singleElement().satisfies(item -> {
             assertThat(item.endpointKey()).isEqualTo("GET /health");
             assertThat(item.reason()).isEqualTo(ApplicationDashboardReadModel.EndpointPriorityReason.RECENT_ERROR);
-            assertThat(item.ruleIds()).containsExactly("endpoint_recent_error");
+            assertThat(item.ruleIds()).containsExactly("endpoint_recent_server_error");
             assertThat(item.evidence().requestCount()).isEqualTo(1L);
             assertThat(item.evidence().errorCount()).isEqualTo(1L);
         });

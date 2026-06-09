@@ -26,16 +26,10 @@ import java.util.Optional;
 public class EndpointPriorityService {
 
     private static final long COMMON_MINIMUM_REQUEST_COUNT = 30L;
-    private static final long COMPARATIVE_MINIMUM_REQUEST_COUNT = 100L;
     private static final BigDecimal ERROR_RATE_THRESHOLD = BigDecimal.valueOf(0.05d);
-    private static final BigDecimal ERROR_RATE_DELTA_THRESHOLD = BigDecimal.valueOf(0.03d);
-    private static final BigDecimal ERROR_RATE_RELATIVE_THRESHOLD = BigDecimal.valueOf(2.0d);
     private static final long LATENCY_SLOW_BUCKET_LE_MS = 500L;
     private static final BigDecimal LATENCY_SLOW_SHARE_THRESHOLD = BigDecimal.valueOf(0.20d);
-    private static final BigDecimal LATENCY_SLOW_SHARE_DELTA_THRESHOLD = BigDecimal.valueOf(0.10d);
-    private static final BigDecimal COMPARATIVE_ERROR_DELTA_THRESHOLD = BigDecimal.valueOf(0.02d);
-    private static final BigDecimal COMPARATIVE_SLOW_SHARE_DELTA_THRESHOLD = BigDecimal.valueOf(0.08d);
-    private static final double COMPARATIVE_CONFIDENCE_CAP = 0.64d;
+    private static final double LOW_SAMPLE_ATTENTION_CONFIDENCE_CAP = 0.64d;
     private static final int MAX_ENDPOINT_PRIORITY_ITEMS = 5;
 
     private final EndpointEvidenceAggregationService endpointEvidenceAggregationService;
@@ -50,7 +44,7 @@ public class EndpointPriorityService {
     }
 
     /**
-     * current freshness일 때만 current/baseline endpoint evidence를 ranking item으로 변환한다.
+     * current freshness일 때만 recent 30분 endpoint evidence를 ranking item으로 변환한다.
      */
     public List<ApplicationDashboardReadModel.EndpointPriorityItem> endpointPriority(EndpointPriorityInput input) {
         EndpointPriorityInput requiredInput = Objects.requireNonNull(input, "input must not be null");
@@ -60,8 +54,6 @@ public class EndpointPriorityService {
 
         WindowEndpointEvidence currentEvidence = endpointEvidenceAggregationService.mergeWindow(
                 requiredInput.currentRows());
-        WindowEndpointEvidence baselineEvidence = endpointEvidenceAggregationService.mergeWindow(
-                requiredInput.baselineRows());
 
         OffsetDateTime lastObservedAt = latestObservedAt(requiredInput.currentRows())
                 .or(() -> requiredInput.lastObservedAt())
@@ -72,8 +64,7 @@ public class EndpointPriorityService {
 
         List<EndpointPriorityCandidate> candidates = currentEvidence.endpoints().values().stream()
                 .filter(endpoint -> !isUnknownRoute(endpoint.route()))
-                .flatMap(endpoint -> candidate(endpoint, baselineEvidence.endpoints().get(endpoint.endpointKey()),
-                        lastObservedAt).stream())
+                .flatMap(endpoint -> candidate(endpoint, lastObservedAt).stream())
                 .sorted(EndpointPriorityService::compareCandidates)
                 .limit(MAX_ENDPOINT_PRIORITY_ITEMS)
                 .toList();
@@ -93,7 +84,7 @@ public class EndpointPriorityService {
                     new ApplicationDashboardReadModel.EndpointPriorityFreshness(
                             "current",
                             lastObservedAt,
-                            "current",
+                            "recent_30_minutes",
                             null),
                     candidate.evidence(),
                     candidate.recommendedAction()));
@@ -103,83 +94,45 @@ public class EndpointPriorityService {
 
     private Optional<EndpointPriorityCandidate> candidate(
             EndpointAggregate current,
-            EndpointAggregate baseline,
             OffsetDateTime lastObservedAt) {
         if (current.requestCount() <= 0L) {
             return Optional.empty();
         }
 
         BigDecimal currentErrorRate = decimal(current.errorCount(), current.requestCount());
-        BigDecimal baselineErrorRate = baseline == null || baseline.requestCount() <= 0L
-                ? null
-                : decimal(baseline.errorCount(), baseline.requestCount());
-        BigDecimal errorRateDelta = baselineErrorRate == null ? null : currentErrorRate.subtract(baselineErrorRate);
-        boolean comparativeEvidenceAvailable = baseline != null
-                && current.requestCount() >= COMMON_MINIMUM_REQUEST_COUNT
-                && baseline.requestCount() >= COMMON_MINIMUM_REQUEST_COUNT;
-        boolean errorSpike = comparativeEvidenceAvailable
+        boolean errorRateHigh = current.requestCount() >= COMMON_MINIMUM_REQUEST_COUNT
                 && currentErrorRate.compareTo(ERROR_RATE_THRESHOLD) >= 0
-                && errorRateDelta.compareTo(ERROR_RATE_DELTA_THRESHOLD) >= 0
-                && currentErrorRate.compareTo(baselineErrorRate.multiply(ERROR_RATE_RELATIVE_THRESHOLD)) >= 0;
-
-        Optional<SlowSharePair> slowSharePair = comparativeEvidenceAvailable
-                ? slowSharePair(current, baseline)
-                : Optional.empty();
-        boolean latencyAvailable = slowSharePair.isPresent();
-        BigDecimal slowShare = latencyAvailable ? slowSharePair.orElseThrow().currentShare() : null;
-        BigDecimal baselineSlowShare = latencyAvailable ? slowSharePair.orElseThrow().baselineShare() : null;
-        BigDecimal slowShareDelta = latencyAvailable ? slowShare.subtract(baselineSlowShare) : null;
-        boolean latencySpike = latencyAvailable
-                && slowShare.compareTo(LATENCY_SLOW_SHARE_THRESHOLD) >= 0
-                && slowShareDelta.compareTo(LATENCY_SLOW_SHARE_DELTA_THRESHOLD) >= 0;
-        boolean comparativeRegression = comparativeRegression(
-                current,
-                baseline,
-                errorRateDelta,
-                latencyAvailable,
-                slowShareDelta);
+                && current.errorCount() > 0L;
+        Optional<BigDecimal> slowShareValue = current.durationBoundaryMismatch()
+                ? Optional.empty()
+                : slowShare(current.durationBuckets());
+        boolean latencyAvailable = slowShareValue.isPresent();
+        BigDecimal slowShare = latencyAvailable ? slowShareValue.orElseThrow() : null;
+        boolean latencyHigh = current.requestCount() >= COMMON_MINIMUM_REQUEST_COUNT
+                && latencyAvailable
+                && slowShare.compareTo(LATENCY_SLOW_SHARE_THRESHOLD) >= 0;
         boolean recentError = current.errorCount() > 0L;
 
         ApplicationDashboardReadModel.EndpointPriorityReason reason;
         List<String> ruleIds;
         double confidence;
-        if (errorSpike && latencySpike) {
+        if (errorRateHigh && latencyHigh) {
             reason = ApplicationDashboardReadModel.EndpointPriorityReason.ERROR_AND_LATENCY;
-            ruleIds = List.of("endpoint_error_spike", "endpoint_latency_spike");
+            ruleIds = List.of("endpoint_error_rate_high", "endpoint_slow_share_high");
             confidence = clamp(Math.max(
-                    confidenceFromDelta(
-                            currentErrorRate,
-                            ERROR_RATE_THRESHOLD,
-                            errorRateDelta,
-                            ERROR_RATE_DELTA_THRESHOLD),
-                    confidenceFromDelta(
-                            slowShare,
-                            LATENCY_SLOW_SHARE_THRESHOLD,
-                            slowShareDelta,
-                            LATENCY_SLOW_SHARE_DELTA_THRESHOLD)) + 0.05d);
-        } else if (errorSpike) {
+                    confidenceFromErrorRate(currentErrorRate),
+                    confidenceFromSlowShare(slowShare)) + 0.05d);
+        } else if (errorRateHigh) {
             reason = ApplicationDashboardReadModel.EndpointPriorityReason.ERROR_SPIKE;
-            ruleIds = List.of("endpoint_error_spike");
-            confidence = confidenceFromDelta(
-                    currentErrorRate,
-                    ERROR_RATE_THRESHOLD,
-                    errorRateDelta,
-                    ERROR_RATE_DELTA_THRESHOLD);
-        } else if (latencySpike) {
+            ruleIds = List.of("endpoint_error_rate_high");
+            confidence = confidenceFromErrorRate(currentErrorRate);
+        } else if (latencyHigh) {
             reason = ApplicationDashboardReadModel.EndpointPriorityReason.LATENCY_SPIKE;
-            ruleIds = List.of("endpoint_latency_spike");
-            confidence = confidenceFromDelta(
-                    slowShare,
-                    LATENCY_SLOW_SHARE_THRESHOLD,
-                    slowShareDelta,
-                    LATENCY_SLOW_SHARE_DELTA_THRESHOLD);
-        } else if (comparativeRegression) {
-            reason = ApplicationDashboardReadModel.EndpointPriorityReason.COMPARATIVE_REGRESSION;
-            ruleIds = List.of("endpoint_comparative_regression");
-            confidence = comparativeConfidence(errorRateDelta, slowShareDelta);
+            ruleIds = List.of("endpoint_slow_share_high");
+            confidence = confidenceFromSlowShare(slowShare);
         } else if (recentError) {
             reason = ApplicationDashboardReadModel.EndpointPriorityReason.RECENT_ERROR;
-            ruleIds = List.of("endpoint_recent_error");
+            ruleIds = List.of("endpoint_recent_server_error");
             confidence = recentErrorConfidence(currentErrorRate, current.errorCount());
         } else {
             return Optional.empty();
@@ -190,16 +143,16 @@ public class EndpointPriorityService {
                         current.requestCount(),
                         current.errorCount(),
                         currentErrorRate,
-                        baseline == null ? null : baseline.requestCount(),
-                        baseline == null ? null : baseline.errorCount(),
-                        baselineErrorRate,
-                        errorRateDelta,
+                        null,
+                        null,
+                        null,
+                        null,
                         latencyAvailable ? current.durationBuckets() : null,
-                        latencyAvailable ? baseline.durationBuckets() : null,
+                        null,
                         slowShare,
-                        baselineSlowShare,
-                        slowShareDelta,
-                        "histogram_bucket_distribution",
+                        null,
+                        null,
+                        "accepted_bucket",
                         ApplicationDashboardReadModel.EndpointEvidenceStatus.AVAILABLE,
                         latencyAvailable
                                 ? ApplicationDashboardReadModel.EndpointEvidenceStatus.AVAILABLE
@@ -218,41 +171,8 @@ public class EndpointPriorityService {
                 recommendedAction(reason)));
     }
 
-    private static boolean comparativeRegression(
-            EndpointAggregate current,
-            EndpointAggregate baseline,
-            BigDecimal errorRateDelta,
-            boolean latencyAvailable,
-            BigDecimal slowShareDelta) {
-        if (baseline == null || errorRateDelta == null) {
-            return false;
-        }
-        if (current.requestCount() < COMPARATIVE_MINIMUM_REQUEST_COUNT
-                || baseline.requestCount() < COMPARATIVE_MINIMUM_REQUEST_COUNT) {
-            return false;
-        }
-        boolean errorRegression = errorRateDelta.compareTo(COMPARATIVE_ERROR_DELTA_THRESHOLD) >= 0;
-        boolean latencyRegression = latencyAvailable
-                && slowShareDelta.compareTo(COMPARATIVE_SLOW_SHARE_DELTA_THRESHOLD) >= 0;
-        return errorRegression || latencyRegression;
-    }
-
-    private static Optional<SlowSharePair> slowSharePair(EndpointAggregate current, EndpointAggregate baseline) {
-        if (current.durationBuckets() == null
-                || baseline.durationBuckets() == null
-                || !sameBoundarySet(current.durationBuckets(), baseline.durationBuckets())) {
-            return Optional.empty();
-        }
-        Optional<BigDecimal> currentShare = slowShare(current.durationBuckets());
-        Optional<BigDecimal> baselineShare = slowShare(baseline.durationBuckets());
-        if (currentShare.isEmpty() || baselineShare.isEmpty()) {
-            return Optional.empty();
-        }
-        return Optional.of(new SlowSharePair(currentShare.orElseThrow(), baselineShare.orElseThrow()));
-    }
-
     private static Optional<BigDecimal> slowShare(List<ApplicationDashboardReadModel.HistogramBucket> buckets) {
-        if (buckets.isEmpty()) {
+        if (buckets == null || buckets.isEmpty()) {
             return Optional.empty();
         }
         long totalCount = buckets.get(buckets.size() - 1).count();
@@ -267,13 +187,6 @@ public class EndpointPriorityService {
         }
         long slowCount = Math.max(0L, totalCount - thresholdBucket.orElseThrow().count());
         return Optional.of(decimal(slowCount, totalCount));
-    }
-
-    private static boolean sameBoundarySet(
-            List<ApplicationDashboardReadModel.HistogramBucket> current,
-            List<ApplicationDashboardReadModel.HistogramBucket> baseline) {
-        return current.stream().map(ApplicationDashboardReadModel.HistogramBucket::leMs).toList()
-                .equals(baseline.stream().map(ApplicationDashboardReadModel.HistogramBucket::leMs).toList());
     }
 
     private static Optional<OffsetDateTime> latestObservedAt(List<EndpointEvidenceRow> rows) {
@@ -295,26 +208,16 @@ public class EndpointPriorityService {
                 .stripTrailingZeros();
     }
 
-    private static double confidenceFromDelta(
-            BigDecimal current,
-            BigDecimal currentThreshold,
-            BigDecimal delta,
-            BigDecimal deltaThreshold) {
+    private static double confidenceFromErrorRate(BigDecimal currentRate) {
         BigDecimal confidence = BigDecimal.valueOf(0.65d)
-                .add(current.subtract(currentThreshold).multiply(BigDecimal.valueOf(2.0d)))
-                .add(delta.subtract(deltaThreshold).multiply(BigDecimal.valueOf(3.0d)));
+                .add(currentRate.subtract(ERROR_RATE_THRESHOLD).multiply(BigDecimal.valueOf(2.0d)));
         return clamp(confidence.doubleValue());
     }
 
-    private static double comparativeConfidence(BigDecimal errorRateDelta, BigDecimal slowShareDelta) {
-        BigDecimal errorContribution = errorRateDelta.max(BigDecimal.ZERO).multiply(BigDecimal.valueOf(3.0d));
-        BigDecimal slowContribution = slowShareDelta == null
-                ? BigDecimal.ZERO
-                : slowShareDelta.max(BigDecimal.ZERO).multiply(BigDecimal.valueOf(2.0d));
-        double confidence = BigDecimal.valueOf(0.50d)
-                .add(errorContribution.max(slowContribution))
-                .doubleValue();
-        return Math.min(COMPARATIVE_CONFIDENCE_CAP, clamp(confidence));
+    private static double confidenceFromSlowShare(BigDecimal currentShare) {
+        BigDecimal confidence = BigDecimal.valueOf(0.65d)
+                .add(currentShare.subtract(LATENCY_SLOW_SHARE_THRESHOLD).multiply(BigDecimal.valueOf(1.5d)));
+        return clamp(confidence.doubleValue());
     }
 
     private static double recentErrorConfidence(BigDecimal currentErrorRate, long errorCount) {
@@ -324,7 +227,7 @@ public class EndpointPriorityService {
                 .add(currentErrorRate.multiply(BigDecimal.valueOf(0.25d)))
                 .add(errorCountContribution)
                 .doubleValue();
-        return Math.min(COMPARATIVE_CONFIDENCE_CAP, clamp(confidence));
+        return Math.min(LOW_SAMPLE_ATTENTION_CONFIDENCE_CAP, clamp(confidence));
     }
 
     private static double clamp(double value) {
@@ -337,10 +240,9 @@ public class EndpointPriorityService {
 
     private static String recommendedAction(ApplicationDashboardReadModel.EndpointPriorityReason reason) {
         return switch (reason) {
-            case ERROR_AND_LATENCY -> "이 endpoint의 오류 로그와 외부 의존성 지연 가능성을 먼저 확인해보세요.";
-            case ERROR_SPIKE -> "이 endpoint의 최근 오류 로그와 배포 변경 가능성을 먼저 확인해보세요.";
-            case LATENCY_SPIKE -> "이 endpoint의 느린 요청 구간과 외부 호출, DB query 대기 가능성을 먼저 확인해보세요.";
-            case COMPARATIVE_REGRESSION -> "이 endpoint가 baseline보다 악화된 신호를 보이므로 최근 변경과 traffic 패턴을 먼저 확인해보세요.";
+            case ERROR_AND_LATENCY -> "최근 30분 동안 이 endpoint의 오류와 느린 응답 근거를 함께 확인하세요.";
+            case ERROR_SPIKE -> "최근 30분 동안 이 endpoint의 5xx 오류 로그와 공통 예외를 먼저 확인하세요.";
+            case LATENCY_SPIKE -> "최근 30분 동안 이 endpoint의 느린 요청 구간과 외부 호출, DB query 대기를 확인하세요.";
             case RECENT_ERROR -> "최근 오류가 있었던 API입니다. 빈도가 낮아도 해당 endpoint의 5xx 로그를 확인해보세요.";
         };
     }
@@ -370,8 +272,7 @@ public class EndpointPriorityService {
             case ERROR_AND_LATENCY -> 1;
             case ERROR_SPIKE -> 2;
             case LATENCY_SPIKE -> 3;
-            case COMPARATIVE_REGRESSION -> 4;
-            case RECENT_ERROR -> 5;
+            case RECENT_ERROR -> 4;
         };
     }
 
@@ -421,6 +322,4 @@ public class EndpointPriorityService {
     ) {
     }
 
-    private record SlowSharePair(BigDecimal currentShare, BigDecimal baselineShare) {
-    }
 }

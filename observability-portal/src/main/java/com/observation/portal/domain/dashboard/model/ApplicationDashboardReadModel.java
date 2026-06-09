@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
@@ -80,16 +81,23 @@ public record ApplicationDashboardReadModel(
     }
 
     /**
-     * query evaluationAt 기준 current 15분 window와 직전 baseline 15분 window를 담는다.
+     * query evaluationAt 기준 recent 30분 accepted bucket window와 legacy baseline compatibility field를 담는다.
      */
     public record SourceWindow(Window current, Window baseline) {
 
         /**
-         * current와 baseline window가 모두 존재하도록 검증한다.
+         * current는 recent 30분 호환 alias로 유지하고 baseline은 MVP primary 판단에서 쓰지 않으므로 null을 허용한다.
          */
         public SourceWindow {
             Objects.requireNonNull(current, "current must not be null");
-            Objects.requireNonNull(baseline, "baseline must not be null");
+        }
+
+        /**
+         * Source of Truth public naming을 노출하면서 기존 current 소비자와 같은 30분 window를 가리키게 한다.
+         */
+        @JsonProperty("recent_30_minutes")
+        public Window recent30Minutes() {
+            return current;
         }
     }
 
@@ -196,7 +204,7 @@ public record ApplicationDashboardReadModel(
     }
 
     /**
-     * current 15분 window의 request/error scalar만 담는다.
+     * recent 30분 window의 request/error scalar만 담는다.
      */
     public record Metrics(
             long requestCount,
@@ -246,16 +254,16 @@ public record ApplicationDashboardReadModel(
         }
 
         /**
-         * current window에서 starter percentile point를 찾지 못했을 때의 명시적 missing response를 만든다.
+         * recent 30분 window에서 starter canonical percentile point를 찾지 못했을 때의 명시적 missing response를 만든다.
          */
         public static SourceScopedPercentiles empty() {
             return new SourceScopedPercentiles(
-                    "starter_local",
+                    "starter_canonical_percentile",
                     "instance_bucket",
-                    "latest_starter_point_per_instance_in_current_window",
+                    "source_scoped_points",
                     "no_average_no_max_no_merge_no_histogram_recalculation",
                     "missing",
-                    "no_percentile_points_in_current_window",
+                    "no_percentile_points_in_recent_30_minutes",
                     List.of());
         }
 
@@ -264,9 +272,9 @@ public record ApplicationDashboardReadModel(
          */
         public static SourceScopedPercentiles available(List<PercentileItem> items) {
             return new SourceScopedPercentiles(
-                    "starter_local",
+                    "starter_canonical_percentile",
                     "instance_bucket",
-                    "latest_starter_point_per_instance_in_current_window",
+                    "source_scoped_points",
                     "no_average_no_max_no_merge_no_histogram_recalculation",
                     "available",
                     null,
@@ -278,9 +286,9 @@ public record ApplicationDashboardReadModel(
          */
         public static SourceScopedPercentiles insufficient(String reason) {
             return new SourceScopedPercentiles(
-                    "starter_local",
+                    "starter_canonical_percentile",
                     "instance_bucket",
-                    "latest_starter_point_per_instance_in_current_window",
+                    "source_scoped_points",
                     "no_average_no_max_no_merge_no_histogram_recalculation",
                     "insufficient",
                     reason,
@@ -332,7 +340,7 @@ public record ApplicationDashboardReadModel(
     }
 
     /**
-     * application-level summary duration histogram distribution evidence를 current/baseline window별로 담는다.
+     * application-level summary duration histogram distribution evidence를 recent 30분 window 기준으로 담는다.
      *
      * <p>이 block은 bucket distribution 표시 source이며 p95/p99, delta, regression, confidence, rule 판단을 포함하지 않는다.</p>
      */
@@ -358,16 +366,16 @@ public record ApplicationDashboardReadModel(
         }
 
         /**
-         * current/baseline 모두 histogram evidence가 없는 기본 response를 만든다.
+         * recent 30분 histogram evidence가 없는 기본 response와 baseline compatibility limitation을 만든다.
          */
         public static HistogramDistribution empty() {
             return new HistogramDistribution(
-                    "histogram_bucket_distribution",
+                    "accepted_bucket",
                     "application",
-                    "bucket_distribution_evidence",
-                    "sum_cumulative_counts_only_when_boundary_set_matches",
-                    HistogramWindow.missing("no_histogram_buckets_in_current_window"),
-                    HistogramWindow.missing("no_histogram_buckets_in_baseline_window"));
+                    "cumulative_bucket_distribution",
+                    "display_bucket_only_no_percentile_recalculation",
+                    HistogramWindow.missing("no_histogram_buckets_in_recent_30_minutes"),
+                    HistogramWindow.unavailable("baseline_comparison_not_used_for_mvp"));
         }
     }
 
@@ -654,11 +662,10 @@ public record ApplicationDashboardReadModel(
      * Story 5.5 MVP endpoint priority reason을 닫힌 JSON 문자열로 제한한다.
      */
     public enum EndpointPriorityReason {
-        ERROR_SPIKE("error_spike"),
-        LATENCY_SPIKE("latency_spike"),
+        ERROR_SPIKE("error_rate_high"),
+        LATENCY_SPIKE("latency_slow_share_high"),
         ERROR_AND_LATENCY("error_and_latency"),
-        COMPARATIVE_REGRESSION("comparative_regression"),
-        RECENT_ERROR("recent_error");
+        RECENT_ERROR("recent_server_error");
 
         private final String value;
 
@@ -682,7 +689,7 @@ public record ApplicationDashboardReadModel(
         AVAILABLE("available"),
         MISSING("missing"),
         INSUFFICIENT("insufficient"),
-        INSUFFICIENT_BASELINE("insufficient_baseline"),
+        INSUFFICIENT_BASELINE("baseline_comparison_not_used"),
         UNAVAILABLE("unavailable");
 
         private final String value;
@@ -803,9 +810,9 @@ public record ApplicationDashboardReadModel(
             validateNullableFraction(baselineSlowShare, "baselineSlowShare");
             validateNullableDelta(slowShareDelta, "slowShareDelta");
             bucketDistributionSource = requireText(bucketDistributionSource, "bucketDistributionSource");
-            if (!"histogram_bucket_distribution".equals(bucketDistributionSource)) {
+            if (!"accepted_bucket".equals(bucketDistributionSource)) {
                 throw new IllegalArgumentException(
-                        "bucketDistributionSource must be histogram_bucket_distribution");
+                        "bucketDistributionSource must be accepted_bucket");
             }
             Objects.requireNonNull(errorEvidenceStatus, "errorEvidenceStatus must not be null");
             Objects.requireNonNull(latencyEvidenceStatus, "latencyEvidenceStatus must not be null");

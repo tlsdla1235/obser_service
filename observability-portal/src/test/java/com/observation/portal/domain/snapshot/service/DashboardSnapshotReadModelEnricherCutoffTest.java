@@ -211,7 +211,7 @@ class DashboardSnapshotReadModelEnricherCutoffTest {
                         null,
                         null,
                         null,
-                        "histogram_bucket_distribution",
+                        "accepted_bucket",
                         ApplicationDashboardReadModel.EndpointEvidenceStatus.AVAILABLE,
                         ApplicationDashboardReadModel.EndpointEvidenceStatus.AVAILABLE),
                 "이 endpoint를 먼저 확인하세요.");

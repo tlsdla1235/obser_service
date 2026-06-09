@@ -31,11 +31,8 @@ public class TriageSummaryService {
 
     static final long MINIMUM_REQUEST_COUNT = 30L;
     static final BigDecimal ERROR_RATE_THRESHOLD = BigDecimal.valueOf(0.05d);
-    static final BigDecimal ERROR_RATE_DELTA_THRESHOLD = BigDecimal.valueOf(0.03d);
-    static final BigDecimal ERROR_RATE_RELATIVE_THRESHOLD = BigDecimal.valueOf(2.0d);
     static final long LATENCY_SLOW_BUCKET_LE_MS = 500L;
     static final BigDecimal LATENCY_SLOW_SHARE_THRESHOLD = BigDecimal.valueOf(0.20d);
-    static final BigDecimal LATENCY_SLOW_SHARE_DELTA_THRESHOLD = BigDecimal.valueOf(0.10d);
     static final double CARD_EXPOSURE_CONFIDENCE = 0.65d;
     private static final BigDecimal DATASOURCE_POOL_RATIO_THRESHOLD = BigDecimal.valueOf(0.85d);
     private static final BigDecimal CPU_USAGE_RATIO_THRESHOLD = BigDecimal.valueOf(0.85d);
@@ -52,7 +49,7 @@ public class TriageSummaryService {
     }
 
     /**
-     * current/baseline aggregate와 histogram/runtime evidence에서 triage card와 degraded input을 분리해 반환한다.
+     * recent 30분 aggregate와 histogram/runtime evidence에서 triage card와 degraded input을 분리해 반환한다.
      */
     public TriageSummary summarize(TriageSummaryInput input) {
         TriageSummaryInput requiredInput = Objects.requireNonNull(input, "input must not be null");
@@ -61,12 +58,8 @@ public class TriageSummaryService {
         }
 
         List<TriageCandidate> candidates = new ArrayList<>();
-        Optional<TriageCandidate> errorCandidate = errorSpikeCandidate(requiredInput);
-        Optional<TriageCandidate> sustainedErrorCandidate = errorCandidate.isPresent()
-                ? Optional.empty()
-                : sustainedErrorRateCandidate(requiredInput);
-        Optional<TriageCandidate> errorConcernCandidate = errorCandidate.or(() -> sustainedErrorCandidate);
-        Optional<TriageCandidate> latencyCandidate = latencySpikeCandidate(requiredInput);
+        Optional<TriageCandidate> errorConcernCandidate = errorRateHighCandidate(requiredInput);
+        Optional<TriageCandidate> latencyCandidate = latencySlowShareHighCandidate(requiredInput);
         errorConcernCandidate.ifPresent(candidates::add);
         latencyCandidate.ifPresent(candidates::add);
         saturationHintCandidates(requiredInput, errorConcernCandidate, latencyCandidate).forEach(candidates::add);
@@ -93,54 +86,7 @@ public class TriageSummaryService {
         return new TriageSummary(cards, degradedInput);
     }
 
-    private Optional<TriageCandidate> errorSpikeCandidate(TriageSummaryInput input) {
-        WindowBucketAggregate current = input.currentAggregate();
-        WindowBucketAggregate baseline = input.baselineAggregate();
-        if (current.requestCount() < MINIMUM_REQUEST_COUNT || baseline.requestCount() < MINIMUM_REQUEST_COUNT) {
-            return Optional.empty();
-        }
-
-        BigDecimal currentRate = errorRate(current.errorCount(), current.requestCount());
-        BigDecimal baselineRate = errorRate(baseline.errorCount(), baseline.requestCount());
-        BigDecimal delta = currentRate.subtract(baselineRate);
-        boolean guardPassed = currentRate.compareTo(ERROR_RATE_THRESHOLD) >= 0
-                && delta.compareTo(ERROR_RATE_DELTA_THRESHOLD) >= 0
-                && currentRate.compareTo(baselineRate.multiply(ERROR_RATE_RELATIVE_THRESHOLD)) >= 0;
-        if (!guardPassed) {
-            return Optional.empty();
-        }
-
-        double confidence = confidenceFromDelta(currentRate, ERROR_RATE_THRESHOLD, delta, ERROR_RATE_DELTA_THRESHOLD);
-        int score = score(confidence);
-        ApplicationDashboardReadModel.TriageEvidence evidence = new ApplicationDashboardReadModel.TriageEvidence(
-                current.requestCount(),
-                current.errorCount(),
-                currentRate,
-                baseline.requestCount(),
-                baseline.errorCount(),
-                baselineRate,
-                delta,
-                null,
-                null,
-                null,
-                null,
-                runtimeRatioEvidence(input.runtimeRatio()),
-                input.freshnessStatus().name().toLowerCase(),
-                sourcePercentilePoint(input.sourceScopedPercentiles()));
-        ApplicationDashboardReadModel.TriageCard card = new ApplicationDashboardReadModel.TriageCard(
-                "global_error_spike",
-                severity(confidence),
-                "Application 오류율 증가",
-                "current window의 오류율이 baseline보다 의미 있게 증가했습니다.",
-                "최근 배포와 외부 의존성 오류 로그를 먼저 확인해보세요.",
-                confidence,
-                score,
-                null,
-                evidence);
-        return Optional.of(new TriageCandidate(card, true, errorBadBucketCount(input.recentBuckets())));
-    }
-
-    private Optional<TriageCandidate> sustainedErrorRateCandidate(TriageSummaryInput input) {
+    private Optional<TriageCandidate> errorRateHighCandidate(TriageSummaryInput input) {
         WindowBucketAggregate current = input.currentAggregate();
         if (current.requestCount() < MINIMUM_REQUEST_COUNT) {
             return Optional.empty();
@@ -151,24 +97,16 @@ public class TriageSummaryService {
             return Optional.empty();
         }
 
-        WindowBucketAggregate baseline = input.baselineAggregate();
-        Long baselineRequestCount = baseline.requestCount() > 0L ? baseline.requestCount() : null;
-        Long baselineErrorCount = baseline.requestCount() > 0L ? baseline.errorCount() : null;
-        BigDecimal baselineRate = baseline.requestCount() > 0L
-                ? errorRate(baseline.errorCount(), baseline.requestCount())
-                : null;
-        BigDecimal delta = baselineRate == null ? null : currentRate.subtract(baselineRate);
-
         double confidence = confidenceFromAbsoluteErrorRate(currentRate);
         int score = score(confidence);
         ApplicationDashboardReadModel.TriageEvidence evidence = new ApplicationDashboardReadModel.TriageEvidence(
                 current.requestCount(),
                 current.errorCount(),
                 currentRate,
-                baselineRequestCount,
-                baselineErrorCount,
-                baselineRate,
-                delta,
+                null,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -177,10 +115,10 @@ public class TriageSummaryService {
                 input.freshnessStatus().name().toLowerCase(),
                 sourcePercentilePoint(input.sourceScopedPercentiles()));
         ApplicationDashboardReadModel.TriageCard card = new ApplicationDashboardReadModel.TriageCard(
-                "sustained_error_rate_high",
+                "application_error_rate_high",
                 severity(confidence),
                 "Application 오류율 높음",
-                "current window의 오류율이 절대 기준 이상으로 높게 유지됩니다.",
+                "recent 30 minutes window의 오류율이 절대 기준 이상입니다.",
                 "최근 오류가 있었던 API와 공통 오류 로그를 먼저 확인해보세요.",
                 confidence,
                 score,
@@ -189,59 +127,45 @@ public class TriageSummaryService {
         return Optional.of(new TriageCandidate(card, true, errorBadBucketCount(input.recentBuckets())));
     }
 
-    private Optional<TriageCandidate> latencySpikeCandidate(TriageSummaryInput input) {
+    private Optional<TriageCandidate> latencySlowShareHighCandidate(TriageSummaryInput input) {
         WindowBucketAggregate currentAggregate = input.currentAggregate();
-        WindowBucketAggregate baselineAggregate = input.baselineAggregate();
-        if (currentAggregate.requestCount() < MINIMUM_REQUEST_COUNT
-                || baselineAggregate.requestCount() < MINIMUM_REQUEST_COUNT) {
+        if (currentAggregate.requestCount() < MINIMUM_REQUEST_COUNT) {
             return Optional.empty();
         }
 
         ApplicationDashboardReadModel.HistogramWindow current = input.histogramDistribution().current();
-        ApplicationDashboardReadModel.HistogramWindow baseline = input.histogramDistribution().baseline();
         Optional<SlowShare> currentSlowShare = slowShare(current);
-        Optional<SlowShare> baselineSlowShare = slowShare(baseline);
-        if (currentSlowShare.isEmpty()
-                || baselineSlowShare.isEmpty()
-                || !sameBoundarySet(current.buckets(), baseline.buckets())) {
+        if (currentSlowShare.isEmpty()) {
             return Optional.empty();
         }
 
         BigDecimal currentShare = currentSlowShare.orElseThrow().share();
-        BigDecimal baselineShare = baselineSlowShare.orElseThrow().share();
-        BigDecimal delta = currentShare.subtract(baselineShare);
-        boolean guardPassed = currentShare.compareTo(LATENCY_SLOW_SHARE_THRESHOLD) >= 0
-                && delta.compareTo(LATENCY_SLOW_SHARE_DELTA_THRESHOLD) >= 0;
-        if (!guardPassed) {
+        if (currentShare.compareTo(LATENCY_SLOW_SHARE_THRESHOLD) < 0) {
             return Optional.empty();
         }
 
-        double confidence = confidenceFromDelta(
-                currentShare,
-                LATENCY_SLOW_SHARE_THRESHOLD,
-                delta,
-                LATENCY_SLOW_SHARE_DELTA_THRESHOLD);
+        double confidence = confidenceFromAbsoluteSlowShare(currentShare);
         int score = score(confidence);
         ApplicationDashboardReadModel.TriageEvidence evidence = new ApplicationDashboardReadModel.TriageEvidence(
                 currentAggregate.requestCount(),
                 null,
                 null,
-                baselineAggregate.requestCount(),
+                null,
                 null,
                 null,
                 null,
                 currentShare,
-                baselineShare,
+                null,
                 histogramSummary(current),
-                histogramSummary(baseline),
+                null,
                 runtimeRatioEvidence(input.runtimeRatio()),
                 input.freshnessStatus().name().toLowerCase(),
                 sourcePercentilePoint(input.sourceScopedPercentiles()));
         ApplicationDashboardReadModel.TriageCard card = new ApplicationDashboardReadModel.TriageCard(
-                "global_latency_spike",
+                "application_slow_share_high",
                 severity(confidence),
-                "Application 응답 지연 증가",
-                "current window의 500ms 초과 duration bucket 비중이 baseline보다 증가했습니다.",
+                "Application 느린 응답 비중 높음",
+                "recent 30 minutes window의 500ms 초과 duration bucket 비중이 절대 기준 이상입니다.",
                 "느린 요청 구간과 외부 호출, DB query 대기 가능성을 먼저 확인해보세요.",
                 confidence,
                 score,
@@ -266,7 +190,7 @@ public class TriageSummaryService {
             candidates.add(saturationCandidate(
                     "db_pool_high_with_latency",
                     "DB pool 사용률 확인 필요",
-                    "DB pool 사용률이 높고 응답 지연도 함께 증가했습니다.",
+                    "DB pool 사용률이 높고 느린 응답 신호도 함께 관찰됩니다.",
                     "DB 연결 대기 가능성을 먼저 확인해보세요.",
                     row,
                     latencyCandidate.orElseThrow().card().confidence()));
@@ -276,7 +200,7 @@ public class TriageSummaryService {
             candidates.add(saturationCandidate(
                     "cpu_high_with_latency",
                     "CPU 사용률 확인 필요",
-                    "CPU 사용률이 높고 응답 지연도 함께 증가했습니다.",
+                    "CPU 사용률이 높고 느린 응답 신호도 함께 관찰됩니다.",
                     "CPU saturation 가능성을 먼저 확인해보세요.",
                     row,
                     latencyCandidate.orElseThrow().card().confidence()));
@@ -416,32 +340,15 @@ public class TriageSummaryService {
         }
     }
 
-    private static boolean sameBoundarySet(
-            List<ApplicationDashboardReadModel.HistogramBucket> current,
-            List<ApplicationDashboardReadModel.HistogramBucket> baseline) {
-        List<Long> currentBoundaries = current.stream()
-                .map(ApplicationDashboardReadModel.HistogramBucket::leMs)
-                .toList();
-        List<Long> baselineBoundaries = baseline.stream()
-                .map(ApplicationDashboardReadModel.HistogramBucket::leMs)
-                .toList();
-        return currentBoundaries.equals(baselineBoundaries);
-    }
-
-    private static double confidenceFromDelta(
-            BigDecimal current,
-            BigDecimal currentThreshold,
-            BigDecimal delta,
-            BigDecimal deltaThreshold) {
+    private static double confidenceFromAbsoluteErrorRate(BigDecimal currentRate) {
         BigDecimal confidence = BigDecimal.valueOf(CARD_EXPOSURE_CONFIDENCE)
-                .add(current.subtract(currentThreshold))
-                .add(delta.subtract(deltaThreshold).multiply(BigDecimal.valueOf(2.0d)));
+                .add(currentRate.subtract(ERROR_RATE_THRESHOLD).multiply(BigDecimal.valueOf(3.0d)));
         return clamp(confidence.doubleValue());
     }
 
-    private static double confidenceFromAbsoluteErrorRate(BigDecimal currentRate) {
+    private static double confidenceFromAbsoluteSlowShare(BigDecimal currentShare) {
         BigDecimal confidence = BigDecimal.valueOf(CARD_EXPOSURE_CONFIDENCE)
-                .add(currentRate.subtract(ERROR_RATE_THRESHOLD).multiply(BigDecimal.valueOf(2.0d)));
+                .add(currentShare.subtract(LATENCY_SLOW_SHARE_THRESHOLD).multiply(BigDecimal.valueOf(1.5d)));
         return clamp(confidence.doubleValue());
     }
 
@@ -543,7 +450,6 @@ public class TriageSummaryService {
      */
     public record TriageSummaryInput(
             WindowBucketAggregate currentAggregate,
-            WindowBucketAggregate baselineAggregate,
             ApplicationDashboardReadModel.HistogramDistribution histogramDistribution,
             ApplicationDashboardReadModel.SourceScopedPercentiles sourceScopedPercentiles,
             List<RecentBucketEvidenceRow> recentBuckets,
@@ -556,7 +462,6 @@ public class TriageSummaryService {
          */
         public TriageSummaryInput {
             Objects.requireNonNull(currentAggregate, "currentAggregate must not be null");
-            Objects.requireNonNull(baselineAggregate, "baselineAggregate must not be null");
             Objects.requireNonNull(histogramDistribution, "histogramDistribution must not be null");
             Objects.requireNonNull(sourceScopedPercentiles, "sourceScopedPercentiles must not be null");
             recentBuckets = List.copyOf(Objects.requireNonNull(recentBuckets, "recentBuckets must not be null"));
