@@ -330,6 +330,53 @@ Epic 12의 기본 consumer는 Spring Boot portal 내부 worker다. Lambda consum
    - Story 12.5의 benchmark harness/guard를 사용해 실제 local/isolated benchmark 수치와 sanitized report artifact를 남긴다.
    - Phase 1 request latency와 Phase 2 DB batch throughput evidence를 같은 결론이나 단일 개선율로 합치지 않는다.
 
+## Epic 13. Dashboard Source of Truth Realignment
+
+목표: 확정된 Dashboard Source of Truth를 Application Dashboard, Snapshot, Instance Dashboard, Retention 흐름에 안전하게 적용하기 위해 새 alignment epic/story 묶음으로 추적한다.
+
+이 epic은 완료된 Epic 4/5/6/10 story를 다시 여는 작업이 아니다. 완료 story는 당시 구현 이력으로 보존하고, 새 alignment story에서 Background / Aligns / Supersedes / Hardens 관계로만 참조한다.
+
+이번 D1 후속 승인으로 `implementation-artifacts/sprint-status.yaml`에는 Epic 13 tracking key만 최소 추가한다. 이후 status 전환은 별도 리뷰 또는 D3 final planning/status consolidation에서 실제 evidence를 기준으로 수행한다.
+
+Guardrails:
+
+- Source of Truth 문서는 read-only 기준으로 참조하고 의미를 재정의하지 않는다.
+- production code, migration, test code 구현은 D1 범위가 아니다.
+- 완료된 story 파일 본문과 done 상태를 수정하지 않는다.
+- `epics.md`의 이 섹션은 새 alignment epic/story 생성을 위한 최소 pointer다.
+
+### Documentation Tracking Stories
+
+- `13-doc-0-documentation-alignment-plan`: D0 문서 정렬 phase, 금지 문서, just-in-time/final consolidation 원칙을 고정한다.
+- `13-doc-1-alignment-epic-story-creation`: D1 새 alignment epic/story artifact와 최소 planning 문서 정렬을 수행한다.
+- `13-doc-2-per-slice-documentation-updates`: D2 각 vertical slice 구현 직후 contract/architecture/story 문서를 필요한 범위로만 정렬한다.
+- `13-doc-3-final-planning-status-consolidation`: D3 P10 acceptance 이후 공식 planning/status 문서를 실제 결과 기준으로 정리한다.
+
+### Planning And Production Alignment Stories
+
+1. `13-1-alignment-story-status-planning`
+   - P0 alignment epic key, story split, status 반영 시점, 완료 story 참조 정책을 확정한다.
+2. `13-2-frontend-read-model-contract-guard`
+   - P1 Frontend adapter/type/fixture guard로 server-computed state/order/source semantics를 고정한다.
+3. `13-3-backend-recent-30-minutes-window-alignment`
+   - P2 Application/Instance live 판단 window를 recent_30_minutes로 정렬한다.
+4. `13-4-backend-application-dashboard-read-model-shape-alignment`
+   - P3 Application Dashboard API/read model shape를 Source of Truth contract에 맞춘다.
+5. `13-5-frontend-application-dashboard-ia-realignment`
+   - P4 Application Dashboard live surface를 운영자 질문 순서로 재배치한다.
+6. `13-6-backend-30-minute-scheduled-snapshot-and-slot-horizon-alignment`
+   - P5 30분 scheduled snapshot slot과 current_window_end_utc horizon을 정렬한다.
+7. `13-7-frontend-snapshot-history-detail-realignment`
+   - P6 Snapshot history/detail을 marker-first 30분 point 탐색과 stored read model 복원 surface로 정렬한다.
+8. `13-8-backend-instance-dashboard-live-snapshot-mode-split`
+   - P7 Instance Dashboard live/snapshot mode를 API/service 책임으로 분리한다.
+9. `13-9-frontend-instance-surface-split`
+   - P8 Instance live detail, snapshot mode, snapshot trend UI 책임을 분리한다.
+10. `13-10-retention-cleanup-alignment`
+   - P9 14일 retention UX와 physical cleanup 기준을 current_window_end_utc, bucket_end_utc, 30분 evidence grace로 정렬한다.
+11. `13-11-end-to-end-acceptance-and-demo-hardening`
+   - P10 Application live, snapshot, instance, retention path를 Source of Truth 기준으로 end-to-end 검증한다.
+
 ## Post-MVP Candidate Backlog
 
 ### Runtime Gauge Aggregate Extension

@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-06-06T13:51:05+0900
+# last_updated: 2026-06-09T23:38:04+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -62,9 +62,11 @@
 # - Epic 12는 SQS payload size, duplicate/no-op, malformed/conflict DLQ, snapshot cutoff, stale/down과 queue lag 분리를 story acceptance에 포함한다.
 # - Story 12.1은 Epic 12 architecture-level 결정을 닫았다: Spring Boot portal 내부 worker, Lambda deferred/non-goal, SQS mode opt-in/direct rollback, enqueue success only 202, enqueue failure 503, payload too large 413, no direct fallback, fake queue 기본/LocalStack opt-in, 12.3-only rollout 금지.
 # - Story 12.6은 12.5가 만든 benchmark harness/guard를 사용해 실제 local/isolated benchmark 수치와 sanitized report artifact를 남긴다. Phase 1 request latency와 Phase 2 DB batch throughput evidence는 같은 결론으로 합치지 않는다.
+# - Epic 13은 Dashboard Source of Truth Realignment tracking epic이다. 완료된 Epic 4/5/6/10 story는 당시 구현 이력으로 보존하고, 새 alignment story에서 Aligns/Supersedes/Hardens 관계로만 참조한다.
+# - Epic 13은 Source of Truth 문서를 재정의하지 않고 Application Dashboard, Snapshot, Instance Dashboard, Retention 흐름을 phase별 rollback 가능한 story로 정렬한다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-06-06T13:51:05+0900
+last_updated: 2026-06-09T23:38:04+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -162,3 +164,21 @@ development_status:
   12-5-batch-writer-and-performance-verification: done
   12-6-benchmark-evidence-run-and-report: done
   epic-12-retrospective: optional
+
+  epic-13: in-progress
+  13-doc-0-documentation-alignment-plan: done
+  13-1-alignment-story-status-planning: done
+  13-doc-1-alignment-epic-story-creation: done
+  13-2-frontend-read-model-contract-guard: backlog
+  13-3-backend-recent-30-minutes-window-alignment: backlog
+  13-4-backend-application-dashboard-read-model-shape-alignment: backlog
+  13-5-frontend-application-dashboard-ia-realignment: backlog
+  13-6-backend-30-minute-scheduled-snapshot-and-slot-horizon-alignment: backlog
+  13-7-frontend-snapshot-history-detail-realignment: backlog
+  13-8-backend-instance-dashboard-live-snapshot-mode-split: backlog
+  13-9-frontend-instance-surface-split: backlog
+  13-10-retention-cleanup-alignment: backlog
+  13-doc-2-per-slice-documentation-updates: backlog
+  13-11-end-to-end-acceptance-and-demo-hardening: backlog
+  13-doc-3-final-planning-status-consolidation: backlog
+  epic-13-retrospective: optional
