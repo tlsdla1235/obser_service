@@ -40,6 +40,10 @@
       box-sizing: border-box;
     }
 
+    [hidden] {
+      display: none !important;
+    }
+
     html {
       background: var(--bg);
       color: var(--ink);
@@ -101,6 +105,25 @@
       flex-wrap: wrap;
     }
 
+    .prototype-controls {
+      display: grid;
+      gap: 6px;
+      min-width: min(100%, 520px);
+      border: 1px dashed #c7c7c7;
+      background: var(--surface-soft);
+      padding: 8px;
+    }
+
+    .prototype-controls .toolbar {
+      justify-content: flex-end;
+    }
+
+    .prototype-label {
+      color: var(--quiet);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
     .scenario-select,
     .button {
       min-height: 32px;
@@ -129,8 +152,24 @@
       color: #fff;
     }
 
+    .button.success {
+      border-color: #15803d;
+      background: #15803d;
+      color: #fff;
+    }
+
+    .prototype-button {
+      min-height: 28px;
+      border: 1px dashed #a3a3a3;
+      background: transparent;
+      color: var(--muted);
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+
     .button:hover,
-    .scenario-select:hover {
+    .scenario-select:hover,
+    .prototype-button:hover {
       border-color: #737373;
     }
 
@@ -323,6 +362,12 @@
       color: var(--green);
     }
 
+    .badge.normal {
+      border-color: #86efac;
+      background: var(--green-bg);
+      color: var(--green);
+    }
+
     .badge.degraded,
     .badge.attention {
       border-color: #fcd34d;
@@ -331,6 +376,7 @@
     }
 
     .badge.unknown,
+    .badge.unavailable,
     .badge.sample {
       border-color: #d4d4d4;
       background: var(--surface-soft);
@@ -649,6 +695,10 @@
       background: var(--red);
     }
 
+    .dot.unavailable {
+      background: var(--quiet);
+    }
+
     .note {
       border: 1px solid #bfdbfe;
       background: var(--blue-bg);
@@ -661,6 +711,61 @@
       border-color: #ddd6fe;
       background: var(--violet-bg);
       color: #4c1d95;
+    }
+
+    .mode-note {
+      display: none;
+      margin-top: 12px;
+    }
+
+    .mode-note.visible {
+      display: block;
+    }
+
+    .snapshot-row.selected {
+      border-color: var(--border-strong);
+      background: var(--surface-muted);
+    }
+
+    .sort-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .sort-select {
+      min-height: 30px;
+      border: 1px solid #d4d4d4;
+      background: var(--surface);
+      padding: 4px 8px;
+      color: var(--ink);
+      font-size: 12px;
+    }
+
+    .endpoint-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .endpoint-table th,
+    .endpoint-table td {
+      border-top: 1px solid var(--border);
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .endpoint-table th {
+      color: var(--quiet);
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+
+    .endpoint-table .route {
+      font-size: 12px;
     }
 
     .modal-backdrop {
@@ -807,10 +912,13 @@
         <strong>orders-api</strong>
         <span class="muted">prod</span>
       </div>
-      <div class="toolbar">
-        <select id="scenarioSelect" class="scenario-select" aria-label="목업 시나리오 선택"></select>
-        <button class="button" type="button" data-view-button="dashboard">Live</button>
-        <button class="button" type="button" data-view-button="snapshot">Snapshot</button>
+      <div class="prototype-controls" aria-label="Prototype controls">
+        <div class="prototype-label">Prototype controls · 운영 화면 밖 목업 조작 영역</div>
+        <div class="toolbar">
+          <select id="scenarioSelect" class="scenario-select" aria-label="목업 시나리오 선택"></select>
+          <button class="prototype-button" type="button" data-prototype-mode="dashboard">Live surface로 리셋</button>
+          <button class="prototype-button" type="button" data-prototype-mode="snapshot">선택 snapshot surface 미리보기</button>
+        </div>
       </div>
     </div>
   </header>
@@ -876,21 +984,28 @@
           <section class="panel strong">
             <div class="panel-head">
               <div class="title-block">
-                <div class="section-label"><span class="icon">A</span> Application Dashboard / Live</div>
-                <h1>orders-api</h1>
-                <p class="subtitle">Server read model을 표시합니다. UI는 lifecycle state, endpoint priority, resource pattern을 재계산하지 않습니다.</p>
+                <div id="dashboardSectionLabel" class="section-label"><span class="icon">A</span> Application Dashboard / Live</div>
+                <h1 id="dashboardTitle">orders-api</h1>
+                <p id="dashboardSubtitle" class="subtitle">Server read model을 표시합니다. UI는 lifecycle state, endpoint priority, resource pattern을 재계산하지 않습니다.</p>
               </div>
               <div class="badge-row">
+                <span id="dashboardModeBadge" class="badge live">mode: live</span>
                 <span class="badge live">recent 30 minutes</span>
                 <span class="badge sample">baseline not used</span>
+                <button id="returnLiveButton" class="button success" type="button" hidden>Live Dashboard로 돌아가기</button>
               </div>
             </div>
             <div class="panel-body">
+              <div id="snapshotModeNote" class="note stored-note mode-note"></div>
               <div class="info-grid">
-                <div class="info-cell"><span>project</span><strong>Spring Commerce</strong></div>
-                <div class="info-cell"><span>application</span><strong>orders-api</strong></div>
+                <div class="info-cell"><span>mode</span><strong id="modeCell">live</strong></div>
                 <div class="info-cell"><span>window</span><strong id="windowCell">14:00:00Z - 14:30:00Z</strong></div>
-                <div class="info-cell"><span>readSemantics</span><strong>accepted_metric_buckets</strong></div>
+                <div class="info-cell"><span>source</span><strong id="sourceCell">accepted_metric_buckets</strong></div>
+                <div class="info-cell"><span>capturedAt</span><strong id="capturedAtCell">현재 query 시각</strong></div>
+                <div class="info-cell"><span>captureReason</span><strong id="captureReasonCell">n/a</strong></div>
+                <div class="info-cell"><span>snapshotDetailRecalculates</span><strong id="recalculatesCell">false</strong></div>
+                <div class="info-cell"><span>markerIsStateSource</span><strong id="markerSourceCell">false</strong></div>
+                <div class="info-cell"><span>project / application</span><strong>Spring Commerce / orders-api</strong></div>
               </div>
             </div>
           </section>
@@ -931,8 +1046,8 @@
             </div>
             <div class="metric-cell">
               <div class="metric-label">USE Hint</div>
-              <div id="resourceMetric" class="metric-value">DB pool 88%</div>
-              <div class="metric-note">resource pressure hint</div>
+              <div id="resourceMetric" class="metric-value">DB pool max 88%</div>
+              <div class="metric-note">window 내 observed maxUsage hint</div>
             </div>
           </section>
 
@@ -975,68 +1090,22 @@
             </div>
             <div id="instanceList" class="panel-body instance-list"></div>
           </section>
-        </div>
-      </div>
 
-      <div id="snapshotView" class="view">
-        <div class="main-inner">
-          <section class="panel strong">
+          <section class="panel">
             <div class="panel-head">
               <div>
                 <div class="section-label"><span class="icon">H</span> Snapshot / History</div>
-                <h1>Stored dashboard read model</h1>
-                <p class="subtitle">marker는 탐색용 색인이고, snapshot detail은 저장된 dashboard read model을 복원합니다.</p>
+                <p id="historySubtitle" class="subtitle">최근 snapshot markers에서 특정 시점을 선택하면 stored Application Snapshot Dashboard로 복원합니다.</p>
               </div>
-              <div class="toolbar">
-                <button id="openSnapshotPickerButton" class="button primary" type="button">Snapshot 선택</button>
-                <button class="button" type="button" data-view-button="dashboard">Live로 돌아가기</button>
-              </div>
+              <button id="openSnapshotPickerButton" class="button primary" type="button">Snapshot 선택</button>
             </div>
             <div class="panel-body">
-              <div class="note stored-note">
-                Application Snapshot detail은 current metric을 재계산하지 않습니다. Instance evidence는 별도 modal에서 선택 window 기준으로 넓게 확인하는 흐름을 제안합니다.
+              <div class="note">
+                markerBucket은 state가 아니라 탐색 색인입니다. 실제 상태와 evidence는 선택된 snapshot의 저장된 dashboard read model에서 복원됩니다.
               </div>
+              <div id="selectedSnapshotSummary" class="note stored-note mode-note" style="margin-top:12px"></div>
             </div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-head">
-              <div>
-                <div class="section-label"><span class="icon">X</span> Snapshot index</div>
-                <p class="subtitle">markerBucket, captureReason, stateCode로 빠르게 훑는 선택 색인입니다.</p>
-              </div>
-            </div>
-            <div class="panel-body">
-              <div id="snapshotIndexGrid" class="index-grid"></div>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-head">
-              <div>
-                <div class="section-label"><span class="icon">M</span> History markers</div>
-                <p class="subtitle">markerBucket은 state/evidence source가 아니라 timeline 색상과 필터용 요약입니다.</p>
-              </div>
-            </div>
-            <div id="snapshotList" class="panel-body snapshot-list"></div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-head">
-              <div>
-                <div class="section-label"><span class="icon">D</span> Selected snapshot detail</div>
-                <p class="subtitle">저장 당시 dashboard read model을 보여주는 복원 화면 예시입니다.</p>
-              </div>
-            </div>
-            <div class="panel-body">
-              <div id="selectedSnapshotSummary" class="note stored-note" style="margin-bottom:12px"></div>
-              <div class="info-grid">
-                <div class="info-cell"><span>source</span><strong>dashboard_snapshots.read_model_json</strong></div>
-                <div class="info-cell"><span>snapshotDetailRecalculates</span><strong>false</strong></div>
-                <div class="info-cell"><span>markerIsStateSource</span><strong>false</strong></div>
-                <div class="info-cell"><span>baseline diff</span><strong>Post-MVP</strong></div>
-              </div>
-            </div>
+            <div id="snapshotList" class="panel-body snapshot-list" style="border-top:1px solid var(--border)"></div>
           </section>
         </div>
       </div>
@@ -1061,108 +1130,185 @@
     const scenarios = {
       shared: {
         label: "Shared resource pressure",
-        stateTone: "degraded",
-        stateCode: "degraded",
-        stateLabel: "확인 필요",
-        railConcern: "DB pool pressure와 요청 지연이 함께 관찰됨",
-        rationale: "최근 30분 요청 수는 충분하고 500ms 초과 요청 비율이 24.2%입니다. datasource pool 사용률도 기준 이상입니다.",
-        action: "DB connection wait 가능성을 확인하되 root cause로 단정하지 않습니다.",
-        starter: "heartbeat 12초 전, metric state 변경 없음",
-        metrics: ["42,180", "2.8%", "24.2%", "DB pool 88%"],
-        firstLook: [
-          ["resource_pressure", "DB pool pressure + request symptoms", "shared_resource_pressure_with_request_symptom", "datasource pool usage 0.88과 application latency rule이 같은 window에서 hit.", "pool acquire 대기, slow query, pool size 변경 이력을 확인하세요."],
-          ["endpoint", "POST /orders 지연과 서버 오류", "endpoint_error_latency_attention", "request 12,400, error 5.6%, slow share 31.0%.", "결제/재고 downstream 호출과 DB query path를 확인하세요."],
-          ["endpoint", "GET /orders/{id} 동시간대 지연", "endpoint_latency_attention", "request 18,900, slow share 27.0%.", "공유 pool pressure와 함께 보는 보조 evidence입니다."]
-        ],
-        endpoints: [
-          ["POST /orders", "error+latency", "12,400", "5.6%", "31.0%", "first look", [52, 74, 92]],
-          ["GET /orders/{id}", "latency", "18,900", "0.7%", "27.0%", "attention", [48, 30, 86]],
-          ["POST /payments/callback", "server error", "980", "1.8%", "12.0%", "attention", [26, 34, 48]]
-        ],
-        resources: [
-          ["datasource_pool", "DB pool 사용률", "88%", "threshold_hit", "요청 증상과 함께 관찰됨", 88],
-          ["cpu", "CPU 사용률", "61%", "normal", "기준 이하", 61],
-          ["heap", "Heap 사용률", "72%", "normal", "기준 이하", 72]
-        ],
-        instances: [
-          ["orders-api-a", "observed", "contributing", "21,120", "710", "29.4%", "620ms", "1,420ms", "DB pool 89%", "heartbeat 12초 전"],
-          ["orders-api-b", "observed", "supporting", "19,840", "430", "25.8%", "580ms", "1,220ms", "DB pool 86%", "heartbeat 10초 전"],
-          ["orders-api-c", "observed", "attention", "1,220", "32", "11.1%", "260ms", "490ms", "DB pool 40%", "heartbeat 14초 전"]
-        ],
+        live: {
+          stateTone: "degraded",
+          stateCode: "degraded",
+          stateLabel: "확인 필요",
+          railConcern: "DB pool pressure와 요청 지연이 함께 관찰됨",
+          rationale: "최근 30분 요청 수는 충분하고 500ms 초과 요청 비율이 24.2%입니다. datasource pool maxUsage도 기준 이상입니다.",
+          action: "DB connection wait 가능성을 확인하되 root cause로 단정하지 않습니다.",
+          starter: "heartbeat 12초 전, metric state 변경 없음",
+          window: "14:00:00Z - 14:30:00Z",
+          metrics: { request: "42,180", error: "2.8%", slow: "24.2%", resource: "DB pool max 88%" },
+          firstLook: [
+            ["resource_pressure", "DB pool pressure + request symptoms", "shared_resource_pressure_with_request_symptom", "datasource pool maxUsage 0.88과 application latency rule이 같은 window에서 hit.", "pool acquire 대기, slow query, pool size 변경 이력을 확인하세요."],
+            ["endpoint", "POST /orders 지연과 서버 오류", "endpoint_error_latency_attention", "request 12,400, error 5.6%, slow >500ms 31.0%.", "결제/재고 downstream 호출과 DB query path를 확인하세요."],
+            ["endpoint", "GET /orders/{id} 동시간대 지연", "endpoint_latency_attention", "request 18,900, slow >500ms 27.0%.", "공유 pool pressure와 함께 보는 보조 evidence입니다."]
+          ],
+          endpoints: [
+            { route: "POST /orders", policy: "error+latency", request: "12,400", error: "5.6%", slow: "31.0%", badge: "first look", bars: [52, 74, 92] },
+            { route: "GET /orders/{id}", policy: "latency", request: "18,900", error: "0.7%", slow: "27.0%", badge: "attention", bars: [48, 30, 86] },
+            { route: "POST /payments/callback", policy: "server error", request: "980", error: "1.8%", slow: "12.0%", badge: "attention", bars: [26, 34, 48] }
+          ],
+          resources: [
+            { key: "datasource_pool", label: "DB pool maxUsage", value: "88%", status: "threshold_hit", copy: "window 내 observed maxUsage, 요청 증상과 함께 관찰됨", bar: 88 },
+            { key: "cpu", label: "CPU maxUsage", value: "61%", status: "normal", copy: "window 내 observed maxUsage 기준 이하", bar: 61 },
+            { key: "heap", label: "Heap maxUsage", value: "72%", status: "normal", copy: "window 내 observed maxUsage 기준 이하", bar: 72 }
+          ],
+          instances: [
+            { id: "orders-api-a", status: "observed", contribution: "contributing", requests: "21,120", errors: "710", slow: "29.4%", p95: "620ms", p99: "1,420ms", resource: "DB pool max 89%", resourceTone: "attention", heartbeat: "heartbeat 12초 전" },
+            { id: "orders-api-b", status: "observed", contribution: "supporting", requests: "19,840", errors: "430", slow: "25.8%", p95: "580ms", p99: "1,220ms", resource: "DB pool max 86%", resourceTone: "attention", heartbeat: "heartbeat 10초 전" },
+            { id: "orders-api-c", status: "observed", contribution: "attention", requests: "1,220", errors: "32", slow: "11.1%", p95: "260ms", p99: "490ms", resource: "DB pool max 40%", resourceTone: "active", heartbeat: "heartbeat 14초 전" }
+          ]
+        },
         snapshots: [
-          ["14:30", "attention", "degraded", "high_confidence_concern", "공유 자원 압박과 요청 지연", "stored dashboard read model. current metric으로 재계산하지 않음."],
-          ["14:00", "normal", "active", "scheduled", "정상 범위", "state=active였지만 500번대 오류 attention evidence 1개 저장."],
-          ["13:30", "normal", "active", "scheduled", "정상 범위", "stateReason 없음, firstLookCandidates 없음."]
+          snapshot("snap-shared-1430", "14:30", "2026-06-09T14:30:05Z", "14:00:00Z - 14:30:00Z", "attention", "degraded", "high_confidence_concern", "공유 자원 압박과 요청 지연", "stored dashboard read model. current metric으로 재계산하지 않음."),
+          snapshot("snap-shared-1400", "14:00", "2026-06-09T14:00:04Z", "13:30:00Z - 14:00:00Z", "normal", "active", "hourly_scheduled", "정상 범위 + 500번대 오류 attention", "state=active였지만 500번대 오류 attention evidence 1개가 저장됨.", {
+            stateTone: "active",
+            stateCode: "active",
+            stateLabel: "정상 범위",
+            rationale: "저장 당시 최근 30분 기준 state를 변경할 운영 기준 초과 신호는 없었습니다. 500번대 오류 endpoint는 attention evidence로만 보존됐습니다.",
+            action: "stored endpoint evidence를 확인하되 현재 metric으로 priority를 다시 계산하지 않습니다.",
+            metrics: { request: "38,020", error: "0.4%", slow: "11.8%", resource: "DB pool max 42%" },
+            firstLook: [],
+            endpoints: [
+              { route: "POST /payments/callback", policy: "server error attention", request: "2,040", error: "0.2%", slow: "8.0%", badge: "attention", bars: [36, 16, 28] }
+            ],
+            resources: [
+              { key: "datasource_pool", label: "DB pool maxUsage", value: "42%", status: "normal", copy: "window 내 observed maxUsage 기준 이하", bar: 42 },
+              { key: "cpu", label: "CPU maxUsage", value: "49%", status: "normal", copy: "window 내 observed maxUsage 기준 이하", bar: 49 },
+              { key: "heap", label: "Heap maxUsage", value: "65%", status: "normal", copy: "window 내 observed maxUsage 기준 이하", bar: 65 }
+            ]
+          }),
+          snapshot("snap-shared-1330", "13:30", "2026-06-09T13:30:04Z", "13:00:00Z - 13:30:00Z", "normal", "active", "hourly_scheduled", "정상 범위", "stateReason 없음, firstLookCandidates 없음.", {
+            stateTone: "active",
+            stateCode: "active",
+            stateLabel: "정상 범위",
+            rationale: "저장 당시 freshness와 sample이 충분했고 운영 기준 초과 신호가 없었습니다.",
+            action: "회고 시에는 저장된 read model만 기준으로 확인합니다.",
+            metrics: { request: "34,900", error: "0.1%", slow: "7.6%", resource: "DB pool max 38%" },
+            firstLook: []
+          })
         ]
       },
       endpoint: {
         label: "Endpoint-local concern",
-        stateTone: "degraded",
-        stateCode: "degraded",
-        stateLabel: "확인 필요",
-        railConcern: "공유 resource 압박 없이 특정 endpoint 오류",
-        rationale: "POST /orders/cancel의 error rate가 7.1%입니다. CPU, heap, DB pool은 기준 이하입니다.",
-        action: "해당 endpoint의 로직, query, downstream 호출을 먼저 확인하세요.",
-        starter: "heartbeat 9초 전, control-plane only",
-        metrics: ["24,920", "1.4%", "8.8%", "정상 범위"],
-        firstLook: [
-          ["endpoint", "POST /orders/cancel 서버 오류", "endpoint_server_error_observed", "request 1,420, error 7.1%. 공유 resource pressure는 기준 이하.", "endpoint-local logic, validation path, downstream refund API를 확인하세요."]
-        ],
-        endpoints: [
-          ["POST /orders/cancel", "server error", "1,420", "7.1%", "9.0%", "first look", [18, 82, 31]],
-          ["GET /orders/{id}", "traffic", "13,200", "0.2%", "7.0%", "normal", [56, 12, 30]],
-          ["POST /orders", "traffic", "8,200", "0.4%", "11.0%", "normal", [44, 16, 38]]
-        ],
-        resources: [
-          ["datasource_pool", "DB pool 사용률", "42%", "normal", "기준 이하", 42],
-          ["cpu", "CPU 사용률", "55%", "normal", "기준 이하", 55],
-          ["heap", "Heap 사용률", "68%", "normal", "기준 이하", 68]
-        ],
-        instances: [
-          ["orders-api-a", "observed", "contributing", "12,800", "86", "8.1%", "240ms", "520ms", "DB pool 44%", "heartbeat 9초 전"],
-          ["orders-api-b", "observed", "attention", "12,120", "260", "9.4%", "260ms", "560ms", "DB pool 41%", "heartbeat 10초 전"]
-        ],
+        live: {
+          stateTone: "degraded",
+          stateCode: "degraded",
+          stateLabel: "확인 필요",
+          railConcern: "공유 resource 압박 없이 특정 endpoint 오류",
+          rationale: "POST /orders/cancel의 error rate가 7.1%입니다. CPU, heap, DB pool maxUsage는 기준 이하입니다.",
+          action: "해당 endpoint의 로직, query, downstream 호출을 먼저 확인하세요.",
+          starter: "heartbeat 9초 전, control-plane only",
+          window: "14:00:00Z - 14:30:00Z",
+          metrics: { request: "24,920", error: "1.4%", slow: "8.8%", resource: "DB pool max 42%" },
+          firstLook: [
+            ["endpoint", "POST /orders/cancel 서버 오류", "endpoint_server_error_observed", "request 1,420, error 7.1%. 공유 resource pressure는 기준 이하.", "endpoint-local logic, validation path, downstream refund API를 확인하세요."]
+          ],
+          endpoints: [
+            { route: "POST /orders/cancel", policy: "server error", request: "1,420", error: "7.1%", slow: "9.0%", badge: "first look", bars: [18, 82, 31] },
+            { route: "GET /orders/{id}", policy: "traffic", request: "13,200", error: "0.2%", slow: "7.0%", badge: "normal", bars: [56, 12, 30] },
+            { route: "POST /orders", policy: "traffic", request: "8,200", error: "0.4%", slow: "11.0%", badge: "normal", bars: [44, 16, 38] }
+          ],
+          resources: [
+            { key: "datasource_pool", label: "DB pool maxUsage", value: "42%", status: "normal", copy: "window 내 observed maxUsage 기준 이하", bar: 42 },
+            { key: "cpu", label: "CPU maxUsage", value: "55%", status: "normal", copy: "window 내 observed maxUsage 기준 이하", bar: 55 },
+            { key: "heap", label: "Heap maxUsage", value: "68%", status: "normal", copy: "window 내 observed maxUsage 기준 이하", bar: 68 }
+          ],
+          instances: [
+            { id: "orders-api-a", status: "observed", contribution: "contributing", requests: "12,800", errors: "86", slow: "8.1%", p95: "240ms", p99: "520ms", resource: "DB pool max 44%", resourceTone: "active", heartbeat: "heartbeat 9초 전" },
+            { id: "orders-api-b", status: "observed", contribution: "attention", requests: "12,120", errors: "260", slow: "9.4%", p95: "260ms", p99: "560ms", resource: "DB pool max 41%", resourceTone: "active", heartbeat: "heartbeat 10초 전" }
+          ]
+        },
         snapshots: [
-          ["14:30", "attention", "degraded", "state_change", "특정 endpoint 오류", "resource pressure 없이 endpoint server error evidence 저장."],
-          ["14:00", "normal", "active", "scheduled", "정상 범위", "state=active, low priority attention 없음."]
+          snapshot("snap-endpoint-1430", "14:30", "2026-06-09T14:30:05Z", "14:00:00Z - 14:30:00Z", "attention", "degraded", "state_change", "특정 endpoint 오류", "resource pressure 없이 endpoint server error evidence 저장."),
+          snapshot("snap-endpoint-1400", "14:00", "2026-06-09T14:00:03Z", "13:30:00Z - 14:00:00Z", "normal", "active", "hourly_scheduled", "정상 범위", "state=active, low priority attention 없음.", {
+            stateTone: "active",
+            stateCode: "active",
+            stateLabel: "정상 범위",
+            rationale: "저장 당시 endpoint-local 오류 기준을 넘은 후보가 없었습니다.",
+            action: "저장된 read model을 회고용으로 확인합니다.",
+            metrics: { request: "21,880", error: "0.2%", slow: "6.2%", resource: "DB pool max 39%" },
+            firstLook: []
+          })
         ]
       },
       sample: {
         label: "Sample limited",
-        stateTone: "unknown",
-        stateCode: "unknown",
-        stateLabel: "판단 보류",
-        railConcern: "requestCount < 30, endpoint 오류는 attention",
-        rationale: "최근 30분 requestCount가 18입니다. 서버 오류 1건은 attention evidence로 남기지만 degraded로 단정하지 않습니다.",
-        action: "traffic이 충분해질 때까지 sample guard와 freshness를 먼저 확인하세요.",
-        starter: "heartbeat 13초 전, metric state 변경 없음",
-        metrics: ["18", "5.6%", "unavailable", "판단 보류"],
-        firstLook: [
-          ["data_quality", "sample limited", "minimum_request_guard", "requestCount < 30이므로 error rate만으로 degraded를 만들지 않습니다.", "서버 오류 1건은 endpoint attention으로 확인하고 상태 판단은 보류하세요."],
-          ["endpoint", "POST /orders 500번대 오류 1건", "endpoint_server_error_under_low_sample", "표본이 낮아 stateReason이 아니라 attentionEvidence로 보존합니다.", "로그와 요청 payload를 확인하되 운영 기준 초과 copy는 쓰지 않습니다."]
-        ],
-        endpoints: [
-          ["POST /orders", "server error under low sample", "18", "1", "unavailable", "attention", [8, 18, 0]]
-        ],
-        resources: [
-          ["datasource_pool", "DB pool 사용률", "36%", "normal", "기준 이하", 36],
-          ["cpu", "CPU 사용률", "28%", "normal", "기준 이하", 28],
-          ["heap", "Heap 사용률", "51%", "normal", "기준 이하", 51]
-        ],
-        instances: [
-          ["orders-api-a", "insufficient_evidence", "insufficient", "18", "1", "unavailable", "180ms", "260ms", "DB pool 36%", "heartbeat 13초 전"]
-        ],
+        live: {
+          stateTone: "unknown",
+          stateCode: "unknown",
+          stateLabel: "판단 보류",
+          railConcern: "requestCount < 30, endpoint 오류는 attention",
+          rationale: "최근 30분 requestCount가 18입니다. 서버 오류 1건은 attention evidence로 남기지만 degraded로 단정하지 않습니다.",
+          action: "traffic이 충분해질 때까지 sample guard와 freshness를 먼저 확인하세요.",
+          starter: "heartbeat 13초 전, metric state 변경 없음",
+          window: "14:00:00Z - 14:30:00Z",
+          metrics: { request: "18", error: "5.6%", slow: "unavailable", resource: "판단 보류" },
+          firstLook: [
+            ["data_quality", "sample limited", "minimum_request_guard", "requestCount < 30이므로 error rate만으로 degraded를 만들지 않습니다.", "서버 오류 1건은 endpoint attention으로 확인하고 상태 판단은 보류하세요."],
+            ["endpoint", "POST /orders 500번대 오류 1건", "endpoint_server_error_under_low_sample", "표본이 낮아 stateReason이 아니라 attentionEvidence로 보존합니다.", "로그와 요청 payload를 확인하되 운영 기준 초과 copy는 쓰지 않습니다."]
+          ],
+          endpoints: [
+            { route: "POST /orders", policy: "server error under low sample", request: "18", error: "1", slow: "unavailable", badge: "attention", bars: [8, 18, 0] }
+          ],
+          resources: [
+            { key: "datasource_pool", label: "DB pool maxUsage", value: "36%", status: "normal", copy: "window 내 observed maxUsage 기준 이하", bar: 36 },
+            { key: "cpu", label: "CPU maxUsage", value: "28%", status: "normal", copy: "window 내 observed maxUsage 기준 이하", bar: 28 },
+            { key: "heap", label: "Heap maxUsage", value: "51%", status: "normal", copy: "window 내 observed maxUsage 기준 이하", bar: 51 }
+          ],
+          instances: [
+            { id: "orders-api-a", status: "insufficient_evidence", contribution: "insufficient", requests: "18", errors: "1", slow: "unavailable", p95: "180ms", p99: "260ms", resource: "DB pool max 36%", resourceTone: "active", heartbeat: "heartbeat 13초 전" }
+          ]
+        },
         snapshots: [
-          ["14:30", "unavailable", "unknown", "query_fallback", "표본 부족", "error attention evidence는 저장하지만 state=unknown."],
-          ["14:00", "normal", "idle", "scheduled", "idle", "requestCount=0, metric freshness current."]
+          snapshot("snap-sample-1430", "14:30", "2026-06-09T14:30:02Z", "14:00:00Z - 14:30:00Z", "unavailable", "unknown", "query_fallback", "표본 부족", "error attention evidence는 저장하지만 state=unknown."),
+          snapshot("snap-sample-1400", "14:00", "2026-06-09T14:00:02Z", "13:30:00Z - 14:00:00Z", "normal", "idle", "hourly_scheduled", "idle", "requestCount=0, metric freshness current.", {
+            stateTone: "active",
+            stateCode: "idle",
+            stateLabel: "idle",
+            rationale: "저장 당시 metric freshness는 current였지만 요청량이 없어 장애 여부를 판단하지 않았습니다.",
+            action: "트래픽이 재개되면 다음 live dashboard에서 다시 판단합니다.",
+            metrics: { request: "0", error: "0.0%", slow: "unavailable", resource: "판단 보류" },
+            firstLook: []
+          })
         ]
       }
     };
 
-    const state = { scenario: "shared", selectedSnapshotIndex: 0, view: "dashboard" };
+    const normalizedEndpointRows = {
+      shared: [
+        endpointRow("POST /orders", 4210, 228, 0.054, 1305, 0.31, [["<=100ms", 24], ["100-500ms", 45], [">500ms", 31]]),
+        endpointRow("GET /orders/{id}", 3860, 28, 0.007, 1042, 0.27, [["<=100ms", 31], ["100-500ms", 42], [">500ms", 27]]),
+        endpointRow("POST /payments/callback", 980, 18, 0.018, 118, 0.12, [["<=100ms", 44], ["100-500ms", 44], [">500ms", 12]]),
+        endpointRow("GET /cart", 3120, 4, 0.001, 281, 0.09, [["<=100ms", 56], ["100-500ms", 35], [">500ms", 9]]),
+        endpointRow("POST /orders/{id}/confirm", 740, 16, 0.022, 192, 0.26, [["<=100ms", 28], ["100-500ms", 46], [">500ms", 26]]),
+        endpointRow("GET /inventory/{sku}", 2280, 6, 0.003, 365, 0.16, [["<=100ms", 41], ["100-500ms", 43], [">500ms", 16]]),
+        endpointRow("POST /coupon/apply", 660, 8, 0.012, 152, 0.23, [["<=100ms", 37], ["100-500ms", 40], [">500ms", 23]]),
+        endpointRow("GET /checkout/session", 1480, 5, 0.003, 252, 0.17, [["<=100ms", 39], ["100-500ms", 44], [">500ms", 17]]),
+        endpointRow("POST /shipments", 520, 3, 0.006, 94, 0.18, [["<=100ms", 35], ["100-500ms", 47], [">500ms", 18]]),
+        endpointRow("GET /members/{id}", 1210, 0, 0, 85, 0.07, [["<=100ms", 68], ["100-500ms", 25], [">500ms", 7]]),
+        endpointRow("POST /orders/search", 430, 1, 0.002, 0, null, null, "unavailable"),
+        endpointRow("GET /admin/export", 62, 0, 0, 23, 0.37, [["<=100ms", 14], ["100-500ms", 49], [">500ms", 37]])
+      ],
+      endpoint: [
+        endpointRow("POST /orders/cancel", 1420, 101, 0.071, 128, 0.09, [["<=100ms", 49], ["100-500ms", 42], [">500ms", 9]]),
+        endpointRow("POST /refunds", 880, 33, 0.038, 79, 0.09, [["<=100ms", 54], ["100-500ms", 37], [">500ms", 9]]),
+        endpointRow("GET /orders/{id}", 13200, 26, 0.002, 924, 0.07, [["<=100ms", 61], ["100-500ms", 32], [">500ms", 7]]),
+        endpointRow("POST /orders", 8200, 33, 0.004, 902, 0.11, [["<=100ms", 47], ["100-500ms", 42], [">500ms", 11]]),
+        endpointRow("GET /cart", 2720, 4, 0.001, 109, 0.04, [["<=100ms", 70], ["100-500ms", 26], [">500ms", 4]])
+      ],
+      sample: [
+        endpointRow("POST /orders", 18, 1, 0.056, 0, null, null, "unavailable"),
+        endpointRow("GET /orders/{id}", 7, 0, 0, 0, null, null, "unavailable"),
+        endpointRow("POST /payments/callback", 3, 0, 0, 0, null, null, "unavailable")
+      ]
+    };
+
+    const state = { scenario: "shared", selectedSnapshotIndex: 0, view: "dashboard", endpointSort: "requestCountDesc", endpointLimit: 10 };
     const scenarioSelect = document.getElementById("scenarioSelect");
     const dashboardView = document.getElementById("dashboardView");
-    const snapshotView = document.getElementById("snapshotView");
     const modal = document.getElementById("instanceModal");
     const modalBody = document.getElementById("modalBody");
     const modalTitle = document.getElementById("modalTitle");
@@ -1177,18 +1323,29 @@
     scenarioSelect.value = state.scenario;
     scenarioSelect.addEventListener("change", (event) => {
       state.scenario = event.target.value;
+      state.selectedSnapshotIndex = 0;
+      state.view = "dashboard";
+      closeModal();
       render();
     });
 
-    document.querySelectorAll("[data-view-button]").forEach((button) => {
+    document.querySelectorAll("[data-prototype-mode]").forEach((button) => {
       button.addEventListener("click", () => {
-        state.view = button.dataset.viewButton;
+        state.view = button.dataset.prototypeMode;
         render();
+        if (state.view === "snapshot") {
+          scrollDashboardTop();
+        }
       });
     });
 
     document.getElementById("closeModalButton").addEventListener("click", closeModal);
     document.getElementById("openSnapshotPickerButton").addEventListener("click", openSnapshotPicker);
+    document.getElementById("returnLiveButton").addEventListener("click", () => {
+      state.view = "dashboard";
+      render();
+      scrollDashboardTop();
+    });
     modal.addEventListener("click", (event) => {
       if (event.target === modal) closeModal();
     });
@@ -1197,43 +1354,101 @@
     });
 
     function render() {
-      const model = scenarios[state.scenario];
-      if (state.selectedSnapshotIndex >= model.snapshots.length) {
+      const scenario = scenarios[state.scenario];
+      if (state.selectedSnapshotIndex >= scenario.snapshots.length) {
         state.selectedSnapshotIndex = 0;
       }
-      dashboardView.classList.toggle("active", state.view === "dashboard");
-      snapshotView.classList.toggle("active", state.view === "snapshot");
-      document.getElementById("appRailBadge").className = `badge ${model.stateTone}`;
-      document.getElementById("appRailBadge").textContent = model.stateLabel;
-      document.getElementById("appRailMeta").textContent = "last accepted 8초 전 · " + model.starter;
-      document.getElementById("appRailConcern").textContent = model.railConcern;
-      document.getElementById("stateStrip").className = `state-strip ${model.stateTone}`;
-      document.getElementById("stateBadge").className = `badge ${model.stateTone}`;
-      document.getElementById("stateBadge").textContent = model.stateCode;
-      document.getElementById("stateLabel").textContent = model.stateLabel;
-      document.getElementById("stateRationale").textContent = model.rationale;
-      document.getElementById("stateAction").textContent = model.action;
-      document.getElementById("starterCopy").textContent = model.starter;
-      document.getElementById("requestMetric").textContent = model.metrics[0];
-      document.getElementById("errorMetric").textContent = model.metrics[1];
-      document.getElementById("slowMetric").textContent = model.metrics[2];
-      document.getElementById("resourceMetric").textContent = model.metrics[3];
-      document.getElementById("firstLookGrid").innerHTML = model.firstLook.map(candidateTemplate).join("");
-      document.getElementById("endpointList").innerHTML = model.endpoints.map(endpointTemplate).join("");
-      document.getElementById("resourceGrid").innerHTML = model.resources.map(resourceTemplate).join("");
-      document.getElementById("instanceList").innerHTML = model.instances.map(instanceTemplate).join("");
-      document.getElementById("snapshotList").innerHTML = model.snapshots.map(snapshotTemplate).join("");
-      document.getElementById("snapshotIndexGrid").innerHTML = snapshotIndexTemplate(model.snapshots);
-      document.getElementById("selectedSnapshotSummary").innerHTML = selectedSnapshotSummaryTemplate(model.snapshots[state.selectedSnapshotIndex]);
+
+      const dashboard = getDashboardModel(scenario);
+      const selectedSnapshot = scenario.snapshots[state.selectedSnapshotIndex];
+      const snapshotMode = state.view === "snapshot";
+
+      dashboardView.classList.add("active");
+      document.getElementById("dashboardSectionLabel").innerHTML = `<span class="icon">A</span> Application Dashboard / ${snapshotMode ? "Snapshot" : "Live"}`;
+      document.getElementById("dashboardTitle").textContent = snapshotMode ? "orders-api · Application Snapshot Dashboard" : "orders-api";
+      document.getElementById("dashboardSubtitle").textContent = snapshotMode
+        ? "dashboard_snapshots.read_model_json에 저장된 과거 Application Dashboard read model을 같은 surface로 복원합니다."
+        : "Server read model을 표시합니다. UI는 lifecycle state, endpoint priority, resource pattern을 재계산하지 않습니다.";
+      document.getElementById("dashboardModeBadge").className = `badge ${snapshotMode ? "attention" : "live"}`;
+      document.getElementById("dashboardModeBadge").textContent = `mode: ${snapshotMode ? "snapshot" : "live"}`;
+      document.getElementById("returnLiveButton").hidden = !snapshotMode;
+
+      const snapshotNote = document.getElementById("snapshotModeNote");
+      snapshotNote.classList.toggle("visible", snapshotMode);
+      snapshotNote.innerHTML = snapshotMode
+        ? `이 화면은 ${selectedSnapshot.capturedAt}에 저장된 Application Snapshot Dashboard입니다. 현재 accepted metric으로 state, endpoint priority, resource evidence를 재계산하지 않습니다. markerBucket=${selectedSnapshot.markerBucket}은 탐색 색인일 뿐 state source가 아닙니다.`
+        : "";
+
+      document.getElementById("modeCell").textContent = snapshotMode ? "snapshot" : "live";
+      document.getElementById("windowCell").textContent = dashboard.window;
+      document.getElementById("sourceCell").textContent = snapshotMode ? "dashboard_snapshots.read_model_json" : "accepted_metric_buckets";
+      document.getElementById("capturedAtCell").textContent = snapshotMode ? selectedSnapshot.capturedAt : "현재 query 시각";
+      document.getElementById("captureReasonCell").textContent = snapshotMode ? selectedSnapshot.captureReason : "n/a";
+      document.getElementById("recalculatesCell").textContent = "false";
+      document.getElementById("markerSourceCell").textContent = "false";
+
+      document.getElementById("appRailBadge").className = `badge ${dashboard.stateTone}`;
+      document.getElementById("appRailBadge").textContent = dashboard.stateLabel;
+      document.getElementById("appRailMeta").textContent = snapshotMode
+        ? `stored snapshot ${selectedSnapshot.currentWindowEnd} · live rail은 navigation context`
+        : `last accepted 8초 전 · ${dashboard.starter}`;
+      document.getElementById("appRailConcern").textContent = dashboard.railConcern;
+      document.getElementById("stateStrip").className = `state-strip ${dashboard.stateTone}`;
+      document.getElementById("stateBadge").className = `badge ${dashboard.stateTone}`;
+      document.getElementById("stateBadge").textContent = dashboard.stateCode;
+      document.getElementById("stateLabel").textContent = dashboard.stateLabel;
+      document.getElementById("stateRationale").textContent = dashboard.rationale;
+      document.getElementById("stateAction").textContent = dashboard.action;
+      document.getElementById("starterCopy").textContent = dashboard.starter;
+      document.getElementById("requestMetric").textContent = dashboard.metrics.request;
+      document.getElementById("errorMetric").textContent = dashboard.metrics.error;
+      document.getElementById("slowMetric").textContent = dashboard.metrics.slow;
+      document.getElementById("resourceMetric").textContent = dashboard.metrics.resource;
+      document.getElementById("firstLookGrid").innerHTML = dashboard.firstLook.length
+        ? dashboard.firstLook.map(candidateTemplate).join("")
+        : `<article class="candidate"><span class="badge active">no first look</span><h3 style="margin-top:8px">저장된 우선 확인 후보 없음</h3><p class="body">이 read model에는 stateReason 또는 bounded firstLookCandidate가 없습니다.</p></article>`;
+      document.getElementById("endpointList").innerHTML = dashboard.endpoints.map(endpointTemplate).join("");
+      document.getElementById("resourceGrid").innerHTML = dashboard.resources.map(resourceTemplate).join("");
+      document.getElementById("instanceList").innerHTML = dashboard.instances.map(instanceTemplate).join("");
+      document.getElementById("historySubtitle").textContent = snapshotMode
+        ? "선택된 snapshot은 같은 dashboard surface로 복원 중입니다. 다른 marker를 선택하면 저장본 dashboard가 교체됩니다."
+        : "최근 snapshot markers에서 특정 시점을 선택하면 stored Application Snapshot Dashboard로 복원합니다.";
+      document.getElementById("snapshotList").innerHTML = scenario.snapshots.map(snapshotTemplate).join("");
+
+      const selectedSummary = document.getElementById("selectedSnapshotSummary");
+      selectedSummary.classList.toggle("visible", snapshotMode);
+      selectedSummary.innerHTML = snapshotMode ? selectedSnapshotSummaryTemplate(selectedSnapshot) : "";
+
       document.querySelectorAll("[data-instance]").forEach((button) => {
         button.addEventListener("click", () => openModal(button.dataset.instance));
       });
       document.querySelectorAll("[data-snapshot-select]").forEach((button) => {
         button.addEventListener("click", () => {
           state.selectedSnapshotIndex = Number(button.dataset.snapshotSelect);
+          state.view = "snapshot";
           render();
+          scrollDashboardTop();
         });
       });
+    }
+
+    function getDashboardModel(scenario) {
+      if (state.view !== "snapshot") {
+        return scenario.live;
+      }
+      const selected = scenario.snapshots[state.selectedSnapshotIndex];
+      return {
+        ...scenario.live,
+        ...selected.readModel,
+        railConcern: selected.readModel.railConcern || selected.title,
+        starter: selected.readModel.starter || scenario.live.starter,
+        window: selected.window,
+        metrics: selected.readModel.metrics || scenario.live.metrics,
+        firstLook: selected.readModel.firstLook || scenario.live.firstLook,
+        endpoints: selected.readModel.endpoints || scenario.live.endpoints,
+        resources: selected.readModel.resources || scenario.live.resources,
+        instances: selected.readModel.instances || scenario.live.instances
+      };
     }
 
     function candidateTemplate(item) {
@@ -1249,115 +1464,89 @@
     }
 
     function endpointTemplate(item, index) {
+      const slowWidth = item.bars[2] || 0;
       return `
         <article class="endpoint-row">
           <span class="rank">${index + 1}</span>
           <div>
-            <div class="route">${item[0]}</div>
-            <p class="muted">${item[1]} · ${item[5]}</p>
+            <div class="route">${item.route}</div>
+            <p class="muted">${item.policy} · ${item.badge}</p>
           </div>
           <div class="mini-bars">
-            <div class="bar-line"><span>request</span><span class="bar-track"><span class="bar-fill" style="width:${item[6][0]}%"></span></span><span>${item[2]}</span></div>
-            <div class="bar-line"><span>error</span><span class="bar-track"><span class="bar-fill danger" style="width:${item[6][1]}%"></span></span><span>${item[3]}</span></div>
-            <div class="bar-line"><span>slow</span><span class="bar-track"><span class="bar-fill hot" style="width:${item[6][2]}%"></span></span><span>${item[4]}</span></div>
+            <div class="bar-line"><span>request</span><span class="bar-track"><span class="bar-fill" style="width:${item.bars[0]}%"></span></span><span>${item.request}</span></div>
+            <div class="bar-line"><span>error</span><span class="bar-track"><span class="bar-fill danger" style="width:${item.bars[1]}%"></span></span><span>${item.error}</span></div>
+            <div class="bar-line"><span>slow &gt;500ms</span><span class="bar-track"><span class="bar-fill hot" style="width:${slowWidth}%"></span></span><span>${item.slow}</span></div>
           </div>
-          <span class="badge ${item[5] === "first look" ? "attention" : "sample"}">${item[5]}</span>
+          <span class="badge ${item.badge === "first look" ? "attention" : item.badge === "normal" ? "active" : "sample"}">${item.badge}</span>
         </article>
       `;
     }
 
     function resourceTemplate(item) {
-      const hot = item[3] === "threshold_hit";
+      const hot = item.status === "threshold_hit";
       return `
         <article class="candidate" style="min-height:128px">
-          <div class="badge-row"><span class="badge ${hot ? "attention" : "active"}">${item[3]}</span><span class="chip code">${item[0]}</span></div>
-          <h3 style="margin-top:8px">${item[1]}</h3>
-          <div class="bar-line" style="margin-top:12px"><span>usage</span><span class="bar-track"><span class="bar-fill ${hot ? "hot" : ""}" style="width:${item[5]}%"></span></span><span>${item[2]}</span></div>
-          <p class="muted" style="margin-top:8px">${item[4]}</p>
+          <div class="badge-row"><span class="badge ${hot ? "attention" : "active"}">${item.status}</span><span class="chip code">${item.key}</span></div>
+          <h3 style="margin-top:8px">${item.label}</h3>
+          <div class="bar-line" style="margin-top:12px"><span>window max</span><span class="bar-track"><span class="bar-fill ${hot ? "hot" : ""}" style="width:${item.bar}%"></span></span><span>${item.value}</span></div>
+          <p class="muted" style="margin-top:8px">${item.copy}</p>
         </article>
       `;
     }
 
     function instanceTemplate(item) {
       return `
-        <button class="instance-row" type="button" data-instance="${item[0]}">
+        <button class="instance-row" type="button" data-instance="${item.id}">
           <div>
-            <div class="rail-title">${item[0]}</div>
-            <p class="muted">${item[1]} · ${item[9]}</p>
+            <div class="rail-title">${item.id}</div>
+            <p class="muted">${item.status} · ${item.heartbeat}</p>
           </div>
           <div class="info-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:6px">
-            <div class="info-cell"><span>requests</span><strong>${item[3]}</strong></div>
-            <div class="info-cell"><span>slow</span><strong>${item[5]}</strong></div>
+            <div class="info-cell"><span>requests</span><strong>${item.requests}</strong></div>
+            <div class="info-cell"><span>slow &gt;500ms</span><strong>${item.slow}</strong></div>
           </div>
-          <span class="badge ${item[2] === "contributing" ? "attention" : "sample"}">${item[2]}</span>
+          <span class="badge ${item.contribution === "contributing" ? "attention" : "sample"}">${item.contribution}</span>
           <span class="button">Open modal</span>
         </button>
       `;
     }
 
-    function snapshotTemplate(item) {
+    function snapshotTemplate(item, index) {
+      const selected = state.view === "snapshot" && index === state.selectedSnapshotIndex;
       return `
-        <button class="snapshot-row" type="button" data-snapshot-select="${scenarios[state.scenario].snapshots.indexOf(item)}">
-          <span class="dot ${item[1]}"></span>
+        <button class="snapshot-row ${selected ? "selected" : ""}" type="button" data-snapshot-select="${index}">
+          <span class="dot ${item.markerBucket}"></span>
           <div>
-            <div class="badge-row"><span class="chip">${item[0]}</span><span class="badge ${item[1]}">${item[1]}</span><span class="chip">${item[3]}</span></div>
-            <h3 style="margin-top:8px">${item[4]}</h3>
-            <p class="muted">${item[5]}</p>
+            <div class="badge-row">
+              <span class="chip">currentWindowEnd ${item.currentWindowEnd}</span>
+              <span class="badge ${item.markerBucket}">markerBucket: ${item.markerBucket}</span>
+              <span class="badge ${stateBadgeTone(item.stateCode)}">stored stateCode: ${item.stateCode}</span>
+              <span class="chip">${item.captureReason}</span>
+            </div>
+            <h3 style="margin-top:8px">${item.title}</h3>
+            <p class="muted">${item.summary}</p>
           </div>
-          <span class="badge ${item[2] === "degraded" ? "attention" : item[2] === "unknown" ? "sample" : "active"}">${item[2]}</span>
+          <span class="button">${selected ? "복원 중" : "Snapshot 열기"}</span>
         </button>
-      `;
-    }
-
-    function snapshotIndexTemplate(snapshots) {
-      const bucketCounts = snapshots.reduce((acc, item) => {
-        acc[item[1]] = (acc[item[1]] || 0) + 1;
-        return acc;
-      }, {});
-      const reasonCounts = snapshots.reduce((acc, item) => {
-        acc[item[3]] = (acc[item[3]] || 0) + 1;
-        return acc;
-      }, {});
-      const stateCounts = snapshots.reduce((acc, item) => {
-        acc[item[2]] = (acc[item[2]] || 0) + 1;
-        return acc;
-      }, {});
-      const selected = snapshots[state.selectedSnapshotIndex];
-      return `
-        <article class="index-card">
-          <span>markerBucket</span>
-          <strong>${Object.entries(bucketCounts).map(([key, value]) => `${key} ${value}`).join(" / ")}</strong>
-        </article>
-        <article class="index-card">
-          <span>captureReason</span>
-          <strong style="font-size:13px;line-height:1.35">${Object.entries(reasonCounts).map(([key, value]) => `${key} ${value}`).join(" / ")}</strong>
-        </article>
-        <article class="index-card">
-          <span>stateCode</span>
-          <strong>${Object.entries(stateCounts).map(([key, value]) => `${key} ${value}`).join(" / ")}</strong>
-        </article>
-        <article class="index-card">
-          <span>selected</span>
-          <strong>${selected[0]} · ${selected[1]}</strong>
-        </article>
       `;
     }
 
     function selectedSnapshotSummaryTemplate(item) {
       return `
         <div class="badge-row">
-          <span class="chip">${item[0]}</span>
-          <span class="badge ${item[1]}">${item[1]}</span>
-          <span class="badge ${item[2] === "degraded" ? "attention" : item[2] === "unknown" ? "sample" : "active"}">${item[2]}</span>
-          <span class="chip">${item[3]}</span>
+          <span class="chip">${item.snapshotId}</span>
+          <span class="chip">capturedAt ${item.capturedAt}</span>
+          <span class="badge ${item.markerBucket}">markerBucket ${item.markerBucket}</span>
+          <span class="badge ${stateBadgeTone(item.stateCode)}">stored stateCode ${item.stateCode}</span>
+          <span class="chip">${item.captureReason}</span>
         </div>
-        <h3 style="margin-top:8px">${item[4]}</h3>
-        <p style="margin-top:4px">${item[5]}</p>
+        <h3 style="margin-top:8px">${item.title}</h3>
+        <p style="margin-top:4px">source=dashboard_snapshots.read_model_json · snapshotDetailRecalculates=false · markerIsStateSource=false</p>
       `;
     }
 
     function openSnapshotPicker() {
-      const model = scenarios[state.scenario];
+      const scenario = scenarios[state.scenario];
       modalTitle.textContent = "Snapshot 선택";
       modalBody.innerHTML = `
         <section class="modal-grid">
@@ -1368,7 +1557,7 @@
                 이 선택 창은 저장된 dashboard point를 빠르게 찾기 위한 색인입니다. markerBucket은 detail state를 대체하지 않습니다.
               </div>
               <div class="chip-row" style="margin-top:12px">
-                <span class="chip">filter: markerBucket</span>
+                <span class="chip">markerBucket: navigation index</span>
                 <span class="chip">sort: currentWindowEnd desc</span>
                 <span class="chip">source: dashboard_snapshots helper columns</span>
               </div>
@@ -1376,18 +1565,18 @@
           </div>
           <div class="panel">
             <div class="panel-head"><div class="section-label"><span class="icon">D</span> Current selection</div></div>
-            <div class="panel-body">${selectedSnapshotSummaryTemplate(model.snapshots[state.selectedSnapshotIndex])}</div>
+            <div class="panel-body">${selectedSnapshotSummaryTemplate(scenario.snapshots[state.selectedSnapshotIndex])}</div>
           </div>
         </section>
         <section class="panel">
           <div class="panel-head">
             <div>
               <div class="section-label"><span class="icon">M</span> Snapshot picker rows</div>
-              <p class="subtitle">선택하면 아래 detail source는 stored read model로 유지됩니다.</p>
+              <p class="subtitle">선택하면 summary card가 아니라 snapshot-mode Application Dashboard 전체가 표시됩니다.</p>
             </div>
           </div>
           <div class="panel-body snapshot-list">
-            ${model.snapshots.map((item, index) => snapshotPickerRowTemplate(item, index)).join("")}
+            ${scenario.snapshots.map((item, index) => snapshotPickerRowTemplate(item, index)).join("")}
           </div>
         </section>
       `;
@@ -1398,6 +1587,7 @@
           state.view = "snapshot";
           closeModal();
           render();
+          scrollDashboardTop();
         });
       });
     }
@@ -1406,17 +1596,18 @@
       const selected = index === state.selectedSnapshotIndex;
       return `
         <button class="picker-row ${selected ? "selected" : ""}" type="button" data-picker-snapshot="${index}">
-          <span class="dot ${item[1]}"></span>
+          <span class="dot ${item.markerBucket}"></span>
           <div>
             <div class="badge-row">
-              <span class="chip">snapshot-${String(index + 1).padStart(2, "0")}</span>
-              <span class="chip">${item[0]}</span>
-              <span class="badge ${item[1]}">${item[1]}</span>
-              <span class="badge ${item[2] === "degraded" ? "attention" : item[2] === "unknown" ? "sample" : "active"}">${item[2]}</span>
-              <span class="chip">${item[3]}</span>
+              <span class="chip">${item.snapshotId}</span>
+              <span class="chip">capturedAt ${item.capturedAt}</span>
+              <span class="chip">currentWindowEnd ${item.currentWindowEnd}</span>
+              <span class="badge ${item.markerBucket}">${item.markerBucket}</span>
+              <span class="badge ${stateBadgeTone(item.stateCode)}">${item.stateCode}</span>
+              <span class="chip">${item.captureReason}</span>
             </div>
-            <h3 style="margin-top:8px">${item[4]}</h3>
-            <p class="muted">${item[5]}</p>
+            <h3 style="margin-top:8px">${item.title}</h3>
+            <p class="muted">${item.summary}</p>
           </div>
           <span class="button">${selected ? "선택됨" : "선택"}</span>
         </button>
@@ -1424,66 +1615,228 @@
     }
 
     function openModal(instanceId) {
-      const model = scenarios[state.scenario];
-      const item = model.instances.find((candidate) => candidate[0] === instanceId) || model.instances[0];
-      modalTitle.textContent = item[0];
+      const scenario = scenarios[state.scenario];
+      const dashboard = getDashboardModel(scenario);
+      const item = dashboard.instances.find((candidate) => candidate.id === instanceId) || dashboard.instances[0];
+      const snapshotMode = state.view === "snapshot";
+      const selectedSnapshot = scenario.snapshots[state.selectedSnapshotIndex];
+      const contextCopy = snapshotMode
+        ? "snapshot window 기준 evidence입니다. Application Snapshot 자체는 dashboard_snapshots.read_model_json 저장본이고, 이 instance evidence는 selected snapshot row metadata와 accepted_metric_buckets를 사용해 재구성합니다."
+        : "live context evidence입니다. 현재 query 시각 기준 최근 30분 accepted_metric_buckets에서 selected instance evidence를 봅니다.";
+
+      modalTitle.textContent = item.id;
       modalBody.innerHTML = `
+        <div class="note ${snapshotMode ? "stored-note" : ""}">
+          ${contextCopy} ${snapshotMode ? "late-arriving metric이 포함될 수 있어 stored Application Snapshot과 일부 다를 수 있습니다." : "Application state를 새로 만들지 않습니다."}
+        </div>
         <div class="modal-grid">
           <section class="panel">
             <div class="panel-head"><div class="section-label"><span class="icon">A</span> Application state reference</div></div>
             <div class="panel-body">
               <div class="info-grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
-                <div class="info-cell"><span>stateCode</span><strong>${model.stateCode}</strong></div>
+                <div class="info-cell"><span>applicationStateRef</span><strong>${dashboard.stateCode}</strong></div>
                 <div class="info-cell"><span>lifecycleOwner</span><strong>application</strong></div>
-                <div class="info-cell"><span>contribution</span><strong>${item[2]}</strong></div>
-                <div class="info-cell"><span>causalityClaim</span><strong>false</strong></div>
+                <div class="info-cell"><span>contribution</span><strong>${item.contribution}</strong></div>
+                <div class="info-cell"><span>instance top-level state</span><strong>없음</strong></div>
               </div>
             </div>
           </section>
           <section class="panel">
-            <div class="panel-head"><div class="section-label"><span class="icon">O</span> Observation status</div></div>
+            <div class="panel-head"><div class="section-label"><span class="icon">O</span> Read semantics</div></div>
             <div class="panel-body">
-              <p>${item[0]}는 같은 30분 window에서 관찰된 selected instance evidence를 보여줍니다. 이 modal은 instance health score나 root cause를 만들지 않습니다.</p>
-              <div class="chip-row" style="margin-top:10px">
-                <span class="chip">top-level state 없음</span>
-                <span class="chip">source: accepted_metric_buckets</span>
-                <span class="chip">modal width: 1120px</span>
+              <div class="info-grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+                <div class="info-cell"><span>mode</span><strong>${snapshotMode ? "snapshot" : "live"}</strong></div>
+                <div class="info-cell"><span>windowSource</span><strong>${snapshotMode ? "selected_application_snapshot" : "current_query_time"}</strong></div>
+                <div class="info-cell"><span>source</span><strong>accepted_metric_buckets</strong></div>
+                <div class="info-cell"><span>snapshot row</span><strong>${snapshotMode ? selectedSnapshot.snapshotId : "n/a"}</strong></div>
+                <div class="info-cell"><span>includesLateAcceptedMetrics</span><strong>${snapshotMode}</strong></div>
+                <div class="info-cell"><span>mayDifferFromStoredApplicationSnapshot</span><strong>${snapshotMode}</strong></div>
               </div>
+              <p class="muted" style="margin-top:10px">Application Snapshot stored state/evidence를 바꾸거나 검증하지 않습니다. Instance health score와 root cause claim도 만들지 않습니다.</p>
             </div>
           </section>
         </div>
         <section class="metric-grid">
-          <div class="metric-cell"><div class="metric-label">Instance requests</div><div class="metric-value">${item[3]}</div><div class="metric-note">selected instance scope</div></div>
-          <div class="metric-cell"><div class="metric-label">Server errors</div><div class="metric-value">${item[4]}</div><div class="metric-note">5xx semantic</div></div>
-          <div class="metric-cell"><div class="metric-label">Slow share</div><div class="metric-value">${item[5]}</div><div class="metric-note">500ms 초과 비율</div></div>
-          <div class="metric-cell"><div class="metric-label">p95 / p99</div><div class="metric-value" style="font-size:20px">${item[6]} / ${item[7]}</div><div class="metric-note">starter local percentile 참고값</div></div>
+          <div class="metric-cell"><div class="metric-label">Instance requests</div><div class="metric-value">${item.requests}</div><div class="metric-note">selected instance scope</div></div>
+          <div class="metric-cell"><div class="metric-label">Server errors</div><div class="metric-value">${item.errors}</div><div class="metric-note">5xx semantic</div></div>
+          <div class="metric-cell"><div class="metric-label">Slow &gt;500ms</div><div class="metric-value">${item.slow}</div><div class="metric-note">endpoint p95/p99 rollup 아님</div></div>
+          <div class="metric-cell"><div class="metric-label">p95 / p99</div><div class="metric-value" style="font-size:20px">${item.p95} / ${item.p99}</div><div class="metric-note">starter local percentile 참고값</div></div>
         </section>
         <section class="panel">
           <div class="panel-head"><div><div class="section-label"><span class="icon">E</span> Endpoint evidence on selected instance</div><p class="subtitle">Application endpoint evidence와 selected instance 관측 여부를 연결합니다.</p></div></div>
-          <div class="panel-body endpoint-list">${model.endpoints.slice(0, 2).map(endpointTemplate).join("")}</div>
+          <div class="panel-body endpoint-list">${dashboard.endpoints.slice(0, 2).map(endpointTemplate).join("")}</div>
         </section>
         <section class="two-grid">
           <article class="panel">
             <div class="panel-head"><div class="section-label"><span class="icon">R</span> Resource evidence</div></div>
             <div class="panel-body">
-              <span class="badge ${item[8].includes("8") ? "attention" : "active"}">${item[8]}</span>
-              <p class="muted" style="margin-top:10px">root cause claim 없이 같은 window의 request symptom과 함께 확인합니다.</p>
+              <span class="badge ${item.resourceTone}">${item.resource}</span>
+              <p class="muted" style="margin-top:10px">window 내 observed maxUsage입니다. root cause claim 없이 같은 window의 request symptom과 함께 확인합니다.</p>
             </div>
           </article>
           <article class="panel">
             <div class="panel-head"><div class="section-label"><span class="icon">S</span> Starter connection</div></div>
             <div class="panel-body">
-              <span class="badge live">${item[9]}</span>
+              <span class="badge live">${item.heartbeat}</span>
               <p class="muted" style="margin-top:10px">heartbeat는 metric state, observationStatus, applicationState를 직접 바꾸지 않습니다.</p>
             </div>
           </article>
         </section>
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="section-label"><span class="icon">N</span> Normalized endpoint evidence table</div>
+              <p class="subtitle">selected instance의 normalized route evidence를 탐색합니다. application state나 endpoint priority를 새로 판정하지 않습니다.</p>
+            </div>
+            <div class="sort-controls">
+              <select id="normalizedEndpointSort" class="sort-select" aria-label="endpoint table sort">
+                <option value="requestCountDesc">requestCount desc</option>
+                <option value="errorRateDesc">errorRate desc</option>
+                <option value="slowShareDesc">slowShareOver500ms desc</option>
+              </select>
+              <button id="normalizedEndpointLimitButton" class="button" type="button">max ${state.endpointLimit}</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="note">
+              source: accepted_metric_buckets.endpoints_json · raw path/query/per-request sample 없음 · endpoint p95/p99 rollup 없음 · 해당 window 안의 bucket distribution만 표시합니다.
+            </div>
+            <div style="overflow:auto;margin-top:12px">
+              <table class="endpoint-table">
+                <thead>
+                  <tr>
+                    <th>endpointKey / normalized route</th>
+                    <th>requestCount</th>
+                    <th>errorCount</th>
+                    <th>errorRate</th>
+                    <th>slowCount &gt;500ms</th>
+                    <th>slowShare &gt;500ms</th>
+                    <th>endpoint duration bucket distribution</th>
+                  </tr>
+                </thead>
+                <tbody id="normalizedEndpointTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
       `;
       modal.classList.add("open");
+      const sortSelect = document.getElementById("normalizedEndpointSort");
+      sortSelect.value = state.endpointSort;
+      sortSelect.addEventListener("change", (event) => {
+        state.endpointSort = event.target.value;
+        renderNormalizedEndpointTable();
+      });
+      document.getElementById("normalizedEndpointLimitButton").addEventListener("click", () => {
+        state.endpointLimit = state.endpointLimit === 10 ? 20 : 10;
+        document.getElementById("normalizedEndpointLimitButton").textContent = `max ${state.endpointLimit}`;
+        renderNormalizedEndpointTable();
+      });
+      renderNormalizedEndpointTable();
+    }
+
+    function renderNormalizedEndpointTable() {
+      const rows = [...normalizedEndpointRows[state.scenario]].sort((left, right) => {
+        if (state.endpointSort === "errorRateDesc") return right.errorRateValue - left.errorRateValue;
+        if (state.endpointSort === "slowShareDesc") return (right.slowShareValue || -1) - (left.slowShareValue || -1);
+        return right.requestCount - left.requestCount;
+      }).slice(0, state.endpointLimit);
+      const body = document.getElementById("normalizedEndpointTableBody");
+      if (!body) return;
+      body.innerHTML = rows.map((row) => `
+        <tr>
+          <td><div class="route">${row.endpointKey}</div><div class="muted">normalized route only</div></td>
+          <td>${formatCount(row.requestCount)}</td>
+          <td>${formatCount(row.errorCount)}</td>
+          <td>${formatPercent(row.errorRateValue)}</td>
+          <td>${row.latencyStatus === "available" ? formatCount(row.slowCountOver500ms) : "unavailable"}</td>
+          <td>${row.latencyStatus === "available" ? formatPercent(row.slowShareValue) : "unavailable"}</td>
+          <td>${distributionTemplate(row)}</td>
+        </tr>
+      `).join("");
+    }
+
+    function distributionTemplate(row) {
+      if (row.latencyStatus !== "available") {
+        return `<span class="muted">unavailable · 500ms boundary missing/malformed</span>`;
+      }
+      return `
+        <div class="mini-bars">
+          ${row.distribution.map((bucket) => `
+            <div class="bar-line"><span>${bucket[0]}</span><span class="bar-track"><span class="bar-fill ${bucket[0].includes(">500") ? "hot" : ""}" style="width:${bucket[1]}%"></span></span><span>${bucket[1]}%</span></div>
+          `).join("")}
+        </div>
+      `;
     }
 
     function closeModal() {
       modal.classList.remove("open");
+    }
+
+    function scrollDashboardTop() {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+    }
+
+    function snapshot(snapshotId, currentWindowEnd, capturedAt, window, markerBucket, stateCode, captureReason, title, summary, readModel = {}) {
+      return {
+        snapshotId,
+        currentWindowEnd,
+        capturedAt,
+        window,
+        markerBucket,
+        stateCode,
+        captureReason,
+        title,
+        summary,
+        readModel: {
+          stateTone: readModel.stateTone || stateBadgeTone(stateCode),
+          stateCode,
+          stateLabel: readModel.stateLabel || stateLabel(stateCode),
+          rationale: readModel.rationale || summary,
+          action: readModel.action || "저장된 dashboard read model을 그대로 복원합니다. 현재 상태를 재계산하지 않습니다.",
+          metrics: readModel.metrics,
+          firstLook: readModel.firstLook,
+          endpoints: readModel.endpoints,
+          resources: readModel.resources,
+          instances: readModel.instances,
+          railConcern: readModel.railConcern,
+          starter: readModel.starter
+        }
+      };
+    }
+
+    function endpointRow(endpointKey, requestCount, errorCount, errorRateValue, slowCountOver500ms, slowShareValue, distribution, latencyStatus = "available") {
+      return { endpointKey, requestCount, errorCount, errorRateValue, slowCountOver500ms, slowShareValue, distribution, latencyStatus };
+    }
+
+    function stateBadgeTone(code) {
+      if (code === "degraded") return "attention";
+      if (code === "unknown" || code === "waiting_first_data" || code === "stale") return "sample";
+      if (code === "down") return "critical";
+      return "active";
+    }
+
+    function stateLabel(code) {
+      const labels = {
+        active: "정상 범위",
+        degraded: "확인 필요",
+        unknown: "판단 보류",
+        idle: "idle",
+        stale: "stale",
+        down: "down",
+        waiting_first_data: "첫 관측 대기"
+      };
+      return labels[code] || code;
+    }
+
+    function formatCount(value) {
+      return Number(value).toLocaleString("ko-KR");
+    }
+
+    function formatPercent(value) {
+      return `${(value * 100).toFixed(value >= 0.01 ? 1 : 2)}%`;
     }
 
     render();
