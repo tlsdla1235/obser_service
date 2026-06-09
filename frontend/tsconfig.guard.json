@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "./node_modules/.tmp/read-model-contract-guard",
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": [
+    "scripts/read-model-contract-guard.ts",
+    "src/app/lib/api.ts",
+    "src/app/lib/read-model-adapters.ts",
+    "src/app/lib/read-model-contract-fixtures.ts",
+    "src/app/lib/read-model-contract-guard.ts",
+    "src/app/lib/read-model-types.ts"
+  ]
+}

@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { AlertCircle, FileSearch, RefreshCw } from "lucide-react";
 import { ApiRequestError, AuthRequiredError, NO_STORE_REQUEST_OPTIONS, readJsonResource } from "../lib/api";
 import { type AuthFetch } from "../lib/auth";
+import { guardSnapshotDetailReadModel } from "../lib/read-model-contract-guard";
 import { useApiResource } from "../lib/use-api-resource";
 import {
   buildSnapshotDetailPath,
@@ -74,8 +75,10 @@ export function SnapshotDetailSurface({
         ...NO_STORE_REQUEST_OPTIONS,
         signal,
       });
-      const model = await readJsonResource<DashboardSnapshotDetailReadModel>(response);
-      validateSnapshotDetailResponse(model, projectId, applicationId, requestedSnapshotId);
+      const model = guardSnapshotDetailReadModel(await readJsonResource<DashboardSnapshotDetailReadModel>(response), {
+        snapshotId: requestedSnapshotId,
+      });
+      validateSnapshotDetailPath(model.links.self, projectId, applicationId, requestedSnapshotId);
       return model;
     },
     [applicationId, projectId, target],
@@ -207,25 +210,6 @@ export function SnapshotDetailSurface({
       </details>
     </div>
   );
-}
-
-function validateSnapshotDetailResponse(
-  model: DashboardSnapshotDetailReadModel,
-  projectId: string,
-  applicationId: string,
-  snapshotId: string,
-) {
-  if (
-    model.source !== "dashboard_snapshots" ||
-    model.readSemantics.mode !== "stored_snapshot_detail" ||
-    model.readSemantics.currentStateRecalculated ||
-    model.readSemantics.liveSourcesJoined.length !== 0 ||
-    model.readSemantics.rawReadModelJsonExposed ||
-    model.snapshot.snapshotId !== snapshotId
-  ) {
-    throw new ApiRequestError("snapshot_detail_contract_mismatch");
-  }
-  validateSnapshotDetailPath(model.links.self, projectId, applicationId, snapshotId);
 }
 
 function SnapshotDetailMessage({ body, compact, title }: { body: string; compact: boolean; title: string }) {

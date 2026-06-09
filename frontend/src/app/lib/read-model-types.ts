@@ -105,7 +105,7 @@ export type DashboardApplication = {
   lastHealthyAt: IsoDateTimeString | null;
   sourceWindow: {
     current: DashboardWindow;
-    baseline: DashboardWindow;
+    baseline: DashboardWindow | null;
   };
   freshness: Freshness;
 };
@@ -651,6 +651,7 @@ export type SnapshotReadSemantics = {
   mode: string;
   currentStateRecalculated: boolean;
   liveSourcesJoined: string[];
+  markerIsStateSource: boolean;
   rawReadModelJsonExposed: boolean;
 };
 

@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-06-09T23:38:04+0900
+# last_updated: 2026-06-10T00:30:11+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -66,7 +66,7 @@
 # - Epic 13은 Source of Truth 문서를 재정의하지 않고 Application Dashboard, Snapshot, Instance Dashboard, Retention 흐름을 phase별 rollback 가능한 story로 정렬한다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-06-09T23:38:04+0900
+last_updated: 2026-06-10T00:30:11+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -169,7 +169,7 @@ development_status:
   13-doc-0-documentation-alignment-plan: done
   13-1-alignment-story-status-planning: done
   13-doc-1-alignment-epic-story-creation: done
-  13-2-frontend-read-model-contract-guard: backlog
+  13-2-frontend-read-model-contract-guard: done
   13-3-backend-recent-30-minutes-window-alignment: backlog
   13-4-backend-application-dashboard-read-model-shape-alignment: backlog
   13-5-frontend-application-dashboard-ia-realignment: backlog

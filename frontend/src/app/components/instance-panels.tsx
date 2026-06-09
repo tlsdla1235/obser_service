@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Activity, ArrowLeft, Gauge, History, RefreshCw, Server } from "lucide-react";
 import { ApiRequestError, AuthRequiredError, NO_STORE_REQUEST_OPTIONS, readJsonResource } from "../lib/api";
 import { type AuthFetch } from "../lib/auth";
+import {
+  guardInstanceEvidenceReadModel,
+  guardInstanceSnapshotTrendReadModel,
+} from "../lib/read-model-contract-guard";
 import { useApiResource } from "../lib/use-api-resource";
 import {
   buildInstanceSnapshotTrendPath,
@@ -18,6 +22,7 @@ import {
   humanizeStatusCode,
   statusBadgeClassName,
   toDisplayLatencyBuckets,
+  TREND_PRESET_QUERY,
   trendPathWithPreset,
   validateInstanceEvidencePath,
   validateInstanceSnapshotTrendPath,
@@ -136,9 +141,7 @@ function InstanceEvidenceView({
         ...NO_STORE_REQUEST_OPTIONS,
         signal,
       });
-      const model = await readJsonResource<InstanceEvidenceReadModel>(response);
-      validateEvidenceContext(model, target);
-      return model;
+      return guardInstanceEvidenceReadModel(await readJsonResource<InstanceEvidenceReadModel>(response), target);
     },
     [target],
   );
@@ -480,9 +483,11 @@ function InstanceTrendView({
         ...NO_STORE_REQUEST_OPTIONS,
         signal,
       });
-      const model = await readJsonResource<InstanceSnapshotTrendReadModel>(response);
-      validateTrendContext(model, target);
-      return model;
+      return guardInstanceSnapshotTrendReadModel(await readJsonResource<InstanceSnapshotTrendReadModel>(response), {
+        ...target,
+        limit: TREND_PRESET_QUERY[preset].limit,
+        preset,
+      });
     },
     [preset, target, trendLinkSource],
   );
@@ -555,11 +560,6 @@ function TrendReadyView({
   target: InstancePanelTarget;
   trend: InstanceSnapshotTrendReadModel;
 }) {
-  const sortedPoints = useMemo(
-    () => [...trend.points].sort((a, b) => compareTimestampDesc(a.capturedAt, b.capturedAt)),
-    [trend.points],
-  );
-
   return (
     <>
       <div className="border border-neutral-200 bg-white p-3">
@@ -571,7 +571,7 @@ function TrendReadyView({
           <InfoCell label="조회 시작" value={formatOptionalDateTime(trend.horizon.since)} />
           <InfoCell label="조회 끝" value={formatOptionalDateTime(trend.horizon.until)} />
           <InfoCell label="표시 순서" value={humanizeOrderCode(trend.horizon.order)} />
-          <InfoCell label="기록 수" value={formatCount(sortedPoints.length)} />
+          <InfoCell label="기록 수" value={formatCount(trend.points.length)} />
         </div>
         <details className="mt-2 text-[11px] text-neutral-500">
           <summary className="cursor-pointer text-neutral-700">기술 세부 정보</summary>
@@ -583,14 +583,14 @@ function TrendReadyView({
           </div>
         </details>
       </div>
-      {sortedPoints.length === 0 ? (
+      {trend.points.length === 0 ? (
         <PanelMessage
           title="저장된 기록 없음"
           body="이 범위에 표시할 인스턴스 상태 기록이 없습니다."
         />
       ) : (
         <ul className="space-y-3">
-          {sortedPoints.map((point) => (
+          {trend.points.map((point) => (
             <TrendPointCard
               key={`${point.snapshotId}-${point.capturedAt}`}
               onSelectDetail={onSelectDetail}
@@ -758,37 +758,6 @@ function trendPresetDisplayText(preset: TrendPreset): string {
       return "14일";
     default:
       return preset;
-  }
-}
-
-function compareTimestampDesc(a: string | null | undefined, b: string | null | undefined): number {
-  const left = a ? Date.parse(a) : Number.NEGATIVE_INFINITY;
-  const right = b ? Date.parse(b) : Number.NEGATIVE_INFINITY;
-  return (Number.isFinite(right) ? right : Number.NEGATIVE_INFINITY) - (Number.isFinite(left) ? left : Number.NEGATIVE_INFINITY);
-}
-
-function validateEvidenceContext(model: InstanceEvidenceReadModel, target: InstancePanelTarget) {
-  if (
-    model.application.projectId !== target.projectId ||
-    model.application.applicationId !== target.applicationId ||
-    model.instance.instanceId !== target.instanceId
-  ) {
-    throw new ApiRequestError("instance_evidence_context_mismatch");
-  }
-}
-
-function validateTrendContext(model: InstanceSnapshotTrendReadModel, target: InstancePanelTarget) {
-  if (
-    model.application.projectId !== target.projectId ||
-    model.application.applicationId !== target.applicationId ||
-    model.instance.instanceId !== target.instanceId ||
-    model.source !== "dashboard_snapshots.read_model_json.instanceSummary.items" ||
-    model.horizon.defaultSince !== "7d" ||
-    model.horizon.maxSince !== "14d" ||
-    model.horizon.maxLimit !== 336 ||
-    model.horizon.order !== "capturedAt_asc"
-  ) {
-    throw new ApiRequestError("instance_snapshot_trend_context_mismatch");
   }
 }
 

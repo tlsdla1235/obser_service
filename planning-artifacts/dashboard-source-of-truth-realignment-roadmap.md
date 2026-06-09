@@ -113,6 +113,16 @@ Application Dashboard live surface 섹션 순서:
 - 표시용 변환은 날짜, badge class, humanized copy, histogram cumulative-to-display bucket 변환으로 제한한다.
 - snapshot marker/trend point를 client에서 임의 재정렬하지 않는다.
 
+구현 handoff 기록:
+
+- 2026-06-10: Story `13-2-frontend-read-model-contract-guard`에서 frontend P1 guard를 구현하고 BMAD review 보강 후 done 상태로 넘겼다.
+- 추가된 guard는 Application Dashboard, snapshot history/detail, instance evidence, instance trend가 server-computed state/order/source semantics를 재계산하지 않는지 fixture로 검증한다.
+- BMAD review 보강으로 dashboard percentile/histogram policy drift, marker-as-state history semantics, nested instance decision field, 30분 trend limit/maxLimit 회귀를 fail-closed로 막는다.
+- snapshot detail은 `readSemantics.markerIsStateSource=false`, `currentStateRecalculated=false`, `liveSourcesJoined=[]`, `rawReadModelJsonExposed=false`가 깨지면 fail-closed한다.
+- dashboard snapshot history와 instance trend UI의 client-side reorder 후보를 제거해 event/marker/trend point를 server response array order 그대로 렌더링한다.
+- 후속 P2/P3 backend shape가 `markerIsStateSource`를 아직 제공하지 않으면 snapshot detail은 의도적으로 safe error로 수렴할 수 있다. 이 경우 guard 완화보다 backend/read model contract 정렬을 우선한다.
+- code review는 Story 13.2 acceptance와 `npm run guard:read-model-contract`, `typecheck`, `build`, static grep 결과를 기준으로 수행한다.
+
 ### FE-2. Application Dashboard Live IA
 
 목표:

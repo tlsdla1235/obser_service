@@ -1,4 +1,4 @@
-import { ApiRequestError } from "./api";
+import { ApiRequestError } from "./api.js";
 import type {
   ApplicationDashboardReadModel,
   ConcernSummary,
@@ -13,7 +13,7 @@ import type {
   ProjectNavigationProjectItem,
   ProjectNavigationReadModel,
   TrendPreset,
-} from "./read-model-types";
+} from "./read-model-types.js";
 
 const PROJECT_APPLICATIONS_PATH = /^\/api\/projects\/([^/]+)\/applications$/;
 const APPLICATION_DASHBOARD_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/dashboard$/;
@@ -26,8 +26,8 @@ const DISPLAY_TIME_ZONE = "Asia/Seoul";
 const DISPLAY_TIME_ZONE_LABEL = "KST";
 
 export const TREND_PRESET_QUERY = {
-  "7d": { limit: 168, since: "7d" },
-  "14d": { limit: 336, since: "14d" },
+  "7d": { limit: 336, since: "7d" },
+  "14d": { limit: 672, since: "14d" },
 } as const satisfies Record<TrendPreset, { limit: number; since: TrendPreset }>;
 
 export const HISTORY_PRESET_QUERY = {
@@ -119,7 +119,7 @@ export function toDashboardPresentation(model: ApplicationDashboardReadModel): D
   const { code } = model.state;
   return {
     ...model,
-    baselineWindowDisplay: formatWindow(application.sourceWindow.baseline),
+    baselineWindowDisplay: formatOptionalWindow(application.sourceWindow.baseline),
     currentWindowDisplay: formatWindow(application.sourceWindow.current),
     generatedAtDisplay: formatOptionalDateTime(generatedAt),
     lastAcceptedBucketDisplay: formatOptionalDateTime(application.lastAcceptedBucketAt),
@@ -291,6 +291,10 @@ export function formatNullableRatio(value: number | null | undefined): string {
 
 export function formatWindow(window: DashboardWindow): string {
   return formatDateRange(window.startUtc, window.endUtc);
+}
+
+export function formatOptionalWindow(window: DashboardWindow | null | undefined): string {
+  return window ? formatWindow(window) : EMPTY_DISPLAY_TEXT;
 }
 
 /**
@@ -536,7 +540,7 @@ export function humanizeOrderCode(value: string | null | undefined): string {
   const normalized = (value ?? "").trim();
   switch (normalized) {
     case "capturedAt_asc":
-      return "최신 기록 먼저";
+      return "오래된 기록 먼저";
     case "capturedAt_desc":
     case "occurredAt_desc":
       return "최신 기록 먼저";

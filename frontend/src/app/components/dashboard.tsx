@@ -27,6 +27,10 @@ import {
   readJsonResource,
 } from "../lib/api";
 import { type AuthFetch, useAuth } from "../lib/auth";
+import {
+  guardApplicationDashboardReadModel,
+  guardSnapshotHistoryReadModels,
+} from "../lib/read-model-contract-guard";
 import { useApiResource } from "../lib/use-api-resource";
 import {
   buildSnapshotHistoryPaths,
@@ -62,7 +66,6 @@ import type {
   ApplicationDashboardReadModel,
   DashboardSnapshotMarkerReadModel,
   EndpointPriorityItem,
-  HistoryHorizon,
   HistoryPreset,
   HistogramWindow,
   OneTimeStarterCredential,
@@ -257,7 +260,10 @@ export function Dashboard() {
         ...NO_STORE_REQUEST_OPTIONS,
         signal,
       });
-      const model = await readJsonResource<ApplicationDashboardReadModel>(response);
+      const model = guardApplicationDashboardReadModel(await readJsonResource<ApplicationDashboardReadModel>(response), {
+        projectId: selectedProject.projectId,
+        applicationId: selectedApplication.applicationId,
+      });
       if (
         model.application.projectId !== selectedProject.projectId ||
         model.application.applicationId !== selectedApplication.applicationId
@@ -1444,8 +1450,12 @@ function SnapshotHistoryPanel({
       ]);
       const events = await readJsonResource<OperationalEventHistoryReadModel>(eventsResponse);
       const markers = await readJsonResource<DashboardSnapshotMarkerReadModel>(markersResponse);
-      validateSnapshotHistoryResponse(events, markers, selectedApplication.applicationId, preset);
-      return { events, markers };
+      return guardSnapshotHistoryReadModels(events, markers, {
+        applicationId: selectedApplication.applicationId,
+        eventLimit: HISTORY_PRESET_QUERY[preset].eventLimit,
+        markerLimit: HISTORY_PRESET_QUERY[preset].markerLimit,
+        preset,
+      });
     },
     [preset, selectedApplication.applicationId, selectedProject.projectId],
   );
@@ -1528,15 +1538,6 @@ function SnapshotHistoryReady({
   onSelectDetail: (target: SnapshotDetailTarget) => void;
   projectId: string;
 }) {
-  const sortedEvents = useMemo(
-    () => [...events.events].sort((a, b) => compareTimestampDesc(a.occurredAt, b.occurredAt)),
-    [events.events],
-  );
-  const sortedMarkers = useMemo(
-    () => [...markers.markers].sort((a, b) => compareTimestampDesc(a.capturedAt, b.capturedAt)),
-    [markers.markers],
-  );
-
   return (
     <>
       <div className="border border-neutral-200 bg-white">
@@ -1544,13 +1545,13 @@ function SnapshotHistoryReady({
           <span className="uppercase">상태 변화 기록</span>
           <span>{humanizeOrderCode(events.horizon.order)}</span>
         </div>
-        {sortedEvents.length === 0 ? (
+        {events.events.length === 0 ? (
           <div className="p-3 text-[12px] text-neutral-500">
             이 범위에 표시할 상태 변화 기록이 없습니다.
           </div>
         ) : (
           <ul>
-            {sortedEvents.map((event) => (
+            {events.events.map((event) => (
               <li key={event.eventId} className="border-b border-neutral-100 p-3 last:border-b-0">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -1594,13 +1595,13 @@ function SnapshotHistoryReady({
           <span className="uppercase">저장된 스냅샷</span>
           <span>{humanizeOrderCode(markers.horizon.order)}</span>
         </div>
-        {sortedMarkers.length === 0 ? (
+        {markers.markers.length === 0 ? (
           <div className="p-3 text-[12px] text-neutral-500">
             {markers.emptyState?.message ?? "저장된 스냅샷이 없습니다."} {markers.emptyState?.recommendedAction ?? ""}
           </div>
         ) : (
           <ul>
-            {sortedMarkers.map((marker) => (
+            {markers.markers.map((marker) => (
               <li key={marker.markerId} className="border-b border-neutral-100 p-3 last:border-b-0">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -1640,59 +1641,6 @@ function SnapshotHistoryReady({
       </div>
     </>
   );
-}
-
-function validateSnapshotHistoryResponse(
-  events: OperationalEventHistoryReadModel,
-  markers: DashboardSnapshotMarkerReadModel,
-  expectedApplicationId: string,
-  expectedPreset: HistoryPreset,
-) {
-  if (
-    events.source !== "dashboard_snapshots" ||
-    markers.source !== "dashboard_snapshots" ||
-    events.applicationId !== expectedApplicationId ||
-    markers.applicationId !== expectedApplicationId ||
-    !historyHorizonMatches(events.horizon, {
-      limit: HISTORY_PRESET_QUERY[expectedPreset].eventLimit,
-      maxLimit: 100,
-      order: "occurredAt_desc",
-      requestedSince: expectedPreset,
-    }) ||
-    !historyHorizonMatches(markers.horizon, {
-      limit: HISTORY_PRESET_QUERY[expectedPreset].markerLimit,
-      maxLimit: 336,
-      order: "capturedAt_asc",
-      requestedSince: expectedPreset,
-    })
-  ) {
-    throw new ApiRequestError("snapshot_history_context_mismatch");
-  }
-}
-
-/**
- * History/marker 응답은 fixed preset query와 server order metadata가 일치할 때만 화면에 반영한다.
- * contract drift가 있으면 fail-closed로 처리해 오래된 horizon을 current context처럼 보여주지 않는다.
- */
-function historyHorizonMatches(
-  horizon: HistoryHorizon,
-  expected: { limit: number; maxLimit: number; order: string; requestedSince: HistoryPreset },
-): boolean {
-  return (
-    horizon.requestedSince === expected.requestedSince &&
-    horizon.defaultSince === "24h" &&
-    horizon.maxSince === "14d" &&
-    horizon.limit === expected.limit &&
-    horizon.maxLimit === expected.maxLimit &&
-    horizon.order === expected.order &&
-    horizonWindowIsValid(horizon)
-  );
-}
-
-function horizonWindowIsValid(horizon: HistoryHorizon): boolean {
-  const since = Date.parse(horizon.since);
-  const until = Date.parse(horizon.until);
-  return Number.isFinite(since) && Number.isFinite(until) && until > since;
 }
 
 function isRegistrationRequestCurrent(
@@ -1848,12 +1796,6 @@ function presetDisplayText(preset: HistoryPreset | TrendPreset): string {
     default:
       return preset;
   }
-}
-
-function compareTimestampDesc(a: string | null | undefined, b: string | null | undefined): number {
-  const left = a ? Date.parse(a) : Number.NEGATIVE_INFINITY;
-  const right = b ? Date.parse(b) : Number.NEGATIVE_INFINITY;
-  return (Number.isFinite(right) ? right : Number.NEGATIVE_INFINITY) - (Number.isFinite(left) ? left : Number.NEGATIVE_INFINITY);
 }
 
 function starterStateImpactText(stateImpact: string): string {
