@@ -31,7 +31,7 @@ Story 5.9는 current dashboard 재계산, raw bucket explorer, heartbeat-derived
 - `planning-artifacts/contracts/read-model-contract.md`
 - `planning-artifacts/database-schema.md`
 - `planning-artifacts/api-surface.md`
-- `planning-artifacts/current-product-source-of-truth.md`
+- `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 - `planning-artifacts/sprint-plan.md`
 - `implementation-artifacts/sprint-status.yaml`
 

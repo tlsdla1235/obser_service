@@ -35,7 +35,7 @@ BMAD retrospective 흐름으로 Epic 4를 완전히 닫아줘.
 - `planning-artifacts/epics.md`
 - `planning-artifacts/sprint-plan.md`
 - `planning-artifacts/epic5-6-dashboard-alignment-context.md`
-- `planning-artifacts/current-product-source-of-truth.md`
+- `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 - `planning-artifacts/contracts/state-semantics.md`
 - `planning-artifacts/contracts/time-buckets.md`
 - `planning-artifacts/contracts/ingest-envelope.md`

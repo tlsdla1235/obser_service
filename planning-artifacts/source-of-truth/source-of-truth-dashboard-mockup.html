@@ -1,0 +1,1492 @@
+<!doctype html>
+<!--
+  이 파일은 현재 frontend React 화면의 grid, neutral border, compact panel 문법을 기준으로 만든 source-of-truth UI 목업이다.
+  backend 없이 임시 read model data를 렌더링하며, instance 상세는 기존 우측 Sheet 대신 넓은 modal로 분리한다.
+-->
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Source of Truth Dashboard Mockup</title>
+  <style>
+    :root {
+      --bg: #fafafa;
+      --surface: #ffffff;
+      --surface-soft: #f5f5f5;
+      --surface-muted: #f9fafb;
+      --ink: #171717;
+      --muted: #525252;
+      --quiet: #737373;
+      --faint: #a3a3a3;
+      --border: #e5e5e5;
+      --border-strong: #171717;
+      --amber: #b45309;
+      --amber-bg: #fffbeb;
+      --red: #b91c1c;
+      --red-bg: #fef2f2;
+      --green: #15803d;
+      --green-bg: #f0fdf4;
+      --blue: #1d4ed8;
+      --blue-bg: #eff6ff;
+      --violet: #6d28d9;
+      --violet-bg: #f5f3ff;
+      --shadow: 0 24px 64px rgba(23, 23, 23, 0.22);
+      --radius: 6px;
+      --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      line-height: 1.45;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+    }
+
+    button,
+    select {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .top-strip {
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .top-strip-inner {
+      display: flex;
+      min-height: 48px;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 24px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      font-size: 13px;
+    }
+
+    .breadcrumb {
+      display: flex;
+      min-width: 0;
+      gap: 8px;
+      align-items: center;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .breadcrumb strong {
+      overflow: hidden;
+      max-width: 240px;
+      color: var(--ink);
+      text-overflow: ellipsis;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .scenario-select,
+    .button {
+      min-height: 32px;
+      border: 1px solid #d4d4d4;
+      background: var(--surface);
+      color: var(--ink);
+      font-size: 13px;
+    }
+
+    .scenario-select {
+      min-width: 260px;
+      padding: 5px 9px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      font-weight: 500;
+    }
+
+    .button.primary {
+      border-color: var(--border-strong);
+      background: var(--ink);
+      color: #fff;
+    }
+
+    .button:hover,
+    .scenario-select:hover {
+      border-color: #737373;
+    }
+
+    .app-grid {
+      display: grid;
+      max-width: 1400px;
+      min-height: calc(100vh - 49px);
+      margin: 0 auto;
+      grid-template-columns: minmax(170px, 2fr) minmax(260px, 3fr) minmax(0, 7fr);
+      background: var(--surface);
+    }
+
+    .rail {
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .rail-head {
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .section-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--quiet);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    .section-label .icon {
+      display: inline-grid;
+      place-items: center;
+      width: 14px;
+      height: 14px;
+      color: var(--quiet);
+      font-size: 11px;
+    }
+
+    .search {
+      width: 100%;
+      height: 32px;
+      margin-top: 8px;
+      padding: 0 9px;
+      border: 1px solid #d4d4d4;
+      background: var(--surface);
+      color: var(--ink);
+      font-size: 13px;
+    }
+
+    .rail-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .rail-item {
+      width: 100%;
+      padding: 10px 12px;
+      border: 0;
+      border-bottom: 1px solid #f5f5f5;
+      border-left: 2px solid transparent;
+      background: var(--surface);
+      text-align: left;
+    }
+
+    .rail-item:hover,
+    .rail-item.active {
+      background: var(--surface-muted);
+    }
+
+    .rail-item.active {
+      border-left-color: var(--border-strong);
+    }
+
+    .rail-title {
+      color: var(--ink);
+      font-size: 13px;
+    }
+
+    .rail-meta {
+      margin-top: 3px;
+      color: var(--quiet);
+      font-size: 11px;
+    }
+
+    .rail-note {
+      margin-top: 7px;
+      border-left: 2px solid #d4d4d4;
+      padding-left: 8px;
+      color: #404040;
+      font-size: 11px;
+    }
+
+    .main {
+      min-width: 0;
+      background: var(--bg);
+    }
+
+    .main-inner {
+      display: grid;
+      gap: 16px;
+      padding: 20px;
+    }
+
+    .panel {
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .panel.strong {
+      border-color: var(--border-strong);
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-body {
+      padding: 12px;
+    }
+
+    .title-block {
+      min-width: 0;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 500;
+      line-height: 1.35;
+    }
+
+    h2 {
+      font-size: 16px;
+      font-weight: 500;
+      line-height: 1.35;
+    }
+
+    h3 {
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.35;
+    }
+
+    .subtitle {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .badge-row,
+    .chip-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .badge,
+    .chip {
+      display: inline-flex;
+      min-height: 21px;
+      align-items: center;
+      border: 1px solid #a3a3a3;
+      padding: 2px 6px;
+      background: var(--surface);
+      color: #404040;
+      font-size: 11px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .badge.active {
+      border-color: #86efac;
+      background: var(--green-bg);
+      color: var(--green);
+    }
+
+    .badge.degraded,
+    .badge.attention {
+      border-color: #fcd34d;
+      background: var(--amber-bg);
+      color: var(--amber);
+    }
+
+    .badge.unknown,
+    .badge.sample {
+      border-color: #d4d4d4;
+      background: var(--surface-soft);
+      color: #404040;
+    }
+
+    .badge.down,
+    .badge.critical {
+      border-color: #fecaca;
+      background: var(--red-bg);
+      color: var(--red);
+    }
+
+    .badge.live,
+    .badge.info {
+      border-color: #bfdbfe;
+      background: var(--blue-bg);
+      color: var(--blue);
+    }
+
+    .chip {
+      color: var(--quiet);
+      text-transform: none;
+    }
+
+    .code {
+      font-family: var(--mono);
+    }
+
+    .state-strip {
+      display: grid;
+      grid-template-columns: minmax(180px, 0.55fr) minmax(0, 1.4fr) minmax(200px, 0.8fr);
+      gap: 12px;
+      align-items: center;
+      border: 1px solid var(--border-strong);
+      border-left: 4px solid var(--amber);
+      background: var(--surface);
+      padding: 12px;
+    }
+
+    .state-strip.active {
+      border-left-color: var(--green);
+    }
+
+    .state-strip.unknown {
+      border-left-color: var(--quiet);
+    }
+
+    .strip-copy {
+      color: var(--ink);
+      font-size: 13px;
+    }
+
+    .strip-action {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .info-cell {
+      min-width: 0;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      padding: 8px;
+    }
+
+    .info-cell span {
+      display: block;
+      color: var(--quiet);
+      font-size: 11px;
+    }
+
+    .info-cell strong {
+      display: block;
+      margin-top: 2px;
+      overflow: hidden;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 500;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .metric-cell {
+      padding: 16px;
+      border-right: 1px solid var(--border);
+    }
+
+    .metric-cell:last-child {
+      border-right: 0;
+    }
+
+    .metric-label {
+      color: var(--quiet);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .metric-value {
+      margin-top: 6px;
+      color: var(--ink);
+      font-size: 24px;
+      font-weight: 500;
+      line-height: 1.2;
+    }
+
+    .metric-note {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .three-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .two-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .candidate {
+      min-height: 170px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      padding: 12px;
+    }
+
+    .candidate .rule {
+      margin-top: 8px;
+      color: var(--quiet);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .candidate .body {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .candidate .action {
+      margin-top: 10px;
+      border: 1px solid #fde68a;
+      background: var(--amber-bg);
+      padding: 8px;
+      color: #78350f;
+      font-size: 12px;
+    }
+
+    .endpoint-list,
+    .instance-list,
+    .snapshot-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .index-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .index-card {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      padding: 10px;
+    }
+
+    .index-card strong {
+      display: block;
+      margin-top: 4px;
+      color: var(--ink);
+      font-size: 20px;
+      font-weight: 500;
+      line-height: 1.15;
+    }
+
+    .index-card span {
+      color: var(--quiet);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .endpoint-row,
+    .instance-row,
+    .snapshot-row,
+    .picker-row {
+      display: grid;
+      gap: 12px;
+      align-items: center;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      padding: 12px;
+    }
+
+    .endpoint-row {
+      grid-template-columns: 28px minmax(160px, 1fr) minmax(220px, 1.2fr) minmax(112px, 0.45fr);
+    }
+
+    .instance-row {
+      width: 100%;
+      grid-template-columns: minmax(180px, 1fr) minmax(220px, 1fr) minmax(120px, 0.5fr) auto;
+      text-align: left;
+    }
+
+    .snapshot-row {
+      grid-template-columns: 12px minmax(0, 1fr) auto;
+    }
+
+    .picker-row {
+      width: 100%;
+      grid-template-columns: 12px minmax(0, 1fr) minmax(120px, auto);
+      text-align: left;
+    }
+
+    .picker-row.selected {
+      border-color: var(--border-strong);
+      background: var(--surface-muted);
+    }
+
+    .instance-row:hover,
+    .snapshot-row:hover,
+    .picker-row:hover {
+      border-color: var(--border-strong);
+      background: var(--surface-muted);
+    }
+
+    .rank {
+      display: grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      background: var(--ink);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .route {
+      overflow-wrap: anywhere;
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .mini-bars {
+      display: grid;
+      gap: 5px;
+    }
+
+    .bar-line {
+      display: grid;
+      grid-template-columns: 58px minmax(0, 1fr) 54px;
+      gap: 8px;
+      align-items: center;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .bar-track {
+      height: 10px;
+      border: 1px solid var(--border);
+      background: var(--surface-soft);
+    }
+
+    .bar-fill {
+      display: block;
+      height: 100%;
+      background: var(--ink);
+    }
+
+    .bar-fill.hot {
+      background: var(--amber);
+    }
+
+    .bar-fill.danger {
+      background: var(--red);
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      background: var(--quiet);
+    }
+
+    .dot.normal {
+      background: var(--green);
+    }
+
+    .dot.attention {
+      background: var(--amber);
+    }
+
+    .dot.critical {
+      background: var(--red);
+    }
+
+    .note {
+      border: 1px solid #bfdbfe;
+      background: var(--blue-bg);
+      padding: 10px;
+      color: #1e3a8a;
+      font-size: 12px;
+    }
+
+    .stored-note {
+      border-color: #ddd6fe;
+      background: var(--violet-bg);
+      color: #4c1d95;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      display: none;
+      overflow: auto;
+      padding: 28px;
+      background: rgba(23, 23, 23, 0.52);
+    }
+
+    .modal-backdrop.open {
+      display: grid;
+      place-items: start center;
+    }
+
+    .modal {
+      width: min(1120px, 100%);
+      max-height: calc(100vh - 56px);
+      overflow: auto;
+      border: 1px solid var(--border-strong);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .modal-head {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.98);
+      padding: 16px 20px;
+    }
+
+    .modal-body {
+      display: grid;
+      gap: 16px;
+      padding: 20px;
+      font-size: 13px;
+    }
+
+    .modal-grid {
+      display: grid;
+      grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.5fr);
+      gap: 12px;
+    }
+
+    .close-button {
+      display: inline-grid;
+      width: 32px;
+      height: 32px;
+      place-items: center;
+      border: 1px solid #d4d4d4;
+      background: var(--surface);
+      color: var(--ink);
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .view {
+      display: none;
+    }
+
+    .view.active {
+      display: block;
+    }
+
+    @media (max-width: 1180px) {
+      .app-grid {
+        grid-template-columns: minmax(180px, 0.8fr) minmax(240px, 1fr);
+      }
+
+      .main {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (max-width: 860px) {
+      .top-strip-inner,
+      .app-grid,
+      .state-strip,
+      .info-grid,
+      .metric-grid,
+      .three-grid,
+      .two-grid,
+      .index-grid,
+      .endpoint-row,
+      .instance-row,
+      .snapshot-row,
+      .picker-row,
+      .modal-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .top-strip-inner {
+        display: grid;
+        padding: 10px 14px;
+      }
+
+      .rail {
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .metric-cell {
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .metric-cell:last-child {
+        border-bottom: 0;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .main-inner,
+      .modal-body {
+        padding: 14px;
+      }
+
+      .modal-backdrop {
+        padding: 10px;
+      }
+
+      .scenario-select {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="top-strip">
+    <div class="top-strip-inner">
+      <div class="breadcrumb">
+        <span>Projects</span>
+        <span>/</span>
+        <strong>Spring Commerce</strong>
+        <span>/</span>
+        <strong>orders-api</strong>
+        <span class="muted">prod</span>
+      </div>
+      <div class="toolbar">
+        <select id="scenarioSelect" class="scenario-select" aria-label="목업 시나리오 선택"></select>
+        <button class="button" type="button" data-view-button="dashboard">Live</button>
+        <button class="button" type="button" data-view-button="snapshot">Snapshot</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="app-grid">
+    <aside class="rail">
+      <div class="rail-head">
+        <div class="section-label"><span class="icon">L</span> Projects</div>
+        <input class="search" value="spring" aria-label="project search" readonly />
+      </div>
+      <ul class="rail-list">
+        <li>
+          <button class="rail-item active" type="button">
+            <div class="rail-title">Spring Commerce</div>
+            <div class="rail-meta">3 apps · 1 attention signal</div>
+            <div class="rail-note">orders-api에서 확인 필요</div>
+          </button>
+        </li>
+        <li>
+          <button class="rail-item" type="button">
+            <div class="rail-title">Billing Platform</div>
+            <div class="rail-meta">2 apps · 정상 범위</div>
+            <div class="rail-note">최근 accepted bucket 21초 전</div>
+          </button>
+        </li>
+      </ul>
+    </aside>
+
+    <aside class="rail">
+      <div class="rail-head">
+        <div class="section-label"><span class="icon">S</span> Applications</div>
+        <input class="search" value="orders" aria-label="application search" readonly />
+      </div>
+      <ul class="rail-list">
+        <li>
+          <button class="rail-item active" type="button">
+            <div class="badge-row">
+              <span id="appRailBadge" class="badge degraded">확인 필요</span>
+              <span class="badge live">starter 연결</span>
+            </div>
+            <div class="rail-title" style="margin-top:8px">orders-api · prod</div>
+            <div id="appRailMeta" class="rail-meta">last accepted 8초 전 · heartbeat 12초 전</div>
+            <div id="appRailConcern" class="rail-note">DB pool pressure와 요청 지연이 함께 관찰됨</div>
+          </button>
+        </li>
+        <li>
+          <button class="rail-item" type="button">
+            <div class="badge-row">
+              <span class="badge active">정상 범위</span>
+              <span class="badge live">starter 연결</span>
+            </div>
+            <div class="rail-title" style="margin-top:8px">catalog-api · prod</div>
+            <div class="rail-meta">last accepted 14초 전</div>
+            <div class="rail-note">우선 확인할 concern 없음</div>
+          </button>
+        </li>
+      </ul>
+    </aside>
+
+    <main class="main">
+      <div id="dashboardView" class="view active">
+        <div class="main-inner">
+          <section class="panel strong">
+            <div class="panel-head">
+              <div class="title-block">
+                <div class="section-label"><span class="icon">A</span> Application Dashboard / Live</div>
+                <h1>orders-api</h1>
+                <p class="subtitle">Server read model을 표시합니다. UI는 lifecycle state, endpoint priority, resource pattern을 재계산하지 않습니다.</p>
+              </div>
+              <div class="badge-row">
+                <span class="badge live">recent 30 minutes</span>
+                <span class="badge sample">baseline not used</span>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="info-grid">
+                <div class="info-cell"><span>project</span><strong>Spring Commerce</strong></div>
+                <div class="info-cell"><span>application</span><strong>orders-api</strong></div>
+                <div class="info-cell"><span>window</span><strong id="windowCell">14:00:00Z - 14:30:00Z</strong></div>
+                <div class="info-cell"><span>readSemantics</span><strong>accepted_metric_buckets</strong></div>
+              </div>
+            </div>
+          </section>
+
+          <section id="stateStrip" class="state-strip degraded">
+            <div>
+              <span id="stateBadge" class="badge degraded">degraded</span>
+              <h2 id="stateLabel" style="margin-top:8px">확인 필요</h2>
+            </div>
+            <p id="stateRationale" class="strip-copy">최근 30분 요청 수는 충분하고 500ms 초과 요청 비율이 24.2%입니다. datasource pool 사용률도 기준 이상입니다.</p>
+            <p id="stateAction" class="strip-action">DB connection wait 가능성을 확인하되 root cause로 단정하지 않습니다.</p>
+          </section>
+
+          <section class="state-strip active">
+            <div>
+              <span class="badge live">starterConnection</span>
+              <h2 style="margin-top:8px">Control-plane only</h2>
+            </div>
+            <p id="starterCopy" class="strip-copy">heartbeat 12초 전, metric state 변경 없음</p>
+            <p class="strip-action">heartbeat는 accepted bucket freshness나 application lifecycle state를 직접 만들지 않습니다.</p>
+          </section>
+
+          <section class="metric-grid" aria-label="golden signals">
+            <div class="metric-cell">
+              <div class="metric-label">RED Rate</div>
+              <div id="requestMetric" class="metric-value">42,180</div>
+              <div class="metric-note">최근 30분 요청량</div>
+            </div>
+            <div class="metric-cell">
+              <div class="metric-label">RED Errors</div>
+              <div id="errorMetric" class="metric-value">2.8%</div>
+              <div class="metric-note">5xx / server_error semantic</div>
+            </div>
+            <div class="metric-cell">
+              <div class="metric-label">RED Duration</div>
+              <div id="slowMetric" class="metric-value">24.2%</div>
+              <div class="metric-note">500ms 초과 요청 비율</div>
+            </div>
+            <div class="metric-cell">
+              <div class="metric-label">USE Hint</div>
+              <div id="resourceMetric" class="metric-value">DB pool 88%</div>
+              <div class="metric-note">resource pressure hint</div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="section-label"><span class="icon">C</span> First Look Candidates</div>
+                <p class="subtitle">최대 3개만 보여주는 bounded evidence queue입니다.</p>
+              </div>
+            </div>
+            <div id="firstLookGrid" class="panel-body three-grid"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="section-label"><span class="icon">E</span> Endpoint Evidence</div>
+                <p class="subtitle">느린 endpoint 전체 목록이 아니라 stateReason 또는 attentionEvidence와 연결된 후보입니다.</p>
+              </div>
+            </div>
+            <div id="endpointList" class="panel-body endpoint-list"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="section-label"><span class="icon">R</span> Resource Evidence</div>
+                <p class="subtitle">root cause 확정이 아니라 공유 resource pressure hint입니다.</p>
+              </div>
+            </div>
+            <div id="resourceGrid" class="panel-body three-grid"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="section-label"><span class="icon">I</span> Instance Summary</div>
+                <p class="subtitle">오른쪽 좁은 Sheet 대신 넓은 modal로 selected instance evidence를 확인합니다.</p>
+              </div>
+            </div>
+            <div id="instanceList" class="panel-body instance-list"></div>
+          </section>
+        </div>
+      </div>
+
+      <div id="snapshotView" class="view">
+        <div class="main-inner">
+          <section class="panel strong">
+            <div class="panel-head">
+              <div>
+                <div class="section-label"><span class="icon">H</span> Snapshot / History</div>
+                <h1>Stored dashboard read model</h1>
+                <p class="subtitle">marker는 탐색용 색인이고, snapshot detail은 저장된 dashboard read model을 복원합니다.</p>
+              </div>
+              <div class="toolbar">
+                <button id="openSnapshotPickerButton" class="button primary" type="button">Snapshot 선택</button>
+                <button class="button" type="button" data-view-button="dashboard">Live로 돌아가기</button>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="note stored-note">
+                Application Snapshot detail은 current metric을 재계산하지 않습니다. Instance evidence는 별도 modal에서 선택 window 기준으로 넓게 확인하는 흐름을 제안합니다.
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="section-label"><span class="icon">X</span> Snapshot index</div>
+                <p class="subtitle">markerBucket, captureReason, stateCode로 빠르게 훑는 선택 색인입니다.</p>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div id="snapshotIndexGrid" class="index-grid"></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="section-label"><span class="icon">M</span> History markers</div>
+                <p class="subtitle">markerBucket은 state/evidence source가 아니라 timeline 색상과 필터용 요약입니다.</p>
+              </div>
+            </div>
+            <div id="snapshotList" class="panel-body snapshot-list"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="section-label"><span class="icon">D</span> Selected snapshot detail</div>
+                <p class="subtitle">저장 당시 dashboard read model을 보여주는 복원 화면 예시입니다.</p>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div id="selectedSnapshotSummary" class="note stored-note" style="margin-bottom:12px"></div>
+              <div class="info-grid">
+                <div class="info-cell"><span>source</span><strong>dashboard_snapshots.read_model_json</strong></div>
+                <div class="info-cell"><span>snapshotDetailRecalculates</span><strong>false</strong></div>
+                <div class="info-cell"><span>markerIsStateSource</span><strong>false</strong></div>
+                <div class="info-cell"><span>baseline diff</span><strong>Post-MVP</strong></div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="instanceModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <section class="modal">
+      <header class="modal-head">
+        <div>
+          <div class="section-label"><span class="icon">I</span> Instance Evidence Modal</div>
+          <h1 id="modalTitle">orders-api-a</h1>
+          <p class="subtitle">Application 판단을 대체하지 않고 같은 window의 selected instance evidence만 보여줍니다.</p>
+        </div>
+        <button id="closeModalButton" class="close-button" type="button" aria-label="닫기">x</button>
+      </header>
+      <div id="modalBody" class="modal-body"></div>
+    </section>
+  </div>
+
+  <script>
+    const scenarios = {
+      shared: {
+        label: "Shared resource pressure",
+        stateTone: "degraded",
+        stateCode: "degraded",
+        stateLabel: "확인 필요",
+        railConcern: "DB pool pressure와 요청 지연이 함께 관찰됨",
+        rationale: "최근 30분 요청 수는 충분하고 500ms 초과 요청 비율이 24.2%입니다. datasource pool 사용률도 기준 이상입니다.",
+        action: "DB connection wait 가능성을 확인하되 root cause로 단정하지 않습니다.",
+        starter: "heartbeat 12초 전, metric state 변경 없음",
+        metrics: ["42,180", "2.8%", "24.2%", "DB pool 88%"],
+        firstLook: [
+          ["resource_pressure", "DB pool pressure + request symptoms", "shared_resource_pressure_with_request_symptom", "datasource pool usage 0.88과 application latency rule이 같은 window에서 hit.", "pool acquire 대기, slow query, pool size 변경 이력을 확인하세요."],
+          ["endpoint", "POST /orders 지연과 서버 오류", "endpoint_error_latency_attention", "request 12,400, error 5.6%, slow share 31.0%.", "결제/재고 downstream 호출과 DB query path를 확인하세요."],
+          ["endpoint", "GET /orders/{id} 동시간대 지연", "endpoint_latency_attention", "request 18,900, slow share 27.0%.", "공유 pool pressure와 함께 보는 보조 evidence입니다."]
+        ],
+        endpoints: [
+          ["POST /orders", "error+latency", "12,400", "5.6%", "31.0%", "first look", [52, 74, 92]],
+          ["GET /orders/{id}", "latency", "18,900", "0.7%", "27.0%", "attention", [48, 30, 86]],
+          ["POST /payments/callback", "server error", "980", "1.8%", "12.0%", "attention", [26, 34, 48]]
+        ],
+        resources: [
+          ["datasource_pool", "DB pool 사용률", "88%", "threshold_hit", "요청 증상과 함께 관찰됨", 88],
+          ["cpu", "CPU 사용률", "61%", "normal", "기준 이하", 61],
+          ["heap", "Heap 사용률", "72%", "normal", "기준 이하", 72]
+        ],
+        instances: [
+          ["orders-api-a", "observed", "contributing", "21,120", "710", "29.4%", "620ms", "1,420ms", "DB pool 89%", "heartbeat 12초 전"],
+          ["orders-api-b", "observed", "supporting", "19,840", "430", "25.8%", "580ms", "1,220ms", "DB pool 86%", "heartbeat 10초 전"],
+          ["orders-api-c", "observed", "attention", "1,220", "32", "11.1%", "260ms", "490ms", "DB pool 40%", "heartbeat 14초 전"]
+        ],
+        snapshots: [
+          ["14:30", "attention", "degraded", "high_confidence_concern", "공유 자원 압박과 요청 지연", "stored dashboard read model. current metric으로 재계산하지 않음."],
+          ["14:00", "normal", "active", "scheduled", "정상 범위", "state=active였지만 500번대 오류 attention evidence 1개 저장."],
+          ["13:30", "normal", "active", "scheduled", "정상 범위", "stateReason 없음, firstLookCandidates 없음."]
+        ]
+      },
+      endpoint: {
+        label: "Endpoint-local concern",
+        stateTone: "degraded",
+        stateCode: "degraded",
+        stateLabel: "확인 필요",
+        railConcern: "공유 resource 압박 없이 특정 endpoint 오류",
+        rationale: "POST /orders/cancel의 error rate가 7.1%입니다. CPU, heap, DB pool은 기준 이하입니다.",
+        action: "해당 endpoint의 로직, query, downstream 호출을 먼저 확인하세요.",
+        starter: "heartbeat 9초 전, control-plane only",
+        metrics: ["24,920", "1.4%", "8.8%", "정상 범위"],
+        firstLook: [
+          ["endpoint", "POST /orders/cancel 서버 오류", "endpoint_server_error_observed", "request 1,420, error 7.1%. 공유 resource pressure는 기준 이하.", "endpoint-local logic, validation path, downstream refund API를 확인하세요."]
+        ],
+        endpoints: [
+          ["POST /orders/cancel", "server error", "1,420", "7.1%", "9.0%", "first look", [18, 82, 31]],
+          ["GET /orders/{id}", "traffic", "13,200", "0.2%", "7.0%", "normal", [56, 12, 30]],
+          ["POST /orders", "traffic", "8,200", "0.4%", "11.0%", "normal", [44, 16, 38]]
+        ],
+        resources: [
+          ["datasource_pool", "DB pool 사용률", "42%", "normal", "기준 이하", 42],
+          ["cpu", "CPU 사용률", "55%", "normal", "기준 이하", 55],
+          ["heap", "Heap 사용률", "68%", "normal", "기준 이하", 68]
+        ],
+        instances: [
+          ["orders-api-a", "observed", "contributing", "12,800", "86", "8.1%", "240ms", "520ms", "DB pool 44%", "heartbeat 9초 전"],
+          ["orders-api-b", "observed", "attention", "12,120", "260", "9.4%", "260ms", "560ms", "DB pool 41%", "heartbeat 10초 전"]
+        ],
+        snapshots: [
+          ["14:30", "attention", "degraded", "state_change", "특정 endpoint 오류", "resource pressure 없이 endpoint server error evidence 저장."],
+          ["14:00", "normal", "active", "scheduled", "정상 범위", "state=active, low priority attention 없음."]
+        ]
+      },
+      sample: {
+        label: "Sample limited",
+        stateTone: "unknown",
+        stateCode: "unknown",
+        stateLabel: "판단 보류",
+        railConcern: "requestCount < 30, endpoint 오류는 attention",
+        rationale: "최근 30분 requestCount가 18입니다. 서버 오류 1건은 attention evidence로 남기지만 degraded로 단정하지 않습니다.",
+        action: "traffic이 충분해질 때까지 sample guard와 freshness를 먼저 확인하세요.",
+        starter: "heartbeat 13초 전, metric state 변경 없음",
+        metrics: ["18", "5.6%", "unavailable", "판단 보류"],
+        firstLook: [
+          ["data_quality", "sample limited", "minimum_request_guard", "requestCount < 30이므로 error rate만으로 degraded를 만들지 않습니다.", "서버 오류 1건은 endpoint attention으로 확인하고 상태 판단은 보류하세요."],
+          ["endpoint", "POST /orders 500번대 오류 1건", "endpoint_server_error_under_low_sample", "표본이 낮아 stateReason이 아니라 attentionEvidence로 보존합니다.", "로그와 요청 payload를 확인하되 운영 기준 초과 copy는 쓰지 않습니다."]
+        ],
+        endpoints: [
+          ["POST /orders", "server error under low sample", "18", "1", "unavailable", "attention", [8, 18, 0]]
+        ],
+        resources: [
+          ["datasource_pool", "DB pool 사용률", "36%", "normal", "기준 이하", 36],
+          ["cpu", "CPU 사용률", "28%", "normal", "기준 이하", 28],
+          ["heap", "Heap 사용률", "51%", "normal", "기준 이하", 51]
+        ],
+        instances: [
+          ["orders-api-a", "insufficient_evidence", "insufficient", "18", "1", "unavailable", "180ms", "260ms", "DB pool 36%", "heartbeat 13초 전"]
+        ],
+        snapshots: [
+          ["14:30", "unavailable", "unknown", "query_fallback", "표본 부족", "error attention evidence는 저장하지만 state=unknown."],
+          ["14:00", "normal", "idle", "scheduled", "idle", "requestCount=0, metric freshness current."]
+        ]
+      }
+    };
+
+    const state = { scenario: "shared", selectedSnapshotIndex: 0, view: "dashboard" };
+    const scenarioSelect = document.getElementById("scenarioSelect");
+    const dashboardView = document.getElementById("dashboardView");
+    const snapshotView = document.getElementById("snapshotView");
+    const modal = document.getElementById("instanceModal");
+    const modalBody = document.getElementById("modalBody");
+    const modalTitle = document.getElementById("modalTitle");
+
+    Object.entries(scenarios).forEach(([key, value]) => {
+      const option = document.createElement("option");
+      option.value = key;
+      option.textContent = value.label;
+      scenarioSelect.appendChild(option);
+    });
+
+    scenarioSelect.value = state.scenario;
+    scenarioSelect.addEventListener("change", (event) => {
+      state.scenario = event.target.value;
+      render();
+    });
+
+    document.querySelectorAll("[data-view-button]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.view = button.dataset.viewButton;
+        render();
+      });
+    });
+
+    document.getElementById("closeModalButton").addEventListener("click", closeModal);
+    document.getElementById("openSnapshotPickerButton").addEventListener("click", openSnapshotPicker);
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) closeModal();
+    });
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeModal();
+    });
+
+    function render() {
+      const model = scenarios[state.scenario];
+      if (state.selectedSnapshotIndex >= model.snapshots.length) {
+        state.selectedSnapshotIndex = 0;
+      }
+      dashboardView.classList.toggle("active", state.view === "dashboard");
+      snapshotView.classList.toggle("active", state.view === "snapshot");
+      document.getElementById("appRailBadge").className = `badge ${model.stateTone}`;
+      document.getElementById("appRailBadge").textContent = model.stateLabel;
+      document.getElementById("appRailMeta").textContent = "last accepted 8초 전 · " + model.starter;
+      document.getElementById("appRailConcern").textContent = model.railConcern;
+      document.getElementById("stateStrip").className = `state-strip ${model.stateTone}`;
+      document.getElementById("stateBadge").className = `badge ${model.stateTone}`;
+      document.getElementById("stateBadge").textContent = model.stateCode;
+      document.getElementById("stateLabel").textContent = model.stateLabel;
+      document.getElementById("stateRationale").textContent = model.rationale;
+      document.getElementById("stateAction").textContent = model.action;
+      document.getElementById("starterCopy").textContent = model.starter;
+      document.getElementById("requestMetric").textContent = model.metrics[0];
+      document.getElementById("errorMetric").textContent = model.metrics[1];
+      document.getElementById("slowMetric").textContent = model.metrics[2];
+      document.getElementById("resourceMetric").textContent = model.metrics[3];
+      document.getElementById("firstLookGrid").innerHTML = model.firstLook.map(candidateTemplate).join("");
+      document.getElementById("endpointList").innerHTML = model.endpoints.map(endpointTemplate).join("");
+      document.getElementById("resourceGrid").innerHTML = model.resources.map(resourceTemplate).join("");
+      document.getElementById("instanceList").innerHTML = model.instances.map(instanceTemplate).join("");
+      document.getElementById("snapshotList").innerHTML = model.snapshots.map(snapshotTemplate).join("");
+      document.getElementById("snapshotIndexGrid").innerHTML = snapshotIndexTemplate(model.snapshots);
+      document.getElementById("selectedSnapshotSummary").innerHTML = selectedSnapshotSummaryTemplate(model.snapshots[state.selectedSnapshotIndex]);
+      document.querySelectorAll("[data-instance]").forEach((button) => {
+        button.addEventListener("click", () => openModal(button.dataset.instance));
+      });
+      document.querySelectorAll("[data-snapshot-select]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.selectedSnapshotIndex = Number(button.dataset.snapshotSelect);
+          render();
+        });
+      });
+    }
+
+    function candidateTemplate(item) {
+      return `
+        <article class="candidate">
+          <div class="badge-row"><span class="badge attention">${item[0]}</span></div>
+          <h3 style="margin-top:8px">${item[1]}</h3>
+          <p class="rule">${item[2]}</p>
+          <p class="body">${item[3]}</p>
+          <p class="action">${item[4]}</p>
+        </article>
+      `;
+    }
+
+    function endpointTemplate(item, index) {
+      return `
+        <article class="endpoint-row">
+          <span class="rank">${index + 1}</span>
+          <div>
+            <div class="route">${item[0]}</div>
+            <p class="muted">${item[1]} · ${item[5]}</p>
+          </div>
+          <div class="mini-bars">
+            <div class="bar-line"><span>request</span><span class="bar-track"><span class="bar-fill" style="width:${item[6][0]}%"></span></span><span>${item[2]}</span></div>
+            <div class="bar-line"><span>error</span><span class="bar-track"><span class="bar-fill danger" style="width:${item[6][1]}%"></span></span><span>${item[3]}</span></div>
+            <div class="bar-line"><span>slow</span><span class="bar-track"><span class="bar-fill hot" style="width:${item[6][2]}%"></span></span><span>${item[4]}</span></div>
+          </div>
+          <span class="badge ${item[5] === "first look" ? "attention" : "sample"}">${item[5]}</span>
+        </article>
+      `;
+    }
+
+    function resourceTemplate(item) {
+      const hot = item[3] === "threshold_hit";
+      return `
+        <article class="candidate" style="min-height:128px">
+          <div class="badge-row"><span class="badge ${hot ? "attention" : "active"}">${item[3]}</span><span class="chip code">${item[0]}</span></div>
+          <h3 style="margin-top:8px">${item[1]}</h3>
+          <div class="bar-line" style="margin-top:12px"><span>usage</span><span class="bar-track"><span class="bar-fill ${hot ? "hot" : ""}" style="width:${item[5]}%"></span></span><span>${item[2]}</span></div>
+          <p class="muted" style="margin-top:8px">${item[4]}</p>
+        </article>
+      `;
+    }
+
+    function instanceTemplate(item) {
+      return `
+        <button class="instance-row" type="button" data-instance="${item[0]}">
+          <div>
+            <div class="rail-title">${item[0]}</div>
+            <p class="muted">${item[1]} · ${item[9]}</p>
+          </div>
+          <div class="info-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:6px">
+            <div class="info-cell"><span>requests</span><strong>${item[3]}</strong></div>
+            <div class="info-cell"><span>slow</span><strong>${item[5]}</strong></div>
+          </div>
+          <span class="badge ${item[2] === "contributing" ? "attention" : "sample"}">${item[2]}</span>
+          <span class="button">Open modal</span>
+        </button>
+      `;
+    }
+
+    function snapshotTemplate(item) {
+      return `
+        <button class="snapshot-row" type="button" data-snapshot-select="${scenarios[state.scenario].snapshots.indexOf(item)}">
+          <span class="dot ${item[1]}"></span>
+          <div>
+            <div class="badge-row"><span class="chip">${item[0]}</span><span class="badge ${item[1]}">${item[1]}</span><span class="chip">${item[3]}</span></div>
+            <h3 style="margin-top:8px">${item[4]}</h3>
+            <p class="muted">${item[5]}</p>
+          </div>
+          <span class="badge ${item[2] === "degraded" ? "attention" : item[2] === "unknown" ? "sample" : "active"}">${item[2]}</span>
+        </button>
+      `;
+    }
+
+    function snapshotIndexTemplate(snapshots) {
+      const bucketCounts = snapshots.reduce((acc, item) => {
+        acc[item[1]] = (acc[item[1]] || 0) + 1;
+        return acc;
+      }, {});
+      const reasonCounts = snapshots.reduce((acc, item) => {
+        acc[item[3]] = (acc[item[3]] || 0) + 1;
+        return acc;
+      }, {});
+      const stateCounts = snapshots.reduce((acc, item) => {
+        acc[item[2]] = (acc[item[2]] || 0) + 1;
+        return acc;
+      }, {});
+      const selected = snapshots[state.selectedSnapshotIndex];
+      return `
+        <article class="index-card">
+          <span>markerBucket</span>
+          <strong>${Object.entries(bucketCounts).map(([key, value]) => `${key} ${value}`).join(" / ")}</strong>
+        </article>
+        <article class="index-card">
+          <span>captureReason</span>
+          <strong style="font-size:13px;line-height:1.35">${Object.entries(reasonCounts).map(([key, value]) => `${key} ${value}`).join(" / ")}</strong>
+        </article>
+        <article class="index-card">
+          <span>stateCode</span>
+          <strong>${Object.entries(stateCounts).map(([key, value]) => `${key} ${value}`).join(" / ")}</strong>
+        </article>
+        <article class="index-card">
+          <span>selected</span>
+          <strong>${selected[0]} · ${selected[1]}</strong>
+        </article>
+      `;
+    }
+
+    function selectedSnapshotSummaryTemplate(item) {
+      return `
+        <div class="badge-row">
+          <span class="chip">${item[0]}</span>
+          <span class="badge ${item[1]}">${item[1]}</span>
+          <span class="badge ${item[2] === "degraded" ? "attention" : item[2] === "unknown" ? "sample" : "active"}">${item[2]}</span>
+          <span class="chip">${item[3]}</span>
+        </div>
+        <h3 style="margin-top:8px">${item[4]}</h3>
+        <p style="margin-top:4px">${item[5]}</p>
+      `;
+    }
+
+    function openSnapshotPicker() {
+      const model = scenarios[state.scenario];
+      modalTitle.textContent = "Snapshot 선택";
+      modalBody.innerHTML = `
+        <section class="modal-grid">
+          <div class="panel">
+            <div class="panel-head"><div class="section-label"><span class="icon">X</span> Indexed navigation</div></div>
+            <div class="panel-body">
+              <div class="note">
+                이 선택 창은 저장된 dashboard point를 빠르게 찾기 위한 색인입니다. markerBucket은 detail state를 대체하지 않습니다.
+              </div>
+              <div class="chip-row" style="margin-top:12px">
+                <span class="chip">filter: markerBucket</span>
+                <span class="chip">sort: currentWindowEnd desc</span>
+                <span class="chip">source: dashboard_snapshots helper columns</span>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div class="section-label"><span class="icon">D</span> Current selection</div></div>
+            <div class="panel-body">${selectedSnapshotSummaryTemplate(model.snapshots[state.selectedSnapshotIndex])}</div>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <div class="section-label"><span class="icon">M</span> Snapshot picker rows</div>
+              <p class="subtitle">선택하면 아래 detail source는 stored read model로 유지됩니다.</p>
+            </div>
+          </div>
+          <div class="panel-body snapshot-list">
+            ${model.snapshots.map((item, index) => snapshotPickerRowTemplate(item, index)).join("")}
+          </div>
+        </section>
+      `;
+      modal.classList.add("open");
+      modal.querySelectorAll("[data-picker-snapshot]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.selectedSnapshotIndex = Number(button.dataset.pickerSnapshot);
+          state.view = "snapshot";
+          closeModal();
+          render();
+        });
+      });
+    }
+
+    function snapshotPickerRowTemplate(item, index) {
+      const selected = index === state.selectedSnapshotIndex;
+      return `
+        <button class="picker-row ${selected ? "selected" : ""}" type="button" data-picker-snapshot="${index}">
+          <span class="dot ${item[1]}"></span>
+          <div>
+            <div class="badge-row">
+              <span class="chip">snapshot-${String(index + 1).padStart(2, "0")}</span>
+              <span class="chip">${item[0]}</span>
+              <span class="badge ${item[1]}">${item[1]}</span>
+              <span class="badge ${item[2] === "degraded" ? "attention" : item[2] === "unknown" ? "sample" : "active"}">${item[2]}</span>
+              <span class="chip">${item[3]}</span>
+            </div>
+            <h3 style="margin-top:8px">${item[4]}</h3>
+            <p class="muted">${item[5]}</p>
+          </div>
+          <span class="button">${selected ? "선택됨" : "선택"}</span>
+        </button>
+      `;
+    }
+
+    function openModal(instanceId) {
+      const model = scenarios[state.scenario];
+      const item = model.instances.find((candidate) => candidate[0] === instanceId) || model.instances[0];
+      modalTitle.textContent = item[0];
+      modalBody.innerHTML = `
+        <div class="modal-grid">
+          <section class="panel">
+            <div class="panel-head"><div class="section-label"><span class="icon">A</span> Application state reference</div></div>
+            <div class="panel-body">
+              <div class="info-grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+                <div class="info-cell"><span>stateCode</span><strong>${model.stateCode}</strong></div>
+                <div class="info-cell"><span>lifecycleOwner</span><strong>application</strong></div>
+                <div class="info-cell"><span>contribution</span><strong>${item[2]}</strong></div>
+                <div class="info-cell"><span>causalityClaim</span><strong>false</strong></div>
+              </div>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><div class="section-label"><span class="icon">O</span> Observation status</div></div>
+            <div class="panel-body">
+              <p>${item[0]}는 같은 30분 window에서 관찰된 selected instance evidence를 보여줍니다. 이 modal은 instance health score나 root cause를 만들지 않습니다.</p>
+              <div class="chip-row" style="margin-top:10px">
+                <span class="chip">top-level state 없음</span>
+                <span class="chip">source: accepted_metric_buckets</span>
+                <span class="chip">modal width: 1120px</span>
+              </div>
+            </div>
+          </section>
+        </div>
+        <section class="metric-grid">
+          <div class="metric-cell"><div class="metric-label">Instance requests</div><div class="metric-value">${item[3]}</div><div class="metric-note">selected instance scope</div></div>
+          <div class="metric-cell"><div class="metric-label">Server errors</div><div class="metric-value">${item[4]}</div><div class="metric-note">5xx semantic</div></div>
+          <div class="metric-cell"><div class="metric-label">Slow share</div><div class="metric-value">${item[5]}</div><div class="metric-note">500ms 초과 비율</div></div>
+          <div class="metric-cell"><div class="metric-label">p95 / p99</div><div class="metric-value" style="font-size:20px">${item[6]} / ${item[7]}</div><div class="metric-note">starter local percentile 참고값</div></div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><div><div class="section-label"><span class="icon">E</span> Endpoint evidence on selected instance</div><p class="subtitle">Application endpoint evidence와 selected instance 관측 여부를 연결합니다.</p></div></div>
+          <div class="panel-body endpoint-list">${model.endpoints.slice(0, 2).map(endpointTemplate).join("")}</div>
+        </section>
+        <section class="two-grid">
+          <article class="panel">
+            <div class="panel-head"><div class="section-label"><span class="icon">R</span> Resource evidence</div></div>
+            <div class="panel-body">
+              <span class="badge ${item[8].includes("8") ? "attention" : "active"}">${item[8]}</span>
+              <p class="muted" style="margin-top:10px">root cause claim 없이 같은 window의 request symptom과 함께 확인합니다.</p>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div class="section-label"><span class="icon">S</span> Starter connection</div></div>
+            <div class="panel-body">
+              <span class="badge live">${item[9]}</span>
+              <p class="muted" style="margin-top:10px">heartbeat는 metric state, observationStatus, applicationState를 직접 바꾸지 않습니다.</p>
+            </div>
+          </article>
+        </section>
+      `;
+      modal.classList.add("open");
+    }
+
+    function closeModal() {
+      modal.classList.remove("open");
+    }
+
+    render();
+  </script>
+</body>
+</html>

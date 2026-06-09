@@ -228,7 +228,7 @@ git diff --check
 
 ## Source References
 
-- `planning-artifacts/current-product-source-of-truth.md` - accepted bucket source-of-truth, heartbeat boundary, recovery UX, project/application/instance read model 흐름
+- `planning-artifacts/source-of-truth/current-product-source-of-truth.md` - accepted bucket source-of-truth, heartbeat boundary, recovery UX, project/application/instance read model 흐름
 - `implementation-artifacts/sprint-status.yaml` - Story 4.4 tracking status와 Epic 4 workflow notes
 - `implementation-artifacts/epic-4-context.md` - Epic 4 목표, state semantics constraints, Story 4.4 cross-story dependency
 - `planning-artifacts/epics.md` - Epic 4 Story 4.4 seed와 cross-epic state/read-model acceptance

@@ -41,7 +41,7 @@ Epic 10은 `figma-make-acceptance-sprint-plan.md`와 `implementation-artifacts/s
 
 구현 착수 전 추가로 정렬해야 할 후보 문서는 아래와 같다.
 
-- `planning-artifacts/current-product-source-of-truth.md`: Alert/Discord open decision을 Epic 11 backlog 결정으로 갱신한다.
+- `planning-artifacts/source-of-truth/current-product-source-of-truth.md`: Alert/Discord open decision을 Epic 11 backlog 결정으로 갱신한다.
 - `planning-artifacts/api-surface.md`: Epic 11 alert smoke/verification endpoint가 필요한지, Epic 12 enqueue 응답 semantics가 기존 ingest API status와 어떻게 다른지 결정 후 반영한다.
 - `planning-artifacts/contracts/ingest-envelope.md`: Epic 12 SQS message contract, idempotency key, payload hash, redaction guard를 별도 section으로 추가한다.
 - `planning-artifacts/contracts/read-model-contract.md`: Epic 11 alert trigger가 state/read model을 어떻게 읽고 무엇을 단정하지 않는지 guard를 추가한다.

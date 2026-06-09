@@ -31,7 +31,7 @@ planning-artifacts/stories/6-2-project-selection-ui.md story file을 생성하�
 2. /Users/tlsdla1235/Desktop/study/observation/implementation-artifacts/sprint-status.yaml
 3. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/epics.md
 4. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/sprint-plan.md
-5. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/current-product-source-of-truth.md
+5. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/source-of-truth/current-product-source-of-truth.md
 6. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/stories/6-1-account-project-entry-and-setup-guide.md
 7. /Users/tlsdla1235/Desktop/study/observation/implementation-artifacts/spec-story-6-1-account-project-entry-and-setup-guide-contract-decisions.md
 8. /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/stories/5-1-project-application-navigation-read-model.md

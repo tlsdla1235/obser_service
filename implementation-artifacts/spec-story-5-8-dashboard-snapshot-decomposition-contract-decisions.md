@@ -21,7 +21,7 @@ Story 5.8을 하나의 큰 구현 story로 만들지 않고, 먼저 snapshot 저
 이 decomposition은 아래 문서를 최신 계약 기준으로 사용한다.
 
 - `implementation-artifacts/spec-story-5-7-instance-snapshot-trend-contract-decisions.md`
-- `planning-artifacts/current-product-source-of-truth.md`
+- `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 - `planning-artifacts/sprint-plan.md`
 - `planning-artifacts/epics.md`
 - `planning-artifacts/contracts/read-model-contract.md`

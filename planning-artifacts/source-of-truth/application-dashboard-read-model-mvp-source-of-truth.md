@@ -4,7 +4,7 @@ projectName: Observation Portal
 status: active
 date: 2026-06-09
 dependsOn:
-  - planning-artifacts/dashboard-snapshot-mvp-source-of-truth.md
+  - planning-artifacts/source-of-truth/dashboard-snapshot-mvp-source-of-truth.md
 supersedesForMvp:
   - planning-artifacts/operator-decision-dashboard-redesign.md
   - planning-artifacts/operator-decision-dashboard-ux-model.md
@@ -17,7 +17,7 @@ supersedesForMvp:
 
 이 문서는 Observation Portal MVP에서 Application Dashboard read model과 API 계약이 무엇을 반환해야 하는지 고정한다.
 
-`planning-artifacts/dashboard-snapshot-mvp-source-of-truth.md`는 dashboard와 snapshot의 관계를 닫는 상위 source of truth다. 이 문서는 그 결정을 바꾸지 않고, live application dashboard와 application snapshot detail이 공통으로 복원해야 하는 read model shape, 판단 rule, evidence 정책, persistence 재사용 가능성과 한계를 정의한다.
+`planning-artifacts/source-of-truth/dashboard-snapshot-mvp-source-of-truth.md`는 dashboard와 snapshot의 관계를 닫는 상위 source of truth다. 이 문서는 그 결정을 바꾸지 않고, live application dashboard와 application snapshot detail이 공통으로 복원해야 하는 read model shape, 판단 rule, evidence 정책, persistence 재사용 가능성과 한계를 정의한다.
 
 기존 `operator-decision-dashboard-redesign.md`, `operator-decision-dashboard-ux-model.md`, `operator-decision-dashboard-ux-pitch.md`는 참고 자료다. 해당 문서의 baseline, impact score, Look First, incident/flight-recorder 확장 제안은 이 문서에서 명시적으로 채택한 항목만 MVP 계약으로 본다.
 

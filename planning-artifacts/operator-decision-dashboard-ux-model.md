@@ -7,7 +7,7 @@ relatedDesignNote: planning-artifacts/operator-decision-dashboard-redesign.md
 relatedMockup: planning-artifacts/mockups/operator-decision-dashboard-mockup.html
 ---
 
-> Reference-only note: 2026-06-08 기준 MVP dashboard/snapshot 관계와 구현 우선순위는 `planning-artifacts/dashboard-snapshot-mvp-source-of-truth.md`를 우선한다. 이 문서는 폐기하지 않지만, 아직 논의가 닫히지 않은 UX 모델 참고 자료로 둔다.
+> Reference-only note: 2026-06-08 기준 MVP dashboard/snapshot 관계와 구현 우선순위는 `planning-artifacts/source-of-truth/dashboard-snapshot-mvp-source-of-truth.md`를 우선한다. 이 문서는 폐기하지 않지만, 아직 논의가 닫히지 않은 UX 모델 참고 자료로 둔다.
 
 # Observation Portal 운영 판단 UX 모델
 

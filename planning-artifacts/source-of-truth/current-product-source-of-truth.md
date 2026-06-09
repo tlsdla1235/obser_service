@@ -5,6 +5,7 @@ status: active-alignment-baseline
 date: 2026-05-25
 alignmentAuthority: latest-user-intent-wins
 uxBaselinePrototype: planning-artifacts/prototypes/epic5-6-dashboard-flow-prototype.html
+sourceOfTruthUiMockup: planning-artifacts/source-of-truth/source-of-truth-dashboard-mockup.html
 ---
 
 # Current Product Source of Truth
@@ -22,6 +23,20 @@ Epic 5/6 dashboard flow 판단에서는 `planning-artifacts/prototypes/epic5-6-d
 BMAD 또는 후속 문서 정렬에서 우선순위는 이 문서와 최신 contracts, 위 prototype, 재정렬된 Epic/sprint 문서, 과거 restart/context 문서 순서다.
 
 과거 UX 문서가 application-only first screen, alert-first surface, raw explorer 중심 화면, 또는 instance snapshot trend 부재를 전제하면 이 문서와 prototype이 우선한다.
+
+### 1.2 Source of Truth UI Mockup
+
+`planning-artifacts/source-of-truth/source-of-truth-dashboard-mockup.html`은 현재 `frontend` React 화면의 Project rail, Application rail, Dashboard main grid, neutral border panel, compact typography를 디자인 reference로 삼아 source-of-truth 계약을 임시 데이터로 화면화한 목업이다.
+
+이 목업은 production 구현 계약이 아니라 Epic 5/6 재정렬 전에 사용자 흐름을 확인하기 위한 참고 산출물이다. 특히 기존 instance detail이 오른쪽 `Sheet` 안에서 좁게 렌더링되던 문제를 피하기 위해, selected instance evidence는 넓은 modal로 분리하는 흐름을 제안한다.
+
+목업이 따라야 하는 경계는 아래와 같다.
+
+- Application Dashboard는 server read model을 표시하고 UI에서 lifecycle state, endpoint priority, resource pattern을 재계산하지 않는다.
+- 첫 화면은 RED/USE 기반 golden signal, state strip, first look candidates, bounded endpoint/resource evidence를 우선한다.
+- `p95/p99`는 instance modal 안에서 source-scoped starter local percentile 참고값으로만 표시한다.
+- Snapshot 화면은 stored dashboard read model 복원을 보여주며 current metric 재계산, baseline diff, 장기 시계열 분석을 약속하지 않는다.
+- Instance 상세는 application state를 대체하지 않고 selected instance evidence만 넓은 modal에서 보여준다.
 
 ## 2. 최신 사용자 의도
 
@@ -54,6 +69,85 @@ BMAD 또는 후속 문서 정렬에서 우선순위는 이 문서와 최신 cont
 ## 4. 제품 한 줄 정의
 
 Spring Boot 앱에 starter를 붙이면 project/application/instance 단위로 수집 연결과 운영 상태를 확인하고, 30~60초 안에 application dashboard에서 지금 무엇을 믿을 수 있고 어디부터 볼지 알 수 있는 starter-first observability dashboard다.
+
+## 4.1 MVP Insight Alignment Baseline
+
+이 섹션은 Epic 5/6과 후속 source-of-truth 문서가 따라야 하는 가장 거친 제품 판단 기준이다. MVP는 수집된 metric을 많이 보여주는 dashboard가 아니라, 수집된 gray data를 운영자가 바로 판단할 수 있는 evidence와 다음 확인 대상으로 바꾸는 dashboard다.
+
+MVP에서 해결하려는 문제는 두 가지다.
+
+1. 데이터 엔지니어링 관점에서는 수집된 metric 중 현재 개선이나 확인이 필요한 신호가 무엇인지 식별한다.
+2. UX 관점에서는 운영자가 핵심 서비스 경로에서 실제로 영향을 받을 가능성이 높은 문제를 먼저 보게 한다.
+
+이 둘이 만나는 지점은 impact 기반 우선순위화다. 단, MVP에서는 business criticality, endpoint owner, baseline, adaptive threshold, 장기 시계열 분석을 사용하지 않는다. 대신 현재 window 안에서 이미 수집된 request symptom과 resource pressure를 단순한 rule로 묶어 "어디부터 볼지"를 정한다.
+
+### 4.1.1 우선순위 원칙
+
+MVP dashboard는 느린 endpoint를 전부 나열하지 않는다. 우선순위는 아래처럼 bounded evidence queue로 표현한다.
+
+1. 운영 기준을 직접 넘긴 application-level 오류 또는 지연
+2. 공유 resource pressure와 함께 관찰된 여러 endpoint 증상
+3. 오류와 지연이 함께 두드러지는 endpoint
+4. 500번대 서버 오류가 관찰된 endpoint
+5. resource pressure는 있으나 요청 증상이 아직 함께 보이지 않는 attention evidence
+6. 표본 부족, freshness 지연, malformed evidence 같은 data quality issue
+
+`impactScore`나 `confidence`를 사용자에게 숫자로 노출하지 않는다. 필요하면 내부 정렬 또는 snapshot helper column으로만 사용한다. 사용자가 봐야 하는 것은 점수가 아니라 "지금 무엇이 문제인지", "어디부터 확인할지", "왜 그렇게 판단했는지"다.
+
+### 4.1.2 RED/USE 멘탈 모델
+
+MVP는 운영 신호를 RED와 USE로 나누어 설명한다.
+
+| 모델 | MVP 의미 | 사용자 언어 |
+|---|---|---|
+| RED Rate | 최근 window 요청량 | 요청량 |
+| RED Errors | 5xx/500번대 서버 오류 | 서버 오류 |
+| RED Duration | 500ms 초과 요청 비율 | 느린 요청 |
+| USE Utilization/Saturation | CPU, heap, datasource pool 사용률 | resource pressure hint |
+| USE Errors | MVP에서는 별도 resource error 축으로 확장하지 않음 | Post-MVP 후보 |
+
+`p95`와 `p99` 용어를 금지하지는 않는다. 다만 MVP에서 p95/p99는 source-scoped starter local percentile 참고값이다. 여러 instance나 여러 bucket의 p95/p99를 평균, 최댓값, 병합해 application 대표 p95/p99처럼 만들지 않는다. Application state, endpoint priority, shared resource pattern 판단은 p95/p99가 아니라 `requestCount`, `errorRate`, `slowShareOver500ms`, resource usage threshold를 사용한다.
+
+### 4.1.3 첫 화면 정보 구조
+
+첫 화면은 backend 내부 구조를 설명하지 않는다. `observationHandler`, ingest 세부 동작, raw metric field 이름보다 운영자가 묻는 질문을 먼저 답한다.
+
+첫 화면의 최소 답변은 아래 순서를 따른다.
+
+1. 지금 metric data를 믿을 수 있는가?
+2. application metric state는 무엇인가?
+3. 직접 상태를 바꾼 request symptom이 있는가?
+4. 함께 확인할 resource pressure hint가 있는가?
+5. 먼저 볼 endpoint 또는 instance evidence는 무엇인가?
+6. data quality 때문에 과신하면 안 되는 부분은 무엇인가?
+
+정보는 점진적으로 노출한다. 첫 화면에는 golden signal 요약, state 설명, 최대 0~3개의 first look candidate, bounded endpoint/resource evidence만 둔다. 상세 endpoint 분해, instance evidence, starter heartbeat/control-plane 정보는 drill-down에서 확인한다.
+
+### 4.1.4 Rule-Based Interpretation
+
+MVP rule은 root cause를 확정하지 않고 운영 가설을 좁힌다.
+
+공유 resource가 threshold를 넘고 같은 window에서 application 또는 여러 endpoint의 오류/지연 증상이 함께 관찰되면, dashboard는 "공유 자원 압박과 요청 증상이 함께 관찰된다"고 표현한다. 예를 들어 datasource pool 사용률과 여러 endpoint 지연이 함께 있으면 connection wait 가능성을 확인하라는 evidence로 보여준다. 단, "DB pool이 원인"이라고 단정하지 않는다.
+
+반대로 공유 resource pressure가 기준 이하인데 특정 endpoint만 오류 또는 지연 threshold를 넘으면, dashboard는 "특정 endpoint의 로직, query, downstream 호출 등을 먼저 확인할 후보"로 표현한다. 이것도 root cause 확정이 아니라 first look candidate다.
+
+모든 endpoint 사이의 상관관계를 MVP에서 분해하지 않는다. MVP는 endpoint 간 causality 분석보다 공유 resource 축을 먼저 사용해 시스템 차원의 resource competition 가능성과 endpoint-local 문제 가능성을 구분한다.
+
+### 4.1.5 Snapshot 해석
+
+Snapshot은 flight recorder처럼 사용한다. 문제가 있거나 확인할 가치가 있는 시점의 dashboard read model을 저장해, 나중에 "그때 화면이 어떻게 판단했는지"를 복원한다.
+
+MVP snapshot은 아래를 포함한다.
+
+- 저장 당시 application state
+- stateReason과 attentionEvidence
+- 같은 window의 endpoint evidence
+- 같은 window의 resource pressure hint
+- instance summary와 drill-down link
+- data quality limitation
+- 회고나 공유에 사용할 수 있는 operator summary
+
+MVP snapshot은 raw metric dump, incident report, 장기 시계열 분석, baseline diff가 아니다. "평소 대비 무엇이 달라졌는가" diff, p99 상승 trend, 전일/전주 비교, adaptive threshold는 MVP 이후 확장으로 둔다.
 
 ## 5. 사용자 플로우
 
@@ -105,13 +199,13 @@ Application dashboard가 primary first-screen이다.
 
 화면 우선순위:
 
-1. Application context rail: project, application, environment, current/baseline window
+1. Application context rail: project, application, environment, recent 30-minute window
 2. State semantic strip: metric state, freshness, explanation, next action
 3. Starter connection strip: heartbeat/connection status, project key/metadata/portal reachability 후보
-4. Headline metrics: request count, error rate, source-scoped starter p95/p99, resource hints
+4. Headline metrics: request count, error rate, 500ms 초과 요청 비율, resource hints
 5. Triage cards: 최대 0~3개
 6. Zero-insight/recovery message: triage가 없을 때도 이유와 다음 행동 제공
-7. Endpoint priority list: slow/error/comparative evidence 기반
+7. Endpoint priority list: error/latency/server-error attention evidence 기반
 8. Instance summary: 문제가 있거나 stale한 instance를 evidence drill-down으로 연결
 9. Snapshot/history markers: 저장된 read model 기반의 최근 운영 맥락
 
@@ -127,7 +221,7 @@ Instance detail은 application dashboard를 대체하지 않는다.
 - last accepted bucket time
 - starter heartbeat last seen
 - metric freshness와 starter connection의 분리 표시
-- 30초 bucket source-scoped starter p95/p99 point series
+- source-scoped starter p95/p99 latest/reference value
 - histogram bucket distribution
 - endpoint evidence subset
 - JVM/datasource/CPU resource hint

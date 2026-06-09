@@ -28,13 +28,13 @@ date: 2026-05-06
 generatedArtifacts:
   - /Users/tlsdla1235/Desktop/study/관프/{output_folder}/planning-artifacts/ux-first-screen-scenarios.html
 supersededBy:
-  - /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/current-product-source-of-truth.md
+  - /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/source-of-truth/current-product-source-of-truth.md
   - /Users/tlsdla1235/Desktop/study/observation/planning-artifacts/prototypes/epic5-6-dashboard-flow-prototype.html
 ---
 
 # UX Design Specification - Spring Boot 운영 첫 화면 포털
 
-> 최신 정렬 메모: 이 문서는 2026-05-06 시점의 historical UX reference다. Epic 5/6 구현과 BMAD planning은 `planning-artifacts/current-product-source-of-truth.md`, 최신 `planning-artifacts/contracts/*`, `planning-artifacts/prototypes/epic5-6-dashboard-flow-prototype.html`을 우선한다. 이 문서가 application-only first screen, alert-first surface, raw explorer 중심 화면, 또는 instance snapshot trend 부재를 전제하면 최신 source of truth와 prototype이 우선한다.
+> 최신 정렬 메모: 이 문서는 2026-05-06 시점의 historical UX reference다. Epic 5/6 구현과 BMAD planning은 `planning-artifacts/source-of-truth/current-product-source-of-truth.md`, 최신 `planning-artifacts/contracts/*`, `planning-artifacts/prototypes/epic5-6-dashboard-flow-prototype.html`을 우선한다. 이 문서가 application-only first screen, alert-first surface, raw explorer 중심 화면, 또는 instance snapshot trend 부재를 전제하면 최신 source of truth와 prototype이 우선한다.
 
 **Author:** tlsdla1235  
 **Date:** 2026-05-06

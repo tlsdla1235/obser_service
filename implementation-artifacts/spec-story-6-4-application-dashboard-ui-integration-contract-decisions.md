@@ -30,7 +30,7 @@ Story 6.4는 Application Dashboard current API를 표시하는 UI integration st
 - `implementation-artifacts/spec-story-6-1-account-project-entry-and-setup-guide-contract-decisions.md`
 - `planning-artifacts/epics.md`
 - `planning-artifacts/sprint-plan.md`
-- `planning-artifacts/current-product-source-of-truth.md`
+- `planning-artifacts/source-of-truth/current-product-source-of-truth.md`
 - `planning-artifacts/api-surface.md`
 - `planning-artifacts/project-structure.md`
 - `planning-artifacts/contracts/account-auth-policy.md`
