@@ -1610,7 +1610,7 @@
       document.getElementById("windowCell").textContent = dashboard.window;
       document.getElementById("sourceCell").textContent = snapshotMode ? "dashboard_snapshots.read_model_json" : "accepted_metric_buckets";
       document.getElementById("capturedAtCell").textContent = snapshotMode ? selectedSnapshot.capturedAt : "현재 query 시각";
-      document.getElementById("captureReasonCell").textContent = snapshotMode ? selectedSnapshot.captureReason : "n/a";
+      document.getElementById("captureReasonCell").textContent = snapshotMode ? captureReasonLabel(selectedSnapshot.captureReason) : "n/a";
       document.getElementById("recalculatesCell").textContent = "false";
       document.getElementById("markerSourceCell").textContent = "false";
 
@@ -2112,7 +2112,7 @@
               <span class="chip">currentWindowEnd ${item.currentWindowEnd}</span>
               <span class="badge ${item.markerBucket}">markerBucket: ${item.markerBucket}</span>
               <span class="badge ${stateBadgeTone(item.stateCode)}">stored stateCode: ${item.stateCode}</span>
-              <span class="chip">${item.captureReason}</span>
+              <span class="chip">${captureReasonLabel(item.captureReason)}</span>
             </div>
             <h3 style="margin-top:8px">${item.title}</h3>
             <p class="muted">${item.summary}</p>
@@ -2129,11 +2129,20 @@
           <span class="chip">capturedAt ${item.capturedAt}</span>
           <span class="badge ${item.markerBucket}">markerBucket ${item.markerBucket}</span>
           <span class="badge ${stateBadgeTone(item.stateCode)}">stored stateCode ${item.stateCode}</span>
-          <span class="chip">${item.captureReason}</span>
+          <span class="chip">${captureReasonLabel(item.captureReason)}</span>
         </div>
         <h3 style="margin-top:8px">${item.title}</h3>
         <p style="margin-top:4px">source=dashboard_snapshots.read_model_json · snapshotDetailRecalculates=false · markerIsStateSource=false</p>
       `;
+    }
+
+    function captureReasonLabel(captureReason) {
+      if (captureReason === "hourly_scheduled") return "30분 scheduled";
+      if (captureReason === "state_change") return "state change";
+      if (captureReason === "high_confidence_concern") return "high-confidence concern";
+      if (captureReason === "short_strong_spike") return "short strong spike";
+      if (captureReason === "query_fallback") return "query fallback";
+      return captureReason || "unknown";
     }
 
     function openSnapshotPicker() {
