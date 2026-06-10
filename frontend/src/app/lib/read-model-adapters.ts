@@ -34,17 +34,17 @@ export const TREND_PRESET_QUERY = {
 export const HISTORY_PRESET_QUERY = {
   "24h": {
     eventLimit: 50,
-    markerLimit: 50,
+    markerLimit: 48,
     since: "24h",
   },
   "7d": {
     eventLimit: 100,
-    markerLimit: 168,
+    markerLimit: 336,
     since: "7d",
   },
   "14d": {
     eventLimit: 100,
-    markerLimit: 336,
+    markerLimit: 672,
     since: "14d",
   },
 } as const satisfies Record<HistoryPreset, { eventLimit: number; markerLimit: number; since: HistoryPreset }>;
@@ -498,6 +498,7 @@ export function humanizeStatusCode(value: string | null | undefined): string {
     case "available":
       return "측정됨";
     case "capturedAt_asc":
+    case "currentWindowEndUtc_asc":
       return "오래된 기록 먼저";
     case "capturedAt_desc":
     case "occurredAt_desc":
@@ -593,7 +594,7 @@ export function humanizeCaptureReason(value: string | null | undefined): string 
   const normalized = (value ?? "").trim();
   switch (normalized) {
     case "hourly_scheduled":
-      return "정기 저장";
+      return "30분 정기 저장";
     case "query_fallback":
       return "정기 확인 기록";
     case "state_change":
@@ -610,6 +611,8 @@ export function humanizeOrderCode(value: string | null | undefined): string {
   switch (normalized) {
     case "capturedAt_asc":
       return "오래된 기록 먼저";
+    case "currentWindowEndUtc_asc":
+      return "30분 slot 오래된 순";
     case "capturedAt_desc":
     case "occurredAt_desc":
       return "최신 기록 먼저";

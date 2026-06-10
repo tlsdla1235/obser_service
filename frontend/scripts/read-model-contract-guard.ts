@@ -180,7 +180,7 @@ assert.throws(
 const guardedHistory = guardSnapshotHistoryReadModels(snapshotEventsContractFixture, snapshotMarkersContractFixture, {
   applicationId: CONTRACT_APPLICATION_ID,
   eventLimit: 50,
-  markerLimit: 50,
+  markerLimit: 48,
   preset: "24h",
 });
 assert.equal(guardedHistory.events.events, snapshotEventsContractFixture.events);
@@ -191,7 +191,78 @@ assert.deepEqual(
 );
 assert.deepEqual(
   guardedHistory.markers.markers.map((marker) => `${marker.markerId}:${marker.storedApplicationStateCode}`),
-  ["marker-server-first:active", "marker-server-second:down"],
+  ["marker-server-second:down", "marker-server-first:active"],
+);
+assert.equal(guardedHistory.markers.horizon.limit, 48);
+assert.equal(guardedHistory.markers.horizon.maxLimit, 672);
+assert.equal(guardedHistory.markers.horizon.order, "currentWindowEndUtc_asc");
+assert.equal(guardedHistory.markers.markers[1].captureReason, "hourly_scheduled");
+assert.equal(guardedHistory.markers.markers[1].type, "normal");
+assert.notEqual(
+  guardedHistory.markers.markers[1].type,
+  guardedHistory.markers.markers[1].storedApplicationStateCode,
+  "markerBucket은 stored state source가 아니어야 한다",
+);
+assert.throws(
+  () =>
+    guardSnapshotHistoryReadModels(
+      snapshotEventsContractFixture,
+      {
+        ...snapshotMarkersContractFixture,
+        markers: [...snapshotMarkersContractFixture.markers].reverse(),
+      },
+      {
+        applicationId: CONTRACT_APPLICATION_ID,
+        eventLimit: 50,
+        markerLimit: 48,
+        preset: "24h",
+      },
+    ),
+  /snapshot_history_context_mismatch/,
+);
+assert.throws(
+  () =>
+    guardSnapshotHistoryReadModels(
+      snapshotEventsContractFixture,
+      {
+        ...snapshotMarkersContractFixture,
+        markers: [
+          {
+            ...snapshotMarkersContractFixture.markers[0],
+            currentWindowEndUtc: "2026-06-08T00:45:00Z",
+          },
+        ],
+      },
+      {
+        applicationId: CONTRACT_APPLICATION_ID,
+        eventLimit: 50,
+        markerLimit: 48,
+        preset: "24h",
+      },
+    ),
+  /snapshot_history_context_mismatch/,
+);
+assert.throws(
+  () =>
+    guardSnapshotHistoryReadModels(
+      snapshotEventsContractFixture,
+      {
+        ...snapshotMarkersContractFixture,
+        markers: [
+          {
+            ...snapshotMarkersContractFixture.markers[0],
+            currentWindowEndUtc: "2026-06-07T23:30:00Z",
+          },
+        ],
+      },
+      {
+        applicationId: CONTRACT_APPLICATION_ID,
+        eventLimit: 50,
+        markerLimit: 48,
+        preset: "24h",
+      },
+    ),
+  /snapshot_history_context_mismatch/,
 );
 
 assert.throws(
@@ -210,7 +281,7 @@ assert.throws(
       {
         applicationId: CONTRACT_APPLICATION_ID,
         eventLimit: 50,
-        markerLimit: 50,
+        markerLimit: 48,
         preset: "24h",
       },
     ),
@@ -224,6 +295,9 @@ assert.equal(guardedDetail.readSemantics.source, "dashboard_snapshots.read_model
 assert.equal(guardedDetail.readSemantics.snapshotDetailRecalculates, false);
 assert.equal(guardedDetail.readSemantics.markerIsStateSource, false);
 assert.equal(guardedDetail.marker.storedApplicationStateCode, "active");
+assert.equal(guardedDetail.marker.type, "normal");
+assert.ok(Array.isArray(guardedDetail.readModel.attentionEvidence));
+assert.equal(guardedDetail.readModel.attentionEvidence.length, 1);
 
 assert.throws(
   () =>
@@ -233,6 +307,20 @@ assert.throws(
         readSemantics: {
           ...snapshotDetailContractFixture.readSemantics,
           markerIsStateSource: true,
+        },
+      },
+      { snapshotId: CONTRACT_SNAPSHOT_ID },
+    ),
+  /snapshot_detail_contract_mismatch/,
+);
+assert.throws(
+  () =>
+    guardSnapshotDetailReadModel(
+      {
+        ...snapshotDetailContractFixture,
+        readModel: {
+          ...snapshotDetailContractFixture.readModel,
+          state: null,
         },
       },
       { snapshotId: CONTRACT_SNAPSHOT_ID },
@@ -342,9 +430,13 @@ assert.throws(
   /instance_snapshot_trend_contract_mismatch/,
 );
 
-for (const path of ["src/app/components/dashboard.tsx", "src/app/components/instance-panels.tsx"]) {
+for (const path of ["src/app/components/dashboard.tsx", "src/app/components/instance-panels.tsx", "src/app/components/snapshot-history-panel.tsx"]) {
   const source = readFileSync(path, "utf8");
   assert.equal(/\.sort\(|\.toSorted\(|\.reduce\(/.test(source), false, `${path} must preserve server order`);
 }
+
+const snapshotDetailSurfaceSource = readFileSync("src/app/components/snapshot-detail-surface.tsx", "utf8");
+assert.match(snapshotDetailSurfaceSource, /보관 기간이 지났거나 저장된 snapshot을 찾을 수 없습니다/);
+assert.match(snapshotDetailSurfaceSource, /live dashboard\/current accepted bucket으로 복원하지 않습니다/);
 
 console.log("read-model contract guard fixtures passed");

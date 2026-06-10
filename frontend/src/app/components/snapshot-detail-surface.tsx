@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
-import { AlertCircle, FileSearch, RefreshCw } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { Activity, AlertCircle, FileSearch, ListChecks, RefreshCw, Server } from "lucide-react";
 import { ApiRequestError, AuthRequiredError, NO_STORE_REQUEST_OPTIONS, readJsonResource } from "../lib/api";
 import { type AuthFetch } from "../lib/auth";
 import { guardSnapshotDetailReadModel } from "../lib/read-model-contract-guard";
@@ -7,6 +8,7 @@ import { useApiResource } from "../lib/use-api-resource";
 import {
   buildSnapshotDetailPath,
   formatCount,
+  formatDateRange,
   formatNullableRatio,
   formatOptionalDateTime,
   humanizeAnchorStatus,
@@ -19,7 +21,7 @@ import {
   statusBadgeClassName,
   validateSnapshotDetailPath,
 } from "../lib/read-model-adapters";
-import type { DashboardSnapshotDetailReadModel } from "../lib/read-model-types";
+import type { DashboardSnapshotDetailReadModel, JsonValue } from "../lib/read-model-types";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";
 
@@ -37,9 +39,18 @@ function StatusBadge({ children, className = "" }: { children: React.ReactNode; 
   );
 }
 
+function SectionLabel({ icon: Icon, children }: { icon: LucideIcon; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-1.5 text-[11px] uppercase text-neutral-500">
+      <Icon className="h-3.5 w-3.5" strokeWidth={1.5} />
+      {children}
+    </div>
+  );
+}
+
 /**
  * stored snapshot detail API를 읽고 bounded projection만 렌더링하는 공용 surface다.
- * current dashboard fallback이나 raw read_model_json dump 없이 readSemantics/self link 계약을 검증한다.
+ * live dashboard 보완 조회나 raw read_model_json 덤프 없이 readSemantics/self link 계약을 검증한다.
  */
 export function SnapshotDetailSurface({
   applicationId,
@@ -117,6 +128,7 @@ export function SnapshotDetailSurface({
   const anchorExists = activeAnchor
     ? detail.snapshotEndpointEvidence.items.some((item) => item.anchorId === activeAnchor)
     : false;
+  const storedDashboard = toStoredDashboardView(detail);
 
   return (
     <div className={`border border-neutral-200 bg-white ${compact ? "text-[12px]" : "text-[13px]"}`}>
@@ -124,20 +136,52 @@ export function SnapshotDetailSurface({
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 text-[11px] uppercase text-neutral-500">
             <FileSearch className="h-3.5 w-3.5" strokeWidth={1.5} />
-            스냅샷 상세
+            Application Snapshot Dashboard
           </div>
-          <StatusBadge className={statusBadgeClassName(detail.source)}>{humanizeSourceCode(detail.source)}</StatusBadge>
+          <StatusBadge className={statusBadgeClassName(storedDashboard.mode)}>{`mode=${storedDashboard.mode}`}</StatusBadge>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2 border-b border-neutral-100 p-3 text-[11px] md:grid-cols-4">
+        <InfoCell label="source" value={detail.readSemantics.source} />
         <InfoCell label="스냅샷 ID" value={detail.snapshot.snapshotId} />
         <InfoCell label="저장 시각" value={formatOptionalDateTime(detail.snapshot.capturedAt)} />
-        <InfoCell label="저장 당시 상태" value={humanizeStatusCode(detail.snapshot.storedApplicationStateCode)} />
+        <InfoCell label="currentWindowEndUtc" value={formatOptionalDateTime(detail.snapshot.currentWindow.endUtc)} />
+        <InfoCell label="window" value={formatDateRange(detail.snapshot.currentWindow.startUtc, detail.snapshot.currentWindow.endUtc)} />
+        <InfoCell label="snapshotDetailRecalculates" value={String(detail.readSemantics.snapshotDetailRecalculates)} />
+        <InfoCell label="currentStateRecalculated" value={String(detail.readSemantics.currentStateRecalculated)} />
+        <InfoCell label="markerIsStateSource" value={String(detail.readSemantics.markerIsStateSource)} />
         <InfoCell label="저장 이유" value={humanizeCaptureReason(detail.snapshot.captureReason)} />
-        <InfoCell label="이전 상태" value={humanizeStatusCode(detail.previousState.stateCode)} />
-        <InfoCell label="마지막 정상 시각" value={formatOptionalDateTime(detail.lastHealthyAt.value)} />
-        <InfoCell label="주요 판단 기준" value={detail.snapshot.primaryRuleId ?? "적용된 판단 기준 없음"} />
-        <InfoCell label="주요 엔드포인트" value={detail.snapshot.primaryEndpointKey ?? "해당 엔드포인트 없음"} />
+      </div>
+      <div className="grid gap-3 border-b border-neutral-100 p-3 lg:grid-cols-3">
+        <section className="border border-neutral-200 bg-white p-3">
+          <div className="flex items-center justify-between gap-2">
+            <SectionLabel icon={Activity}>Stored state</SectionLabel>
+            <StatusBadge className={statusBadgeClassName(storedDashboard.stateCode)}>
+              {storedDashboard.stateLabel}
+            </StatusBadge>
+          </div>
+          <p className="mt-2 text-neutral-900">{storedDashboard.stateRationale}</p>
+          <p className="mt-1 text-[12px] text-neutral-500">{storedDashboard.recommendedAction}</p>
+        </section>
+        <section className="border border-neutral-200 bg-white p-3">
+          <SectionLabel icon={ListChecks}>Operator summary</SectionLabel>
+          <p className="mt-2 text-neutral-900">{storedDashboard.headline}</p>
+          <p className="mt-1 text-[12px] text-neutral-500">{storedDashboard.firstLookText}</p>
+        </section>
+        <section className="border border-neutral-200 bg-white p-3">
+          <SectionLabel icon={Server}>Stored data quality</SectionLabel>
+          <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500">
+            <InfoCell label="quality state" value={storedDashboard.dataQualityState} />
+            <InfoCell label="requestCount" value={storedDashboard.requestCount} />
+            <InfoCell label="minimum" value={storedDashboard.minimumRequestCount} />
+            <InfoCell label="lastObservedAt" value={storedDashboard.lastObservedAt} />
+          </div>
+        </section>
+      </div>
+      <div className="grid gap-3 border-b border-neutral-100 p-3 lg:grid-cols-3">
+        <StoredDashboardList title="State reasons" items={storedDashboard.stateReasons} emptyText="저장된 stateReason이 없습니다." />
+        <StoredDashboardList title="Attention evidence" items={storedDashboard.attentionEvidence} emptyText="저장된 attention evidence가 없습니다." />
+        <StoredDashboardList title="First look candidates" items={storedDashboard.firstLookCandidates} emptyText="저장된 first look 후보가 없습니다." />
       </div>
       {detail.recoveryMarker && (
         <Alert className="m-3 border-amber-300">
@@ -192,7 +236,7 @@ export function SnapshotDetailSurface({
       <div className="border-t border-neutral-100 p-3">
         <div className="text-[11px] uppercase text-neutral-500">인스턴스 요약</div>
         <div className="mt-1 text-[12px] text-neutral-600">
-          저장 당시 인스턴스 {formatCount(detail.instanceSummary.items.length)}개
+          저장 당시 인스턴스 {formatCount(detail.instanceSummary.items.length)}개 · source={detail.instanceSummary.source}
         </div>
       </div>
       <details className="border-t border-neutral-100 p-3 text-[11px] text-neutral-500">
@@ -203,6 +247,8 @@ export function SnapshotDetailSurface({
           <InfoCell label="현재 상태 재계산" value={detail.readSemantics.currentStateRecalculated ? "예" : "아니오"} />
           <InfoCell label="실시간 데이터 결합" value={formatCount(detail.readSemantics.liveSourcesJoined.length)} />
           <InfoCell label="원본 데이터 노출" value={detail.readSemantics.rawReadModelJsonExposed ? "예" : "아니오"} />
+          <InfoCell label="stored readModel mode" value={storedDashboard.mode} />
+          <InfoCell label="stored source" value={storedDashboard.source} />
           <InfoCell label="이전 상태 근거" value={humanizeSourceCode(detail.previousState.source)} />
           <InfoCell label="마지막 정상 근거" value={humanizeSourceCode(detail.lastHealthyAt.source)} />
           <InfoCell label="인스턴스 요약 근거" value={humanizeSourceCode(detail.instanceSummary.source)} />
@@ -210,6 +256,164 @@ export function SnapshotDetailSurface({
       </details>
     </div>
   );
+}
+
+type StoredDashboardItem = {
+  body: string;
+  key: string;
+  meta: string;
+  title: string;
+};
+
+type StoredDashboardView = {
+  attentionEvidence: StoredDashboardItem[];
+  dataQualityState: string;
+  firstLookCandidates: StoredDashboardItem[];
+  firstLookText: string;
+  headline: string;
+  lastObservedAt: string;
+  minimumRequestCount: string;
+  mode: string;
+  recommendedAction: string;
+  requestCount: string;
+  source: string;
+  stateCode: string;
+  stateLabel: string;
+  stateRationale: string;
+  stateReasons: StoredDashboardItem[];
+};
+
+/**
+ * dashboard_snapshots.read_model_json 저장본에서 화면에 필요한 bounded field만 꺼낸다.
+ * 값이 없으면 current dashboard를 조회하거나 조합하지 않고 저장본 부재 copy로 표시한다.
+ */
+function toStoredDashboardView(detail: DashboardSnapshotDetailReadModel): StoredDashboardView {
+  const readModel = detail.readModel;
+  const state = jsonRecord(readModel.state);
+  const operatorSummary = jsonRecord(readModel.operatorSummary);
+  const dataQuality = jsonRecord(readModel.dataQuality);
+  const readSemantics = jsonRecord(readModel.readSemantics);
+
+  const stateCode = stringField(state, "code", "저장본에 state code 없음");
+  const stateLabel = stringField(state, "label", humanizeStatusCode(stateCode));
+  return {
+    attentionEvidence: storedReasonItems(readModel.attentionEvidence, "attention"),
+    dataQualityState: stringField(dataQuality, "state", "저장본에 dataQuality state 없음"),
+    firstLookCandidates: firstLookItems(readModel.firstLookCandidates),
+    firstLookText: stringField(operatorSummary, "firstLookText", "저장된 first look 안내가 없습니다."),
+    headline: stringField(operatorSummary, "headline", "저장된 operator summary가 없습니다."),
+    lastObservedAt: formatOptionalDateTime(nullableStringField(dataQuality, "lastObservedAt")),
+    minimumRequestCount: numberField(dataQuality, "minimumRequestCount"),
+    mode: stringJsonValue(readModel.mode, "snapshot"),
+    recommendedAction: stringField(state, "recommendedAction", "저장된 권장 조치가 없습니다."),
+    requestCount: numberField(dataQuality, "requestCount"),
+    source: stringField(readSemantics, "source", detail.readSemantics.source),
+    stateCode,
+    stateLabel,
+    stateRationale: stringField(state, "rationale", "저장된 state rationale이 없습니다."),
+    stateReasons: storedReasonItems(readModel.stateReasons, "state-reason"),
+  };
+}
+
+function StoredDashboardList({ emptyText, items, title }: { emptyText: string; items: StoredDashboardItem[]; title: string }) {
+  return (
+    <section className="border border-neutral-200 bg-white p-3">
+      <div className="text-[11px] uppercase text-neutral-500">{title}</div>
+      {items.length === 0 ? (
+        <div className="mt-2 text-[12px] text-neutral-500">{emptyText}</div>
+      ) : (
+        <ul className="mt-2 space-y-2">
+          {items.map((item) => (
+            <li key={item.key} className="border border-neutral-100 p-2">
+              <div className="text-[12px] text-neutral-900">{item.title}</div>
+              <div className="mt-0.5 text-[11px] text-neutral-500">{item.meta}</div>
+              <div className="mt-1 text-[12px] text-neutral-600">{item.body}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function storedReasonItems(value: JsonValue | null, prefix: string): StoredDashboardItem[] {
+  const items: StoredDashboardItem[] = [];
+  const sourceItems = jsonArray(value);
+  for (let index = 0; index < sourceItems.length; index += 1) {
+    const item = jsonRecord(sourceItems[index]);
+    if (!item) {
+      continue;
+    }
+    const reasonCode = stringField(item, "reasonCode", "reason 없음");
+    const type = stringField(item, "type", "type 없음");
+    const severity = stringField(item, "severity", "severity 없음");
+    const scope = stringField(item, "scope", "scope 없음");
+    const target = nullableStringField(item, "target") ?? "target 없음";
+    items.push({
+      body: stringField(item, "operatorText", "저장된 operator text가 없습니다."),
+      key: `${prefix}-${index}-${reasonCode}`,
+      meta: `${humanizeStatusCode(type)} · ${humanizeStatusCode(severity)} · ${humanizeStatusCode(scope)} · ${target}`,
+      title: reasonCode,
+    });
+  }
+  return items;
+}
+
+function firstLookItems(value: JsonValue | null): StoredDashboardItem[] {
+  const items: StoredDashboardItem[] = [];
+  const sourceItems = jsonArray(value);
+  for (let index = 0; index < sourceItems.length; index += 1) {
+    const item = jsonRecord(sourceItems[index]);
+    if (!item) {
+      continue;
+    }
+    const rank = numberField(item, "rank");
+    const type = stringField(item, "type", "type 없음");
+    const target = nullableStringField(item, "target") ?? "target 없음";
+    const reasonCode = stringField(item, "reasonCode", "reason 없음");
+    items.push({
+      body: stringField(item, "operatorText", "저장된 first look 설명이 없습니다."),
+      key: `first-look-${index}-${reasonCode}`,
+      meta: `rank ${rank} · ${humanizeStatusCode(type)} · ${target}`,
+      title: reasonCode,
+    });
+  }
+  return items;
+}
+
+function jsonRecord(value: JsonValue | null | undefined): Record<string, JsonValue> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function jsonArray(value: JsonValue | null | undefined): JsonValue[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function stringJsonValue(value: JsonValue | null | undefined, fallback: string): string {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function stringField(record: Record<string, JsonValue> | null, key: string, fallback: string): string {
+  if (!record) {
+    return fallback;
+  }
+  return stringJsonValue(record[key], fallback);
+}
+
+function nullableStringField(record: Record<string, JsonValue> | null, key: string): string | null {
+  if (!record) {
+    return null;
+  }
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function numberField(record: Record<string, JsonValue> | null, key: string): string {
+  if (!record) {
+    return "저장값 없음";
+  }
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value) ? formatCount(value) : "저장값 없음";
 }
 
 function SnapshotDetailMessage({ body, compact, title }: { body: string; compact: boolean; title: string }) {
@@ -244,7 +448,7 @@ function snapshotDetailErrorCopy(error: Error): { title: string; body: string } 
   if (error instanceof ApiRequestError && error.status === 404) {
     return {
       title: "스냅샷 상세 없음",
-      body: "저장된 상세 기록이 없거나 보관 기간이 지났을 수 있습니다.",
+      body: "보관 기간이 지났거나 저장된 snapshot을 찾을 수 없습니다. live dashboard/current accepted bucket으로 복원하지 않습니다.",
     };
   }
   if (error instanceof ApiRequestError && error.status === 400) {

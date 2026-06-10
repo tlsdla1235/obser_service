@@ -27,13 +27,9 @@ import {
   readJsonResource,
 } from "../lib/api";
 import { type AuthFetch, useAuth } from "../lib/auth";
-import {
-  guardApplicationDashboardReadModel,
-  guardSnapshotHistoryReadModels,
-} from "../lib/read-model-contract-guard";
+import { guardApplicationDashboardReadModel } from "../lib/read-model-contract-guard";
 import { useApiResource } from "../lib/use-api-resource";
 import {
-  buildSnapshotHistoryPaths,
   buildStarterCredentialMetadataPath,
   buildStarterCredentialRevocationPath,
   buildStarterCredentialRotationPath,
@@ -43,10 +39,6 @@ import {
   formatOptionalDateTime,
   formatRatio,
   histogramRangeBarWidth,
-  HISTORY_PRESET_QUERY,
-  humanizeAnchorStatus,
-  humanizeCaptureReason,
-  humanizeOrderCode,
   humanizeSourceCode,
   humanizeStatusCode,
   severityBadgeClassName,
@@ -66,20 +58,16 @@ import type {
   ApplicationDashboardReadModel,
   DashboardAttentionEvidence,
   DashboardFirstLookCandidate,
-  DashboardSnapshotMarkerReadModel,
   DashboardResourceSignal,
   DashboardStateReason,
   EndpointPriorityItem,
-  HistoryPreset,
   HistogramWindow,
   OneTimeStarterCredential,
-  OperationalEventHistoryReadModel,
   ProjectRegistrationResponse,
   ProjectApplicationNavigationReadModel,
   ProjectNavigationReadModel,
   StarterCredentialMetadataResponse,
   StarterCredentialRotationResponse,
-  TrendPreset,
   TriageCard,
 } from "../lib/read-model-types";
 import { Button } from "./ui/button";
@@ -87,7 +75,7 @@ import { Input } from "./ui/input";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { InstancePanels, useInstanceView } from "./instance-panels";
-import { SnapshotDetailSurface, type SnapshotDetailTarget } from "./snapshot-detail-surface";
+import { SnapshotHistoryPanel } from "./snapshot-history-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
 type ResourceScope = "applications" | "dashboard" | "projects";
@@ -1663,231 +1651,6 @@ function InstancesPanel({
   );
 }
 
-function SnapshotHistoryPanel({
-  dashboard,
-  selectedApplication,
-  selectedProject,
-}: {
-  dashboard: DashboardPresentation;
-  selectedApplication: ApplicationPresentationItem;
-  selectedProject: ProjectPresentationItem;
-}) {
-  const [preset, setPreset] = useState<HistoryPreset>("24h");
-  const [detailTarget, setDetailTarget] = useState<SnapshotDetailTarget | null>(null);
-  const historyResourceKey = `${selectedProject.projectId}|${selectedApplication.applicationId}|${preset}`;
-
-  useEffect(() => {
-    setDetailTarget(null);
-  }, [selectedApplication.applicationId, selectedProject.projectId]);
-
-  const requestHistory = useCallback(
-    async ({ authFetch, signal }: { authFetch: AuthFetch; signal: AbortSignal }) => {
-      const paths = buildSnapshotHistoryPaths(selectedProject.projectId, selectedApplication.applicationId, preset);
-      const [eventsResponse, markersResponse] = await Promise.all([
-        authFetch(paths.events, {
-          ...NO_STORE_REQUEST_OPTIONS,
-          signal,
-        }),
-        authFetch(paths.markers, {
-          ...NO_STORE_REQUEST_OPTIONS,
-          signal,
-        }),
-      ]);
-      const events = await readJsonResource<OperationalEventHistoryReadModel>(eventsResponse);
-      const markers = await readJsonResource<DashboardSnapshotMarkerReadModel>(markersResponse);
-      return guardSnapshotHistoryReadModels(events, markers, {
-        applicationId: selectedApplication.applicationId,
-        eventLimit: HISTORY_PRESET_QUERY[preset].eventLimit,
-        markerLimit: HISTORY_PRESET_QUERY[preset].markerLimit,
-        preset,
-      });
-    },
-    [preset, selectedApplication.applicationId, selectedProject.projectId],
-  );
-
-  const resource = useApiResource<{
-    events: OperationalEventHistoryReadModel;
-    markers: DashboardSnapshotMarkerReadModel;
-  }>({
-    dependencies: [historyResourceKey],
-    request: requestHistory,
-    resourceKey: historyResourceKey,
-  });
-
-  const current = resource.resourceKey === historyResourceKey;
-  const loading = !current || resource.loading;
-  const error = current ? resource.error : null;
-  const history = current ? resource.data : null;
-
-  return (
-    <div className="border border-neutral-200 bg-white">
-      <div className="px-3 py-2.5 border-b border-neutral-200 flex items-center justify-between gap-2">
-        <SectionLabel icon={History}>스냅샷 기록</SectionLabel>
-        <StatusBadge>{presetDisplayText(preset)}</StatusBadge>
-      </div>
-      <div className="border-b border-neutral-100 p-3">
-        <div className="flex flex-wrap gap-2">
-          {(["24h", "7d", "14d"] as const).map((candidate) => (
-            <Button
-              key={candidate}
-              variant={preset === candidate ? "default" : "outline"}
-              size="sm"
-              className="h-8 min-w-24 border-neutral-300"
-              onClick={() => {
-                setPreset(candidate);
-                setDetailTarget(null);
-              }}
-            >
-              {presetDisplayText(candidate)}
-            </Button>
-          ))}
-        </div>
-      </div>
-      <div className="p-4 text-[12px] text-neutral-600 space-y-4">
-        {dashboard.snapshot === null && (
-          <div className="border border-neutral-200 bg-neutral-50 p-2">
-            현재 상태에서 바로 연결된 스냅샷은 없습니다. 저장된 기록이 있으면 아래에서 따로 불러옵니다.
-          </div>
-        )}
-        {loading && <ResourceMessage title="기록 로딩 중" body={`${presetDisplayText(preset)} 범위의 상태 변화와 스냅샷을 불러오는 중입니다.`} />}
-        {error && <SnapshotHistoryError error={error} onReload={resource.reload} />}
-        {!loading && !error && history && (
-          <SnapshotHistoryReady
-            applicationId={selectedApplication.applicationId}
-            events={history.events}
-            markers={history.markers}
-            onSelectDetail={setDetailTarget}
-            projectId={selectedProject.projectId}
-          />
-        )}
-        <SnapshotDetailSurface
-          applicationId={selectedApplication.applicationId}
-          projectId={selectedProject.projectId}
-          target={detailTarget}
-        />
-      </div>
-    </div>
-  );
-}
-
-function SnapshotHistoryReady({
-  applicationId,
-  events,
-  markers,
-  onSelectDetail,
-  projectId,
-}: {
-  applicationId: string;
-  events: OperationalEventHistoryReadModel;
-  markers: DashboardSnapshotMarkerReadModel;
-  onSelectDetail: (target: SnapshotDetailTarget) => void;
-  projectId: string;
-}) {
-  return (
-    <>
-      <div className="border border-neutral-200 bg-white">
-        <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-3 py-2 text-[11px] text-neutral-500">
-          <span className="uppercase">상태 변화 기록</span>
-          <span>{humanizeOrderCode(events.horizon.order)}</span>
-        </div>
-        {events.events.length === 0 ? (
-          <div className="p-3 text-[12px] text-neutral-500">
-            이 범위에 표시할 상태 변화 기록이 없습니다.
-          </div>
-        ) : (
-          <ul>
-            {events.events.map((event) => (
-              <li key={event.eventId} className="border-b border-neutral-100 p-3 last:border-b-0">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-neutral-900">{event.title}</div>
-                    <div className="mt-0.5 text-neutral-600">{event.summary}</div>
-                    <div className="mt-1 text-[11px] text-neutral-500">
-                      {humanizeStatusCode(event.type)} · 저장 당시 상태 {humanizeStatusCode(event.stateCode)} · 발생 {formatOptionalDateTime(event.occurredAt)} · 해결 {formatOptionalDateTime(event.resolvedAt)}
-                    </div>
-                  </div>
-                  <StatusBadge className={severityBadgeClassName(event.severity)}>{severityDisplayText(event.severity)}</StatusBadge>
-                </div>
-                <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500">
-                  <InfoCell label="기록 ID" value={event.eventId} />
-                  <InfoCell label="신뢰도" value={formatNullableRatio(event.confidence)} />
-                  <InfoCell label="판단 기준" value={event.evidence.ruleId ?? "적용된 판단 기준 없음"} />
-                  <InfoCell label="엔드포인트" value={event.evidence.endpointKey ?? "해당 엔드포인트 없음"} />
-                  <InfoCell label="상세 근거" value={event.evidence.snapshotDetailAnchor ?? "연결된 상세 근거 없음"} />
-                  <InfoCell label="근거 연결" value={humanizeAnchorStatus(event.evidence.anchorStatus)} />
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-2 gap-2 border-neutral-300"
-                  onClick={() => {
-                    onSelectDetail({
-                      activeAnchor: event.evidence.snapshotDetailAnchor,
-                      snapshotId: event.snapshotId,
-                      snapshotLink: event.links.snapshot,
-                    });
-                  }}
-                >
-                  <History className="h-3.5 w-3.5" strokeWidth={1.5} /> 상세 보기
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-      <div className="border border-neutral-200 bg-white">
-        <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-3 py-2 text-[11px] text-neutral-500">
-          <span className="uppercase">저장된 스냅샷</span>
-          <span>{humanizeOrderCode(markers.horizon.order)}</span>
-        </div>
-        {markers.markers.length === 0 ? (
-          <div className="p-3 text-[12px] text-neutral-500">
-            {markers.emptyState?.message ?? "저장된 스냅샷이 없습니다."} {markers.emptyState?.recommendedAction ?? ""}
-          </div>
-        ) : (
-          <ul>
-            {markers.markers.map((marker) => (
-              <li key={marker.markerId} className="border-b border-neutral-100 p-3 last:border-b-0">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-neutral-900">{marker.title}</div>
-                    <div className="mt-0.5 text-neutral-600">{marker.summary}</div>
-                    <div className="mt-1 text-[11px] text-neutral-500">
-                      {humanizeStatusCode(marker.type)} · {humanizeStatusCode(marker.readMeaning)} · 저장 이유 {humanizeCaptureReason(marker.captureReason)}
-                    </div>
-                  </div>
-                  <StatusBadge className={severityBadgeClassName(marker.severity)}>{severityDisplayText(marker.severity)}</StatusBadge>
-                </div>
-                <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500">
-                  <InfoCell label="스냅샷 ID" value={marker.markerId} />
-                  <InfoCell label="저장 시각" value={formatOptionalDateTime(marker.capturedAt)} />
-                  <InfoCell label="저장 당시 상태" value={humanizeStatusCode(marker.storedApplicationStateCode)} />
-                  <InfoCell label="신뢰도" value={formatNullableRatio(marker.confidence)} />
-                  <InfoCell label="판단 기준" value={marker.primaryRuleId ?? "적용된 판단 기준 없음"} />
-                  <InfoCell label="엔드포인트" value={marker.primaryEndpointKey ?? "해당 엔드포인트 없음"} />
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-2 gap-2 border-neutral-300"
-                  onClick={() => {
-                    onSelectDetail({
-                      snapshotId: marker.snapshotId,
-                      snapshotLink: marker.links.snapshot,
-                    });
-                  }}
-                >
-                  <History className="h-3.5 w-3.5" strokeWidth={1.5} /> 상세 보기
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </>
-  );
-}
-
 function isRegistrationRequestCurrent(
   requestSequence: number,
   sequenceRef: React.MutableRefObject<number>,
@@ -1911,44 +1674,6 @@ function isCredentialMutationCurrent(
     scopeRef.current.projectId === requestProjectId &&
     scopeRef.current.authGeneration === requestAuthGeneration
   );
-}
-
-function SnapshotHistoryError({ error, onReload }: { error: Error; onReload: () => void }) {
-  const copy = snapshotHistoryErrorCopy(error);
-  return (
-    <div className="border border-neutral-200 bg-white p-3 text-[12px]">
-      <div className="text-neutral-900">{copy.title}</div>
-      <div className="mt-1 text-neutral-500">{copy.body}</div>
-      <Button variant="outline" size="sm" className="mt-3 gap-2 border-neutral-300" onClick={onReload}>
-        <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.5} /> 다시 시도
-      </Button>
-    </div>
-  );
-}
-
-function snapshotHistoryErrorCopy(error: Error): { title: string; body: string } {
-  if (error instanceof AuthRequiredError) {
-    return {
-      title: "인증 필요",
-      body: error.message,
-    };
-  }
-  if (error instanceof ApiRequestError && error.status === 404) {
-    return {
-      title: "History scope 확인 필요",
-      body: "선택한 앱의 저장 기록을 찾지 못했습니다. 권한이나 보관 기간을 확인해 주세요.",
-    };
-  }
-  if (error instanceof ApiRequestError && error.status === 400) {
-    return {
-      title: "History 조회 조건 확인 필요",
-      body: "지원하는 fixed preset은 24h, 7d, 14d뿐입니다.",
-    };
-  }
-  return {
-    title: "기록 로드 실패",
-    body: "저장된 스냅샷 기록을 불러오지 못했습니다.",
-  };
 }
 
 function statusDisplayText(status: string | null | undefined): string {
@@ -2015,19 +1740,6 @@ function applicationStateDisplayText(status: string | null | undefined): string 
 
 function applicationStateSummary(dashboard: DashboardPresentation): string {
   return dashboard.state.rationale || "서버가 제공한 lifecycle state rationale이 없습니다.";
-}
-
-function presetDisplayText(preset: HistoryPreset | TrendPreset): string {
-  switch (preset) {
-    case "24h":
-      return "24시간";
-    case "7d":
-      return "7일";
-    case "14d":
-      return "14일";
-    default:
-      return preset;
-  }
 }
 
 function starterStateImpactText(stateImpact: string): string {

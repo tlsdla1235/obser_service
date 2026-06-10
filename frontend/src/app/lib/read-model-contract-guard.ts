@@ -58,6 +58,7 @@ const SNAPSHOT_INSTANCE_SUMMARY_SOURCE = "dashboard_snapshots.read_model_json.in
 const INSTANCE_TREND_SOURCE = "dashboard_snapshots.read_model_json.instanceSummary.items";
 const STORED_READ_MODEL_SELECTION = "stored_read_model";
 const MARKER_TIMELINE_INDEX = "timeline_index";
+const MARKER_STORED_POINT = "stored_read_model_point";
 const FORBIDDEN_INSTANCE_DECISION_FIELDS = [
   "state",
   "lifecycleState",
@@ -279,8 +280,8 @@ export function guardSnapshotHistoryReadModels(
     }) ||
     !historyHorizonMatches(markerRoot.horizon, {
       limit: context.markerLimit,
-      maxLimit: 336,
-      order: "capturedAt_asc",
+      maxLimit: 672,
+      order: "currentWindowEndUtc_asc",
       preset: context.preset,
     })
   ) {
@@ -295,14 +296,21 @@ export function guardSnapshotHistoryReadModels(
     asRecord(item.evidence, SNAPSHOT_HISTORY_CONTRACT_ERROR);
   }
 
+  const markerHorizon = asRecord(markerRoot.horizon, SNAPSHOT_HISTORY_CONTRACT_ERROR);
+  let previousMarkerWindowEndMs: number | null = null;
   for (const marker of assertArray(markerRoot.markers, SNAPSHOT_HISTORY_CONTRACT_ERROR)) {
     const item = asRecord(marker, SNAPSHOT_HISTORY_CONTRACT_ERROR);
     assertNonEmptyString(item.markerId, SNAPSHOT_HISTORY_CONTRACT_ERROR);
     assertNonEmptyString(item.snapshotId, SNAPSHOT_HISTORY_CONTRACT_ERROR);
-    if (item.readMeaning !== MARKER_TIMELINE_INDEX) {
+    if (!markerReadMeaningIsSafe(item.readMeaning)) {
       throw new ApiRequestError(SNAPSHOT_HISTORY_CONTRACT_ERROR);
     }
     assertNonEmptyString(item.storedApplicationStateCode, SNAPSHOT_HISTORY_CONTRACT_ERROR);
+    const currentWindowEndMs = assertSnapshotMarkerSlot(item.currentWindowEndUtc, markerHorizon, SNAPSHOT_HISTORY_CONTRACT_ERROR);
+    if (previousMarkerWindowEndMs !== null && currentWindowEndMs < previousMarkerWindowEndMs) {
+      throw new ApiRequestError(SNAPSHOT_HISTORY_CONTRACT_ERROR);
+    }
+    previousMarkerWindowEndMs = currentWindowEndMs;
     asRecord(item.links, SNAPSHOT_HISTORY_CONTRACT_ERROR);
   }
 
@@ -321,6 +329,7 @@ export function guardSnapshotDetailReadModel(
   const readSemantics = asRecord(root.readSemantics, SNAPSHOT_DETAIL_CONTRACT_ERROR);
   const snapshot = asRecord(root.snapshot, SNAPSHOT_DETAIL_CONTRACT_ERROR);
   const marker = asRecord(root.marker, SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  const snapshotCurrentWindow = asRecord(snapshot.currentWindow, SNAPSHOT_DETAIL_CONTRACT_ERROR);
   const liveSourcesJoined = assertArray(readSemantics.liveSourcesJoined, SNAPSHOT_DETAIL_CONTRACT_ERROR);
 
   if (
@@ -335,8 +344,9 @@ export function guardSnapshotDetailReadModel(
     readSemantics.baselineComparisonUsedForMvpDecision !== false ||
     snapshot.snapshotId !== context.snapshotId ||
     marker.snapshotId !== snapshot.snapshotId ||
+    marker.currentWindowEndUtc !== snapshotCurrentWindow.endUtc ||
     marker.storedApplicationStateCode !== snapshot.storedApplicationStateCode ||
-    marker.readMeaning !== MARKER_TIMELINE_INDEX
+    !markerReadMeaningIsSafe(marker.readMeaning)
   ) {
     throw new ApiRequestError(SNAPSHOT_DETAIL_CONTRACT_ERROR);
   }
@@ -348,10 +358,22 @@ export function guardSnapshotDetailReadModel(
   ) {
     throw new ApiRequestError(SNAPSHOT_DETAIL_CONTRACT_ERROR);
   }
-  asRecord(storedReadModel.window, SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  const storedWindow = asRecord(storedReadModel.window, SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  if (
+    storedWindow.type !== DASHBOARD_WINDOW_TYPE ||
+    storedWindow.endUtc !== snapshotCurrentWindow.endUtc ||
+    !halfHourBoundaryIsValid(snapshotCurrentWindow.endUtc)
+  ) {
+    throw new ApiRequestError(SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  }
   asRecord(storedReadModel.operatorSummary, SNAPSHOT_DETAIL_CONTRACT_ERROR);
   asRecord(storedReadModel.dataQuality, SNAPSHOT_DETAIL_CONTRACT_ERROR);
   asRecord(storedReadModel.signals, SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  const storedState = asRecord(storedReadModel.state, SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  assertNonEmptyString(storedState.code, SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  assertNonEmptyString(storedState.label, SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  assertNonEmptyString(storedState.rationale, SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  assertNonEmptyString(storedState.recommendedAction, SNAPSHOT_DETAIL_CONTRACT_ERROR);
   assertArray(storedReadModel.stateReasons, SNAPSHOT_DETAIL_CONTRACT_ERROR);
   assertArray(storedReadModel.attentionEvidence, SNAPSHOT_DETAIL_CONTRACT_ERROR);
   assertArray(storedReadModel.firstLookCandidates, SNAPSHOT_DETAIL_CONTRACT_ERROR);
@@ -455,7 +477,7 @@ export function guardInstanceSnapshotTrendReadModel(
     horizon.maxSince !== "14d" ||
     horizon.limit !== context.limit ||
     horizon.maxLimit !== 672 ||
-    horizon.order !== "capturedAt_asc" ||
+    horizon.order !== "currentWindowEndUtc_asc" ||
     !horizonWindowIsValid(horizon)
   ) {
     throw new ApiRequestError(INSTANCE_TREND_CONTRACT_ERROR);
@@ -491,10 +513,46 @@ function historyHorizonMatches(
   );
 }
 
+function markerReadMeaningIsSafe(value: unknown): boolean {
+  return value === MARKER_TIMELINE_INDEX || value === MARKER_STORED_POINT;
+}
+
 function horizonWindowIsValid(horizon: Record<string, unknown>): boolean {
   const since = typeof horizon.since === "string" ? Date.parse(horizon.since) : Number.NaN;
   const until = typeof horizon.until === "string" ? Date.parse(horizon.until) : Number.NaN;
   return Number.isFinite(since) && Number.isFinite(until) && until > since;
+}
+
+function assertSnapshotMarkerSlot(value: unknown, horizon: Record<string, unknown>, errorCode: string): number {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new ApiRequestError(errorCode);
+  }
+  const timestamp = Date.parse(value);
+  const since = typeof horizon.since === "string" ? Date.parse(horizon.since) : Number.NaN;
+  const until = typeof horizon.until === "string" ? Date.parse(horizon.until) : Number.NaN;
+  if (
+    !Number.isFinite(timestamp) ||
+    !Number.isFinite(since) ||
+    !Number.isFinite(until) ||
+    timestamp < since ||
+    timestamp > until ||
+    !halfHourBoundaryIsValid(value)
+  ) {
+    throw new ApiRequestError(errorCode);
+  }
+  return timestamp;
+}
+
+function halfHourBoundaryIsValid(value: unknown): boolean {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return false;
+  }
+  const date = new Date(timestamp);
+  return (date.getUTCMinutes() === 0 || date.getUTCMinutes() === 30) && date.getUTCSeconds() === 0 && date.getUTCMilliseconds() === 0;
 }
 
 function assertHistogramWindow(value: unknown, errorCode: string) {
