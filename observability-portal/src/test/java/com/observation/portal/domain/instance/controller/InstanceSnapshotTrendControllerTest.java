@@ -64,8 +64,8 @@ class InstanceSnapshotTrendControllerTest {
                 .andExpect(jsonPath("$.source")
                         .value("dashboard_snapshots.read_model_json.instanceSummary.items"))
                 .andExpect(jsonPath("$.horizon.requestedSince").value("14d"))
-                .andExpect(jsonPath("$.horizon.limit").value(336))
-                .andExpect(jsonPath("$.horizon.order").value("capturedAt_asc"))
+                .andExpect(jsonPath("$.horizon.limit").value(400))
+                .andExpect(jsonPath("$.horizon.order").value("currentWindowEndUtc_asc"))
                 .andExpect(jsonPath("$.points[0].snapshotId")
                         .value("00000000-0000-0000-0000-000000005731"))
                 .andExpect(jsonPath("$.points[0].capturedAt").value("2026-05-26T08:00:00Z"))
@@ -198,9 +198,9 @@ class InstanceSnapshotTrendControllerTest {
                         "14d",
                         "7d",
                         "14d",
-                        336,
-                        336,
-                        "capturedAt_asc"),
+                        400,
+                        672,
+                        "currentWindowEndUtc_asc"),
                 points);
     }
 

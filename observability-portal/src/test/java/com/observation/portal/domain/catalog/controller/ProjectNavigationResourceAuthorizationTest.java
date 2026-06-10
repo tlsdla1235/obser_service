@@ -497,8 +497,8 @@ class ProjectNavigationResourceAuthorizationTest {
                 new InstanceEvidenceReadModel.MetricData(
                         "accepted_bucket",
                         new InstanceEvidenceReadModel.MetricWindow(
-                                "current_15m",
-                                bucketEnd.minusMinutes(15),
+                                "recent_30_minutes",
+                                bucketEnd.minusMinutes(30),
                                 bucketEnd,
                                 30),
                         bucketEnd,

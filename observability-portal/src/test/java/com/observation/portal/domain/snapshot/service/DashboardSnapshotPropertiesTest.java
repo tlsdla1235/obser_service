@@ -11,14 +11,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class DashboardSnapshotPropertiesTest {
 
     @Test
-    void exposesDelayGraceAndComputedFallbackDefaults() {
+    void exposesDelayGraceAndComputedThirtyMinuteFallbackDefaults() {
         DashboardSnapshotProperties properties = new DashboardSnapshotProperties();
 
         assertThat(properties.getCaptureDelay()).isEqualTo(Duration.ofSeconds(120));
         assertThat(properties.getFallbackGrace()).isEqualTo(Duration.ofMinutes(5));
-        assertThat(properties.fallbackStalenessThreshold()).isEqualTo(Duration.ofMinutes(67));
-        assertThat(properties.snapshotCutoffAt(OffsetDateTime.parse("2026-05-27T13:00:00Z")))
-                .isEqualTo(OffsetDateTime.parse("2026-05-27T13:02:00Z"));
+        assertThat(properties.fallbackStalenessThreshold()).isEqualTo(Duration.ofMinutes(37));
+        assertThat(properties.snapshotCutoffAt(OffsetDateTime.parse("2026-05-27T13:30:00Z")))
+                .isEqualTo(OffsetDateTime.parse("2026-05-27T13:32:00Z"));
     }
 
     @Test

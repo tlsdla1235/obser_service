@@ -125,17 +125,17 @@ class DashboardSnapshotMarkerServiceTest {
     }
 
     @Test
-    void clampsSinceByRetentionAndLimitByMaxThenOrdersCapturedAtAscending() {
+    void clampsSinceByRetentionAndLimitByMaxThenOrdersCurrentWindowAscending() {
         when(snapshotRepository.findMarkerRows(
                 PROJECT_ID,
                 APPLICATION_ID,
                 offset("2026-05-16T08:10:35Z"),
                 offset("2026-05-26T08:10:35Z"),
-                336))
+                672))
                 .thenReturn(List.of(
-                        row(SNAPSHOT_TIED_HIGH, "2026-05-26T07:00:00Z", "active", null, null),
-                        row(SNAPSHOT_TIED_LOW, "2026-05-26T07:00:00Z", "active", "hourly_scheduled", null),
-                        row(SNAPSHOT_EARLIER, "2026-05-26T06:00:00Z", "degraded", "query_fallback", null)));
+                        row(SNAPSHOT_TIED_HIGH, "2026-05-26T07:05:00Z", "2026-05-26T07:00:00Z", "active", null, (BigDecimal) null),
+                        row(SNAPSHOT_TIED_LOW, "2026-05-26T07:00:00Z", "2026-05-26T07:00:00Z", "active", "hourly_scheduled", (BigDecimal) null),
+                        row(SNAPSHOT_EARLIER, "2026-05-26T08:40:00Z", "2026-05-26T06:00:00Z", "degraded", "query_fallback", (BigDecimal) null)));
         when(snapshotRepository.findPreviousSnapshot(APPLICATION_ID, offset("2026-05-26T06:00:00Z")))
                 .thenReturn(Optional.empty());
         when(snapshotRepository.findPreviousSnapshot(APPLICATION_ID, offset("2026-05-26T07:00:00Z")))
@@ -145,7 +145,7 @@ class DashboardSnapshotMarkerServiceTest {
                 .orElseThrow();
 
         assertThat(markers.horizon().since()).isEqualTo(offset("2026-05-16T08:10:35Z"));
-        assertThat(markers.horizon().limit()).isEqualTo(336);
+        assertThat(markers.horizon().limit()).isEqualTo(672);
         assertThat(markers.markers())
                 .extracting(marker -> marker.snapshotId())
                 .containsExactly(SNAPSHOT_EARLIER, SNAPSHOT_TIED_LOW, SNAPSHOT_TIED_HIGH);
@@ -156,7 +156,7 @@ class DashboardSnapshotMarkerServiceTest {
                 APPLICATION_ID,
                 offset("2026-05-16T08:10:35Z"),
                 offset("2026-05-26T08:10:35Z"),
-                336);
+                672);
     }
 
     @Test
@@ -204,7 +204,7 @@ class DashboardSnapshotMarkerServiceTest {
             String stateCode,
             String captureReason,
             BigDecimal maxConfidence) {
-        return row(snapshotId, generatedAt, stateCode, captureReason, maxConfidence, "{\"triageCards\":[]}");
+        return row(snapshotId, generatedAt, generatedAt, stateCode, captureReason, maxConfidence, "{\"triageCards\":[]}");
     }
 
     private static DashboardSnapshotDetailRow row(
@@ -214,15 +214,44 @@ class DashboardSnapshotMarkerServiceTest {
             String captureReason,
             BigDecimal maxConfidence,
             String readModelJson) {
+        return row(snapshotId, generatedAt, generatedAt, stateCode, captureReason, maxConfidence, readModelJson);
+    }
+
+    private static DashboardSnapshotDetailRow row(
+            UUID snapshotId,
+            String generatedAt,
+            String currentWindowEndUtc,
+            String stateCode,
+            String captureReason,
+            BigDecimal maxConfidence) {
+        return row(
+                snapshotId,
+                generatedAt,
+                currentWindowEndUtc,
+                stateCode,
+                captureReason,
+                maxConfidence,
+                "{\"triageCards\":[]}");
+    }
+
+    private static DashboardSnapshotDetailRow row(
+            UUID snapshotId,
+            String generatedAt,
+            String currentWindowEndUtc,
+            String stateCode,
+            String captureReason,
+            BigDecimal maxConfidence,
+            String readModelJson) {
+        OffsetDateTime currentWindowEnd = offset(currentWindowEndUtc);
         return new DashboardSnapshotDetailRow(
                 snapshotId,
                 PROJECT_ID,
                 APPLICATION_ID,
                 offset(generatedAt),
-                offset(generatedAt).minusMinutes(15),
-                offset(generatedAt),
-                offset(generatedAt).minusMinutes(30),
-                offset(generatedAt).minusMinutes(15),
+                currentWindowEnd.minusMinutes(30),
+                currentWindowEnd,
+                currentWindowEnd.minusMinutes(60),
+                currentWindowEnd.minusMinutes(30),
                 stateCode,
                 captureReason,
                 null,

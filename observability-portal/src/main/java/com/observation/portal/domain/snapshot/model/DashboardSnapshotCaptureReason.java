@@ -15,6 +15,12 @@ public enum DashboardSnapshotCaptureReason {
     HIGH_CONFIDENCE_CONCERN("high_confidence_concern", 4),
     SHORT_STRONG_SPIKE("short_strong_spike", 3),
     QUERY_FALLBACK("query_fallback", 2),
+    /**
+     * 30분 scheduled snapshot 저장에도 계속 사용하는 legacy persistence/API token이다.
+     *
+     * <p>enum 이름과 persisted token의 hourly 표현은 호환성을 위한 식별자이며, 사용자-facing copy는 30분 정기 저장
+     * 의미로 표현해야 한다.</p>
+     */
     HOURLY_SCHEDULED("hourly_scheduled", 1);
 
     private final String token;

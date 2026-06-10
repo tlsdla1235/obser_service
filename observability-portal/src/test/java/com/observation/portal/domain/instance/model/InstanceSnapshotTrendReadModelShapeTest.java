@@ -35,9 +35,9 @@ class InstanceSnapshotTrendReadModelShapeTest {
         assertThat(readModel.horizon().requestedSince()).isEqualTo("7d");
         assertThat(readModel.horizon().defaultSince()).isEqualTo("7d");
         assertThat(readModel.horizon().maxSince()).isEqualTo("14d");
-        assertThat(readModel.horizon().limit()).isEqualTo(168);
-        assertThat(readModel.horizon().maxLimit()).isEqualTo(336);
-        assertThat(readModel.horizon().order()).isEqualTo("capturedAt_asc");
+        assertThat(readModel.horizon().limit()).isEqualTo(336);
+        assertThat(readModel.horizon().maxLimit()).isEqualTo(672);
+        assertThat(readModel.horizon().order()).isEqualTo("currentWindowEndUtc_asc");
         assertThat(readModel.application().links().dashboard())
                 .isEqualTo("/api/projects/%s/applications/%s/dashboard"
                         .formatted(projectId(), applicationId()));
@@ -65,8 +65,8 @@ class InstanceSnapshotTrendReadModelShapeTest {
 
     @Test
     void constructorsRejectUnboundedPointCountAndInvalidStoredBlocks() {
-        InstanceSnapshotTrendReadModel.Horizon horizon = horizon(336);
-        List<InstanceSnapshotTrendReadModel.Point> tooManyPoints = java.util.stream.IntStream.range(0, 337)
+        InstanceSnapshotTrendReadModel.Horizon horizon = horizon(672);
+        List<InstanceSnapshotTrendReadModel.Point> tooManyPoints = java.util.stream.IntStream.range(0, 673)
                 .mapToObj(index -> point(UUID.randomUUID()))
                 .toList();
 
@@ -147,7 +147,7 @@ class InstanceSnapshotTrendReadModelShapeTest {
                 application(),
                 instance(),
                 InstanceSnapshotTrendReadModel.SOURCE,
-                horizon(168),
+                horizon(336),
                 points);
     }
 
@@ -180,8 +180,8 @@ class InstanceSnapshotTrendReadModelShapeTest {
                 "7d",
                 "14d",
                 limit,
-                336,
-                "capturedAt_asc");
+                672,
+                "currentWindowEndUtc_asc");
     }
 
     private static InstanceSnapshotTrendReadModel.Point point() {

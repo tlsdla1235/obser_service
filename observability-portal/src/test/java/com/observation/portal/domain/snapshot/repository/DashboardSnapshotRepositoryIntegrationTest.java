@@ -115,6 +115,7 @@ class DashboardSnapshotRepositoryIntegrationTest {
                 PROJECT_ID,
                 APPLICATION_ID,
                 "2026-05-26T05:00:00Z",
+                "2026-05-26T05:00:00Z",
                 "active",
                 "hourly_scheduled",
                 "{\"instanceSummary\":{\"schemaVersion\":\"1.0\",\"items\":[]}}");
@@ -122,7 +123,8 @@ class DashboardSnapshotRepositoryIntegrationTest {
                 middleSnapshotId,
                 PROJECT_ID,
                 APPLICATION_ID,
-                "2026-05-26T06:00:00Z",
+                "2026-05-26T08:40:00Z",
+                "2026-05-26T06:30:00Z",
                 "degraded",
                 null,
                 "{\"instanceSummary\":{\"schemaVersion\":\"1.0\",\"items\":[]}}");
@@ -130,6 +132,7 @@ class DashboardSnapshotRepositoryIntegrationTest {
                 newestSnapshotId,
                 PROJECT_ID,
                 APPLICATION_ID,
+                "2026-05-26T07:05:00Z",
                 "2026-05-26T07:00:00Z",
                 "active",
                 "state_changed",
@@ -138,7 +141,8 @@ class DashboardSnapshotRepositoryIntegrationTest {
                 UUID.fromString("00000000-0000-0000-0000-000000005726"),
                 PROJECT_ID,
                 APPLICATION_ID,
-                "2026-05-26T08:30:00Z",
+                "2026-05-26T06:30:00Z",
+                "2026-05-26T08:00:00Z",
                 "active",
                 "future_fixture",
                 "{\"instanceSummary\":{\"schemaVersion\":\"1.0\",\"items\":[]}}");
@@ -162,12 +166,14 @@ class DashboardSnapshotRepositoryIntegrationTest {
                 .extracting(DashboardSnapshotTrendRow::snapshotId)
                 .containsExactly(newestSnapshotId, middleSnapshotId);
         assertThat(rows.get(0)).satisfies(row -> {
-            assertThat(row.generatedAt()).isEqualTo(OffsetDateTime.parse("2026-05-26T07:00:00Z"));
+            assertThat(row.generatedAt()).isEqualTo(OffsetDateTime.parse("2026-05-26T07:05:00Z"));
             assertThat(row.currentWindowEndUtc()).isEqualTo(OffsetDateTime.parse("2026-05-26T07:00:00Z"));
             assertThat(row.stateCode()).isEqualTo("active");
             assertThat(row.captureReason()).isEqualTo("state_changed");
             assertThat(row.readModelJson()).contains("\"instanceSummary\"");
         });
+        assertThat(rows.get(1).generatedAt()).isEqualTo(OffsetDateTime.parse("2026-05-26T08:40:00Z"));
+        assertThat(rows.get(1).currentWindowEndUtc()).isEqualTo(OffsetDateTime.parse("2026-05-26T06:30:00Z"));
         assertThat(rows.get(1).captureReason()).isNull();
     }
 
@@ -243,6 +249,7 @@ class DashboardSnapshotRepositoryIntegrationTest {
                 activeSnapshotId,
                 PROJECT_ID,
                 APPLICATION_ID,
+                "2026-05-26T08:40:00Z",
                 "2026-05-26T05:00:00Z",
                 "active",
                 "hourly_scheduled",
@@ -251,6 +258,7 @@ class DashboardSnapshotRepositoryIntegrationTest {
                 degradedSnapshotId,
                 PROJECT_ID,
                 APPLICATION_ID,
+                "2026-05-26T06:02:00Z",
                 "2026-05-26T06:00:00Z",
                 "degraded",
                 "state_change",
@@ -259,9 +267,19 @@ class DashboardSnapshotRepositoryIntegrationTest {
                 currentSnapshotId,
                 PROJECT_ID,
                 APPLICATION_ID,
+                "2026-05-26T07:04:00Z",
                 "2026-05-26T07:00:00Z",
                 "unknown",
                 "query_fallback",
+                "{\"triageCards\":[]}");
+        insertSnapshot(
+                UUID.fromString("00000000-0000-0000-0000-000000005735"),
+                PROJECT_ID,
+                APPLICATION_ID,
+                "2026-05-26T06:30:00Z",
+                "2026-05-26T08:00:00Z",
+                "active",
+                "outside_slot_horizon",
                 "{\"triageCards\":[]}");
         insertSnapshot(
                 UUID.fromString("00000000-0000-0000-0000-000000005734"),
@@ -300,7 +318,7 @@ class DashboardSnapshotRepositoryIntegrationTest {
         assertThat(previous.snapshotId()).isEqualTo(degradedSnapshotId);
         assertThat(previous.stateCode()).isEqualTo("degraded");
         assertThat(previousActive.snapshotId()).isEqualTo(activeSnapshotId);
-        assertThat(previousActive.generatedAt()).isEqualTo(OffsetDateTime.parse("2026-05-26T05:00:00Z"));
+        assertThat(previousActive.generatedAt()).isEqualTo(OffsetDateTime.parse("2026-05-26T08:40:00Z"));
         assertThat(dashboardSnapshotRepository.findDetailRow(OTHER_PROJECT_ID, APPLICATION_ID, currentSnapshotId))
                 .isEmpty();
     }
@@ -314,6 +332,7 @@ class DashboardSnapshotRepositoryIntegrationTest {
                 olderSnapshotId,
                 PROJECT_ID,
                 APPLICATION_ID,
+                "2026-05-26T08:40:00Z",
                 "2026-05-26T05:00:00Z",
                 "active",
                 "hourly_scheduled",
@@ -325,6 +344,7 @@ class DashboardSnapshotRepositoryIntegrationTest {
                 middleSnapshotId,
                 PROJECT_ID,
                 APPLICATION_ID,
+                "2026-05-26T06:03:00Z",
                 "2026-05-26T06:00:00Z",
                 "degraded",
                 "state_change",
@@ -336,6 +356,7 @@ class DashboardSnapshotRepositoryIntegrationTest {
                 newestSnapshotId,
                 PROJECT_ID,
                 APPLICATION_ID,
+                "2026-05-26T07:04:00Z",
                 "2026-05-26T07:00:00Z",
                 "degraded",
                 "high_confidence_concern",
@@ -347,7 +368,8 @@ class DashboardSnapshotRepositoryIntegrationTest {
                 UUID.fromString("00000000-0000-0000-0000-000000005744"),
                 PROJECT_ID,
                 APPLICATION_ID,
-                "2026-05-26T08:30:00Z",
+                "2026-05-26T06:30:00Z",
+                "2026-05-26T08:00:00Z",
                 "active",
                 "future_fixture",
                 "{\"triageCards\":[]}");
@@ -363,13 +385,13 @@ class DashboardSnapshotRepositoryIntegrationTest {
         List<DashboardSnapshotDetailRow> rows = dashboardSnapshotRepository.findOperationalHistoryRows(
                 PROJECT_ID,
                 APPLICATION_ID,
-                OffsetDateTime.parse("2026-05-26T05:30:00Z"),
+                OffsetDateTime.parse("2026-05-26T04:30:00Z"),
                 OffsetDateTime.parse("2026-05-26T07:30:00Z"),
-                2);
+                3);
 
         assertThat(rows)
                 .extracting(DashboardSnapshotDetailRow::snapshotId)
-                .containsExactly(newestSnapshotId, middleSnapshotId);
+                .containsExactly(newestSnapshotId, middleSnapshotId, olderSnapshotId);
         assertThat(rows.get(0).captureReason()).isEqualTo("high_confidence_concern");
         assertThat(rows.get(0).primaryRuleId()).isEqualTo("endpoint_error_spike");
         assertThat(rows.get(0).primaryEndpointKey()).isEqualTo("GET /checkout");
@@ -396,7 +418,18 @@ class DashboardSnapshotRepositoryIntegrationTest {
             String stateCode,
             String captureReason,
             String readModelJson) throws SQLException {
-        insertSnapshot(id, projectId, applicationId, generatedAt, stateCode, captureReason, readModelJson, null, null, null);
+        insertSnapshot(
+                id,
+                projectId,
+                applicationId,
+                generatedAt,
+                generatedAt,
+                stateCode,
+                captureReason,
+                readModelJson,
+                null,
+                null,
+                null);
     }
 
     private static void insertSnapshot(
@@ -404,6 +437,30 @@ class DashboardSnapshotRepositoryIntegrationTest {
             UUID projectId,
             UUID applicationId,
             String generatedAt,
+            String currentWindowEndUtc,
+            String stateCode,
+            String captureReason,
+            String readModelJson) throws SQLException {
+        insertSnapshot(
+                id,
+                projectId,
+                applicationId,
+                generatedAt,
+                currentWindowEndUtc,
+                stateCode,
+                captureReason,
+                readModelJson,
+                null,
+                null,
+                null);
+    }
+
+    private static void insertSnapshot(
+            UUID id,
+            UUID projectId,
+            UUID applicationId,
+            String generatedAt,
+            String currentWindowEndUtc,
             String stateCode,
             String captureReason,
             String readModelJson,
@@ -411,6 +468,7 @@ class DashboardSnapshotRepositoryIntegrationTest {
             String primaryEndpointKey,
             BigDecimal maxConfidence) throws SQLException {
         OffsetDateTime generated = OffsetDateTime.parse(generatedAt);
+        OffsetDateTime currentWindowEnd = OffsetDateTime.parse(currentWindowEndUtc);
         try (Connection connection = DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(),
                 POSTGRES.getUsername(),
@@ -431,12 +489,12 @@ class DashboardSnapshotRepositoryIntegrationTest {
             statement.setObject(2, projectId);
             statement.setObject(3, applicationId);
             statement.setObject(4, generated);
-            statement.setObject(5, generated.minusMinutes(15));
-            statement.setObject(6, generated);
-            statement.setObject(7, generated.minusMinutes(30));
-            statement.setObject(8, generated.minusMinutes(15));
-            statement.setObject(9, generated.minusSeconds(30));
-            statement.setObject(10, generated.minusSeconds(30));
+            statement.setObject(5, currentWindowEnd.minusMinutes(30));
+            statement.setObject(6, currentWindowEnd);
+            statement.setObject(7, currentWindowEnd.minusMinutes(60));
+            statement.setObject(8, currentWindowEnd.minusMinutes(30));
+            statement.setObject(9, currentWindowEnd.minusSeconds(30));
+            statement.setObject(10, currentWindowEnd.minusSeconds(30));
             statement.setString(11, stateCode);
             statement.setString(12, captureReason);
             statement.setString(13, primaryRuleId);

@@ -51,7 +51,7 @@ public class OperationalEventHistoryProjector {
     }
 
     /**
-     * source row를 시간순으로 평가해 operational event 후보를 만들고 시작 성격 event의 해소 시각을 채운다.
+     * source row를 slot 시간순으로 평가해 operational event 후보를 만들고 시작 성격 event의 해소 시각을 채운다.
      */
     public List<OperationalEventItem> project(
             UUID projectId,
@@ -61,7 +61,8 @@ public class OperationalEventHistoryProjector {
         UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
         List<SourceSnapshot> snapshots = Objects.requireNonNull(sourceRows, "sourceRows must not be null").stream()
                 .filter(row -> requiredProjectId.equals(row.projectId()) && requiredApplicationId.equals(row.applicationId()))
-                .sorted(Comparator.comparing(DashboardSnapshotDetailRow::generatedAt)
+                .sorted(Comparator.comparing(DashboardSnapshotDetailRow::currentWindowEndUtc)
+                        .thenComparing(DashboardSnapshotDetailRow::generatedAt)
                         .thenComparing(row -> row.snapshotId().toString()))
                 .map(this::sourceSnapshot)
                 .toList();
@@ -75,7 +76,7 @@ public class OperationalEventHistoryProjector {
 
         for (SourceSnapshot snapshot : snapshots) {
             List<ConcernSignal> concernSignals = concernSignals(snapshot);
-            resolveOpenConcerns(openConcernEvents, concernSignals, snapshot.row().generatedAt());
+            resolveOpenConcerns(openConcernEvents, concernSignals, snapshot.row().currentWindowEndUtc());
 
             List<ProjectedEvent> stateEvents = stateEvents(requiredProjectId, requiredApplicationId, previous, snapshot);
             for (ProjectedEvent stateEvent : stateEvents) {
@@ -218,7 +219,7 @@ public class OperationalEventHistoryProjector {
                 severity(type),
                 title(type, evidence),
                 summary(type, fromState, toState, evidence),
-                snapshot.row().generatedAt(),
+                snapshot.row().currentWindowEndUtc(),
                 null,
                 snapshot.row().stateCode().trim(),
                 confidence,
@@ -240,7 +241,7 @@ public class OperationalEventHistoryProjector {
             return Optional.empty();
         }
         String concernKey = signal.concernKey(applicationId);
-        OffsetDateTime occurredAt = snapshot.row().generatedAt();
+        OffsetDateTime occurredAt = snapshot.row().currentWindowEndUtc();
         OffsetDateTime previousPromotedAt = lastPromotedConcernAt.get(concernKey);
         if (previousPromotedAt != null
                 && occurredAt.isBefore(previousPromotedAt.plus(CONCERN_SUPPRESSION_WINDOW))) {
@@ -623,19 +624,19 @@ public class OperationalEventHistoryProjector {
 
         private void resolveFor(ProjectedEvent event, SourceSnapshot previous, SourceSnapshot current) {
             if (event.type() == OperationalEventType.DEGRADED_RESOLVED && degraded != null) {
-                degraded.resolveAt(current.row().generatedAt());
+                degraded.resolveAt(current.row().currentWindowEndUtc());
                 degraded = null;
             }
             if (previous != null && stale != null && "stale".equals(previous.normalizedState())
                     && (!"stale".equals(current.normalizedState())
                     || event.type() == OperationalEventType.RECOVERY_OBSERVED)) {
-                stale.resolveAt(current.row().generatedAt());
+                stale.resolveAt(current.row().currentWindowEndUtc());
                 stale = null;
             }
             if (previous != null && down != null && "down".equals(previous.normalizedState())
                     && (!"down".equals(current.normalizedState())
                     || event.type() == OperationalEventType.RECOVERY_OBSERVED)) {
-                down.resolveAt(current.row().generatedAt());
+                down.resolveAt(current.row().currentWindowEndUtc());
                 down = null;
             }
         }

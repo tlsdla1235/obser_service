@@ -50,6 +50,24 @@ class DashboardSnapshotWriterServiceTest {
             new NoopTransactionManager());
 
     @Test
+    void scheduledWriteUsesCurrentWindowIdentityAndKeepsLegacyHourlyScheduledToken() throws Exception {
+        stubCommonWriteInputs();
+        when(snapshotRepository.insert(any())).thenAnswer(invocation ->
+                new DashboardSnapshotEntity(invocation.getArgument(0)));
+
+        writerService.write(command());
+
+        ArgumentCaptor<DashboardSnapshotWriteValues> valuesCaptor =
+                ArgumentCaptor.forClass(DashboardSnapshotWriteValues.class);
+        verify(snapshotRepository).findByIdentityForUpdate(APPLICATION_ID, WINDOW_END);
+        verify(snapshotRepository).insert(valuesCaptor.capture());
+        DashboardSnapshotWriteValues values = valuesCaptor.getValue();
+        assertThat(values.currentWindowEndUtc()).isEqualTo(WINDOW_END);
+        assertThat(values.generatedAt()).isEqualTo(WINDOW_END.plusSeconds(5));
+        assertThat(values.captureReason()).isEqualTo("hourly_scheduled");
+    }
+
+    @Test
     void retriesOnceOnlyForDashboardSnapshotIdentityUniqueConflict() throws Exception {
         stubCommonWriteInputs();
         AtomicInteger attempts = new AtomicInteger();

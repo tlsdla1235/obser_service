@@ -228,8 +228,8 @@ class DashboardSnapshotControllerTest {
                         "24h",
                         "14d",
                         336,
-                        336,
-                        "capturedAt_asc"),
+                        672,
+                        "currentWindowEndUtc_asc"),
                 null,
                 List.of(marker()));
     }

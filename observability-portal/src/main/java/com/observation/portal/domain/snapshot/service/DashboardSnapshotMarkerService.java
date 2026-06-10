@@ -93,7 +93,8 @@ public class DashboardSnapshotMarkerService {
                 effectiveQuery.limit());
         List<DashboardSnapshotMarkerItem> markers = rows.stream()
                 .map(row -> marker(requiredProjectId, requiredApplicationId, row))
-                .sorted(Comparator.comparing(DashboardSnapshotMarkerItem::capturedAt)
+                .sorted(Comparator.comparing(DashboardSnapshotMarkerItem::currentWindowEndUtc)
+                        .thenComparing(DashboardSnapshotMarkerItem::capturedAt)
                         .thenComparing(DashboardSnapshotMarkerItem::snapshotId))
                 .toList();
         return Optional.of(new DashboardSnapshotMarkerReadModel(

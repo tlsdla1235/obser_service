@@ -17,10 +17,12 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Stored dashboard snapshot을 instance trend projection용 read-only row로 조회하는 repository facade다.
+ * Stored dashboard snapshot을 slot horizon 기반 read-only row로 조회하는 repository facade다.
  *
  * <p>이 repository는 `dashboard_snapshots.read_model_json`을 해석하지 않고 row metadata와 JSON source만 반환한다.
- * state/rule/priority/p95/p99/marker/recovery 의미 계산은 수행하지 않는다.</p>
+ * state/rule/priority/p95/p99/marker/recovery 의미 계산은 수행하지 않는다. marker/history/trend inclusion horizon은
+ * `generated_at`이 아니라 `current_window_end_utc`를 사용하며, `generated_at`은 capture provenance와 tie-breaker로만
+ * 유지한다.</p>
  */
 @Repository
 public class DashboardSnapshotRepository {
@@ -35,28 +37,28 @@ public class DashboardSnapshotRepository {
     }
 
     /**
-     * project/application scope와 horizon closed range에 맞는 snapshot row를 최신순으로 bounded 조회한다.
+     * project/application scope와 current window horizon closed range에 맞는 snapshot row를 최신 slot 순으로 bounded 조회한다.
      *
-     * <p>`generatedAtUntil`은 조회 시점 이후 snapshot이 응답과 limit에 섞이지 않도록 하는 상한이다. caller는 이 결과를
-     * 필요한 만큼 선택한 뒤 `capturedAt ASC`, `snapshotId ASC`로 다시 정렬할 수 있다.</p>
+     * <p>`currentWindowEndUntil`은 조회 시점 이후 slot snapshot이 응답과 limit에 섞이지 않도록 하는 상한이다. caller는
+     * 이 결과를 필요한 만큼 선택한 뒤 public response order로 다시 정렬할 수 있다.</p>
      */
     @Transactional(readOnly = true)
     public List<DashboardSnapshotTrendRow> findTrendRowsNewestFirst(
             UUID projectId,
             UUID applicationId,
-            OffsetDateTime generatedAtSince,
-            OffsetDateTime generatedAtUntil,
+            OffsetDateTime currentWindowEndSince,
+            OffsetDateTime currentWindowEndUntil,
             int limit) {
         UUID requiredProjectId = Objects.requireNonNull(projectId, "projectId must not be null");
         UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
-        OffsetDateTime requiredGeneratedAtSince = Objects.requireNonNull(
-                generatedAtSince,
-                "generatedAtSince must not be null");
-        OffsetDateTime requiredGeneratedAtUntil = Objects.requireNonNull(
-                generatedAtUntil,
-                "generatedAtUntil must not be null");
-        if (requiredGeneratedAtUntil.isBefore(requiredGeneratedAtSince)) {
-            throw new IllegalArgumentException("generatedAtUntil must not be before generatedAtSince");
+        OffsetDateTime requiredCurrentWindowEndSince = Objects.requireNonNull(
+                currentWindowEndSince,
+                "currentWindowEndSince must not be null");
+        OffsetDateTime requiredCurrentWindowEndUntil = Objects.requireNonNull(
+                currentWindowEndUntil,
+                "currentWindowEndUntil must not be null");
+        if (requiredCurrentWindowEndUntil.isBefore(requiredCurrentWindowEndSince)) {
+            throw new IllegalArgumentException("currentWindowEndUntil must not be before currentWindowEndSince");
         }
         if (limit <= 0) {
             throw new IllegalArgumentException("limit must be positive");
@@ -64,8 +66,8 @@ public class DashboardSnapshotRepository {
         return jpaRepository.findTrendRowsNewestFirst(
                 requiredProjectId,
                 requiredApplicationId,
-                requiredGeneratedAtSince,
-                requiredGeneratedAtUntil,
+                requiredCurrentWindowEndSince,
+                requiredCurrentWindowEndUntil,
                 PageRequest.of(0, limit));
     }
 
@@ -128,25 +130,25 @@ public class DashboardSnapshotRepository {
     }
 
     /**
-     * marker horizon 안의 stored snapshot rows를 bounded ascending order로 조회한다.
+     * current window horizon 안의 stored snapshot rows를 bounded ascending slot order로 조회한다.
      */
     @Transactional(readOnly = true)
     public List<DashboardSnapshotDetailRow> findMarkerRows(
             UUID projectId,
             UUID applicationId,
-            OffsetDateTime generatedAtSince,
-            OffsetDateTime generatedAtUntil,
+            OffsetDateTime currentWindowEndSince,
+            OffsetDateTime currentWindowEndUntil,
             int limit) {
         UUID requiredProjectId = Objects.requireNonNull(projectId, "projectId must not be null");
         UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
-        OffsetDateTime requiredGeneratedAtSince = Objects.requireNonNull(
-                generatedAtSince,
-                "generatedAtSince must not be null");
-        OffsetDateTime requiredGeneratedAtUntil = Objects.requireNonNull(
-                generatedAtUntil,
-                "generatedAtUntil must not be null");
-        if (requiredGeneratedAtUntil.isBefore(requiredGeneratedAtSince)) {
-            throw new IllegalArgumentException("generatedAtUntil must not be before generatedAtSince");
+        OffsetDateTime requiredCurrentWindowEndSince = Objects.requireNonNull(
+                currentWindowEndSince,
+                "currentWindowEndSince must not be null");
+        OffsetDateTime requiredCurrentWindowEndUntil = Objects.requireNonNull(
+                currentWindowEndUntil,
+                "currentWindowEndUntil must not be null");
+        if (requiredCurrentWindowEndUntil.isBefore(requiredCurrentWindowEndSince)) {
+            throw new IllegalArgumentException("currentWindowEndUntil must not be before currentWindowEndSince");
         }
         if (limit <= 0) {
             throw new IllegalArgumentException("limit must be positive");
@@ -154,13 +156,13 @@ public class DashboardSnapshotRepository {
         return jpaRepository.findMarkerRows(
                 requiredProjectId,
                 requiredApplicationId,
-                requiredGeneratedAtSince,
-                requiredGeneratedAtUntil,
+                requiredCurrentWindowEndSince,
+                requiredCurrentWindowEndUntil,
                 PageRequest.of(0, limit));
     }
 
     /**
-     * Operational event history skeleton이 사용할 stored snapshot source rows를 newest-first로 bounded 조회한다.
+     * Operational event history skeleton이 사용할 stored snapshot source rows를 newest slot first로 bounded 조회한다.
      *
      * <p>repository는 row metadata/helper columns/stored JSON만 운반하고 event type, severity, promotion, dedup,
      * suppression, p95/p99를 계산하지 않는다.</p>
@@ -169,19 +171,19 @@ public class DashboardSnapshotRepository {
     public List<DashboardSnapshotDetailRow> findOperationalHistoryRows(
             UUID projectId,
             UUID applicationId,
-            OffsetDateTime generatedAtSince,
-            OffsetDateTime generatedAtUntil,
+            OffsetDateTime currentWindowEndSince,
+            OffsetDateTime currentWindowEndUntil,
             int limit) {
         UUID requiredProjectId = Objects.requireNonNull(projectId, "projectId must not be null");
         UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
-        OffsetDateTime requiredGeneratedAtSince = Objects.requireNonNull(
-                generatedAtSince,
-                "generatedAtSince must not be null");
-        OffsetDateTime requiredGeneratedAtUntil = Objects.requireNonNull(
-                generatedAtUntil,
-                "generatedAtUntil must not be null");
-        if (requiredGeneratedAtUntil.isBefore(requiredGeneratedAtSince)) {
-            throw new IllegalArgumentException("generatedAtUntil must not be before generatedAtSince");
+        OffsetDateTime requiredCurrentWindowEndSince = Objects.requireNonNull(
+                currentWindowEndSince,
+                "currentWindowEndSince must not be null");
+        OffsetDateTime requiredCurrentWindowEndUntil = Objects.requireNonNull(
+                currentWindowEndUntil,
+                "currentWindowEndUntil must not be null");
+        if (requiredCurrentWindowEndUntil.isBefore(requiredCurrentWindowEndSince)) {
+            throw new IllegalArgumentException("currentWindowEndUntil must not be before currentWindowEndSince");
         }
         if (limit <= 0) {
             throw new IllegalArgumentException("limit must be positive");
@@ -189,8 +191,8 @@ public class DashboardSnapshotRepository {
         return jpaRepository.findOperationalHistoryRows(
                 requiredProjectId,
                 requiredApplicationId,
-                requiredGeneratedAtSince,
-                requiredGeneratedAtUntil,
+                requiredCurrentWindowEndSince,
+                requiredCurrentWindowEndUntil,
                 PageRequest.of(0, limit));
     }
 

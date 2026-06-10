@@ -7,9 +7,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DashboardSnapshotCaptureReasonTest {
 
     @Test
-    void exposesCanonicalTokensWithoutLegacyScheduledToken() {
+    void keepsHourlyScheduledAsLegacyTokenForThirtyMinuteScheduledSnapshots() {
         assertThat(DashboardSnapshotCaptureReason.HOURLY_SCHEDULED.token()).isEqualTo("hourly_scheduled");
         assertThat(DashboardSnapshotCaptureReason.fromPersistedToken("scheduled")).isEmpty();
+        assertThat(DashboardSnapshotCaptureReason.fromPersistedToken("thirty_minute_scheduled")).isEmpty();
+        assertThat(DashboardSnapshotCaptureReason.values())
+                .extracting(DashboardSnapshotCaptureReason::token)
+                .doesNotContain("thirty_minute_scheduled");
     }
 
     @Test

@@ -72,8 +72,8 @@ public class InstanceSnapshotTrendService {
     /**
      * UUID catalog path 정합성이 맞으면 selected instance snapshot trend를 반환하고, mismatch는 empty로 수렴한다.
      *
-     * <p>`since` 생략은 `7d`, 지원 token은 `7d`/`14d`이며 retention과 최대 14일로 clamp한다. `limit` 생략은 168,
-     * 최대 336으로 clamp한다.</p>
+     * <p>`since` 생략은 `7d`, 지원 token은 `7d`/`14d`이며 retention과 최대 14일로 clamp한다. `limit` 생략은 30분 slot
+     * 기준 7일치인 336, 최대 14일치인 672로 clamp한다.</p>
      */
     @Transactional(readOnly = true)
     public Optional<InstanceSnapshotTrendReadModel> getTrend(
@@ -120,7 +120,8 @@ public class InstanceSnapshotTrendService {
                 effectiveQuery.limit());
         List<InstanceSnapshotTrendReadModel.Point> points = rows.stream()
                 .flatMap(row -> parser.projectPoint(row, targetInstanceId).stream())
-                .sorted(Comparator.comparing(InstanceSnapshotTrendReadModel.Point::capturedAt)
+                .sorted(Comparator.comparing(InstanceSnapshotTrendReadModel.Point::currentWindowEndUtc)
+                        .thenComparing(InstanceSnapshotTrendReadModel.Point::capturedAt)
                         .thenComparing(InstanceSnapshotTrendReadModel.Point::snapshotId))
                 .toList();
 

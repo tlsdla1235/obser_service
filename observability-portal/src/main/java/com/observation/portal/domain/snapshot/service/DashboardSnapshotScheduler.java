@@ -13,20 +13,19 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
 
 /**
- * UTC hourly scheduled snapshot capture trigger/dispatcher다.
+ * UTC 30분 dashboard slot 기준 scheduled snapshot capture trigger/dispatcher다.
  *
- * <p>이 class는 eligible application과 target hourly boundary만 결정하고, read model 생성과 snapshot 저장은
- * `DashboardSnapshotCaptureService`에 위임한다.</p>
+ * <p>이 class는 eligible application과 target 30분 boundary만 결정하고, read model 생성과 snapshot 저장은
+ * `DashboardSnapshotCaptureService`에 위임한다. 저장 token은 legacy compatibility 때문에 `hourly_scheduled`를 유지한다.</p>
  */
 @Service
 public class DashboardSnapshotScheduler {
 
-    private static final Duration HOURLY_TARGET_SPAN = Duration.ofHours(1);
+    private static final Duration SCHEDULED_SLOT_SPAN = Duration.ofMinutes(30);
 
     private final ApplicationRepository applicationRepository;
     private final DashboardSnapshotCaptureService captureService;
@@ -57,10 +56,10 @@ public class DashboardSnapshotScheduler {
     }
 
     /**
-     * UTC minute tick마다 cutoff가 지난 첫 tick에서만 hourly target capture를 dispatch한다.
+     * UTC minute tick마다 cutoff가 지난 첫 tick에서만 30분 target slot capture를 dispatch한다.
      */
     @Scheduled(cron = "0 * * * * *", zone = "UTC")
-    public synchronized void dispatchHourlyScheduledCaptures() {
+    public synchronized void dispatchThirtyMinuteScheduledCaptures() {
         Instant requestedAt = clock.instant();
         Instant targetWindowEnd = targetWindowEnd(requestedAt);
         OffsetDateTime requestedAtUtc = OffsetDateTime.ofInstant(requestedAt, ZoneOffset.UTC);
@@ -85,14 +84,23 @@ public class DashboardSnapshotScheduler {
                     targetWindowEndUtc,
                     snapshotCutoffAt,
                     requestedAtUtc,
-                    "utc_hourly_scheduler"));
+                    "utc_30_minute_scheduler"));
         }
     }
 
     private Instant targetWindowEnd(Instant requestedAt) {
-        if (snapshotProperties.getCaptureDelay().compareTo(HOURLY_TARGET_SPAN) < 0) {
-            return requestedAt.truncatedTo(ChronoUnit.HOURS);
+        if (snapshotProperties.getCaptureDelay().compareTo(SCHEDULED_SLOT_SPAN) < 0) {
+            return floorToScheduledSlotBoundary(requestedAt);
         }
-        return requestedAt.minus(snapshotProperties.getCaptureDelay()).truncatedTo(ChronoUnit.HOURS);
+        return floorToScheduledSlotBoundary(requestedAt.minus(snapshotProperties.getCaptureDelay()));
+    }
+
+    private static Instant floorToScheduledSlotBoundary(Instant instant) {
+        OffsetDateTime utc = OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
+        int boundaryMinute = utc.getMinute() >= 30 ? 30 : 0;
+        return utc.withMinute(boundaryMinute)
+                .withSecond(0)
+                .withNano(0)
+                .toInstant();
     }
 }
