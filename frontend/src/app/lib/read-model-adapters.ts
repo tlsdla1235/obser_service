@@ -22,6 +22,7 @@ const INSTANCE_SNAPSHOT_TREND_PATH = /^\/api\/projects\/([^/]+)\/applications\/(
 const SNAPSHOT_DETAIL_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/dashboard\/snapshots\/([^/]+)$/;
 const UNKNOWN_TEXT = "확인할 수 없음";
 const EMPTY_DISPLAY_TEXT = "해당 없음";
+const BASELINE_NOT_USED_TEXT = "MVP 판단에 사용하지 않음";
 const DISPLAY_TIME_ZONE = "Asia/Seoul";
 const DISPLAY_TIME_ZONE_LABEL = "KST";
 
@@ -71,12 +72,18 @@ export type ApplicationPresentationItem = ProjectApplicationNavigationApplicatio
 };
 
 export type DashboardPresentation = ApplicationDashboardReadModel & {
+  baselineDecisionDisplay: string;
   baselineWindowDisplay: string;
+  bucketEndBoundaryDisplay: string;
+  canonicalWindowDisplay: string;
+  dataQualityLastObservedDisplay: string;
   currentWindowDisplay: string;
   generatedAtDisplay: string;
   lastAcceptedBucketDisplay: string;
   lastHealthyDisplay: string;
   metricStateClassName: string;
+  readSemanticsBucketSourceDisplay: string;
+  readSemanticsSourceDisplay: string;
   sourceScopedReasonDisplay: string;
   starterLastHeartbeatDisplay: string;
 };
@@ -115,16 +122,22 @@ export function toApplicationPresentationItems(
 }
 
 export function toDashboardPresentation(model: ApplicationDashboardReadModel): DashboardPresentation {
-  const { application, generatedAt, sourceScopedPercentiles, starterConnection } = model;
+  const { application, dataQuality, generatedAt, readSemantics, sourceScopedPercentiles, starterConnection, window } = model;
   const { code } = model.state;
   return {
     ...model,
-    baselineWindowDisplay: formatOptionalWindow(application.sourceWindow.baseline),
+    baselineDecisionDisplay: readSemantics.baselineComparisonUsedForMvpDecision ? formatOptionalWindow(application.sourceWindow.baseline) : BASELINE_NOT_USED_TEXT,
+    baselineWindowDisplay: readSemantics.baselineComparisonUsedForMvpDecision ? formatOptionalWindow(application.sourceWindow.baseline) : BASELINE_NOT_USED_TEXT,
+    bucketEndBoundaryDisplay: readSemantics.bucketEndBoundary,
+    canonicalWindowDisplay: formatWindow(window),
+    dataQualityLastObservedDisplay: formatOptionalDateTime(dataQuality.lastObservedAt),
     currentWindowDisplay: formatWindow(application.sourceWindow.current),
     generatedAtDisplay: formatOptionalDateTime(generatedAt),
     lastAcceptedBucketDisplay: formatOptionalDateTime(application.lastAcceptedBucketAt),
     lastHealthyDisplay: formatOptionalDateTime(application.lastHealthyAt),
     metricStateClassName: metricStateClassName(code),
+    readSemanticsBucketSourceDisplay: humanizeSourceCode(readSemantics.bucketDistributionSource),
+    readSemanticsSourceDisplay: humanizeSourceCode(readSemantics.source),
     sourceScopedReasonDisplay: humanizeCode(sourceScopedPercentiles.reason ?? UNKNOWN_TEXT),
     starterLastHeartbeatDisplay: formatOptionalDateTime(starterConnection.lastHeartbeatAt),
   };
@@ -395,7 +408,10 @@ export function statusBadgeClassName(status: string): string {
     case "insufficient":
     case "insufficient_baseline":
     case "missing":
+    case "sample_limited":
     case "stale_candidate":
+    case "threshold_hit":
+    case "waiting_first_data":
       return "border-amber-500 bg-amber-50 text-amber-900";
     default:
       return "border-neutral-400 bg-white text-neutral-800";
@@ -406,6 +422,7 @@ export function severityBadgeClassName(severity: string | null | undefined): str
   switch ((severity ?? "").toLowerCase()) {
     case "critical":
       return "border-red-300 bg-red-50 text-red-700";
+    case "attention":
     case "warning":
       return "border-amber-300 bg-amber-50 text-amber-700";
     case "info":
@@ -433,14 +450,30 @@ export function severityDisplayText(severity: string | null | undefined): string
 export function humanizeSourceCode(value: string | null | undefined): string {
   const normalized = (value ?? "").trim();
   switch (normalized) {
+    case "accepted_metric_buckets":
+      return "최근 30분 accepted metric bucket";
     case "accepted_bucket":
-      return "최근 수집 데이터";
+      return "accepted bucket 분포";
+    case "accepted_metric_buckets.endpoints_json":
+      return "accepted bucket endpoint evidence";
     case "starter_heartbeat":
       return "앱 연결 신호";
     case "dashboard_snapshots":
       return "저장된 상태 기록";
+    case "dashboard_snapshots.read_model_json":
+      return "저장된 dashboard read model";
+    case "dashboard_snapshots.read_model_json.endpointPriority":
+      return "저장된 dashboard endpoint priority";
+    case "dashboard_snapshots.read_model_json.instanceSummary.items":
+      return "저장된 dashboard instance summary";
     case "starter_canonical_percentile":
-      return "앱이 보낸 최근 응답시간";
+      return "Starter canonical p95/p99";
+    case "endpointPriority":
+      return "server endpoint priority";
+    case "attentionEvidence":
+      return "server attention evidence";
+    case "stateReasons":
+      return "server state reasons";
     case "stored read model":
     case "stored_read_model":
     case "stored_snapshot_detail":
@@ -473,6 +506,8 @@ export function humanizeStatusCode(value: string | null | undefined): string {
       return "최신";
     case "current_window":
       return "현재 구간";
+    case "does_not_change_metric_state":
+      return "metric state에 영향 없음";
     case "degraded":
       return "주의 필요";
     case "down":
@@ -487,6 +522,40 @@ export function humanizeStatusCode(value: string | null | undefined): string {
       return "표본 부족";
     case "insufficient_baseline":
       return "비교 기준 부족";
+    case "recent_30_minutes":
+      return "최근 30분";
+    case "instance_bucket":
+      return "instance bucket";
+    case "application_latency":
+      return "application latency";
+    case "application_error":
+      return "application error";
+    case "resource_pressure":
+      return "resource pressure";
+    case "endpoint":
+      return "endpoint";
+    case "data_quality":
+      return "data quality";
+    case "baseline_comparison_not_used_for_mvp":
+      return "baseline 비교는 MVP 판단에 사용하지 않음";
+    case "sourceWindow.baseline_null_public_read_model":
+      return "sourceWindow.baseline=null public read model";
+    case "sample_limited":
+      return "표본 제한";
+    case "source_scoped_points":
+      return "source-scoped point 표시";
+    case "no_average_no_max_no_merge_no_histogram_recalculation":
+      return "평균·최댓값·병합·histogram 재계산 없음";
+    case "cumulative_bucket_distribution":
+      return "누적 bucket 분포";
+    case "display_bucket_only_no_percentile_recalculation":
+      return "분포 표시 전용";
+    case "threshold_hit":
+      return "기준 이상";
+    case "normal":
+      return "정상 범위";
+    case "control_plane_only":
+      return "control-plane 참고";
     case "missing":
       return "아직 없음";
     case "none":

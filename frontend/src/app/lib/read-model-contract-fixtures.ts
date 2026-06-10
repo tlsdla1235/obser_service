@@ -18,6 +18,8 @@ export const CONTRACT_INSTANCE_ID = "instance-contract-a";
 export const CONTRACT_SNAPSHOT_ID = "33333333-3333-3333-3333-333333333333";
 
 export const dashboardContractFixture: ApplicationDashboardReadModel = {
+  schemaVersion: "dashboard_read_model.v1",
+  mode: "live",
   generatedAt: "2026-06-09T00:05:00Z",
   application: {
     projectId: CONTRACT_PROJECT_ID,
@@ -31,16 +33,41 @@ export const dashboardContractFixture: ApplicationDashboardReadModel = {
         startUtc: "2026-06-08T23:35:00Z",
         endUtc: "2026-06-09T00:05:00Z",
       },
-      baseline: {
-        startUtc: "2026-06-08T23:05:00Z",
-        endUtc: "2026-06-08T23:35:00Z",
-      },
+      baseline: null,
     },
     freshness: {
       lastObservedAt: "2026-06-09T00:04:30Z",
       staleAt: "2026-06-09T00:06:00Z",
       downAt: "2026-06-09T00:07:30Z",
     },
+  },
+  window: {
+    type: "recent_30_minutes",
+    startUtc: "2026-06-08T23:35:00Z",
+    endUtc: "2026-06-09T00:05:00Z",
+  },
+  thresholds: {
+    minimumRequestCount: 30,
+    errorRate: 0.05,
+    slowShareOver500ms: 0.2,
+    datasourcePoolUsage: 0.85,
+    cpuUsage: 0.85,
+    heapUsage: 0.9,
+  },
+  operatorSummary: {
+    headline: "서버가 계산한 운영자 요약입니다.",
+    primaryProblemCode: "server-rule-b",
+    firstLookText: "서버가 준 first look queue를 순서대로 표시합니다.",
+  },
+  dataQuality: {
+    state: "sufficient",
+    requestCount: 91,
+    minimumRequestCount: 30,
+    lastObservedAt: "2026-06-09T00:04:30Z",
+    limitations: [
+      "baseline_comparison_not_used_for_mvp",
+      "sourceWindow.baseline_null_public_read_model",
+    ],
   },
   state: {
     code: "degraded",
@@ -55,6 +82,87 @@ export const dashboardContractFixture: ApplicationDashboardReadModel = {
     lastHeartbeatStatus: "received",
     connectionMeaning: "starter_connected",
     stateImpact: "none",
+  },
+  signals: {
+    red: {
+      requestCount: 91,
+      errorCount: 7,
+      errorSemantic: "server_error_5xx",
+      errorRate: 0.0769,
+      slowCountOver500ms: 21,
+      slowShareOver500ms: 0.2308,
+      latencyEvidenceStatus: "available",
+    },
+    use: {
+      datasourcePoolUsage: {
+        max: 0.62,
+        threshold: 0.85,
+        status: "normal",
+        observedAt: "2026-06-09T00:04:30Z",
+      },
+      cpuUsage: {
+        max: 0.72,
+        threshold: 0.85,
+        status: "normal",
+        observedAt: "2026-06-09T00:04:30Z",
+      },
+      heapUsage: {
+        max: 0.91,
+        threshold: 0.9,
+        status: "threshold_hit",
+        observedAt: "2026-06-09T00:04:30Z",
+      },
+    },
+  },
+  stateReasons: [
+    {
+      type: "application_latency",
+      severity: "warning",
+      scope: "application",
+      target: null,
+      reasonCode: "application_slow_share_high",
+      operatorText: "서버가 계산한 state-changing reason입니다.",
+    },
+  ],
+  attentionEvidence: [
+    {
+      type: "endpoint_server_error",
+      severity: "attention",
+      scope: "endpoint",
+      target: "POST /a-contract",
+      reasonCode: "endpoint_server_error_observed",
+      affectsLifecycleState: false,
+      operatorText: "서버가 계산한 attention-only evidence입니다.",
+    },
+  ],
+  firstLookCandidates: [
+    {
+      rank: 2,
+      type: "endpoint",
+      target: "GET /z-contract",
+      reasonCode: "server_first_look_z",
+      source: "endpointPriority",
+      operatorText: "서버 제공 rank 2 후보를 첫 번째로 둡니다.",
+    },
+    {
+      rank: 1,
+      type: "resource_pressure",
+      target: "heap",
+      reasonCode: "server_first_look_heap",
+      source: "attentionEvidence",
+      operatorText: "서버 제공 rank 1 후보를 두 번째로 둡니다.",
+    },
+  ],
+  readSemantics: {
+    source: "accepted_metric_buckets",
+    snapshotDetailRecalculates: false,
+    markerIsStateSource: false,
+    baselineComparisonUsedForMvpDecision: false,
+    helperColumnsAreStateSource: false,
+    histogramBucketsUsedForPercentiles: false,
+    bucketDistributionSource: "accepted_bucket",
+    bucketDistributionMeaning: "accepted_metric_buckets.duration_buckets_json_distribution_display_only",
+    bucketEndBoundary: "bucket_end_utc > window.startUtc and bucket_end_utc <= window.endUtc",
   },
   zeroInsight: null,
   recovery: {
@@ -372,10 +480,13 @@ export const snapshotDetailContractFixture: DashboardSnapshotDetailReadModel = {
   source: "dashboard_snapshots",
   readSemantics: {
     mode: "stored_snapshot_detail",
+    source: "dashboard_snapshots.read_model_json",
+    snapshotDetailRecalculates: false,
     currentStateRecalculated: false,
     liveSourcesJoined: [],
     rawReadModelJsonExposed: false,
     markerIsStateSource: false,
+    baselineComparisonUsedForMvpDecision: false,
   },
   snapshot: {
     snapshotId: CONTRACT_SNAPSHOT_ID,
@@ -409,6 +520,28 @@ export const snapshotDetailContractFixture: DashboardSnapshotDetailReadModel = {
   },
   recoveryMarker: null,
   readModel: {
+    schemaVersion: "dashboard_read_model.v1",
+    mode: "snapshot",
+    window: {
+      type: "recent_30_minutes",
+      startUtc: "2026-06-08T00:30:00Z",
+      endUtc: "2026-06-08T01:00:00Z",
+    },
+    thresholds: { minimumRequestCount: 30 },
+    operatorSummary: { headline: "저장된 요약" },
+    dataQuality: { limitations: ["baseline_comparison_not_used_for_mvp"] },
+    signals: { red: { requestCount: 91 } },
+    stateReasons: [],
+    attentionEvidence: [],
+    firstLookCandidates: [],
+    readSemantics: {
+      source: "dashboard_snapshots.read_model_json",
+      snapshotDetailRecalculates: false,
+      markerIsStateSource: false,
+      baselineComparisonUsedForMvpDecision: false,
+      histogramBucketsUsedForPercentiles: false,
+      bucketDistributionSource: "accepted_bucket",
+    },
     application: { name: "orders-api" },
     state: { code: "active" },
     starterConnection: { stateImpact: "none" },

@@ -40,12 +40,19 @@ const SNAPSHOT_HISTORY_CONTRACT_ERROR = "snapshot_history_context_mismatch";
 const SNAPSHOT_DETAIL_CONTRACT_ERROR = "snapshot_detail_contract_mismatch";
 const INSTANCE_EVIDENCE_CONTRACT_ERROR = "instance_evidence_contract_mismatch";
 const INSTANCE_TREND_CONTRACT_ERROR = "instance_snapshot_trend_contract_mismatch";
+const DASHBOARD_SCHEMA_VERSION = "dashboard_read_model.v1";
+const DASHBOARD_LIVE_MODE = "live";
+const DASHBOARD_WINDOW_TYPE = "recent_30_minutes";
+const DASHBOARD_READ_SOURCE = "accepted_metric_buckets";
 const SOURCE_SCOPED_PERCENTILE_SOURCE = "starter_canonical_percentile";
+const SOURCE_SCOPED_PERCENTILE_SCOPE = "instance_bucket";
+const SOURCE_SCOPED_PERCENTILE_DISPLAY_POLICY = "source_scoped_points";
 const SOURCE_SCOPED_PERCENTILE_POLICY = "no_average_no_max_no_merge_no_histogram_recalculation";
 const HISTOGRAM_SOURCE = "accepted_bucket";
 const HISTOGRAM_DISPLAY_POLICY = "cumulative_bucket_distribution";
 const HISTOGRAM_AGGREGATE_POLICY = "display_bucket_only_no_percentile_recalculation";
 const SNAPSHOT_SOURCE = "dashboard_snapshots";
+const SNAPSHOT_READ_MODEL_SOURCE = "dashboard_snapshots.read_model_json";
 const SNAPSHOT_DETAIL_ENDPOINT_SOURCE = "dashboard_snapshots.read_model_json.endpointPriority";
 const SNAPSHOT_INSTANCE_SUMMARY_SOURCE = "dashboard_snapshots.read_model_json.instanceSummary.items";
 const INSTANCE_TREND_SOURCE = "dashboard_snapshots.read_model_json.instanceSummary.items";
@@ -73,6 +80,12 @@ export function guardApplicationDashboardReadModel(
   const application = asRecord(root.application, DASHBOARD_CONTRACT_ERROR);
   const sourceWindow = asRecord(application.sourceWindow, DASHBOARD_CONTRACT_ERROR);
   const state = asRecord(root.state, DASHBOARD_CONTRACT_ERROR);
+  const window = asRecord(root.window, DASHBOARD_CONTRACT_ERROR);
+  const thresholds = asRecord(root.thresholds, DASHBOARD_CONTRACT_ERROR);
+  const operatorSummary = asRecord(root.operatorSummary, DASHBOARD_CONTRACT_ERROR);
+  const dataQuality = asRecord(root.dataQuality, DASHBOARD_CONTRACT_ERROR);
+  const signals = asRecord(root.signals, DASHBOARD_CONTRACT_ERROR);
+  const readSemantics = asRecord(root.readSemantics, DASHBOARD_CONTRACT_ERROR);
   const sourceScopedPercentiles = asRecord(root.sourceScopedPercentiles, DASHBOARD_CONTRACT_ERROR);
   const histogramDistribution = asRecord(root.histogramDistribution, DASHBOARD_CONTRACT_ERROR);
 
@@ -86,11 +99,29 @@ export function guardApplicationDashboardReadModel(
   assertNonEmptyString(state.code, DASHBOARD_CONTRACT_ERROR);
   assertNonEmptyString(state.label, DASHBOARD_CONTRACT_ERROR);
   assertNonEmptyString(state.scope, DASHBOARD_CONTRACT_ERROR);
+  assertDashboardCanonicalHeader(root, window, readSemantics);
+  assertDashboardThresholds(thresholds);
+  assertNonEmptyString(operatorSummary.headline, DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(operatorSummary.firstLookText, DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(dataQuality.state, DASHBOARD_CONTRACT_ERROR);
+  assertFiniteNumber(dataQuality.requestCount, DASHBOARD_CONTRACT_ERROR);
+  assertFiniteNumber(dataQuality.minimumRequestCount, DASHBOARD_CONTRACT_ERROR);
+  for (const limitation of assertArray(dataQuality.limitations, DASHBOARD_CONTRACT_ERROR)) {
+    assertNonEmptyString(limitation, DASHBOARD_CONTRACT_ERROR);
+  }
+  assertOptionalString(dataQuality.lastObservedAt, DASHBOARD_CONTRACT_ERROR);
+  assertOptionalString(operatorSummary.primaryProblemCode, DASHBOARD_CONTRACT_ERROR);
+  assertDashboardSignals(signals);
   assertDashboardWindow(sourceWindow.current, DASHBOARD_CONTRACT_ERROR);
   assertOptionalDashboardWindow(sourceWindow.baseline, DASHBOARD_CONTRACT_ERROR);
+  if (sourceWindow.baseline !== null) {
+    throw new ApiRequestError(DASHBOARD_CONTRACT_ERROR);
+  }
 
   if (
     sourceScopedPercentiles.source !== SOURCE_SCOPED_PERCENTILE_SOURCE ||
+    sourceScopedPercentiles.scope !== SOURCE_SCOPED_PERCENTILE_SCOPE ||
+    sourceScopedPercentiles.displayPolicy !== SOURCE_SCOPED_PERCENTILE_DISPLAY_POLICY ||
     sourceScopedPercentiles.aggregatePolicy !== SOURCE_SCOPED_PERCENTILE_POLICY ||
     histogramDistribution.source !== HISTOGRAM_SOURCE ||
     histogramDistribution.displayPolicy !== HISTOGRAM_DISPLAY_POLICY ||
@@ -99,9 +130,36 @@ export function guardApplicationDashboardReadModel(
     throw new ApiRequestError(DASHBOARD_CONTRACT_ERROR);
   }
 
-  assertArray(sourceScopedPercentiles.items, DASHBOARD_CONTRACT_ERROR);
+  for (const item of assertArray(sourceScopedPercentiles.items, DASHBOARD_CONTRACT_ERROR)) {
+    const percentile = asRecord(item, DASHBOARD_CONTRACT_ERROR);
+    if (percentile.source !== SOURCE_SCOPED_PERCENTILE_SOURCE) {
+      throw new ApiRequestError(DASHBOARD_CONTRACT_ERROR);
+    }
+    assertFiniteNumber(percentile.requestCount, DASHBOARD_CONTRACT_ERROR);
+    assertFiniteNumber(percentile.p95Ms, DASHBOARD_CONTRACT_ERROR);
+    assertFiniteNumber(percentile.p99Ms, DASHBOARD_CONTRACT_ERROR);
+  }
   assertHistogramWindow(histogramDistribution.current, DASHBOARD_CONTRACT_ERROR);
   assertHistogramWindow(histogramDistribution.baseline, DASHBOARD_CONTRACT_ERROR);
+
+  for (const item of assertArray(root.stateReasons, DASHBOARD_CONTRACT_ERROR)) {
+    assertDashboardStateReason(item);
+  }
+  for (const item of assertArray(root.attentionEvidence, DASHBOARD_CONTRACT_ERROR)) {
+    const evidence = assertDashboardStateReason(item);
+    if (evidence.affectsLifecycleState !== false) {
+      throw new ApiRequestError(DASHBOARD_CONTRACT_ERROR);
+    }
+  }
+  for (const item of assertArray(root.firstLookCandidates, DASHBOARD_CONTRACT_ERROR)) {
+    const candidate = asRecord(item, DASHBOARD_CONTRACT_ERROR);
+    assertFiniteNumber(candidate.rank, DASHBOARD_CONTRACT_ERROR);
+    assertNonEmptyString(candidate.type, DASHBOARD_CONTRACT_ERROR);
+    assertNonEmptyString(candidate.source, DASHBOARD_CONTRACT_ERROR);
+    assertNonEmptyString(candidate.reasonCode, DASHBOARD_CONTRACT_ERROR);
+    assertOptionalString(candidate.target, DASHBOARD_CONTRACT_ERROR);
+    assertNonEmptyString(candidate.operatorText, DASHBOARD_CONTRACT_ERROR);
+  }
 
   for (const item of assertArray(root.endpointPriority, DASHBOARD_CONTRACT_ERROR)) {
     const endpoint = asRecord(item, DASHBOARD_CONTRACT_ERROR);
@@ -116,7 +174,9 @@ export function guardApplicationDashboardReadModel(
     assertFiniteNumber(evidence.requestCount, DASHBOARD_CONTRACT_ERROR);
     assertFiniteNumber(evidence.errorCount, DASHBOARD_CONTRACT_ERROR);
     assertFiniteNumber(evidence.errorRate, DASHBOARD_CONTRACT_ERROR);
-    assertNonEmptyString(evidence.bucketDistributionSource, DASHBOARD_CONTRACT_ERROR);
+    if (evidence.bucketDistributionSource !== HISTOGRAM_SOURCE) {
+      throw new ApiRequestError(DASHBOARD_CONTRACT_ERROR);
+    }
     assertNonEmptyString(evidence.errorEvidenceStatus, DASHBOARD_CONTRACT_ERROR);
     assertNonEmptyString(evidence.latencyEvidenceStatus, DASHBOARD_CONTRACT_ERROR);
   }
@@ -124,6 +184,74 @@ export function guardApplicationDashboardReadModel(
   assertArray(root.triageCards, DASHBOARD_CONTRACT_ERROR);
   assertArray(root.instances, DASHBOARD_CONTRACT_ERROR);
   return model;
+}
+
+function assertDashboardCanonicalHeader(
+  root: Record<string, unknown>,
+  window: Record<string, unknown>,
+  readSemantics: Record<string, unknown>,
+) {
+  if (
+    root.schemaVersion !== DASHBOARD_SCHEMA_VERSION ||
+    root.mode !== DASHBOARD_LIVE_MODE ||
+    window.type !== DASHBOARD_WINDOW_TYPE ||
+    readSemantics.source !== DASHBOARD_READ_SOURCE ||
+    readSemantics.snapshotDetailRecalculates !== false ||
+    readSemantics.markerIsStateSource !== false ||
+    readSemantics.baselineComparisonUsedForMvpDecision !== false ||
+    readSemantics.helperColumnsAreStateSource !== false ||
+    readSemantics.histogramBucketsUsedForPercentiles !== false ||
+    readSemantics.bucketDistributionSource !== HISTOGRAM_SOURCE
+  ) {
+    throw new ApiRequestError(DASHBOARD_CONTRACT_ERROR);
+  }
+  assertDashboardWindow(window, DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(readSemantics.bucketDistributionMeaning, DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(readSemantics.bucketEndBoundary, DASHBOARD_CONTRACT_ERROR);
+}
+
+function assertDashboardThresholds(thresholds: Record<string, unknown>) {
+  assertFiniteNumber(thresholds.minimumRequestCount, DASHBOARD_CONTRACT_ERROR);
+  assertFiniteNumber(thresholds.errorRate, DASHBOARD_CONTRACT_ERROR);
+  assertFiniteNumber(thresholds.slowShareOver500ms, DASHBOARD_CONTRACT_ERROR);
+  assertFiniteNumber(thresholds.datasourcePoolUsage, DASHBOARD_CONTRACT_ERROR);
+  assertFiniteNumber(thresholds.cpuUsage, DASHBOARD_CONTRACT_ERROR);
+  assertFiniteNumber(thresholds.heapUsage, DASHBOARD_CONTRACT_ERROR);
+}
+
+function assertDashboardSignals(signals: Record<string, unknown>) {
+  const red = asRecord(signals.red, DASHBOARD_CONTRACT_ERROR);
+  assertFiniteNumber(red.requestCount, DASHBOARD_CONTRACT_ERROR);
+  assertFiniteNumber(red.errorCount, DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(red.errorSemantic, DASHBOARD_CONTRACT_ERROR);
+  assertNullableFiniteNumber(red.errorRate, DASHBOARD_CONTRACT_ERROR);
+  assertNullableFiniteNumber(red.slowCountOver500ms, DASHBOARD_CONTRACT_ERROR);
+  assertNullableFiniteNumber(red.slowShareOver500ms, DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(red.latencyEvidenceStatus, DASHBOARD_CONTRACT_ERROR);
+
+  const use = asRecord(signals.use, DASHBOARD_CONTRACT_ERROR);
+  assertDashboardResourceSignal(use.datasourcePoolUsage);
+  assertDashboardResourceSignal(use.cpuUsage);
+  assertDashboardResourceSignal(use.heapUsage);
+}
+
+function assertDashboardResourceSignal(value: unknown) {
+  const signal = asRecord(value, DASHBOARD_CONTRACT_ERROR);
+  assertNullableFiniteNumber(signal.max, DASHBOARD_CONTRACT_ERROR);
+  assertFiniteNumber(signal.threshold, DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(signal.status, DASHBOARD_CONTRACT_ERROR);
+  assertOptionalString(signal.observedAt, DASHBOARD_CONTRACT_ERROR);
+}
+
+function assertDashboardStateReason(value: unknown): Record<string, unknown> {
+  const reason = asRecord(value, DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(reason.type, DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(reason.severity, DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(reason.scope, DASHBOARD_CONTRACT_ERROR);
+  assertOptionalString(reason.target, DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(reason.reasonCode, DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(reason.operatorText, DASHBOARD_CONTRACT_ERROR);
+  return reason;
 }
 
 /**
@@ -198,10 +326,13 @@ export function guardSnapshotDetailReadModel(
   if (
     root.source !== SNAPSHOT_SOURCE ||
     readSemantics.mode !== "stored_snapshot_detail" ||
+    readSemantics.source !== SNAPSHOT_READ_MODEL_SOURCE ||
+    readSemantics.snapshotDetailRecalculates !== false ||
     readSemantics.currentStateRecalculated !== false ||
     liveSourcesJoined.length !== 0 ||
     readSemantics.rawReadModelJsonExposed !== false ||
     readSemantics.markerIsStateSource !== false ||
+    readSemantics.baselineComparisonUsedForMvpDecision !== false ||
     snapshot.snapshotId !== context.snapshotId ||
     marker.snapshotId !== snapshot.snapshotId ||
     marker.storedApplicationStateCode !== snapshot.storedApplicationStateCode ||
@@ -210,7 +341,31 @@ export function guardSnapshotDetailReadModel(
     throw new ApiRequestError(SNAPSHOT_DETAIL_CONTRACT_ERROR);
   }
 
-  asRecord(root.readModel, SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  const storedReadModel = asRecord(root.readModel, SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  if (
+    storedReadModel.schemaVersion !== DASHBOARD_SCHEMA_VERSION ||
+    storedReadModel.mode !== "snapshot"
+  ) {
+    throw new ApiRequestError(SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  }
+  asRecord(storedReadModel.window, SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  asRecord(storedReadModel.operatorSummary, SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  asRecord(storedReadModel.dataQuality, SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  asRecord(storedReadModel.signals, SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  assertArray(storedReadModel.stateReasons, SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  assertArray(storedReadModel.attentionEvidence, SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  assertArray(storedReadModel.firstLookCandidates, SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  const storedReadSemantics = asRecord(storedReadModel.readSemantics, SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  if (
+    storedReadSemantics.source !== SNAPSHOT_READ_MODEL_SOURCE ||
+    storedReadSemantics.snapshotDetailRecalculates !== false ||
+    storedReadSemantics.markerIsStateSource !== false ||
+    storedReadSemantics.baselineComparisonUsedForMvpDecision !== false ||
+    storedReadSemantics.histogramBucketsUsedForPercentiles !== false ||
+    storedReadSemantics.bucketDistributionSource !== HISTOGRAM_SOURCE
+  ) {
+    throw new ApiRequestError(SNAPSHOT_DETAIL_CONTRACT_ERROR);
+  }
   const snapshotEndpointEvidence = asRecord(root.snapshotEndpointEvidence, SNAPSHOT_DETAIL_CONTRACT_ERROR);
   const instanceSummary = asRecord(root.instanceSummary, SNAPSHOT_DETAIL_CONTRACT_ERROR);
   const previousState = asRecord(root.previousState, SNAPSHOT_DETAIL_CONTRACT_ERROR);
@@ -344,7 +499,14 @@ function horizonWindowIsValid(horizon: Record<string, unknown>): boolean {
 
 function assertHistogramWindow(value: unknown, errorCode: string) {
   const window = asRecord(value, errorCode);
-  assertArray(window.buckets, errorCode);
+  assertNonEmptyString(window.status, errorCode);
+  assertOptionalString(window.reason, errorCode);
+  assertFiniteNumber(window.totalCount, errorCode);
+  for (const bucket of assertArray(window.buckets, errorCode)) {
+    const item = asRecord(bucket, errorCode);
+    assertFiniteNumber(item.leMs, errorCode);
+    assertFiniteNumber(item.count, errorCode);
+  }
 }
 
 function assertDashboardWindow(value: unknown, errorCode: string) {
@@ -373,10 +535,24 @@ function assertFiniteNumber(value: unknown, errorCode: string) {
   }
 }
 
+function assertNullableFiniteNumber(value: unknown, errorCode: string) {
+  if (value === null) {
+    return;
+  }
+  assertFiniteNumber(value, errorCode);
+}
+
 function assertNonEmptyString(value: unknown, errorCode: string) {
   if (typeof value !== "string" || value.trim() === "") {
     throw new ApiRequestError(errorCode);
   }
+}
+
+function assertOptionalString(value: unknown, errorCode: string) {
+  if (value === null) {
+    return;
+  }
+  assertNonEmptyString(value, errorCode);
 }
 
 function assertNoForbiddenFields(

@@ -81,10 +81,21 @@ export type StarterConnectionSummary = {
 };
 
 export type ApplicationDashboardReadModel = {
+  schemaVersion: "dashboard_read_model.v1" | (string & {});
+  mode: "live" | "snapshot" | (string & {});
   generatedAt: IsoDateTimeString;
   application: DashboardApplication;
+  window: DashboardCanonicalWindow;
+  thresholds: DashboardThresholds;
+  operatorSummary: DashboardOperatorSummary;
+  dataQuality: DashboardDataQuality;
   state: DashboardState;
   starterConnection: DashboardStarterConnection;
+  signals: DashboardSignals;
+  stateReasons: DashboardStateReason[];
+  attentionEvidence: DashboardAttentionEvidence[];
+  firstLookCandidates: DashboardFirstLookCandidate[];
+  readSemantics: DashboardReadSemantics;
   zeroInsight: ZeroInsight | null;
   recovery: Recovery;
   metrics: Metrics;
@@ -94,6 +105,99 @@ export type ApplicationDashboardReadModel = {
   endpointPriority: EndpointPriorityItem[];
   instances: InstanceEntry[];
   snapshot: unknown | null;
+};
+
+/**
+ * 13.4 backend가 추가한 canonical dashboard_read_model.v1 field다.
+ * UI는 이 block을 1차 입력으로 표시하고 legacy skeleton field를 조합해 새 판단을 만들지 않는다.
+ */
+export type DashboardCanonicalWindow = DashboardWindow & {
+  type: "recent_30_minutes" | (string & {});
+};
+
+export type DashboardThresholds = {
+  minimumRequestCount: number;
+  errorRate: number;
+  slowShareOver500ms: number;
+  datasourcePoolUsage: number;
+  cpuUsage: number;
+  heapUsage: number;
+};
+
+export type DashboardOperatorSummary = {
+  headline: string;
+  primaryProblemCode: string | null;
+  firstLookText: string;
+};
+
+export type DashboardDataQuality = {
+  state: string;
+  requestCount: number;
+  minimumRequestCount: number;
+  lastObservedAt: IsoDateTimeString | null;
+  limitations: string[];
+};
+
+export type DashboardSignals = {
+  red: DashboardRedSignals;
+  use: DashboardUseSignals;
+};
+
+export type DashboardRedSignals = {
+  requestCount: number;
+  errorCount: number;
+  errorSemantic: string;
+  errorRate: number | null;
+  slowCountOver500ms: number | null;
+  slowShareOver500ms: number | null;
+  latencyEvidenceStatus: string;
+};
+
+export type DashboardUseSignals = {
+  datasourcePoolUsage: DashboardResourceSignal;
+  cpuUsage: DashboardResourceSignal;
+  heapUsage: DashboardResourceSignal;
+};
+
+export type DashboardResourceSignal = {
+  max: number | null;
+  threshold: number;
+  status: string;
+  observedAt: IsoDateTimeString | null;
+};
+
+export type DashboardStateReason = {
+  type: string;
+  severity: string;
+  scope: string;
+  target: string | null;
+  reasonCode: string;
+  operatorText: string;
+};
+
+export type DashboardAttentionEvidence = DashboardStateReason & {
+  affectsLifecycleState: boolean;
+};
+
+export type DashboardFirstLookCandidate = {
+  rank: number;
+  type: string;
+  target: string | null;
+  reasonCode: string;
+  source: string;
+  operatorText: string;
+};
+
+export type DashboardReadSemantics = {
+  source: "accepted_metric_buckets" | "dashboard_snapshots.read_model_json" | (string & {});
+  snapshotDetailRecalculates: boolean;
+  markerIsStateSource: boolean;
+  baselineComparisonUsedForMvpDecision: boolean;
+  helperColumnsAreStateSource: boolean;
+  histogramBucketsUsedForPercentiles: boolean;
+  bucketDistributionSource: "accepted_bucket" | (string & {});
+  bucketDistributionMeaning: string;
+  bucketEndBoundary: string;
 };
 
 export type DashboardApplication = {
@@ -649,10 +753,13 @@ export type DashboardSnapshotDetailReadModel = {
 
 export type SnapshotReadSemantics = {
   mode: string;
+  source: string;
+  snapshotDetailRecalculates: boolean;
   currentStateRecalculated: boolean;
   liveSourcesJoined: string[];
   markerIsStateSource: boolean;
   rawReadModelJsonExposed: boolean;
+  baselineComparisonUsedForMvpDecision: boolean;
 };
 
 export type SnapshotMetadata = {
@@ -693,6 +800,17 @@ export type SnapshotRecoveryMarker = {
 };
 
 export type SnapshotStoredReadModel = {
+  schemaVersion: JsonValue | null;
+  mode: JsonValue | null;
+  window: JsonValue | null;
+  thresholds: JsonValue | null;
+  operatorSummary: JsonValue | null;
+  dataQuality: JsonValue | null;
+  signals: JsonValue | null;
+  stateReasons: JsonValue | null;
+  attentionEvidence: JsonValue | null;
+  firstLookCandidates: JsonValue | null;
+  readSemantics: JsonValue | null;
   application: JsonValue | null;
   state: JsonValue | null;
   starterConnection: JsonValue | null;
