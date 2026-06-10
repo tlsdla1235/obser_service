@@ -5,7 +5,7 @@ storyKey: "13-5-frontend-application-dashboard-ia-realignment"
 epic: "Epic 13. Dashboard Source of Truth Realignment"
 title: "Frontend Application Dashboard IA Realignment"
 architectureStyle: Traditional MVC
-status: review
+status: done
 date: 2026-06-10
 phase: P4
 workType: frontend
@@ -31,10 +31,11 @@ rollbackBoundary: "Application Dashboard live surface component/layout and front
 
 ## Status
 
-review
+done
 
 2026-06-10: P4 frontend alignment story artifact를 생성하고 sprint-status를 정렬했다.
 2026-06-10: BMAD dev-story implementation으로 frontend Application Dashboard IA/type/adapter/guard를 canonical `dashboard_read_model.v1` 기준에 맞춰 구현하고 review로 전환했다.
+2026-06-10: Review follow-up guard hardening과 story metadata 정리를 반영한 뒤 done으로 전환했다.
 
 ## Story
 
