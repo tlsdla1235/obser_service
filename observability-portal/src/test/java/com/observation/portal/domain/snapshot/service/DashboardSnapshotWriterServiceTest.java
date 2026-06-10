@@ -5,8 +5,10 @@ import com.observation.portal.domain.snapshot.entity.DashboardSnapshotEntity;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotCaptureReason;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotWriteCommand;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotWriteResult;
+import com.observation.portal.domain.snapshot.model.DashboardSnapshotWriteValues;
 import com.observation.portal.domain.snapshot.repository.DashboardSnapshotRepository;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -102,6 +104,46 @@ class DashboardSnapshotWriterServiceTest {
                 "persistence");
     }
 
+    @Test
+    void fillsLegacyBaselineHelperWhenPublicReadModelBaselineIsNull() throws Exception {
+        stubCommonWriteInputs();
+        when(enricher.enrich(any())).thenReturn(new DashboardSnapshotReadModelEnricher.EnrichedSnapshotReadModel(
+                """
+                {
+                  "schemaVersion": "dashboard_read_model.v1",
+                  "mode": "snapshot",
+                  "readSemantics": {
+                    "source": "dashboard_snapshots.read_model_json",
+                    "snapshotDetailRecalculates": false,
+                    "markerIsStateSource": false,
+                    "baselineComparisonUsedForMvpDecision": false,
+                    "helperColumnsAreStateSource": false
+                  }
+                }
+                """,
+                null,
+                null,
+                null));
+        when(snapshotRepository.insert(any())).thenAnswer(invocation ->
+                new DashboardSnapshotEntity(invocation.getArgument(0)));
+
+        writerService.write(command(readModelWithNullBaseline()));
+
+        ArgumentCaptor<DashboardSnapshotWriteValues> valuesCaptor =
+                ArgumentCaptor.forClass(DashboardSnapshotWriteValues.class);
+        verify(snapshotRepository).insert(valuesCaptor.capture());
+        DashboardSnapshotWriteValues values = valuesCaptor.getValue();
+        assertThat(values.currentWindowStartUtc()).isEqualTo(WINDOW_END.minusMinutes(15));
+        assertThat(values.currentWindowEndUtc()).isEqualTo(WINDOW_END);
+        assertThat(values.baselineWindowStartUtc()).isEqualTo(WINDOW_END.minusMinutes(30));
+        assertThat(values.baselineWindowEndUtc()).isEqualTo(WINDOW_END.minusMinutes(15));
+        assertThat(values.readModelJson()).contains(
+                "\"source\": \"dashboard_snapshots.read_model_json\"",
+                "\"markerIsStateSource\": false",
+                "\"baselineComparisonUsedForMvpDecision\": false",
+                "\"helperColumnsAreStateSource\": false");
+    }
+
     private void stubCommonWriteInputs() throws Exception {
         when(capturePolicy.representativeReason(any()))
                 .thenReturn(DashboardSnapshotCaptureReason.HOURLY_SCHEDULED);
@@ -125,10 +167,14 @@ class DashboardSnapshotWriterServiceTest {
     }
 
     private static DashboardSnapshotWriteCommand command() {
+        return command(readModel());
+    }
+
+    private static DashboardSnapshotWriteCommand command(ApplicationDashboardReadModel readModel) {
         return new DashboardSnapshotWriteCommand(
                 PROJECT_ID,
                 APPLICATION_ID,
-                readModel(),
+                readModel,
                 DashboardSnapshotCaptureReason.HOURLY_SCHEDULED,
                 WINDOW_END,
                 WINDOW_END.plusSeconds(5),
@@ -179,6 +225,34 @@ class DashboardSnapshotWriterServiceTest {
                 List.of(),
                 List.of(),
                 null);
+    }
+
+    private static ApplicationDashboardReadModel readModelWithNullBaseline() {
+        ApplicationDashboardReadModel readModel = readModel();
+        return new ApplicationDashboardReadModel(
+                readModel.generatedAt(),
+                new ApplicationDashboardReadModel.Application(
+                        readModel.application().projectId(),
+                        readModel.application().applicationId(),
+                        readModel.application().name(),
+                        readModel.application().environment(),
+                        readModel.application().lastAcceptedBucketAt(),
+                        readModel.application().lastHealthyAt(),
+                        new ApplicationDashboardReadModel.SourceWindow(
+                                readModel.application().sourceWindow().current(),
+                                null),
+                        readModel.application().freshness()),
+                readModel.state(),
+                readModel.starterConnection(),
+                readModel.zeroInsight(),
+                readModel.recovery(),
+                readModel.metrics(),
+                readModel.sourceScopedPercentiles(),
+                readModel.histogramDistribution(),
+                readModel.triageCards(),
+                readModel.endpointPriority(),
+                readModel.instances(),
+                readModel.snapshot());
     }
 
     private static class NoopTransactionManager implements PlatformTransactionManager {

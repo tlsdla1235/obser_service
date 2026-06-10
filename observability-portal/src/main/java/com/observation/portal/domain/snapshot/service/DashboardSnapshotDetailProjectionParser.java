@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.NullNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.observation.portal.domain.dashboard.model.ApplicationDashboardReadModel;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotDetailReadModel.EndpointEvidenceItem;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotDetailReadModel.InstanceSummary;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotDetailReadModel.InstanceSummaryItem;
@@ -30,10 +32,9 @@ import java.util.Objects;
 public class DashboardSnapshotDetailProjectionParser {
 
     private static final BigDecimal HIGH_CONFIDENCE_THRESHOLD = new BigDecimal("0.82");
-    private static final String DEFAULT_ENDPOINT_SELECTION_POLICY =
-            "endpoint_priority_rank_then_high_confidence_concern_then_triage_affected_endpoint";
-    private static final String DEFAULT_INSTANCE_SELECTION_POLICY =
-            "triage_contributors_then_freshness_attention_then_high_request_count";
+    private static final String STORED_READ_MODEL_SELECTION_POLICY = "stored_read_model";
+    private static final String STORED_INSTANCE_SUMMARY_SCHEMA_VERSION = "1.0";
+    private static final long MINIMUM_REQUEST_COUNT = 30L;
 
     private final ObjectMapper objectMapper;
     private final SnapshotEndpointEvidenceAnchorResolver anchorResolver;
@@ -54,6 +55,17 @@ public class DashboardSnapshotDetailProjectionParser {
     public DashboardSnapshotStoredReadModelProjection project(String readModelJson) {
         JsonNode root = readRoot(readModelJson);
         StoredReadModel readModel = new StoredReadModel(
+                schemaVersion(root),
+                mode(root),
+                window(root),
+                thresholds(root),
+                operatorSummary(root),
+                dataQuality(root),
+                signals(root),
+                arrayOrEmpty(root.get("stateReasons")),
+                arrayOrEmpty(root.get("attentionEvidence")),
+                arrayOrEmpty(root.get("firstLookCandidates")),
+                readSemantics(),
                 objectOrNull(root.get("application")),
                 objectOrNull(root.get("state")),
                 objectOrNull(root.get("starterConnection")),
@@ -92,6 +104,126 @@ public class DashboardSnapshotDetailProjectionParser {
         } catch (JsonProcessingException exception) {
             throw new DashboardSnapshotProjectionException("stored read_model_json projection failed", exception);
         }
+    }
+
+    private JsonNode schemaVersion(JsonNode root) {
+        JsonNode value = root.get("schemaVersion");
+        return value == null
+                ? objectMapper.getNodeFactory().textNode(ApplicationDashboardReadModel.SCHEMA_VERSION)
+                : value;
+    }
+
+    private JsonNode mode(JsonNode root) {
+        JsonNode value = root.get("mode");
+        return value == null
+                ? objectMapper.getNodeFactory().textNode(ApplicationDashboardReadModel.SNAPSHOT_MODE)
+                : value;
+    }
+
+    private JsonNode window(JsonNode root) {
+        JsonNode value = root.get("window");
+        if (value != null && value.isObject()) {
+            return value;
+        }
+        JsonNode sourceWindow = root.path("application").path("sourceWindow");
+        JsonNode current = sourceWindow.path("recent_30_minutes");
+        if (!current.isObject()) {
+            current = sourceWindow.path("current");
+        }
+        String startUtc = text(current, "startUtc");
+        String endUtc = text(current, "endUtc");
+        if (startUtc == null || endUtc == null) {
+            return NullNode.getInstance();
+        }
+        ObjectNode fallback = objectMapper.createObjectNode();
+        fallback.put("type", "recent_30_minutes");
+        fallback.put("startUtc", startUtc);
+        fallback.put("endUtc", endUtc);
+        return fallback;
+    }
+
+    private JsonNode thresholds(JsonNode root) {
+        JsonNode value = root.get("thresholds");
+        return value != null && value.isObject()
+                ? value
+                : objectMapper.valueToTree(ApplicationDashboardReadModel.Thresholds.mvp());
+    }
+
+    private JsonNode operatorSummary(JsonNode root) {
+        JsonNode value = root.get("operatorSummary");
+        if (value != null && value.isObject()) {
+            return value;
+        }
+        JsonNode state = root.path("state");
+        String headline = firstText(
+                text(state, "rationale"),
+                text(root.path("zeroInsight"), "message"),
+                "저장된 snapshot read model입니다.");
+        ObjectNode fallback = objectMapper.createObjectNode();
+        fallback.put("headline", headline);
+        String primaryProblemCode = firstTriageRuleId(root.path("triageCards"));
+        if (primaryProblemCode == null) {
+            fallback.putNull("primaryProblemCode");
+        } else {
+            fallback.put("primaryProblemCode", primaryProblemCode);
+        }
+        fallback.put("firstLookText", firstText(
+                text(root.path("zeroInsight"), "recommendedAction"),
+                text(state, "recommendedAction"),
+                "저장된 snapshot detail을 확인하세요."));
+        return fallback;
+    }
+
+    private JsonNode dataQuality(JsonNode root) {
+        JsonNode value = root.get("dataQuality");
+        if (value != null && value.isObject()) {
+            return value;
+        }
+        JsonNode metrics = root.path("metrics");
+        JsonNode application = root.path("application");
+        ObjectNode fallback = objectMapper.createObjectNode();
+        Long requestCount = longValue(metrics, "requestCount");
+        fallback.put("state", "legacy_snapshot_projection");
+        fallback.put("requestCount", requestCount == null ? 0L : requestCount);
+        fallback.put("minimumRequestCount", MINIMUM_REQUEST_COUNT);
+        String lastObservedAt = text(application, "lastAcceptedBucketAt");
+        if (lastObservedAt == null) {
+            fallback.putNull("lastObservedAt");
+        } else {
+            fallback.put("lastObservedAt", lastObservedAt);
+        }
+        ArrayNode limitations = fallback.putArray("limitations");
+        limitations.add("legacy_snapshot_without_canonical_fields");
+        limitations.add("baseline_comparison_not_used_for_mvp");
+        return fallback;
+    }
+
+    private JsonNode signals(JsonNode root) {
+        JsonNode value = root.get("signals");
+        if (value != null && value.isObject()) {
+            return value;
+        }
+        JsonNode metrics = root.path("metrics");
+        ObjectNode signals = objectMapper.createObjectNode();
+        ObjectNode red = signals.putObject("red");
+        Long requestCount = longValue(metrics, "requestCount");
+        Long errorCount = longValue(metrics, "errorCount");
+        red.put("requestCount", requestCount == null ? 0L : requestCount);
+        red.put("errorCount", errorCount == null ? 0L : errorCount);
+        red.put("errorSemantic", "server_error_5xx");
+        putDecimalOrNull(red, "errorRate", decimal(metrics, "errorRate"));
+        red.putNull("slowCountOver500ms");
+        red.putNull("slowShareOver500ms");
+        red.put("latencyEvidenceStatus", "unavailable");
+        ObjectNode use = signals.putObject("use");
+        use.set("datasourcePoolUsage", missingResourceSignal("0.85"));
+        use.set("cpuUsage", missingResourceSignal("0.85"));
+        use.set("heapUsage", missingResourceSignal("0.90"));
+        return signals;
+    }
+
+    private JsonNode readSemantics() {
+        return objectMapper.valueToTree(ApplicationDashboardReadModel.ReadSemantics.snapshot());
     }
 
     private SnapshotEndpointEvidence endpointEvidence(JsonNode block) {
@@ -134,7 +266,7 @@ public class DashboardSnapshotDetailProjectionParser {
         return new SnapshotEndpointEvidence(
                 SnapshotEndpointEvidence.DEFAULT_SOURCE,
                 SnapshotEndpointEvidence.DEFAULT_MAX_ITEMS,
-                textOrDefault(block, "selectionPolicy", DEFAULT_ENDPOINT_SELECTION_POLICY),
+                STORED_READ_MODEL_SELECTION_POLICY,
                 null,
                 parsedItems);
     }
@@ -143,7 +275,7 @@ public class DashboardSnapshotDetailProjectionParser {
         return new SnapshotEndpointEvidence(
                 SnapshotEndpointEvidence.DEFAULT_SOURCE,
                 SnapshotEndpointEvidence.DEFAULT_MAX_ITEMS,
-                DEFAULT_ENDPOINT_SELECTION_POLICY,
+                STORED_READ_MODEL_SELECTION_POLICY,
                 reason,
                 List.of());
     }
@@ -152,7 +284,7 @@ public class DashboardSnapshotDetailProjectionParser {
         if (block == null || !block.isObject()) {
             return unavailableInstanceSummary("stored_instance_summary_unavailable");
         }
-        if (!InstanceSummary.DEFAULT_SCHEMA_VERSION.equals(text(block, "schemaVersion"))) {
+        if (!STORED_INSTANCE_SUMMARY_SCHEMA_VERSION.equals(text(block, "schemaVersion"))) {
             return unavailableInstanceSummary("stored_instance_summary_unavailable");
         }
         JsonNode items = block.get("items");
@@ -169,7 +301,7 @@ public class DashboardSnapshotDetailProjectionParser {
                 InstanceSummary.DEFAULT_SCHEMA_VERSION,
                 InstanceSummary.DEFAULT_SOURCE,
                 InstanceSummary.DEFAULT_MAX_ITEMS,
-                textOrDefault(block, "selectionPolicy", DEFAULT_INSTANCE_SELECTION_POLICY),
+                STORED_READ_MODEL_SELECTION_POLICY,
                 null,
                 parsedItems);
     }
@@ -201,7 +333,7 @@ public class DashboardSnapshotDetailProjectionParser {
                 InstanceSummary.DEFAULT_SCHEMA_VERSION,
                 InstanceSummary.DEFAULT_SOURCE,
                 InstanceSummary.DEFAULT_MAX_ITEMS,
-                DEFAULT_INSTANCE_SELECTION_POLICY,
+                STORED_READ_MODEL_SELECTION_POLICY,
                 reason,
                 List.of());
     }
@@ -281,6 +413,45 @@ public class DashboardSnapshotDetailProjectionParser {
         return maxConfidence != null && maxConfidence.compareTo(HIGH_CONFIDENCE_THRESHOLD) >= 0;
     }
 
+    private static String firstText(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        throw new IllegalArgumentException("at least one fallback text must be provided");
+    }
+
+    private static String firstTriageRuleId(JsonNode triageCards) {
+        if (triageCards == null || !triageCards.isArray()) {
+            return null;
+        }
+        for (JsonNode card : triageCards) {
+            String ruleId = text(card, "ruleId");
+            if (ruleId != null) {
+                return ruleId;
+            }
+        }
+        return null;
+    }
+
+    private ObjectNode missingResourceSignal(String threshold) {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.putNull("max");
+        node.put("threshold", new BigDecimal(threshold));
+        node.put("status", "missing");
+        node.putNull("observedAt");
+        return node;
+    }
+
+    private static void putDecimalOrNull(ObjectNode node, String fieldName, BigDecimal value) {
+        if (value == null) {
+            node.putNull(fieldName);
+        } else {
+            node.put(fieldName, value);
+        }
+    }
+
     private static JsonNode objectOrNull(JsonNode value) {
         return value != null && value.isObject() ? value : NullNode.getInstance();
     }
@@ -291,11 +462,6 @@ public class DashboardSnapshotDetailProjectionParser {
 
     private JsonNode arrayOrNull(JsonNode value) {
         return value != null && value.isArray() ? value : NullNode.getInstance();
-    }
-
-    private static String textOrDefault(JsonNode parent, String fieldName, String defaultValue) {
-        String value = text(parent, fieldName);
-        return value == null ? defaultValue : value;
     }
 
     private static String text(JsonNode parent, String fieldName) {

@@ -1,6 +1,7 @@
 package com.observation.portal.domain.snapshot.service;
 
 import com.observation.portal.domain.catalog.repository.ApplicationRepository;
+import com.observation.portal.domain.snapshot.model.DashboardSnapshotDetailReadModel;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotDetailReadModel.PreviousState;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotDetailRow;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotMarkerItem;
@@ -130,12 +131,9 @@ public class DashboardSnapshotMarkerService {
     }
 
     private static PreviousState previousState(com.observation.portal.domain.snapshot.model.DashboardSnapshotSourceRow row) {
-        String source = DashboardSnapshotDetailService.knownState(row.stateCode())
-                ? "previous_dashboard_snapshot"
-                : "previous_dashboard_snapshot_unknown_state";
         return new PreviousState(
                 row.stateCode(),
-                source,
+                DashboardSnapshotDetailReadModel.SOURCE,
                 row.snapshotId(),
                 row.generatedAt());
     }

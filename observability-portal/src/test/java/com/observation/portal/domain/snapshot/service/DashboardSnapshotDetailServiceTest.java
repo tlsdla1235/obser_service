@@ -68,17 +68,33 @@ class DashboardSnapshotDetailServiceTest {
 
         assertThat(detail.source()).isEqualTo("dashboard_snapshots");
         assertThat(detail.readSemantics().mode()).isEqualTo("stored_snapshot_detail");
+        assertThat(detail.readSemantics().source()).isEqualTo("dashboard_snapshots.read_model_json");
+        assertThat(detail.readSemantics().snapshotDetailRecalculates()).isFalse();
         assertThat(detail.readSemantics().currentStateRecalculated()).isFalse();
         assertThat(detail.readSemantics().liveSourcesJoined()).isEmpty();
         assertThat(detail.readSemantics().rawReadModelJsonExposed()).isFalse();
+        assertThat(detail.readSemantics().markerIsStateSource()).isFalse();
+        assertThat(detail.readSemantics().baselineComparisonUsedForMvpDecision()).isFalse();
         assertThat(detail.snapshot().captureReason()).isEqualTo("hourly_scheduled");
         assertThat(detail.snapshot().storedApplicationStateCode()).isEqualTo("degraded");
         assertThat(detail.marker().type().value()).isEqualTo("state_change");
+        assertThat(detail.readModel().schemaVersion().asText()).isEqualTo("dashboard_read_model.v1");
+        assertThat(detail.readModel().mode().asText()).isEqualTo("snapshot");
+        assertThat(detail.readModel().window().path("type").asText()).isEqualTo("recent_30_minutes");
+        assertThat(detail.readModel().readSemantics().path("source").asText())
+                .isEqualTo("dashboard_snapshots.read_model_json");
         assertThat(detail.previousState().stateCode()).isEqualTo("active");
-        assertThat(detail.previousState().source()).isEqualTo("previous_dashboard_snapshot");
+        assertThat(detail.previousState().source()).isEqualTo("dashboard_snapshots");
         assertThat(detail.lastHealthyAt().value()).isEqualTo(offset("2026-05-26T06:00:00Z"));
-        assertThat(detail.lastHealthyAt().source()).isEqualTo("previous_active_dashboard_snapshot");
+        assertThat(detail.lastHealthyAt().source()).isEqualTo("dashboard_snapshots");
+        assertThat(detail.snapshotEndpointEvidence().source())
+                .isEqualTo("dashboard_snapshots.read_model_json.endpointPriority");
+        assertThat(detail.snapshotEndpointEvidence().selectionPolicy()).isEqualTo("stored_read_model");
         assertThat(detail.snapshotEndpointEvidence().items().get(0).anchorId()).isEqualTo("endpoint-evidence-1");
+        assertThat(detail.instanceSummary().schemaVersion()).isEqualTo("dashboard_read_model.v1");
+        assertThat(detail.instanceSummary().source())
+                .isEqualTo("dashboard_snapshots.read_model_json.instanceSummary.items");
+        assertThat(detail.instanceSummary().selectionPolicy()).isEqualTo("stored_read_model");
         assertThat(detail.instanceSummary().items().get(0).endpointEvidenceRefs().get(0).anchorStatus())
                 .isEqualTo("resolved");
         assertThat(detail.instanceSummary().items().get(0).endpointEvidenceRefs().get(0).snapshotDetailAnchor())
@@ -107,7 +123,7 @@ class DashboardSnapshotDetailServiceTest {
         assertThat(detail.recoveryMarker().type().value()).isEqualTo("recovery_observed");
         assertThat(detail.recoveryMarker().title()).isEqualTo("회복 관찰 중");
         assertThat(detail.recoveryMarker().summary()).contains("판단 sample이 아직 부족");
-        assertThat(detail.lastHealthyAt().source()).isEqualTo("previous_active_dashboard_snapshot");
+        assertThat(detail.lastHealthyAt().source()).isEqualTo("dashboard_snapshots");
 
         String userFacingCopy = detail.marker().title() + " " + detail.marker().summary() + " "
                 + detail.marker().recommendedAction() + " " + detail.recoveryMarker().title() + " "
@@ -202,6 +218,24 @@ class DashboardSnapshotDetailServiceTest {
     private static String storedJson() {
         return """
                 {
+                  "schemaVersion": "dashboard_read_model.v1",
+                  "mode": "snapshot",
+                  "window": {"type": "recent_30_minutes"},
+                  "thresholds": {"minimumRequestCount": 30},
+                  "operatorSummary": {"headline": "저장된 degraded snapshot"},
+                  "dataQuality": {"limitations": ["baseline_comparison_not_used_for_mvp"]},
+                  "signals": {"red": {"requestCount": 120}},
+                  "stateReasons": [],
+                  "attentionEvidence": [],
+                  "firstLookCandidates": [],
+                  "readSemantics": {
+                    "source": "dashboard_snapshots.read_model_json",
+                    "snapshotDetailRecalculates": false,
+                    "markerIsStateSource": false,
+                    "baselineComparisonUsedForMvpDecision": false,
+                    "histogramBucketsUsedForPercentiles": false,
+                    "bucketDistributionSource": "accepted_bucket"
+                  },
                   "application": {"name": "orders-api"},
                   "state": {"code": "degraded"},
                   "recovery": {"isRecovering": false},

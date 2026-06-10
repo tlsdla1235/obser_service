@@ -16,7 +16,6 @@ import com.observation.portal.domain.snapshot.repository.DashboardSnapshotReposi
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -105,12 +104,9 @@ public class DashboardSnapshotDetailService {
     }
 
     private static PreviousState previousState(DashboardSnapshotSourceRow row) {
-        String source = knownState(row.stateCode())
-                ? "previous_dashboard_snapshot"
-                : "previous_dashboard_snapshot_unknown_state";
         return new PreviousState(
                 row.stateCode(),
-                source,
+                DashboardSnapshotDetailReadModel.SOURCE,
                 row.snapshotId(),
                 row.generatedAt());
     }
@@ -119,7 +115,7 @@ public class DashboardSnapshotDetailService {
         return dashboardSnapshotRepository.findPreviousActiveSnapshot(row.applicationId(), row.currentWindowEndUtc())
                 .map(sourceRow -> new LastHealthyAt(
                         sourceRow.generatedAt(),
-                        "previous_active_dashboard_snapshot",
+                        DashboardSnapshotDetailReadModel.SOURCE,
                         sourceRow.snapshotId()))
                 .orElseGet(LastHealthyAt::none);
     }
@@ -157,13 +153,4 @@ public class DashboardSnapshotDetailService {
                 applicationId);
     }
 
-    static boolean knownState(String stateCode) {
-        if (stateCode == null || stateCode.isBlank()) {
-            return false;
-        }
-        return switch (stateCode.trim().toLowerCase(Locale.ROOT)) {
-            case "active", "idle", "waiting_first_data", "degraded", "stale", "down", "unknown" -> true;
-            default -> false;
-        };
-    }
 }

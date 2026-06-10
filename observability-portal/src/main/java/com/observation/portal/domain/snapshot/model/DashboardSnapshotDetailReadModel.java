@@ -56,16 +56,24 @@ public record DashboardSnapshotDetailReadModel(
      */
     public record SnapshotReadSemantics(
             String mode,
+            String source,
+            boolean snapshotDetailRecalculates,
             boolean currentStateRecalculated,
             List<String> liveSourcesJoined,
-            boolean rawReadModelJsonExposed
+            boolean rawReadModelJsonExposed,
+            boolean markerIsStateSource,
+            boolean baselineComparisonUsedForMvpDecision
     ) {
 
         public static SnapshotReadSemantics storedSnapshotDetail() {
             return new SnapshotReadSemantics(
                     "stored_snapshot_detail",
+                    "dashboard_snapshots.read_model_json",
+                    false,
                     false,
                     List.of(),
+                    false,
+                    false,
                     false);
         }
 
@@ -76,6 +84,13 @@ public record DashboardSnapshotDetailReadModel(
             mode = requireText(mode, "mode");
             if (!"stored_snapshot_detail".equals(mode)) {
                 throw new IllegalArgumentException("mode must be stored_snapshot_detail");
+            }
+            source = requireText(source, "source");
+            if (!"dashboard_snapshots.read_model_json".equals(source)) {
+                throw new IllegalArgumentException("source must be dashboard_snapshots.read_model_json");
+            }
+            if (snapshotDetailRecalculates) {
+                throw new IllegalArgumentException("snapshotDetailRecalculates must be false");
             }
             if (currentStateRecalculated) {
                 throw new IllegalArgumentException("currentStateRecalculated must be false");
@@ -88,6 +103,12 @@ public record DashboardSnapshotDetailReadModel(
             }
             if (rawReadModelJsonExposed) {
                 throw new IllegalArgumentException("rawReadModelJsonExposed must be false");
+            }
+            if (markerIsStateSource) {
+                throw new IllegalArgumentException("markerIsStateSource must be false");
+            }
+            if (baselineComparisonUsedForMvpDecision) {
+                throw new IllegalArgumentException("baselineComparisonUsedForMvpDecision must be false");
             }
         }
     }
@@ -152,7 +173,7 @@ public record DashboardSnapshotDetailReadModel(
     ) {
 
         public static PreviousState none() {
-            return new PreviousState(null, "no_previous_snapshot_in_retention", null, null);
+            return new PreviousState(null, DashboardSnapshotDetailReadModel.SOURCE, null, null);
         }
 
         /**
@@ -174,7 +195,7 @@ public record DashboardSnapshotDetailReadModel(
     ) {
 
         public static LastHealthyAt none() {
-            return new LastHealthyAt(null, "no_previous_active_snapshot_in_retention", null);
+            return new LastHealthyAt(null, DashboardSnapshotDetailReadModel.SOURCE, null);
         }
 
         /**
@@ -224,6 +245,17 @@ public record DashboardSnapshotDetailReadModel(
      * stored `read_model_json`의 UI-facing top-level block만 담는 bounded projection이다.
      */
     public record StoredReadModel(
+            JsonNode schemaVersion,
+            JsonNode mode,
+            JsonNode window,
+            JsonNode thresholds,
+            JsonNode operatorSummary,
+            JsonNode dataQuality,
+            JsonNode signals,
+            JsonNode stateReasons,
+            JsonNode attentionEvidence,
+            JsonNode firstLookCandidates,
+            JsonNode readSemantics,
             JsonNode application,
             JsonNode state,
             JsonNode starterConnection,
@@ -234,6 +266,42 @@ public record DashboardSnapshotDetailReadModel(
             JsonNode triageCards,
             JsonNode endpointPriority
     ) {
+
+        /**
+         * legacy test/helper가 쓰는 기존 projection constructor다.
+         */
+        public StoredReadModel(
+                JsonNode application,
+                JsonNode state,
+                JsonNode starterConnection,
+                JsonNode zeroInsight,
+                JsonNode recovery,
+                JsonNode metrics,
+                JsonNode sourceScopedPercentiles,
+                JsonNode triageCards,
+                JsonNode endpointPriority) {
+            this(
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    application,
+                    state,
+                    starterConnection,
+                    zeroInsight,
+                    recovery,
+                    metrics,
+                    sourceScopedPercentiles,
+                    triageCards,
+                    endpointPriority);
+        }
     }
 
     /**
@@ -247,7 +315,7 @@ public record DashboardSnapshotDetailReadModel(
             List<EndpointEvidenceItem> items
     ) {
 
-        public static final String DEFAULT_SOURCE = "bounded_endpoint_evidence";
+        public static final String DEFAULT_SOURCE = "dashboard_snapshots.read_model_json.endpointPriority";
         public static final int DEFAULT_MAX_ITEMS = 10;
 
         /**
@@ -319,8 +387,8 @@ public record DashboardSnapshotDetailReadModel(
             List<InstanceSummaryItem> items
     ) {
 
-        public static final String DEFAULT_SCHEMA_VERSION = "1.0";
-        public static final String DEFAULT_SOURCE = "bounded_instance_summary";
+        public static final String DEFAULT_SCHEMA_VERSION = "dashboard_read_model.v1";
+        public static final String DEFAULT_SOURCE = "dashboard_snapshots.read_model_json.instanceSummary.items";
         public static final int DEFAULT_MAX_ITEMS = 50;
 
         /**

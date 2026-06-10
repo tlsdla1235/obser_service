@@ -1,5 +1,6 @@
 package com.observation.portal.domain.snapshot.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.observation.portal.common.time.AcceptedBucketFreshnessEvaluator;
 import com.observation.portal.domain.bucket.model.EndpointEvidenceRow;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -98,7 +100,25 @@ class DashboardSnapshotReadModelEnricherCutoffTest {
                 WINDOW_END))
                 .thenReturn(Optional.empty());
 
-        enricher.enrich(command());
+        DashboardSnapshotReadModelEnricher.EnrichedSnapshotReadModel enriched = enricher.enrich(command());
+        JsonNode storedReadModel = objectMapper.readTree(enriched.readModelJson());
+
+        assertThat(storedReadModel.path("schemaVersion").asText()).isEqualTo("dashboard_read_model.v1");
+        assertThat(storedReadModel.path("mode").asText()).isEqualTo("snapshot");
+        assertThat(storedReadModel.path("window").path("type").asText()).isEqualTo("recent_30_minutes");
+        assertThat(storedReadModel.path("readSemantics").path("source").asText())
+                .isEqualTo("dashboard_snapshots.read_model_json");
+        assertThat(storedReadModel.path("readSemantics").path("snapshotDetailRecalculates").asBoolean()).isFalse();
+        assertThat(storedReadModel.path("readSemantics").path("markerIsStateSource").asBoolean()).isFalse();
+        assertThat(storedReadModel.path("readSemantics").path("baselineComparisonUsedForMvpDecision").asBoolean())
+                .isFalse();
+        assertThat(storedReadModel.path("readSemantics").path("histogramBucketsUsedForPercentiles").asBoolean())
+                .isFalse();
+        assertThat(storedReadModel.path("readSemantics").path("bucketDistributionSource").asText())
+                .isEqualTo("accepted_bucket");
+        assertThat(storedReadModel.path("instanceSummary").path("schemaVersion").asText()).isEqualTo("1.0");
+        assertThat(storedReadModel.path("instanceSummary").path("source").asText())
+                .isEqualTo("bounded_instance_summary");
 
         verify(metricBucketRepository).findLatestBucketEndUtcByApplicationInstanceIdAtOrBeforeAcceptedAt(
                 INSTANCE_ID,

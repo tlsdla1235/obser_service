@@ -236,11 +236,18 @@ class DashboardReadModelServiceTest {
                 .thenReturn(Optional.of(offset("2026-05-25T10:31:30Z")));
         when(metricBucketRepository.findWindowAggregateByApplicationId(APPLICATION_ID, CURRENT_START, EVALUATION_AT))
                 .thenReturn(new WindowBucketAggregate(100L, 3L));
+        when(metricBucketRepository.findLatestRuntimeRatioEvidenceRowByApplicationId(
+                APPLICATION_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(Optional.of(runtime("2026-05-25T10:31:30Z", 0.42d, 0.63d, 0.62d)));
         when(heartbeatRepository.findLatestByApplicationScope(PROJECT_ID, "orders-api", "prod"))
                 .thenReturn(Optional.of(heartbeat("2026-05-25T10:32:15Z")));
 
         ApplicationDashboardReadModel dashboard = service.getDashboard(PROJECT_ID, APPLICATION_ID).orElseThrow();
 
+        assertThat(dashboard.schemaVersion()).isEqualTo("dashboard_read_model.v1");
+        assertThat(dashboard.mode()).isEqualTo("live");
         assertThat(dashboard.generatedAt()).isEqualTo(offset(QUERY_AT));
         assertThat(dashboard.application().projectId()).isEqualTo(PROJECT_ID);
         assertThat(dashboard.application().applicationId()).isEqualTo(APPLICATION_ID);
@@ -251,9 +258,42 @@ class DashboardReadModelServiceTest {
         assertThat(dashboard.application().sourceWindow().current().startUtc()).isEqualTo(offset(CURRENT_START));
         assertThat(dashboard.application().sourceWindow().current().endUtc()).isEqualTo(offset(EVALUATION_AT));
         assertThat(dashboard.application().sourceWindow().baseline()).isNull();
+        assertThat(dashboard.window().type()).isEqualTo("recent_30_minutes");
+        assertThat(dashboard.window().startUtc()).isEqualTo(offset(CURRENT_START));
+        assertThat(dashboard.window().endUtc()).isEqualTo(offset(EVALUATION_AT));
+        assertThat(dashboard.thresholds().minimumRequestCount()).isEqualTo(30L);
+        assertThat(dashboard.thresholds().errorRate()).isEqualByComparingTo("0.05");
         assertThat(dashboard.application().freshness().lastObservedAt()).isEqualTo(offset("2026-05-25T10:31:30Z"));
         assertThat(dashboard.application().freshness().staleAt()).isEqualTo(offset("2026-05-25T10:33:00Z"));
         assertThat(dashboard.application().freshness().downAt()).isEqualTo(offset("2026-05-25T10:34:30Z"));
+        assertThat(dashboard.operatorSummary().headline())
+                .isEqualTo("Freshness와 sample이 충분하고 degraded concern이 hysteresis 기준을 통과하지 않았습니다.");
+        assertThat(dashboard.dataQuality().state()).isEqualTo("sufficient");
+        assertThat(dashboard.dataQuality().limitations())
+                .containsExactly(
+                        "baseline_comparison_not_used_for_mvp",
+                        "sourceWindow.baseline_null_public_read_model",
+                        "histogram_missing");
+        assertThat(dashboard.readSemantics().source()).isEqualTo("accepted_metric_buckets");
+        assertThat(dashboard.readSemantics().snapshotDetailRecalculates()).isFalse();
+        assertThat(dashboard.readSemantics().markerIsStateSource()).isFalse();
+        assertThat(dashboard.readSemantics().baselineComparisonUsedForMvpDecision()).isFalse();
+        assertThat(dashboard.readSemantics().helperColumnsAreStateSource()).isFalse();
+        assertThat(dashboard.readSemantics().histogramBucketsUsedForPercentiles()).isFalse();
+        assertThat(dashboard.readSemantics().bucketDistributionSource()).isEqualTo("accepted_bucket");
+        assertThat(dashboard.readSemantics().bucketEndBoundary())
+                .isEqualTo("bucket_end_utc > window.startUtc and bucket_end_utc <= window.endUtc");
+        assertThat(dashboard.signals().red().requestCount()).isEqualTo(100L);
+        assertThat(dashboard.signals().red().errorSemantic()).isEqualTo("server_error_5xx");
+        assertThat(dashboard.signals().use().cpuUsage().max()).isEqualByComparingTo("0.42");
+        assertThat(dashboard.signals().use().cpuUsage().status()).isEqualTo("normal");
+        assertThat(dashboard.signals().use().heapUsage().max()).isEqualByComparingTo("0.63");
+        assertThat(dashboard.signals().use().heapUsage().status()).isEqualTo("normal");
+        assertThat(dashboard.signals().use().datasourcePoolUsage().max()).isEqualByComparingTo("0.62");
+        assertThat(dashboard.signals().use().datasourcePoolUsage().status()).isEqualTo("normal");
+        assertThat(dashboard.stateReasons()).isEmpty();
+        assertThat(dashboard.attentionEvidence()).isEmpty();
+        assertThat(dashboard.firstLookCandidates()).isEmpty();
         assertThat(dashboard.state().code()).isEqualTo("active");
         assertThat(dashboard.starterConnection().statusSource()).isEqualTo("starter_heartbeat");
         assertThat(dashboard.starterConnection().lastHeartbeatAt()).isEqualTo(offset("2026-05-25T10:32:15Z"));
@@ -492,6 +532,11 @@ class DashboardReadModelServiceTest {
                 .containsExactly(
                         org.assertj.core.groups.Tuple.tuple(50L, 22L),
                         org.assertj.core.groups.Tuple.tuple(100L, 42L));
+        assertThat(dashboard.sourceScopedPercentiles().source()).isEqualTo("starter_canonical_percentile");
+        assertThat(dashboard.sourceScopedPercentiles().aggregatePolicy())
+                .isEqualTo("no_average_no_max_no_merge_no_histogram_recalculation");
+        assertThat(dashboard.sourceScopedPercentiles().items()).isEmpty();
+        assertThat(dashboard.readSemantics().histogramBucketsUsedForPercentiles()).isFalse();
         assertThat(dashboard.histogramDistribution().baseline().status()).isEqualTo("unavailable");
         assertThat(dashboard.histogramDistribution().baseline().reason())
                 .isEqualTo("baseline_comparison_not_used_for_mvp");
@@ -1129,6 +1174,21 @@ class DashboardReadModelServiceTest {
         return Arrays.stream(ApplicationDashboardReadModel.Metrics.class.getRecordComponents())
                 .map(RecordComponent::getName)
                 .toList();
+    }
+
+    private static RuntimeRatioEvidenceRow runtime(
+            String bucketStartUtc,
+            double cpu,
+            double heap,
+            double datasource) {
+        OffsetDateTime start = offset(bucketStartUtc);
+        return new RuntimeRatioEvidenceRow(
+                APPLICATION_ID,
+                start,
+                start.plusSeconds(30),
+                BigDecimal.valueOf(cpu),
+                BigDecimal.valueOf(heap),
+                BigDecimal.valueOf(datasource));
     }
 
     private static LocalPercentileEvidenceRow percentileRow(

@@ -333,7 +333,18 @@ public class DashboardReadModelService {
                 triageSummary.triageCards(),
                 endpointPriority,
                 instanceEntries(application),
+                runtimeRatioEvidence(runtimeRatio),
                 null);
+    }
+
+    private static ApplicationDashboardReadModel.RuntimeRatioEvidence runtimeRatioEvidence(
+            Optional<RuntimeRatioEvidenceRow> runtimeRatio) {
+        return runtimeRatio
+                .map(row -> new ApplicationDashboardReadModel.RuntimeRatioEvidence(
+                        row.cpuUsageRatio(),
+                        row.heapUsedRatio(),
+                        row.datasourcePoolUsageRatio()))
+                .orElse(null);
     }
 
     private Optional<OffsetDateTime> findLatestBucketEndUtcByApplicationId(
