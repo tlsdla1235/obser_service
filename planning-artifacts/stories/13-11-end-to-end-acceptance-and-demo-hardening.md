@@ -5,7 +5,7 @@ storyKey: "13-11-end-to-end-acceptance-and-demo-hardening"
 epic: "Epic 13. Dashboard Source of Truth Realignment"
 title: "End-to-end Acceptance and Demo Hardening"
 architectureStyle: Traditional MVC
-status: review
+status: done
 date: 2026-06-11
 phase: P10
 workType: validation
@@ -44,11 +44,11 @@ rollbackBoundary: "acceptance fixture, demo route, smoke data, verification scri
 
 ## Status
 
-review
+done
 
 2026-06-11: P10 acceptance/demo hardening story artifact를 생성하고 sprint-status를 `ready-for-dev`로 정렬했다. 이번 create-story 컨텍스트에서는 production code, tests, frontend implementation, migration/schema, Source of Truth 문서, 완료 story 13.2~13.10 본문/status, `dbml-error.log`를 수정하지 않는다.
 2026-06-11: BMAD dev-story 검증으로 P10 acceptance/demo/smoke/guard evidence를 남기고 status를 `review`로 전환했다. Production code, migration/schema, Source of Truth 문서, 완료 story 13.2~13.10 본문/status, 기존 untracked `dbml-error.log`는 수정하지 않았다.
-2026-06-11: BMAD review finding을 반영해 demo/smoke evidence 과장을 낮추고 누락된 실행 증거를 보강했다. Full browser demo route/fixture는 아직 없어 P10 final 판정은 `Needs Follow-up`으로 분류한다.
+2026-06-11: BMAD review finding을 반영해 demo/smoke evidence 과장을 낮추고 누락된 실행 증거를 보강했다. 리뷰 승인 후 13.11 status를 `done`으로 전환하고, full browser demo route/fixture gap은 D3/follow-up handoff evidence로 남긴다.
 
 ## Story
 
@@ -311,7 +311,7 @@ GPT-5 Codex (BMAD dev-story)
 - Static grep 판정: `current_15m`, `hourly scheduled`, `generated_at <`, `created_at <`, `accepted_at <`, `live/current fallback`, `marker.*state`, `healthScore`, `rootCause`는 production user-facing/cleanup predicate 회귀로 발견되지 않았다. `accepted_at <= :snapshotCutoffAt` hit은 scheduled snapshot 후보 선정 경로이며 retention cleanup cutoff가 아니다. `healthScore`/`rootCause` hit은 guard negative field 또는 test absence assertion 문맥이다.
 - Demo/smoke evidence: local browser smoke는 별도 authenticated live fixture/demo route가 없어 실행하지 않았다. 기존 smoke bundle 중 `ProjectNavigationResourceAuthorizationTest`는 Project -> Application -> live Dashboard -> Instance Evidence auth/navigation path와 accepted bucket/starter heartbeat axis 분리를 검증하지만, Snapshot detail, selected Application Snapshot 기반 Instance Dashboard snapshot mode, retention expired path의 full browser demo를 검증하지는 않는다. 해당 Snapshot/Instance/Retention 의미는 focused backend tests와 frontend contract guard/build로 검증했다.
 - Scope guard: production code, frontend implementation, backend tests, migration/schema, Source of Truth 문서, 완료 story 13.2~13.10 본문/status, 기존 untracked `dbml-error.log`는 수정하지 않았다.
-- Final 판정: Needs Follow-up. 남은 production code blocker는 없지만 full authenticated browser demo route/fixture가 없어 Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired path를 하나의 browser smoke로 닫은 evidence는 없다. 다음 handoff는 `13-doc-3-final-planning-status-consolidation`에서 이 evidence와 demo gap을 과장 없이 반영해 planning/status 문서를 최종 정리하는 것이다.
+- Final 판정: Done. 남은 production code blocker는 없고 13.11은 review 승인 후 닫는다. 다만 full authenticated browser demo route/fixture가 없어 Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired path를 하나의 browser smoke로 닫은 evidence는 없으므로, 다음 handoff는 `13-doc-3-final-planning-status-consolidation`에서 이 evidence와 demo gap을 과장 없이 반영해 planning/status 문서를 최종 정리하는 것이다.
 
 ### File List
 
@@ -325,3 +325,4 @@ GPT-5 Codex (BMAD dev-story)
 | 2026-06-11 | P10 end-to-end acceptance/demo hardening story artifact를 생성하고 sprint-status를 `ready-for-dev`로 정렬했다. |
 | 2026-06-11 | P10 acceptance/demo/smoke/guard 검증을 완료하고 story/sprint-status를 `review`로 전환했다. |
 | 2026-06-11 | BMAD review finding에 맞춰 demo/smoke evidence 범위를 정정하고 누락된 verification evidence를 보강했다. |
+| 2026-06-11 | 리뷰 승인 후 13.11 story/sprint-status를 `done`으로 전환하고 full browser demo gap은 D3/follow-up handoff evidence로 남겼다. |
