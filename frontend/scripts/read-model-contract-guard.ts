@@ -685,6 +685,30 @@ for (const path of [
   assert.equal(/\.sort\(|\.toSorted\(|\.reduce\(/.test(source), false, `${path} must preserve server order`);
 }
 
+// Story 14.2: Live dashboard와 Snapshot/History는 tab으로 분리하지 않고 같은 main flow anchor를 유지한다.
+const dashboardSource = readFileSync("src/app/components/dashboard.tsx", "utf8");
+assert.equal(/from "\.\/ui\/tabs"/.test(dashboardSource), false, "DashboardMain must not reintroduce tab-only dashboard flow");
+assert.equal(/<Tabs|TabsList|TabsTrigger|TabsContent/.test(dashboardSource), false, "DashboardMain must keep Snapshot/History in the same flow");
+const dashboardFlowAnchors = [
+  "<DashboardContext",
+  "<DataQualityFreshnessStrip",
+  "<LifecycleStateHero",
+  "<DirectStateReasonsPanel",
+  "<AttentionAndFirstLookPanel",
+  "<EndpointResourceEvidencePanel",
+  "<MetricDetailSection",
+  "<StarterConnectionStrip",
+  "<InstancesPanel",
+  "<SnapshotHistoryPanel",
+];
+let previousDashboardAnchor = -1;
+for (const anchor of dashboardFlowAnchors) {
+  const currentDashboardAnchor = dashboardSource.indexOf(anchor);
+  assert.notEqual(currentDashboardAnchor, -1, `DashboardMain missing ${anchor}`);
+  assert.ok(currentDashboardAnchor > previousDashboardAnchor, `DashboardMain order regression at ${anchor}`);
+  previousDashboardAnchor = currentDashboardAnchor;
+}
+
 const instanceDashboardSurfaceSource = readFileSync("src/app/components/instance-dashboard-surface.tsx", "utf8");
 assert.match(instanceDashboardSurfaceSource, /buildLiveInstanceDashboardPath/);
 assert.match(instanceDashboardSurfaceSource, /buildSnapshotInstanceDashboardPath/);

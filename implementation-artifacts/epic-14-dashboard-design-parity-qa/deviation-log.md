@@ -17,12 +17,14 @@ Mockup과 실제 Vite Dashboard가 다른 모든 구조, 밀도, color/visual gr
 
 14.1에서는 production UI를 수정하지 않았고 authenticated dashboard DOM을 열 수 없어 실제 conformance deviation을 승인하지 않았다. 현재 남은 것은 evidence gap이며, 아래 "Known Evidence Gap"에 따로 둔다.
 
+14.2에서는 `DashboardMain`의 tab split을 해소해 live surface와 Snapshot/History handoff를 같은 main flow 안에 두었다. 이 변경으로 tab split deviation은 별도 승인 없이 제거됐으며, 새 allowed deviation은 추가하지 않았다.
+
 ## Known Evidence Gap
 
 | Gap | Evidence | Disposition |
 |---|---|---|
 | Full authenticated browser path 없음 | `/dashboard`는 desktop/tablet/mobile에서 HTTP 200이지만 token fixture가 없어 Project rail auth error까지만 렌더링됨 | Deviation이 아니라 QA coverage gap. 후속 fixture/runbook으로 닫아야 하며 "authenticated dashboard conformant"라고 쓰지 않는다 |
-| Mobile auth-blocked baseline horizontal overflow | `browser-baseline-observations.json`에서 mobile `bodyWidth=504`, `viewportWidth=390` | Auth-blocked state 관찰값이다. Authenticated dashboard/mobile conformance deviation으로 승인하지 않는다. 14.2~14.4에서 mobile visual QA 시 재확인 필요 |
+| Mobile auth-blocked baseline horizontal overflow | 14.1 `browser-baseline-observations.json`에서 mobile `bodyWidth=504`, `viewportWidth=390` | 14.2에서 global nav wrapping을 조정한 뒤 `browser-14-2-dashboard-shell-rails-and-live-surface-realignment-observations.json` 기준 mobile `bodyScrollWidth=390`, `viewportWidth=390`으로 auth-blocked overflow는 해소됐다. Authenticated dashboard/mobile conformance는 여전히 fixture 부재로 미검증이다 |
 
 ## Deviation Entry Template
 

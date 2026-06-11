@@ -21,12 +21,12 @@ export function Nav({ githubLoginDisabled = false, onGithubLogin, githubLoginLab
 
   return (
     <header className="border-b border-neutral-200 bg-white">
-      <div className="mx-auto max-w-7xl flex items-center justify-between px-6 h-14">
-        <Link to="/" className="flex items-center gap-2 text-neutral-900">
+      <div className="mx-auto grid min-h-14 max-w-7xl gap-2 px-3 py-2 sm:flex sm:items-center sm:justify-between sm:px-6 sm:py-0">
+        <Link to="/" className="flex min-w-0 items-center gap-2 text-neutral-900">
           <Activity className="h-5 w-5" strokeWidth={1.5} />
-          <span className="tracking-tight">Observation Portal</span>
+          <span className="truncate tracking-tight">Observation Portal</span>
         </Link>
-        <nav className="flex items-center gap-1">
+        <nav className="flex min-w-0 flex-wrap items-center gap-1">
           <Link to="/dashboard" className={linkCls(pathname.startsWith("/dashboard"))}>
             <LayoutDashboard className="h-4 w-4" strokeWidth={1.5} />
             <span>Dashboard</span>
@@ -38,7 +38,7 @@ export function Nav({ githubLoginDisabled = false, onGithubLogin, githubLoginLab
           <Button
             variant="outline"
             size="sm"
-            className="ml-3 gap-2 border-neutral-300"
+            className="gap-2 border-neutral-300 sm:ml-3"
             disabled={githubLoginDisabled}
             onClick={onGithubLogin}
           >

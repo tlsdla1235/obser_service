@@ -1,0 +1,150 @@
+{
+  "generatedAt": "2026-06-11T09:12:24.554Z",
+  "url": "http://127.0.0.1:5173/dashboard",
+  "results": [
+    {
+      "name": "desktop",
+      "width": 1440,
+      "height": 1000,
+      "screenshot": "/Users/tlsdla1235/study/obser_service/implementation-artifacts/epic-14-dashboard-design-parity-qa/current-14-2-dashboard-auth-blocked-desktop-1440x1000.png",
+      "metrics": {
+        "authBlocked": true,
+        "bodyScrollWidth": 1440,
+        "boxes": [
+          {
+            "height": 896,
+            "tag": "aside",
+            "text": "Projects인증 필요GitHub 로그인 후 사용할 수 있습니다. 다시 시도 Project 등록open",
+            "width": 233,
+            "x": 20,
+            "y": 106
+          },
+          {
+            "height": 896,
+            "tag": "aside",
+            "text": "ApplicationsProject 선택 대기Project 목록이 로드되면 application link를 통해 다음 목록을 불러옵니다.",
+            "width": 350,
+            "x": 253,
+            "y": 106
+          },
+          {
+            "height": 896,
+            "tag": "main",
+            "text": "Project를 선택하세요Project 목록이 로드된 뒤 application 목록을 불러옵니다.",
+            "width": 817,
+            "x": 603,
+            "y": 106
+          }
+        ],
+        "documentScrollWidth": 1440,
+        "hasHorizontalPageScroll": false,
+        "overflowing": [],
+        "viewportHeight": 1000,
+        "viewportWidth": 1440,
+        "visibleSignals": {
+          "applications": false,
+          "dashboardLive": false,
+          "projects": true,
+          "snapshotHistory": false,
+          "tabsCurrent": false
+        }
+      }
+    },
+    {
+      "name": "tablet",
+      "width": 1024,
+      "height": 900,
+      "screenshot": "/Users/tlsdla1235/study/obser_service/implementation-artifacts/epic-14-dashboard-design-parity-qa/current-14-2-dashboard-auth-blocked-tablet-1024x900.png",
+      "metrics": {
+        "authBlocked": true,
+        "bodyScrollWidth": 1024,
+        "boxes": [
+          {
+            "height": 298,
+            "tag": "aside",
+            "text": "Projects인증 필요GitHub 로그인 후 사용할 수 있습니다. 다시 시도 Project 등록open",
+            "width": 455,
+            "x": 0,
+            "y": 106
+          },
+          {
+            "height": 298,
+            "tag": "aside",
+            "text": "ApplicationsProject 선택 대기Project 목록이 로드되면 application link를 통해 다음 목록을 불러옵니다.",
+            "width": 569,
+            "x": 455,
+            "y": 106
+          },
+          {
+            "height": 165,
+            "tag": "main",
+            "text": "Project를 선택하세요Project 목록이 로드된 뒤 application 목록을 불러옵니다.",
+            "width": 1024,
+            "x": 0,
+            "y": 404
+          }
+        ],
+        "documentScrollWidth": 1024,
+        "hasHorizontalPageScroll": false,
+        "overflowing": [],
+        "viewportHeight": 900,
+        "viewportWidth": 1024,
+        "visibleSignals": {
+          "applications": false,
+          "dashboardLive": false,
+          "projects": true,
+          "snapshotHistory": false,
+          "tabsCurrent": false
+        }
+      }
+    },
+    {
+      "name": "mobile",
+      "width": 390,
+      "height": 844,
+      "screenshot": "/Users/tlsdla1235/study/obser_service/implementation-artifacts/epic-14-dashboard-design-parity-qa/current-14-2-dashboard-auth-blocked-mobile-390x844.png",
+      "metrics": {
+        "authBlocked": true,
+        "bodyScrollWidth": 390,
+        "boxes": [
+          {
+            "height": 298,
+            "tag": "aside",
+            "text": "Projects인증 필요GitHub 로그인 후 사용할 수 있습니다. 다시 시도 Project 등록open",
+            "width": 390,
+            "x": 0,
+            "y": 164
+          },
+          {
+            "height": 173,
+            "tag": "aside",
+            "text": "ApplicationsProject 선택 대기Project 목록이 로드되면 application link를 통해 다음 목록을 불러옵니다.",
+            "width": 390,
+            "x": 0,
+            "y": 461
+          },
+          {
+            "height": 185,
+            "tag": "main",
+            "text": "Project를 선택하세요Project 목록이 로드된 뒤 application 목록을 불러옵니다.",
+            "width": 390,
+            "x": 0,
+            "y": 634
+          }
+        ],
+        "documentScrollWidth": 390,
+        "hasHorizontalPageScroll": false,
+        "overflowing": [],
+        "viewportHeight": 844,
+        "viewportWidth": 390,
+        "visibleSignals": {
+          "applications": false,
+          "dashboardLive": false,
+          "projects": true,
+          "snapshotHistory": false,
+          "tabsCurrent": false
+        }
+      }
+    }
+  ]
+}

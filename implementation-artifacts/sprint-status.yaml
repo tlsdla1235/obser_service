@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-06-11T17:38:25+0900
+# last_updated: 2026-06-11T18:32:48+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -71,7 +71,7 @@
 # - Epic 14 상세 planning source는 planning-artifacts/epic-14-dashboard-mockup-design-parity.md이며, story 파일은 구현 착수 시 필요하면 14-1 -> 14-4로 승격한다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-06-11T17:38:25+0900
+last_updated: 2026-06-11T18:32:48+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -190,7 +190,7 @@ development_status:
 
   epic-14: in-progress
   14-1-design-parity-baseline-and-visual-guardrails: done
-  14-2-dashboard-shell-rails-and-live-surface-realignment: backlog
+  14-2-dashboard-shell-rails-and-live-surface-realignment: done
   14-3-snapshot-history-detail-and-retention-surface-realignment: backlog
   14-4-instance-wide-modal-and-end-to-end-visual-qa: backlog
   epic-14-retrospective: optional

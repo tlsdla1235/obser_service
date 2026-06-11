@@ -32,3 +32,19 @@ Authenticated Project rail, Application rail, Main live surface, Snapshot picker
 ## Follow-up
 
 14.2~14.4 must add authenticated or fixture-backed desktop screenshots. If fixture remains unavailable, completion notes must keep this as a known gap and must not claim desktop conformance.
+
+## 14.2 Update - Dashboard Shell/Rails/Live Surface
+
+- Current Vite evidence: `current-14-2-dashboard-auth-blocked-desktop-1440x1000.png`
+- Observation JSON: `browser-14-2-dashboard-shell-rails-and-live-surface-realignment-observations.json`
+- Result: `/dashboard` still renders auth-blocked state only. Full authenticated Project/Application/Main live surface path is not proven.
+- Shell evidence in auth-blocked state: Project rail / Application rail / Main appear as 3 columns with measured widths `233 / 350 / 817`, no horizontal page scroll, no overflowing text candidates.
+- Code/guard evidence: `DashboardMain` no longer imports or renders `Tabs`; `SnapshotHistoryPanel` remains in the same main flow after live instance entry.
+
+| Area | 14.2 Judgment | Note |
+|---|---|---|
+| Desktop shell hierarchy | conformant in auth-blocked shell, coverage gap for authenticated data | 3-column rail/main composition is visible before auth data |
+| Project rail density | coverage gap | Auth error row only; compact authenticated project rows verified by code/static review, not browser fixture |
+| Application rail density | coverage gap | Project not selected; compact authenticated application rows verified by code/static review, not browser fixture |
+| Main live surface order | coverage gap + guard evidence | Authenticated surface not rendered; static sentinel guards context -> data quality -> lifecycle -> reasons -> attention -> evidence -> metric -> starter -> instance -> Snapshot/History order |
+| Snapshot/History anchor | guard evidence | Tab split removed; same-flow anchor preserved in `DashboardMain` |

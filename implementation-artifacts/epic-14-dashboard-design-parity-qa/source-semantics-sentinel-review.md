@@ -36,7 +36,7 @@ Story 14.1은 production guard를 확장하지 않고, 기존 sentinel이 Epic 1
 
 14.1 did not add production guard code. 후속 story에서 필요하면 아래 fixture/static sentinel을 추가한다.
 
-- 14.2: desktop shell/rail/main conformance fixture or static selector note that detects a tab-only flow hiding Snapshot/History from the main hierarchy, if implementation keeps tabs.
+- 14.2: desktop shell/rail/main conformance fixture or static selector note that detects a tab-only flow hiding Snapshot/History from the main hierarchy, if implementation keeps tabs. 14.2 implementation update: tab split was removed, and `frontend/scripts/read-model-contract-guard.ts` now statically asserts no `Tabs`/`TabsList`/`TabsTrigger`/`TabsContent` in `DashboardMain` and checks live surface anchor order through `SnapshotHistoryPanel`.
 - 14.3: retention expired/source absence browser fixture that proves no live/current fallback CTA appears in Snapshot detail and date/slot error state.
 - 14.3: mobile slot grid visual sentinel note for 48-slot wrapping and clipped label checks.
 - 14.4: wide modal visual sentinel for `1120px`-class width, sticky header, normalized endpoint table overflow, and no narrow Sheet for live/snapshot detail.
