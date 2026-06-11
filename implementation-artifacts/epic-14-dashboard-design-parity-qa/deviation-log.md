@@ -26,6 +26,12 @@ Mockup과 실제 Vite Dashboard가 다른 모든 구조, 밀도, color/visual gr
 | Full authenticated browser path 없음 | `/dashboard`는 desktop/tablet/mobile에서 HTTP 200이지만 token fixture가 없어 Project rail auth error까지만 렌더링됨 | Deviation이 아니라 QA coverage gap. 후속 fixture/runbook으로 닫아야 하며 "authenticated dashboard conformant"라고 쓰지 않는다 |
 | Mobile auth-blocked baseline horizontal overflow | 14.1 `browser-baseline-observations.json`에서 mobile `bodyWidth=504`, `viewportWidth=390` | 14.2에서 global nav wrapping을 조정한 뒤 `browser-14-2-dashboard-shell-rails-and-live-surface-realignment-observations.json` 기준 mobile `bodyScrollWidth=390`, `viewportWidth=390`으로 auth-blocked overflow는 해소됐다. Authenticated dashboard/mobile conformance는 여전히 fixture 부재로 미검증이다 |
 
+## Recorded Responsive Deviations
+
+| ID | Viewport | Mockup element | Physical constraint | Chosen adaptation | Allowed category | Reviewer decision | Follow-up owner |
+|---|---|---|---|---|---|---|---|
+| R-20260611-143-001 | mobile `390x844` | `.slot-grid` desktop 8-column 48-slot drilldown | 390px 폭에서는 8열을 유지하면 slot label과 time이 겹치거나 page overflow를 만들 수 있음 | Production `SnapshotHistoryPanel`은 reading order를 유지하면서 mobile 4-column, tablet 6-column, desktop 8-column grid로 전환한다 | 2 | Approved - Story 14.3 code/static guard 기준. Authenticated visual fixture 부재로 browser proof는 coverage gap 유지 | 14.3 / 14.4 authenticated visual QA |
+
 ## Deviation Entry Template
 
 | ID | Mockup element | Production element | Reason | Allowed category | Reviewer decision | Follow-up owner |

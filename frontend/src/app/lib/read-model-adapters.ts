@@ -320,6 +320,93 @@ export function buildSnapshotHistoryPaths(projectId: string, applicationId: stri
   };
 }
 
+/**
+ * Snapshot date map은 currentWindowEndUtc end-boundary를 기준으로 날짜를 나눈다.
+ * 정확한 00:00Z boundary는 새 날짜 00:00이 아니라 전날 24:00 slot으로 표시한다.
+ */
+export function snapshotSlotDayKey(value: string): string {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return "invalid-date";
+  }
+  const date = new Date(parsed);
+  if (date.getUTCHours() === 0 && date.getUTCMinutes() === 0 && date.getUTCSeconds() === 0 && date.getUTCMilliseconds() === 0) {
+    return snapshotUtcDateKey(new Date(date.getTime() - 24 * 60 * 60 * 1000));
+  }
+  return snapshotUtcDayKey(value);
+}
+
+/**
+ * 14일 retention date map의 day key를 최신 slot day부터 과거 방향으로 만든다.
+ * horizon.until이 00:00Z이면 slot day 기준 전날을 최신 날짜로 삼아 marker bucketing과 맞춘다.
+ */
+export function snapshotRetentionDayKeys(until: string, days: number): string[] {
+  const endKey = snapshotSlotDayKey(until);
+  if (endKey === "invalid-date") {
+    return [];
+  }
+  const end = snapshotUtcDayStart(`${endKey}T00:00:00Z`);
+  if (!end) {
+    return [];
+  }
+  const keys: string[] = [];
+  for (let offset = 0; offset < days; offset += 1) {
+    const cursor = new Date(end.getTime() - offset * 24 * 60 * 60 * 1000);
+    keys.push(snapshotUtcDateKey(cursor));
+  }
+  return keys;
+}
+
+/**
+ * currentWindowEndUtc end-boundary를 0~47 slot index로 변환한다.
+ * API guard가 30분 boundary만 통과시키므로 이 함수는 표시용 index 계산만 담당한다.
+ */
+export function snapshotSlotIndexFromWindowEndUtc(value: string): number {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return -1;
+  }
+  const date = new Date(parsed);
+  const endMinutes = date.getUTCHours() * 60 + date.getUTCMinutes();
+  const normalizedEndMinutes = endMinutes === 0 ? 24 * 60 : endMinutes;
+  return Math.floor(normalizedEndMinutes / 30) - 1;
+}
+
+/**
+ * slot index를 end-boundary label로 표시한다.
+ * 첫 slot은 00:30Z, 마지막 slot은 다음 날짜 00:00Z가 아니라 24:00Z로 표시한다.
+ */
+export function snapshotSlotTimeLabel(slotIndex: number): string {
+  const totalMinutes = (slotIndex + 1) * 30;
+  if (totalMinutes === 24 * 60) {
+    return "24:00Z";
+  }
+  const hour = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
+  const minute = String(totalMinutes % 60).padStart(2, "0");
+  return `${hour}:${minute}Z`;
+}
+
+function snapshotUtcDayStart(value: string): Date | null {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  const date = new Date(parsed);
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+function snapshotUtcDayKey(value: string): string {
+  const start = snapshotUtcDayStart(value);
+  return start ? snapshotUtcDateKey(start) : "invalid-date";
+}
+
+function snapshotUtcDateKey(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function buildSnapshotDetailPath(projectId: string, applicationId: string, snapshotId: string): string {
   return `/api/projects/${safePathComponent(projectId)}/applications/${safePathComponent(applicationId)}/dashboard/snapshots/${safePathComponent(snapshotId)}`;
 }

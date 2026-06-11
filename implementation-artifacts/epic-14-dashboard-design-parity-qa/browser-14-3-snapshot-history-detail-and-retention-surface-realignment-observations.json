@@ -1,0 +1,60 @@
+{
+  "generatedAt": "2026-06-11T09:58:26.710Z",
+  "observations": [
+    {
+      "name": "desktop",
+      "width": 1440,
+      "height": 1000,
+      "bodyScrollHeight": 1002,
+      "bodyScrollWidth": 1440,
+      "documentScrollWidth": 1440,
+      "hasAuthRequiredText": true,
+      "hasHorizontalOverflow": false,
+      "hasRetentionCopy": false,
+      "hasSelectedSnapshotSummaryText": false,
+      "hasSnapshotHistoryText": false,
+      "viewportHeight": 1000,
+      "viewportWidth": 1440,
+      "screenshot": "/Users/tlsdla1235/study/obser_service/implementation-artifacts/epic-14-dashboard-design-parity-qa/current-14-3-dashboard-auth-blocked-desktop-1440x1000.png",
+      "route": "http://127.0.0.1:5173/dashboard",
+      "scope": "auth-blocked shell only"
+    },
+    {
+      "name": "tablet",
+      "width": 1024,
+      "height": 900,
+      "bodyScrollHeight": 901,
+      "bodyScrollWidth": 1024,
+      "documentScrollWidth": 1024,
+      "hasAuthRequiredText": true,
+      "hasHorizontalOverflow": false,
+      "hasRetentionCopy": false,
+      "hasSelectedSnapshotSummaryText": false,
+      "hasSnapshotHistoryText": false,
+      "viewportHeight": 900,
+      "viewportWidth": 1024,
+      "screenshot": "/Users/tlsdla1235/study/obser_service/implementation-artifacts/epic-14-dashboard-design-parity-qa/current-14-3-dashboard-auth-blocked-tablet-1024x900.png",
+      "route": "http://127.0.0.1:5173/dashboard",
+      "scope": "auth-blocked shell only"
+    },
+    {
+      "name": "mobile",
+      "width": 390,
+      "height": 844,
+      "bodyScrollHeight": 875,
+      "bodyScrollWidth": 390,
+      "documentScrollWidth": 390,
+      "hasAuthRequiredText": true,
+      "hasHorizontalOverflow": false,
+      "hasRetentionCopy": false,
+      "hasSelectedSnapshotSummaryText": false,
+      "hasSnapshotHistoryText": false,
+      "viewportHeight": 844,
+      "viewportWidth": 390,
+      "screenshot": "/Users/tlsdla1235/study/obser_service/implementation-artifacts/epic-14-dashboard-design-parity-qa/current-14-3-dashboard-auth-blocked-mobile-390x844.png",
+      "route": "http://127.0.0.1:5173/dashboard",
+      "scope": "auth-blocked shell only"
+    }
+  ],
+  "authenticatedSnapshotPath": "not exercised: no authenticated browser fixture/token available"
+}

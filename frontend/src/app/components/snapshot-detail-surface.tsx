@@ -135,25 +135,37 @@ export function SnapshotDetailSurface({
 
   return (
     <div className={`border border-neutral-200 bg-white ${compact ? "text-[12px]" : "text-[13px]"}`}>
-      <div className="border-b border-neutral-200 px-3 py-2.5">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 text-[11px] uppercase text-neutral-500">
-            <FileSearch className="h-3.5 w-3.5" strokeWidth={1.5} />
-            Application Snapshot Dashboard
+      <div className="border-b border-neutral-200 p-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <SectionLabel icon={FileSearch}>Application Dashboard / Snapshot</SectionLabel>
+            <h2 className="mt-1 text-base font-semibold text-neutral-950">Stored Application Snapshot Dashboard</h2>
+            <p className="mt-1 text-[12px] text-neutral-500">
+              dashboard_snapshots.read_model_json에 저장된 과거 dashboard surface를 복원합니다. 현재 metric으로 state/evidence를 보정하지 않습니다.
+            </p>
           </div>
-          <StatusBadge className={statusBadgeClassName(storedDashboard.mode)}>{`mode=${storedDashboard.mode}`}</StatusBadge>
+          <div className="flex flex-wrap gap-1.5">
+            <StatusBadge className={statusBadgeClassName(storedDashboard.mode)}>{`mode=${storedDashboard.mode}`}</StatusBadge>
+            <StatusBadge>{`source=${detail.readSemantics.source}`}</StatusBadge>
+          </div>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-2 border-b border-neutral-100 p-3 text-[11px] md:grid-cols-4">
+      <div className="border-b border-neutral-100 bg-neutral-50 px-3 py-2 text-[12px] text-neutral-600">
+        capturedAt={formatOptionalDateTime(detail.snapshot.capturedAt)} · window={formatDateRange(detail.snapshot.currentWindow.startUtc, detail.snapshot.currentWindow.endUtc)} · markerBucket={humanizeStatusCode(detail.marker.type)}은 탐색 색인입니다.
+      </div>
+      <div className="grid grid-cols-1 gap-2 border-b border-neutral-100 p-3 text-[11px] sm:grid-cols-2 lg:grid-cols-4">
+        <InfoCell label="mode" value={storedDashboard.mode} />
         <InfoCell label="source" value={detail.readSemantics.source} />
-        <InfoCell label="스냅샷 ID" value={detail.snapshot.snapshotId} />
-        <InfoCell label="저장 시각" value={formatOptionalDateTime(detail.snapshot.capturedAt)} />
+        <InfoCell label="snapshotId" value={detail.snapshot.snapshotId} />
+        <InfoCell label="capturedAt" value={formatOptionalDateTime(detail.snapshot.capturedAt)} />
+        <InfoCell label="generatedAt" value={formatOptionalDateTime(detail.snapshot.generatedAt)} />
+        <InfoCell label="currentWindowStartUtc" value={formatOptionalDateTime(detail.snapshot.currentWindow.startUtc)} />
         <InfoCell label="currentWindowEndUtc" value={formatOptionalDateTime(detail.snapshot.currentWindow.endUtc)} />
         <InfoCell label="window" value={formatDateRange(detail.snapshot.currentWindow.startUtc, detail.snapshot.currentWindow.endUtc)} />
+        <InfoCell label="captureReason" value={humanizeCaptureReason(detail.snapshot.captureReason)} />
         <InfoCell label="snapshotDetailRecalculates" value={String(detail.readSemantics.snapshotDetailRecalculates)} />
         <InfoCell label="currentStateRecalculated" value={String(detail.readSemantics.currentStateRecalculated)} />
         <InfoCell label="markerIsStateSource" value={String(detail.readSemantics.markerIsStateSource)} />
-        <InfoCell label="저장 이유" value={humanizeCaptureReason(detail.snapshot.captureReason)} />
       </div>
       <div className="grid gap-3 border-b border-neutral-100 p-3 lg:grid-cols-3">
         <section className="border border-neutral-200 bg-white p-3">
@@ -533,7 +545,7 @@ function InfoCell({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
       <div className="text-neutral-500">{label}</div>
-      <div className="truncate text-neutral-900">{value}</div>
+      <div className="break-words text-neutral-900">{value}</div>
     </div>
   );
 }

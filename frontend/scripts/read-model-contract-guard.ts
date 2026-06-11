@@ -23,10 +23,16 @@ import {
   guardInstanceSnapshotTrendReadModel,
   guardSnapshotDetailReadModel,
   guardSnapshotHistoryReadModels,
+  guardSnapshotMarkerReadModel,
 } from "../src/app/lib/read-model-contract-guard.js";
 import {
   buildLiveInstanceDashboardPath,
   buildSnapshotInstanceDashboardPath,
+  HISTORY_PRESET_QUERY,
+  snapshotRetentionDayKeys,
+  snapshotSlotDayKey,
+  snapshotSlotIndexFromWindowEndUtc,
+  snapshotSlotTimeLabel,
   toDashboardPresentation,
   toDisplayLatencyBuckets,
   validateLiveInstanceDashboardPath,
@@ -267,6 +273,21 @@ assert.notEqual(
   guardedHistory.markers.markers[1].storedApplicationStateCode,
   "markerBucket은 stored state source가 아니어야 한다",
 );
+const guardedMarkerOnly = guardSnapshotMarkerReadModel(snapshotMarkersContractFixture, {
+  applicationId: CONTRACT_APPLICATION_ID,
+  markerLimit: HISTORY_PRESET_QUERY["24h"].markerLimit,
+  preset: "24h",
+});
+assert.equal(guardedMarkerOnly.markers, snapshotMarkersContractFixture.markers);
+assert.deepEqual(snapshotRetentionDayKeys("2026-06-09T00:00:00Z", 3), ["2026-06-08", "2026-06-07", "2026-06-06"]);
+assert.deepEqual(snapshotRetentionDayKeys("2026-06-09T00:30:00Z", 3), ["2026-06-09", "2026-06-08", "2026-06-07"]);
+assert.equal(snapshotSlotDayKey("2026-06-09T00:00:00Z"), "2026-06-08");
+assert.equal(snapshotSlotDayKey("2026-06-09T00:30:00Z"), "2026-06-09");
+assert.equal(snapshotSlotIndexFromWindowEndUtc("2026-06-09T00:00:00Z"), 47);
+assert.equal(snapshotSlotIndexFromWindowEndUtc("2026-06-09T00:30:00Z"), 0);
+assert.equal(snapshotSlotIndexFromWindowEndUtc("2026-06-09T23:30:00Z"), 46);
+assert.equal(snapshotSlotTimeLabel(0), "00:30Z");
+assert.equal(snapshotSlotTimeLabel(47), "24:00Z");
 assert.throws(
   () =>
     guardSnapshotHistoryReadModels(
@@ -726,9 +747,32 @@ assert.match(instancePanelsSource, /snapshot-dashboard/);
 assert.match(instancePanelsSource, /dashboard_snapshots\.read_model_json\.instanceSummary\.items\[\] stored projection/);
 
 const snapshotDetailSurfaceSource = readFileSync("src/app/components/snapshot-detail-surface.tsx", "utf8");
+const snapshotHistoryPanelSource = readFileSync("src/app/components/snapshot-history-panel.tsx", "utf8");
+assert.match(snapshotHistoryPanelSource, /scheduled points/);
+assert.match(snapshotHistoryPanelSource, /48\/day/);
+assert.match(snapshotHistoryPanelSource, /default view/);
+assert.match(snapshotHistoryPanelSource, /cleanup/);
+assert.match(snapshotHistoryPanelSource, /Selected snapshot summary/);
+assert.match(snapshotHistoryPanelSource, /currentWindowEndUtc/);
+assert.match(snapshotHistoryPanelSource, /30분 정기 저장/);
+assert.match(snapshotHistoryPanelSource, /Secondary server marker order/);
+assert.match(snapshotHistoryPanelSource, /buildSnapshotHistoryPaths\(selectedProject\.projectId, selectedApplication\.applicationId, "14d"\)/);
+assert.match(snapshotHistoryPanelSource, /guardSnapshotMarkerReadModel/);
+assert.match(snapshotHistoryPanelSource, /retentionMarkers/);
+assert.match(snapshotHistoryPanelSource, /snapshotRetentionDayKeys\(markers\.horizon\.until, SNAPSHOT_RETENTION_DAYS\)/);
+assert.match(snapshotHistoryPanelSource, /snapshotSlotDayKey\(marker\.currentWindowEndUtc\)/);
+assert.match(snapshotHistoryPanelSource, /snapshotSlotIndexFromWindowEndUtc\(marker\.currentWindowEndUtc\)/);
+assert.match(snapshotHistoryPanelSource, /snapshotSlotTimeLabel\(slotIndex\)/);
+assert.equal(/raw snapshot|endpoint timeseries|arbitrary query|retention fallback|current fallback/.test(snapshotHistoryPanelSource), false);
+assert.equal(/현재 dashboard 보기|현재 상태로 대체|current dashboard fallback|live\/current fallback/.test(snapshotHistoryPanelSource), false);
+assert.match(snapshotDetailSurfaceSource, /Application Dashboard \/ Snapshot/);
+assert.match(snapshotDetailSurfaceSource, /dashboard_snapshots\.read_model_json에 저장된 과거 dashboard surface/);
+assert.match(snapshotDetailSurfaceSource, /currentWindowStartUtc/);
 assert.match(snapshotDetailSurfaceSource, /보관 기간이 지났거나 저장된 snapshot을 찾을 수 없습니다/);
 assert.match(snapshotDetailSurfaceSource, /live dashboard\/current accepted bucket으로 복원하지 않습니다/);
 assert.match(snapshotDetailSurfaceSource, /Instance Dashboard snapshot detail의 필수 source로 사용하지 않습니다/);
 assert.match(snapshotDetailSurfaceSource, /Instance snapshot dashboard/);
+assert.equal(/raw snapshot|endpoint timeseries|arbitrary query|retention fallback|current fallback/.test(snapshotDetailSurfaceSource), false);
+assert.equal(/현재 dashboard 보기|현재 상태로 대체|current dashboard fallback|live\/current fallback/.test(snapshotDetailSurfaceSource), false);
 
 console.log("read-model contract guard fixtures passed");

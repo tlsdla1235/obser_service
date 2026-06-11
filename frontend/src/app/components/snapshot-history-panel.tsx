@@ -3,7 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import { CalendarDays, Clock3, FileSearch, History, RefreshCw } from "lucide-react";
 import { ApiRequestError, AuthRequiredError, NO_STORE_REQUEST_OPTIONS, readJsonResource } from "../lib/api";
 import { type AuthFetch } from "../lib/auth";
-import { guardSnapshotHistoryReadModels } from "../lib/read-model-contract-guard";
+import { guardSnapshotHistoryReadModels, guardSnapshotMarkerReadModel } from "../lib/read-model-contract-guard";
 import { useApiResource } from "../lib/use-api-resource";
 import {
   buildSnapshotHistoryPaths,
@@ -14,6 +14,10 @@ import {
   humanizeCaptureReason,
   humanizeOrderCode,
   humanizeStatusCode,
+  snapshotRetentionDayKeys,
+  snapshotSlotDayKey,
+  snapshotSlotIndexFromWindowEndUtc,
+  snapshotSlotTimeLabel,
   severityBadgeClassName,
   severityDisplayText,
   type ApplicationPresentationItem,
@@ -32,11 +36,11 @@ import { Button } from "./ui/button";
 
 const SNAPSHOT_RETENTION_DAYS = 14;
 const HALF_HOUR_SLOT_COUNT = 48;
-const SLOT_MINUTES = 30;
 
 type SnapshotHistoryModel = {
   events: OperationalEventHistoryReadModel;
   markers: DashboardSnapshotMarkerReadModel;
+  retentionMarkers: DashboardSnapshotMarkerReadModel;
 };
 
 type SnapshotDateCell = {
@@ -105,7 +109,8 @@ export function SnapshotHistoryPanel({
   const requestHistory = useCallback(
     async ({ authFetch, signal }: { authFetch: AuthFetch; signal: AbortSignal }) => {
       const paths = buildSnapshotHistoryPaths(selectedProject.projectId, selectedApplication.applicationId, preset);
-      const [eventsResponse, markersResponse] = await Promise.all([
+      const retentionPaths = buildSnapshotHistoryPaths(selectedProject.projectId, selectedApplication.applicationId, "14d");
+      const [eventsResponse, markersResponse, retentionMarkersResponse] = await Promise.all([
         authFetch(paths.events, {
           ...NO_STORE_REQUEST_OPTIONS,
           signal,
@@ -114,15 +119,32 @@ export function SnapshotHistoryPanel({
           ...NO_STORE_REQUEST_OPTIONS,
           signal,
         }),
+        preset === "14d"
+          ? Promise.resolve(null)
+          : authFetch(retentionPaths.markers, {
+              ...NO_STORE_REQUEST_OPTIONS,
+              signal,
+            }),
       ]);
       const events = await readJsonResource<OperationalEventHistoryReadModel>(eventsResponse);
       const markers = await readJsonResource<DashboardSnapshotMarkerReadModel>(markersResponse);
-      return guardSnapshotHistoryReadModels(events, markers, {
+      const guardedHistory = guardSnapshotHistoryReadModels(events, markers, {
         applicationId: selectedApplication.applicationId,
         eventLimit: HISTORY_PRESET_QUERY[preset].eventLimit,
         markerLimit: HISTORY_PRESET_QUERY[preset].markerLimit,
         preset,
       });
+      const retentionMarkers = retentionMarkersResponse
+        ? guardSnapshotMarkerReadModel(await readJsonResource<DashboardSnapshotMarkerReadModel>(retentionMarkersResponse), {
+            applicationId: selectedApplication.applicationId,
+            markerLimit: HISTORY_PRESET_QUERY["14d"].markerLimit,
+            preset: "14d",
+          })
+        : guardedHistory.markers;
+      return {
+        ...guardedHistory,
+        retentionMarkers,
+      };
     },
     [preset, selectedApplication.applicationId, selectedProject.projectId],
   );
@@ -171,6 +193,7 @@ export function SnapshotHistoryPanel({
           <SnapshotHistoryReady
             events={history.events}
             markers={history.markers}
+            retentionMarkers={history.retentionMarkers}
             onSelectDay={(dayKey) => {
               setSelectedDayKey(dayKey);
               setSelectedSlotKey(null);
@@ -206,6 +229,7 @@ export function SnapshotHistoryPanel({
 function SnapshotHistoryReady({
   events,
   markers,
+  retentionMarkers,
   onSelectDay,
   onSelectEvent,
   onSelectMarker,
@@ -215,6 +239,7 @@ function SnapshotHistoryReady({
 }: {
   events: OperationalEventHistoryReadModel;
   markers: DashboardSnapshotMarkerReadModel;
+  retentionMarkers: DashboardSnapshotMarkerReadModel;
   onSelectDay: (dayKey: string) => void;
   onSelectEvent: (target: SnapshotDetailTarget) => void;
   onSelectMarker: (marker: DashboardSnapshotMarkerItem) => void;
@@ -223,21 +248,44 @@ function SnapshotHistoryReady({
   selectedSlotKey: string | null;
 }) {
   const dateMap = useMemo(
-    () => buildSnapshotDateMap(markers, selectedDayKey),
-    [markers, selectedDayKey],
+    () => buildSnapshotDateMap(retentionMarkers, selectedDayKey),
+    [retentionMarkers, selectedDayKey],
   );
   const slotCells = useMemo(
-    () => buildSnapshotSlotCells(markers, dateMap.selectedDay?.key ?? null, selectedSlotKey),
-    [dateMap.selectedDay?.key, markers, selectedSlotKey],
+    () => buildSnapshotSlotCells(retentionMarkers, dateMap.selectedDay?.key ?? null, selectedSlotKey),
+    [dateMap.selectedDay?.key, retentionMarkers, selectedSlotKey],
+  );
+  const selectedMarker = useMemo(
+    () =>
+      retentionMarkers.markers.find((marker) => marker.snapshotId === selectedSlotKey) ??
+      markers.markers.find((marker) => marker.snapshotId === selectedSlotKey) ??
+      null,
+    [markers.markers, retentionMarkers.markers, selectedSlotKey],
   );
 
   return (
     <>
-      <div className="grid gap-2 md:grid-cols-4">
-        <InfoCell label="보관 한도" value={`${SNAPSHOT_RETENTION_DAYS}일 retention`} />
-        <InfoCell label="scheduled cadence" value="30분 정기 저장" />
-        <InfoCell label="marker limit" value={`${HISTORY_PRESET_QUERY[preset].markerLimit} point`} />
-        <InfoCell label="slot 기준" value="currentWindowEndUtc" />
+      <div className="space-y-2 border border-neutral-200 bg-white p-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <SectionLabel icon={History}>Snapshot / History</SectionLabel>
+            <p className="mt-1 text-[12px] text-neutral-500">
+              markerBucket은 state가 아니라 30분 dashboard point 탐색 색인입니다. detail은 stored read model에서만 복원합니다.
+            </p>
+          </div>
+          <StatusBadge>{`default ${HISTORY_PRESET_QUERY["24h"].since}`}</StatusBadge>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+          <InfoCell label="retention" value={`${SNAPSHOT_RETENTION_DAYS}일`} />
+          <InfoCell label="scheduled points" value={`${SNAPSHOT_RETENTION_DAYS * HALF_HOUR_SLOT_COUNT} point`} />
+          <InfoCell label="cadence" value="30분 정기 저장" />
+          <InfoCell label="per day" value="48/day" />
+          <InfoCell label="default view" value="24h" />
+          <InfoCell label="cleanup" value="14일 이후 만료" />
+        </div>
+        <p className="text-[11px] text-neutral-500">
+          날짜/slot map은 14일 retention marker query 기준입니다. 현재 preset은 보조 event/server marker list를 API query limit {HISTORY_PRESET_QUERY[preset].markerLimit}개로 좁히며, 보관 기간 밖 snapshot은 현재 dashboard로 대체하지 않습니다.
+        </p>
       </div>
 
       <div className="border border-neutral-200 bg-white">
@@ -247,7 +295,7 @@ function SnapshotHistoryReady({
         </div>
         <div className="p-3">
           <p className="text-[12px] text-neutral-500">
-      날짜 색은 해당 날짜의 markerBucket 탐색 색인 요약입니다. 표시 날짜는 rolling horizon과 겹치는 UTC day를 모두 포함합니다. 상태와 evidence는 snapshot detail의 저장된 read model에서만 복원합니다.
+            날짜 색은 해당 날짜의 가장 높은 markerBucket 요약입니다. state/evidence source가 아니며, slot을 열면 저장된 read model에서 복원합니다.
           </p>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
             {dateMap.days.map((day) => (
@@ -279,7 +327,7 @@ function SnapshotHistoryReady({
                 type="button"
                 disabled={!slot.marker}
                 title={slot.title}
-                className={`aspect-[1.35] min-h-14 border p-1.5 text-left transition ${slot.marker ? "hover:border-neutral-900" : "cursor-not-allowed opacity-60"} ${markerBucketCellClassName(slot.bucket)} ${slot.selected ? "ring-2 ring-neutral-900" : ""}`}
+                className={`min-h-14 border p-1.5 text-left transition ${slot.marker ? "hover:border-neutral-900" : "cursor-not-allowed opacity-60"} ${markerBucketCellClassName(slot.bucket)} ${slot.selected ? "ring-2 ring-neutral-900" : ""}`}
                 onClick={() => {
                   if (slot.marker) {
                     onSelectMarker(slot.marker);
@@ -287,21 +335,26 @@ function SnapshotHistoryReady({
                 }}
               >
                 <span className="block text-[11px] text-neutral-900">{slot.time}</span>
-                <span className="mt-0.5 block truncate text-[10px] text-neutral-600">{slot.label}</span>
+                <span className="mt-0.5 block break-words text-[10px] leading-tight text-neutral-600">{slot.label}</span>
               </button>
             ))}
           </div>
+          <p className="mt-2 text-[11px] text-neutral-500">
+            빈 slot은 예약된 30분 위치에 marker row가 없다는 뜻입니다. 저장본 부재나 현재 상태를 새로 판정하지 않습니다.
+          </p>
         </div>
       </div>
 
+      <SelectedSnapshotSummary marker={selectedMarker} />
+
       <div className="border border-neutral-200 bg-white">
         <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-3 py-2">
-          <SectionLabel icon={FileSearch}>Server marker order</SectionLabel>
-          <span className="text-[11px] text-neutral-500">재정렬 없음</span>
+          <SectionLabel icon={FileSearch}>Secondary server marker order</SectionLabel>
+          <span className="text-[11px] text-neutral-500">server order · 재정렬 없음</span>
         </div>
         {markers.markers.length === 0 ? (
           <div className="p-3 text-[12px] text-neutral-500">
-            {markers.emptyState?.message ?? "보관 기간 안에 표시할 snapshot marker가 없습니다."} {markers.emptyState?.recommendedAction ?? ""}
+            {markers.emptyState?.message ?? "보관 기간 안에 표시할 snapshot marker가 없습니다."} 저장된 snapshot point가 없으면 live/current 값으로 대체하지 않습니다.
           </div>
         ) : (
           <ul className="max-h-96 overflow-auto">
@@ -398,12 +451,42 @@ function SnapshotHistoryReady({
   );
 }
 
+function SelectedSnapshotSummary({ marker }: { marker: DashboardSnapshotMarkerItem | null }) {
+  if (!marker) {
+    return (
+      <div className="border border-neutral-200 bg-white p-3 text-[12px] text-neutral-500">
+        날짜와 30분 slot을 선택하면 selected snapshot summary가 snapshotId, capturedAt, currentWindowEndUtc, markerBucket, stored state, capture reason으로 분리되어 표시됩니다.
+      </div>
+    );
+  }
+
+  return (
+    <div className="border border-neutral-200 bg-white">
+      <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-3 py-2">
+        <SectionLabel icon={FileSearch}>Selected snapshot summary</SectionLabel>
+        <StatusBadge className={markerBucketBadgeClassName(marker.type)}>{`markerBucket=${humanizeStatusCode(marker.type)}`}</StatusBadge>
+      </div>
+      <div className="grid gap-2 p-3 text-[11px] sm:grid-cols-2 lg:grid-cols-3">
+        <InfoCell label="snapshotId" value={marker.snapshotId} />
+        <InfoCell label="capturedAt" value={formatOptionalDateTime(marker.capturedAt)} />
+        <InfoCell label="currentWindowEndUtc" value={formatOptionalDateTime(marker.currentWindowEndUtc)} />
+        <InfoCell label="markerBucket" value={humanizeStatusCode(marker.type)} />
+        <InfoCell label="stored state" value={humanizeStatusCode(marker.storedApplicationStateCode)} />
+        <InfoCell label="capture reason" value={humanizeCaptureReason(marker.captureReason)} />
+      </div>
+      <div className="border-t border-neutral-100 px-3 py-2 text-[11px] text-neutral-500">
+        source=dashboard_snapshots.read_model_json · snapshotDetailRecalculates=false · markerIsStateSource=false
+      </div>
+    </div>
+  );
+}
+
 /**
  * 날짜 cell의 markerBucket은 색상/탐색 색인일 뿐 state나 evidence source가 아니다.
  * 같은 날짜에 여러 marker가 있으면 더 눈에 띄는 bucket만 date map summary 색으로 사용한다.
  */
 function buildSnapshotDateMap(markers: DashboardSnapshotMarkerReadModel, selectedDayKey: string | null): { days: SnapshotDateCell[]; selectedDay: SnapshotDateCell | null } {
-  const dayKeys = retentionDayKeys(markers.horizon.since, markers.horizon.until);
+  const dayKeys = snapshotRetentionDayKeys(markers.horizon.until, SNAPSHOT_RETENTION_DAYS);
   const days: SnapshotDateCell[] = [];
   let selectedDay: SnapshotDateCell | null = null;
   let firstDayWithPoint: SnapshotDateCell | null = null;
@@ -412,7 +495,7 @@ function buildSnapshotDateMap(markers: DashboardSnapshotMarkerReadModel, selecte
     let bucket = "none";
     let count = 0;
     for (const marker of markers.markers) {
-      if (utcDayKey(marker.currentWindowEndUtc) !== key) {
+      if (snapshotSlotDayKey(marker.currentWindowEndUtc) !== key) {
         continue;
       }
       count += 1;
@@ -463,33 +546,18 @@ function buildSnapshotSlotCells(
       label: marker ? humanizeStatusCode(bucket) : "저장 point 없음",
       marker,
       selected: Boolean(marker && selectedSlotKey === marker.snapshotId),
-      time: slotTimeLabel(slotIndex),
+      time: snapshotSlotTimeLabel(slotIndex),
       title: marker
-        ? `${slotTimeLabel(slotIndex)} · markerBucket=${marker.type} · storedState=${marker.storedApplicationStateCode}`
-        : `${slotTimeLabel(slotIndex)} · 저장된 snapshot point 없음`,
+        ? `${snapshotSlotTimeLabel(slotIndex)} · markerBucket=${marker.type} · storedState=${marker.storedApplicationStateCode}`
+        : `${snapshotSlotTimeLabel(slotIndex)} · 예약 slot에 저장된 marker 없음 · source absence 판정 아님`,
     });
   }
   return slots;
 }
 
-function retentionDayKeys(since: string, until: string): string[] {
-  const start = utcDayStart(since);
-  const end = utcDayStart(until);
-  const keys: string[] = [];
-  if (!start || !end || end.getTime() < start.getTime()) {
-    return keys;
-  }
-  let cursor = new Date(end);
-  while (cursor.getTime() >= start.getTime()) {
-    keys.push(utcDateKey(cursor));
-    cursor = new Date(cursor.getTime() - 24 * 60 * 60 * 1000);
-  }
-  return keys;
-}
-
 function markerForSlot(markers: DashboardSnapshotMarkerItem[], dayKey: string, slotIndex: number): DashboardSnapshotMarkerItem | null {
   for (const marker of markers) {
-    if (utcDayKey(marker.currentWindowEndUtc) === dayKey && slotIndexFromUtc(marker.currentWindowEndUtc) === slotIndex) {
+    if (snapshotSlotDayKey(marker.currentWindowEndUtc) === dayKey && snapshotSlotIndexFromWindowEndUtc(marker.currentWindowEndUtc) === slotIndex) {
       return marker;
     }
   }
@@ -562,46 +630,9 @@ function markerBucketBadgeClassName(bucket: string): string {
   }
 }
 
-function utcDayStart(value: string): Date | null {
-  const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed)) {
-    return null;
-  }
-  const date = new Date(parsed);
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-}
-
-function utcDayKey(value: string): string {
-  const start = utcDayStart(value);
-  return start ? utcDateKey(start) : "invalid-date";
-}
-
-function utcDateKey(date: Date): string {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 function dateMapLabel(dayKey: string): string {
   const [, month, day] = dayKey.split("-");
   return `${month}/${day} UTC`;
-}
-
-function slotIndexFromUtc(value: string): number {
-  const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed)) {
-    return -1;
-  }
-  const date = new Date(parsed);
-  return date.getUTCHours() * 2 + (date.getUTCMinutes() >= SLOT_MINUTES ? 1 : 0);
-}
-
-function slotTimeLabel(slotIndex: number): string {
-  const totalMinutes = slotIndex * SLOT_MINUTES;
-  const hour = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
-  const minute = String(totalMinutes % 60).padStart(2, "0");
-  return `${hour}:${minute}Z`;
 }
 
 function presetDisplayText(preset: HistoryPreset): string {
@@ -659,7 +690,7 @@ function InfoCell({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 border border-neutral-200 bg-white p-2">
       <div className="text-[11px] text-neutral-500">{label}</div>
-      <div className="truncate text-[12px] text-neutral-900">{value}</div>
+      <div className="break-words text-[12px] text-neutral-900">{value}</div>
     </div>
   );
 }

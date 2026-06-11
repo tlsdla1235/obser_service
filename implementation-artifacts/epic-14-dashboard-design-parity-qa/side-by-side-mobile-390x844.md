@@ -48,3 +48,20 @@ This is an auth-blocked route observation. It must not be used as proof that the
 | Application rail | coverage gap | Project not selected; authenticated badge wrapping not browser-proven |
 | Context bar / main live surface | coverage gap + guard evidence | Authenticated context/read semantics bar not rendered in browser |
 | Snapshot/History anchor | guard evidence | Tab split removed; same-flow static sentinel added |
+
+## 14.3 Update - Snapshot/History/Detail/Retention
+
+- Current Vite evidence: `current-14-3-dashboard-auth-blocked-mobile-390x844.png`
+- Observation JSON: `browser-14-3-snapshot-history-detail-and-retention-surface-realignment-observations.json`
+- Result: `/dashboard` remains auth-blocked without an authenticated fixture, so authenticated Snapshot/History picker, Snapshot detail, and retention/source absence paths are not browser-proven.
+- Auth-blocked viewport check: `bodyScrollWidth=390`, `viewportWidth=390`, `hasHorizontalOverflow=false`.
+- Code/static evidence: `SnapshotHistoryPanel` uses wrapping slot labels and mobile 4-column 48-slot grid. Slot labels follow currentWindowEndUtc end-boundaries from `00:30Z` through `24:00Z`; guard boundary cases cover exact `00:00Z` as previous-day `24:00Z`. The responsive adaptation is recorded as `R-20260611-143-001` in `deviation-log.md`.
+- Code/static evidence: selected snapshot summary cells and Snapshot detail info cells use wrapping text instead of truncation to reduce clipping risk on narrow screens.
+
+| Area | 14.3 Judgment | Note |
+|---|---|---|
+| Page horizontal scroll | conformant in auth-blocked shell | No horizontal overflow in accessible route state |
+| Snapshot/History picker | code/static conformant, browser coverage gap | Authenticated picker not rendered |
+| 48-slot grid | allowed deviation + browser coverage gap | Mobile 4-column adaptation category 2; authenticated clipping not browser-proven |
+| Snapshot detail | code/static conformant, browser coverage gap | Top source flags wrap instead of truncating |
+| Retention/source absence | code/static conformant, browser coverage gap | Safe copy has no fallback CTA; authenticated expired path not browser-proven |

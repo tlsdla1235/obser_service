@@ -279,23 +279,14 @@ export function guardSnapshotHistoryReadModels(
   context: SnapshotHistoryContext,
 ): { events: OperationalEventHistoryReadModel; markers: DashboardSnapshotMarkerReadModel } {
   const eventRoot = asRecord(events, SNAPSHOT_HISTORY_CONTRACT_ERROR);
-  const markerRoot = asRecord(markers, SNAPSHOT_HISTORY_CONTRACT_ERROR);
 
   if (
     eventRoot.source !== SNAPSHOT_SOURCE ||
-    markerRoot.source !== SNAPSHOT_SOURCE ||
     eventRoot.applicationId !== context.applicationId ||
-    markerRoot.applicationId !== context.applicationId ||
     !historyHorizonMatches(eventRoot.horizon, {
       limit: context.eventLimit,
       maxLimit: 100,
       order: "occurredAt_desc",
-      preset: context.preset,
-    }) ||
-    !historyHorizonMatches(markerRoot.horizon, {
-      limit: context.markerLimit,
-      maxLimit: 672,
-      order: "currentWindowEndUtc_asc",
       preset: context.preset,
     })
   ) {
@@ -308,6 +299,31 @@ export function guardSnapshotHistoryReadModels(
     assertNonEmptyString(item.snapshotId, SNAPSHOT_HISTORY_CONTRACT_ERROR);
     assertNonEmptyString(item.stateCode, SNAPSHOT_HISTORY_CONTRACT_ERROR);
     asRecord(item.evidence, SNAPSHOT_HISTORY_CONTRACT_ERROR);
+  }
+
+  return { events, markers: guardSnapshotMarkerReadModel(markers, context) };
+}
+
+/**
+ * Snapshot marker 응답만 별도로 검증한다.
+ * UI는 14일 retention date/slot map과 active preset 보조 list를 분리해서 조회할 수 있다.
+ */
+export function guardSnapshotMarkerReadModel(
+  markers: DashboardSnapshotMarkerReadModel,
+  context: Pick<SnapshotHistoryContext, "applicationId" | "markerLimit" | "preset">,
+): DashboardSnapshotMarkerReadModel {
+  const markerRoot = asRecord(markers, SNAPSHOT_HISTORY_CONTRACT_ERROR);
+  if (
+    markerRoot.source !== SNAPSHOT_SOURCE ||
+    markerRoot.applicationId !== context.applicationId ||
+    !historyHorizonMatches(markerRoot.horizon, {
+      limit: context.markerLimit,
+      maxLimit: 672,
+      order: "currentWindowEndUtc_asc",
+      preset: context.preset,
+    })
+  ) {
+    throw new ApiRequestError(SNAPSHOT_HISTORY_CONTRACT_ERROR);
   }
 
   const markerHorizon = asRecord(markerRoot.horizon, SNAPSHOT_HISTORY_CONTRACT_ERROR);
@@ -328,7 +344,7 @@ export function guardSnapshotHistoryReadModels(
     asRecord(item.links, SNAPSHOT_HISTORY_CONTRACT_ERROR);
   }
 
-  return { events, markers };
+  return markers;
 }
 
 /**

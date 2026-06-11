@@ -48,3 +48,19 @@ Authenticated Project rail, Application rail, Main live surface, Snapshot picker
 | Application rail density | coverage gap | Project not selected; compact authenticated application rows verified by code/static review, not browser fixture |
 | Main live surface order | coverage gap + guard evidence | Authenticated surface not rendered; static sentinel guards context -> data quality -> lifecycle -> reasons -> attention -> evidence -> metric -> starter -> instance -> Snapshot/History order |
 | Snapshot/History anchor | guard evidence | Tab split removed; same-flow anchor preserved in `DashboardMain` |
+
+## 14.3 Update - Snapshot/History/Detail/Retention
+
+- Current Vite evidence: `current-14-3-dashboard-auth-blocked-desktop-1440x1000.png`
+- Observation JSON: `browser-14-3-snapshot-history-detail-and-retention-surface-realignment-observations.json`
+- Result: `/dashboard` remains auth-blocked without an authenticated fixture, so authenticated Snapshot/History picker, Snapshot detail, and retention/source absence paths are not browser-proven.
+- Auth-blocked viewport check: `bodyScrollWidth=1440`, `viewportWidth=1440`, `hasHorizontalOverflow=false`.
+- Code/static evidence: `SnapshotHistoryPanel` now exposes 14일 retention, 672 scheduled points, 30분 cadence, 48/day, default 24h, cleanup hint, marker-first date/slot copy, selected snapshot summary fields, secondary server marker order, and collapsible event context. The primary date/slot map is populated from the 14d retention marker query while the active preset narrows the secondary event/server marker list. Slot labels use currentWindowEndUtc end-boundaries from `00:30Z` through `24:00Z`, and the guard executes midnight boundary cases.
+- Code/static evidence: `SnapshotDetailSurface` top surface now shows `Application Dashboard / Snapshot`, `mode=snapshot`, `source=dashboard_snapshots.read_model_json`, `snapshotId`, `capturedAt`, `currentWindowStartUtc`, `currentWindowEndUtc`, `captureReason`, `snapshotDetailRecalculates=false`, `currentStateRecalculated=false`, `markerIsStateSource=false`.
+
+| Area | 14.3 Judgment | Note |
+|---|---|---|
+| Snapshot/History picker | code/static conformant, browser coverage gap | Authenticated picker not rendered; static sentinel verifies 14d retention query wiring, boundary helpers, retention/summary/source copy |
+| 48-slot grid | code/static conformant, browser coverage gap | Desktop class keeps 8-column grid; authenticated clipping not browser-proven |
+| Snapshot detail | code/static conformant, browser coverage gap | Stored source flags are visible in code and guard; authenticated detail route not browser-proven |
+| Retention/source absence | code/static conformant, browser coverage gap | Error copy has no live/current fallback CTA; authenticated 404/expired path not browser-proven |

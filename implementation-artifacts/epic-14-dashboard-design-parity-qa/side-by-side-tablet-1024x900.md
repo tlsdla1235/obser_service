@@ -44,3 +44,18 @@
 | Application rail | coverage gap | Project not selected |
 | Main live surface | coverage gap + guard evidence | Authenticated order not browser-proven; static sentinel guards same-flow order |
 | Snapshot/History anchor | guard evidence | Tab split removed; anchor remains in `DashboardMain` |
+
+## 14.3 Update - Snapshot/History/Detail/Retention
+
+- Current Vite evidence: `current-14-3-dashboard-auth-blocked-tablet-1024x900.png`
+- Observation JSON: `browser-14-3-snapshot-history-detail-and-retention-surface-realignment-observations.json`
+- Result: `/dashboard` remains auth-blocked without an authenticated fixture, so authenticated Snapshot/History picker, Snapshot detail, and retention/source absence paths are not browser-proven.
+- Auth-blocked viewport check: `bodyScrollWidth=1024`, `viewportWidth=1024`, `hasHorizontalOverflow=false`.
+- Code/static evidence: Snapshot/History retention summary, 14d retention marker query wiring, executable date/slot boundary helpers, currentWindowEndUtc end-boundary slot labels, selected summary, secondary marker list, event details, and Snapshot detail source flags are guarded by `guard:read-model-contract`.
+
+| Area | 14.3 Judgment | Note |
+|---|---|---|
+| Snapshot/History picker | code/static conformant, browser coverage gap | Authenticated picker not rendered |
+| 48-slot grid | code/static conformant, browser coverage gap | Tablet class uses 6-column adaptation; authenticated clipping not browser-proven |
+| Snapshot detail | code/static conformant, browser coverage gap | Stored source flags are visible in code and guard |
+| Retention/source absence | code/static conformant, browser coverage gap | Safe copy has no fallback CTA; authenticated 404/expired path not browser-proven |
