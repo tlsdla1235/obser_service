@@ -17,6 +17,8 @@ import type {
 
 const PROJECT_APPLICATIONS_PATH = /^\/api\/projects\/([^/]+)\/applications$/;
 const APPLICATION_DASHBOARD_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/dashboard$/;
+const LIVE_INSTANCE_DASHBOARD_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/instances\/([^/]+)\/dashboard$/;
+const SNAPSHOT_INSTANCE_DASHBOARD_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/snapshots\/([^/]+)\/instances\/([^/]+)\/dashboard$/;
 const INSTANCE_EVIDENCE_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/instances\/([^/]+)\/evidence$/;
 const INSTANCE_SNAPSHOT_TREND_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/instances\/([^/]+)\/snapshot-trend$/;
 const SNAPSHOT_DETAIL_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/dashboard\/snapshots\/([^/]+)$/;
@@ -180,6 +182,46 @@ export function validateInstanceEvidencePath(
   return path;
 }
 
+export function validateLiveInstanceDashboardPath(
+  link: string,
+  expectedProjectId: string,
+  expectedApplicationId: string,
+  expectedInstanceId: string,
+): string {
+  const path = internalApiPath(link, "live_instance_dashboard_link_invalid");
+  const match = LIVE_INSTANCE_DASHBOARD_PATH.exec(path);
+  if (
+    !match ||
+    match[1] !== expectedProjectId ||
+    match[2] !== expectedApplicationId ||
+    match[3] !== expectedInstanceId
+  ) {
+    throw new ApiRequestError("live_instance_dashboard_link_invalid");
+  }
+  return path;
+}
+
+export function validateSnapshotInstanceDashboardPath(
+  link: string,
+  expectedProjectId: string,
+  expectedApplicationId: string,
+  expectedSnapshotId: string,
+  expectedInstanceId: string,
+): string {
+  const path = internalApiPath(link, "snapshot_instance_dashboard_link_invalid");
+  const match = SNAPSHOT_INSTANCE_DASHBOARD_PATH.exec(path);
+  if (
+    !match ||
+    match[1] !== expectedProjectId ||
+    match[2] !== expectedApplicationId ||
+    match[3] !== expectedSnapshotId ||
+    match[4] !== expectedInstanceId
+  ) {
+    throw new ApiRequestError("snapshot_instance_dashboard_link_invalid");
+  }
+  return path;
+}
+
 export function validateInstanceSnapshotTrendPath(
   link: string,
   expectedProjectId: string,
@@ -224,6 +266,31 @@ export function snapshotIdFromDetailPath(path: string): string {
     throw new ApiRequestError("snapshot_detail_link_invalid");
   }
   return match[3];
+}
+
+/**
+ * Live Instance Dashboard는 dashboard read model에서 받은 legacy evidence link에 의존하지 않고
+ * selected Project/Application/Instance context로 새 13.8 endpoint를 구성한다.
+ */
+export function buildLiveInstanceDashboardPath(
+  projectId: string,
+  applicationId: string,
+  instanceId: string,
+): string {
+  return `/api/projects/${safePathComponent(projectId)}/applications/${safePathComponent(applicationId)}/instances/${safePathComponent(instanceId)}/dashboard`;
+}
+
+/**
+ * Snapshot Instance Dashboard는 selected Application Snapshot id를 path에 고정해
+ * live/current evidence fallback으로 흐르지 않게 한다.
+ */
+export function buildSnapshotInstanceDashboardPath(
+  projectId: string,
+  applicationId: string,
+  snapshotId: string,
+  instanceId: string,
+): string {
+  return `/api/projects/${safePathComponent(projectId)}/applications/${safePathComponent(applicationId)}/snapshots/${safePathComponent(snapshotId)}/instances/${safePathComponent(instanceId)}/dashboard`;
 }
 
 /**
@@ -387,6 +454,8 @@ export function metricStateClassName(code: LifecycleStateCode | (string & {})): 
 
 export function statusBadgeClassName(status: string): string {
   switch (status) {
+    case "snapshot":
+      return "border-amber-300 bg-amber-50 text-amber-800";
     case "critical":
       return "border-red-300 bg-red-50 text-red-700";
     case "warning":
@@ -396,8 +465,10 @@ export function statusBadgeClassName(status: string): string {
     case "active":
     case "available":
     case "current":
+    case "live":
     case "received":
     case "recent":
+    case "within_threshold":
       return "border-emerald-500 bg-emerald-50 text-emerald-900";
     case "down_candidate":
     case "failed":
@@ -407,10 +478,16 @@ export function statusBadgeClassName(status: string): string {
       return "border-rose-500 bg-rose-50 text-rose-900";
     case "insufficient":
     case "insufficient_baseline":
+    case "insufficient_evidence":
+    case "malformed_evidence":
+    case "metric_missing":
     case "missing":
+    case "not_observed":
+    case "not_observed_in_window":
     case "sample_limited":
     case "stale_candidate":
     case "threshold_hit":
+    case "threshold_exceeded":
     case "waiting_first_data":
       return "border-amber-500 bg-amber-50 text-amber-900";
     default:
@@ -456,6 +533,12 @@ export function humanizeSourceCode(value: string | null | undefined): string {
       return "accepted bucket 분포";
     case "accepted_metric_buckets.endpoints_json":
       return "accepted bucket endpoint evidence";
+    case "application_dashboard_live":
+      return "live Application Dashboard";
+    case "live_recent_30_minutes":
+      return "live recent 30 minutes";
+    case "selected_application_snapshot":
+      return "selected Application Snapshot";
     case "starter_heartbeat":
       return "앱 연결 신호";
     case "dashboard_snapshots":
@@ -521,6 +604,8 @@ export function humanizeStatusCode(value: string | null | undefined): string {
       return "참고";
     case "insufficient":
       return "표본 부족";
+    case "insufficient_evidence":
+      return "evidence 부족";
     case "insufficient_baseline":
       return "비교 기준 부족";
     case "recent_30_minutes":
@@ -552,15 +637,26 @@ export function humanizeStatusCode(value: string | null | undefined): string {
     case "display_bucket_only_no_percentile_recalculation":
       return "분포 표시 전용";
     case "threshold_hit":
+    case "threshold_exceeded":
       return "기준 이상";
+    case "within_threshold":
+      return "기준 이하";
     case "normal":
       return "정상 범위";
     case "control_plane_only":
       return "control-plane 참고";
     case "missing":
       return "아직 없음";
+    case "metric_missing":
+      return "metric evidence 없음";
+    case "malformed_evidence":
+      return "해석할 수 없는 evidence";
     case "none":
       return "영향 없음";
+    case "not_observed":
+      return "selected instance에서 관찰되지 않음";
+    case "not_observed_in_window":
+      return "window 안에서 관찰되지 않음";
     case "received":
       return "수신됨";
     case "recent":
@@ -583,6 +679,8 @@ export function humanizeStatusCode(value: string | null | undefined): string {
       return "첫 데이터 대기";
     case "warning":
       return "주의";
+    case "server_order":
+      return "server 제공 순서";
     case "":
       return EMPTY_DISPLAY_TEXT;
     default:

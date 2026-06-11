@@ -7,6 +7,7 @@ import type {
   ApplicationDashboardReadModel,
   DashboardSnapshotDetailReadModel,
   DashboardSnapshotMarkerReadModel,
+  InstanceDashboardReadModel,
   InstanceEvidenceReadModel,
   InstanceSnapshotTrendReadModel,
   OperationalEventHistoryReadModel,
@@ -587,6 +588,284 @@ export const snapshotDetailContractFixture: DashboardSnapshotDetailReadModel = {
     self: `/api/projects/${CONTRACT_PROJECT_ID}/applications/${CONTRACT_APPLICATION_ID}/dashboard/snapshots/${CONTRACT_SNAPSHOT_ID}`,
     markers: `/api/projects/${CONTRACT_PROJECT_ID}/applications/${CONTRACT_APPLICATION_ID}/dashboard/snapshot-markers`,
   },
+};
+
+const instanceDashboardBase = {
+  schemaVersion: "instance_dashboard_read_model.v1",
+  generatedAt: "2026-06-09T00:05:00Z",
+  application: {
+    projectId: CONTRACT_PROJECT_ID,
+    applicationId: CONTRACT_APPLICATION_ID,
+    name: "orders-api",
+    environment: "prod",
+    links: {
+      dashboard: `/api/projects/${CONTRACT_PROJECT_ID}/applications/${CONTRACT_APPLICATION_ID}/dashboard`,
+    },
+  },
+  instance: {
+    instanceId: CONTRACT_INSTANCE_ID,
+    instanceName: "orders-api-contract-a",
+    firstSeenAt: "2026-06-08T00:00:00Z",
+    lastSeenAt: "2026-06-09T00:04:30Z",
+  },
+  thresholds: {
+    minimumRequestCount: 30,
+    errorRate: 0.05,
+    slowShareOver500ms: 0.2,
+    datasourcePoolUsage: 0.85,
+    cpuUsage: 0.85,
+    heapUsage: 0.9,
+  },
+  observationStatus: {
+    code: "observed",
+    reason: null,
+    lastObservedBucketEndUtc: "2026-06-09T00:04:30Z",
+  },
+  applicationContribution: {
+    level: "contributing",
+    reason: "selected_instance_endpoint_server_error_observed",
+    evidenceRefs: ["endpoint-evidence-z"],
+  },
+  dataQuality: {
+    state: "sufficient",
+    limitations: [],
+    source: "accepted_metric_buckets",
+  },
+  starterConnection: {
+    statusSource: "starter_heartbeat",
+    lastHeartbeatAt: "2026-06-09T00:04:50Z",
+    lastHeartbeatStatus: "received",
+    freshnessLabel: "recent",
+    connectionMeaning: "starter_connected",
+    stateImpact: "does_not_change_metric_state",
+  },
+  signals: {
+    red: {
+      requestCount: 91,
+      errorCount: 7,
+      errorRate: 0.0769,
+      slowCountOver500ms: 21,
+      slowShareOver500ms: 0.2308,
+      requestSymptomPresent: true,
+    },
+  },
+  endpointEvidence: {
+    source: "accepted_metric_buckets.endpoints_json",
+    scope: "instance_recent_30_minutes",
+    selectionPolicy: "application_evidence_presence_then_instance_symptom",
+    displayOrderingPolicy: "server_order",
+    status: "available",
+    reason: null,
+    items: [
+      {
+        method: "GET",
+        route: "/z-contract",
+        endpointKey: "GET /z-contract",
+        presenceOnSelectedInstance: "observed",
+        requestCount: 40,
+        errorCount: 1,
+        errorRate: 0.025,
+        localDisplayOrder: 2,
+        status: "available",
+        reason: "server_projected",
+        relatedApplicationEndpointEvidenceRef: "endpoint-evidence-z",
+      },
+      {
+        method: "POST",
+        route: "/a-contract",
+        endpointKey: "POST /a-contract",
+        presenceOnSelectedInstance: "observed",
+        requestCount: 51,
+        errorCount: 6,
+        errorRate: 0.1176,
+        localDisplayOrder: 1,
+        status: "available",
+        reason: "server_projected",
+        relatedApplicationEndpointEvidenceRef: "endpoint-evidence-a",
+      },
+    ],
+  },
+  resourceEvidence: {
+    source: "accepted_metric_buckets",
+    status: "available",
+    items: [
+      {
+        resourceKey: "heap",
+        scope: "instance",
+        usage: 0.91,
+        threshold: 0.9,
+        status: "threshold_exceeded",
+        observedAt: "2026-06-09T00:04:30Z",
+        requestSymptomPresent: true,
+        patternContribution: "shared_resource_pressure_pattern",
+        operatorText: "Heap 사용률과 요청 증상이 같은 window에서 관찰됩니다.",
+      },
+    ],
+  },
+  patterns: [
+    {
+      patternKey: "shared_resource_pressure_pattern",
+      contribution: "shared_resource_pressure_pattern",
+      evidenceRefs: ["heap"],
+    },
+  ],
+  excludedCapabilities: [
+    "instance_lifecycle_state_machine",
+    "instance_health_score",
+    "instance_root_cause",
+    "heartbeat_as_metric_state",
+  ],
+};
+
+export const instanceDashboardLiveContractFixture: InstanceDashboardReadModel = {
+  ...instanceDashboardBase,
+  mode: "live",
+  window: {
+    name: "recent_30_minutes",
+    startUtc: "2026-06-08T23:35:00Z",
+    endUtc: "2026-06-09T00:05:00Z",
+    bucketDurationSeconds: 30,
+    windowSource: "live_recent_30_minutes",
+  },
+  applicationStateRef: {
+    lifecycleOwner: "application",
+    source: "application_dashboard_live",
+    applicationStateCode: "degraded",
+    snapshotId: null,
+  },
+  snapshot: null,
+  readSemantics: {
+    source: "accepted_metric_buckets",
+    windowSource: "live_recent_30_minutes",
+    snapshotRowSource: null,
+    acceptedAtCutoffApplied: false,
+    includesLateAcceptedMetrics: false,
+    mayDifferFromStoredApplicationSnapshot: false,
+    applicationSnapshotRecalculated: false,
+    instanceEvidenceReconstructedFromMetrics: false,
+    markerIsStateSource: false,
+  },
+  links: {
+    self: `/api/projects/${CONTRACT_PROJECT_ID}/applications/${CONTRACT_APPLICATION_ID}/instances/${CONTRACT_INSTANCE_ID}/dashboard`,
+    applicationDashboard: `/api/projects/${CONTRACT_PROJECT_ID}/applications/${CONTRACT_APPLICATION_ID}/dashboard`,
+    instanceEvidence: `/api/projects/${CONTRACT_PROJECT_ID}/applications/${CONTRACT_APPLICATION_ID}/instances/${CONTRACT_INSTANCE_ID}/evidence`,
+    snapshotTrend: `/api/projects/${CONTRACT_PROJECT_ID}/applications/${CONTRACT_APPLICATION_ID}/instances/${CONTRACT_INSTANCE_ID}/snapshot-trend`,
+    applicationSnapshotDetail: null,
+  },
+};
+
+export const instanceDashboardSnapshotContractFixture: InstanceDashboardReadModel = {
+  ...instanceDashboardBase,
+  mode: "snapshot",
+  window: {
+    name: "recent_30_minutes",
+    startUtc: "2026-06-08T00:30:00Z",
+    endUtc: "2026-06-08T01:00:00Z",
+    bucketDurationSeconds: 30,
+    windowSource: "selected_application_snapshot",
+  },
+  applicationStateRef: {
+    lifecycleOwner: "application",
+    source: "selected_application_snapshot",
+    applicationStateCode: "active",
+    snapshotId: CONTRACT_SNAPSHOT_ID,
+  },
+  endpointEvidence: {
+    ...instanceDashboardBase.endpointEvidence,
+    items: [
+      {
+        method: "GET",
+        route: "/z-contract",
+        endpointKey: "GET /z-contract",
+        presenceOnSelectedInstance: "not_observed",
+        requestCount: 0,
+        errorCount: 0,
+        errorRate: null,
+        localDisplayOrder: 1,
+        status: "missing",
+        reason: "not_observed_on_selected_instance",
+        relatedApplicationEndpointEvidenceRef: "endpoint-evidence-z",
+      },
+    ],
+  },
+  snapshot: {
+    snapshotId: CONTRACT_SNAPSHOT_ID,
+    snapshotRowSource: "dashboard_snapshots",
+    generatedAt: "2026-06-08T01:00:05Z",
+    currentWindowStartUtc: "2026-06-08T00:30:00Z",
+    currentWindowEndUtc: "2026-06-08T01:00:00Z",
+    captureReason: "hourly_scheduled",
+    storedApplicationStateCode: "active",
+  },
+  readSemantics: {
+    source: "accepted_metric_buckets",
+    windowSource: "selected_application_snapshot",
+    snapshotRowSource: "dashboard_snapshots",
+    acceptedAtCutoffApplied: false,
+    includesLateAcceptedMetrics: true,
+    mayDifferFromStoredApplicationSnapshot: true,
+    applicationSnapshotRecalculated: false,
+    instanceEvidenceReconstructedFromMetrics: true,
+    markerIsStateSource: false,
+  },
+  links: {
+    self: `/api/projects/${CONTRACT_PROJECT_ID}/applications/${CONTRACT_APPLICATION_ID}/snapshots/${CONTRACT_SNAPSHOT_ID}/instances/${CONTRACT_INSTANCE_ID}/dashboard`,
+    applicationDashboard: `/api/projects/${CONTRACT_PROJECT_ID}/applications/${CONTRACT_APPLICATION_ID}/dashboard`,
+    instanceEvidence: `/api/projects/${CONTRACT_PROJECT_ID}/applications/${CONTRACT_APPLICATION_ID}/instances/${CONTRACT_INSTANCE_ID}/evidence`,
+    snapshotTrend: `/api/projects/${CONTRACT_PROJECT_ID}/applications/${CONTRACT_APPLICATION_ID}/instances/${CONTRACT_INSTANCE_ID}/snapshot-trend`,
+    applicationSnapshotDetail: `/api/projects/${CONTRACT_PROJECT_ID}/applications/${CONTRACT_APPLICATION_ID}/dashboard/snapshots/${CONTRACT_SNAPSHOT_ID}`,
+  },
+};
+
+export const instanceDashboardSummaryCapOutsideFixture: InstanceDashboardReadModel = {
+  ...instanceDashboardSnapshotContractFixture,
+  applicationContribution: {
+    level: "supporting",
+    reason: "selected_instance_outside_snapshot_summary_cap_reconstructed_from_metrics",
+    evidenceRefs: ["accepted_metric_bucket-window-reconstruction"],
+  },
+  dataQuality: {
+    state: "sufficient",
+    limitations: [
+      "stored instanceSummary.items[]에 target instance가 없어도 snapshot mode detail source는 accepted_metric_buckets입니다.",
+    ],
+    source: "accepted_metric_buckets",
+  },
+  endpointEvidence: {
+    ...instanceDashboardSnapshotContractFixture.endpointEvidence,
+    reason: "selected_instance_not_required_in_stored_summary",
+  },
+};
+
+export const instanceDashboardRetentionGapFixture: InstanceDashboardReadModel = {
+  ...instanceDashboardSnapshotContractFixture,
+  observationStatus: {
+    code: "metric_missing",
+    reason: "selected_snapshot_instance_bucket_missing",
+    lastObservedBucketEndUtc: null,
+  },
+  applicationContribution: {
+    level: "insufficient",
+    reason: "metric_missing",
+    evidenceRefs: [],
+  },
+  dataQuality: {
+    state: "metric_missing",
+    limitations: ["보관 기간 안의 snapshot row는 있지만 selected instance metric evidence를 찾을 수 없습니다."],
+    source: "accepted_metric_buckets",
+  },
+  endpointEvidence: {
+    ...instanceDashboardSnapshotContractFixture.endpointEvidence,
+    status: "missing",
+    reason: "no_endpoint_evidence_in_window",
+    items: [],
+  },
+  resourceEvidence: {
+    source: "accepted_metric_buckets",
+    status: "missing",
+    items: [],
+  },
+  patterns: [],
 };
 
 export const instanceEvidenceContractFixture: InstanceEvidenceReadModel = {

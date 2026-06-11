@@ -38,22 +38,28 @@ import type {
   TrendPoint,
   TrendPreset,
 } from "../lib/read-model-types";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Button } from "./ui/button";
 import { SnapshotDetailSurface, type SnapshotDetailTarget } from "./snapshot-detail-surface";
+import {
+  InstanceDashboardSurface,
+  type InstanceDashboardTarget,
+  type SnapshotInstanceDashboardTarget,
+} from "./instance-dashboard-surface";
 
-export type InstancePanelTarget = {
-  applicationId: string;
-  evidenceLink: string;
-  instanceId: string;
-  instanceName: string;
-  projectId: string;
-  snapshotTrendLink?: string | null;
-};
+export type InstancePanelTarget = InstanceDashboardTarget;
 
 type View =
   | { kind: "closed" }
-  | { kind: "evidence"; target: InstancePanelTarget }
+  | { kind: "live-dashboard"; target: InstancePanelTarget }
+  | { kind: "snapshot-dashboard"; target: SnapshotInstanceDashboardTarget }
   | { kind: "trend"; target: InstancePanelTarget };
 
 function StatusBadge({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -74,14 +80,16 @@ function SectionLabel({ icon: Icon, children }: { icon: LucideIcon; children: Re
 }
 
 /**
- * Instance drawer의 evidence/trend 선택 state를 관리한다.
- * target에는 dashboard read model에서 받은 evidence link와 selected context id만 보관한다.
+ * Instance surface 선택 state를 live dashboard, snapshot dashboard, stored trend로 분리한다.
+ * snapshot dashboard target은 selected Application Snapshot id를 포함해야만 열 수 있다.
  */
 export function useInstanceView() {
   const [view, setView] = useState<View>({ kind: "closed" });
   return {
     view,
-    openEvidence: (target: InstancePanelTarget) => setView({ kind: "evidence", target }),
+    openEvidence: (target: InstancePanelTarget) => setView({ kind: "live-dashboard", target }),
+    openLiveDashboard: (target: InstancePanelTarget) => setView({ kind: "live-dashboard", target }),
+    openSnapshotDashboard: (target: SnapshotInstanceDashboardTarget) => setView({ kind: "snapshot-dashboard", target }),
     openTrend: (target: InstancePanelTarget) => setView({ kind: "trend", target }),
     close: () => setView({ kind: "closed" }),
   };
@@ -90,34 +98,64 @@ export function useInstanceView() {
 export function InstancePanels({
   onClose,
   onOpenEvidence,
+  onOpenSnapshotDashboard,
   onOpenTrend,
   view,
 }: {
   onClose: () => void;
   onOpenEvidence: (target: InstancePanelTarget) => void;
+  onOpenSnapshotDashboard: (target: SnapshotInstanceDashboardTarget) => void;
   onOpenTrend: (target: InstancePanelTarget) => void;
   view: View;
 }) {
-  const target = view.kind === "closed" ? null : view.target;
+  const dashboardOpen = view.kind === "live-dashboard" || view.kind === "snapshot-dashboard";
+  const dashboardTarget = dashboardOpen ? view.target : null;
+  const trendOpen = view.kind === "trend";
+  const trendTarget = trendOpen ? view.target : null;
 
   return (
-    <Sheet open={view.kind !== "closed"} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-[660px] p-0 bg-white text-neutral-900">
-        {view.kind === "evidence" && target && (
-          <InstanceEvidenceView
-            target={target}
-            onSwitch={(snapshotTrendLink) => onOpenTrend({ ...target, snapshotTrendLink })}
-          />
-        )}
-        {view.kind === "trend" && target && (
+    <>
+      <Dialog open={dashboardOpen} onOpenChange={(open) => !open && onClose()}>
+        <DialogContent className="max-h-[calc(100vh-2rem)] w-[min(1120px,calc(100vw-2rem))] max-w-none overflow-y-auto rounded-md border-neutral-300 bg-white p-0 text-neutral-900">
+          <DialogHeader className="border-b border-neutral-200 px-5 py-4 pr-12">
+            <DialogTitle className="text-[16px] font-medium">
+              {dashboardTarget?.instanceName ?? "Instance Dashboard"}
+            </DialogTitle>
+            <DialogDescription className="text-[12px] text-neutral-500">
+              Application 판단을 대체하지 않고 같은 window의 selected instance evidence만 보여줍니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="p-5">
+            {view.kind === "live-dashboard" && dashboardTarget && (
+              <InstanceDashboardSurface
+                mode="live"
+                target={dashboardTarget}
+                onOpenTrend={(snapshotTrendLink) => onOpenTrend({ ...dashboardTarget, snapshotTrendLink })}
+              />
+            )}
+            {view.kind === "snapshot-dashboard" && dashboardTarget && "snapshotId" in dashboardTarget && (
+              <InstanceDashboardSurface
+                mode="snapshot"
+                target={dashboardTarget}
+                onOpenTrend={(snapshotTrendLink) => onOpenTrend({ ...dashboardTarget, snapshotTrendLink })}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Sheet open={trendOpen} onOpenChange={(open) => !open && onClose()}>
+        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-[660px] p-0 bg-white text-neutral-900">
+          {trendTarget && (
           <InstanceTrendView
-            target={target}
-            onSwitch={() => onOpenEvidence(target)}
+            target={trendTarget}
+            onSwitch={() => onOpenEvidence(trendTarget)}
             onOpenTrend={onOpenTrend}
+            onOpenSnapshotDashboard={onOpenSnapshotDashboard}
           />
-        )}
-      </SheetContent>
-    </Sheet>
+          )}
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
 
@@ -128,11 +166,11 @@ function InstanceEvidenceView({
   onSwitch: (snapshotTrendLink: string) => void;
   target: InstancePanelTarget;
 }) {
-  const evidenceResourceKey = `${target.projectId}|${target.applicationId}|${target.instanceId}|${target.evidenceLink}`;
+  const evidenceResourceKey = `${target.projectId}|${target.applicationId}|${target.instanceId}|${target.evidenceLink ?? "missing-evidence-link"}`;
   const requestEvidence = useCallback(
     async ({ authFetch, signal }: { authFetch: AuthFetch; signal: AbortSignal }) => {
       const evidencePath = validateInstanceEvidencePath(
-        target.evidenceLink,
+        target.evidenceLink ?? "",
         target.projectId,
         target.applicationId,
         target.instanceId,
@@ -452,10 +490,12 @@ function EndpointEvidenceRow({ item }: { item: EvidenceEndpointEvidenceItem }) {
 }
 
 function InstanceTrendView({
+  onOpenSnapshotDashboard,
   onOpenTrend,
   onSwitch,
   target,
 }: {
+  onOpenSnapshotDashboard: (target: SnapshotInstanceDashboardTarget) => void;
   onOpenTrend: (target: InstancePanelTarget) => void;
   onSwitch: () => void;
   target: InstancePanelTarget;
@@ -536,6 +576,7 @@ function InstanceTrendView({
         {!loading && !error && trend && (
           <TrendReadyView
             detailTarget={detailTarget}
+            onOpenSnapshotDashboard={onOpenSnapshotDashboard}
             onSelectDetail={setDetailTarget}
             preset={preset}
             target={target}
@@ -549,12 +590,14 @@ function InstanceTrendView({
 
 function TrendReadyView({
   detailTarget,
+  onOpenSnapshotDashboard,
   onSelectDetail,
   preset,
   target,
   trend,
 }: {
   detailTarget: SnapshotDetailTarget | null;
+  onOpenSnapshotDashboard: (target: SnapshotInstanceDashboardTarget) => void;
   onSelectDetail: (target: SnapshotDetailTarget | null) => void;
   preset: TrendPreset;
   target: InstancePanelTarget;
@@ -572,7 +615,11 @@ function TrendReadyView({
           <InfoCell label="조회 끝" value={formatOptionalDateTime(trend.horizon.until)} />
           <InfoCell label="표시 순서" value={humanizeOrderCode(trend.horizon.order)} />
           <InfoCell label="기록 수" value={formatCount(trend.points.length)} />
+          <InfoCell label="projection source" value="stored instanceSummary.items[]" />
         </div>
+        <p className="mt-2 border-l-2 border-neutral-300 pl-2 text-[12px] text-neutral-500">
+          이 목록은 dashboard_snapshots.read_model_json.instanceSummary.items[] stored projection입니다. 현재 판단, 독립 instance 점수, snapshot mode evidence를 여기서 재계산하지 않습니다.
+        </p>
         <details className="mt-2 text-[11px] text-neutral-500">
           <summary className="cursor-pointer text-neutral-700">기술 세부 정보</summary>
           <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
@@ -593,8 +640,10 @@ function TrendReadyView({
           {trend.points.map((point) => (
             <TrendPointCard
               key={`${point.snapshotId}-${point.capturedAt}`}
+              onOpenSnapshotDashboard={onOpenSnapshotDashboard}
               onSelectDetail={onSelectDetail}
               point={point}
+              target={target}
             />
           ))}
         </ul>
@@ -610,11 +659,15 @@ function TrendReadyView({
 }
 
 function TrendPointCard({
+  onOpenSnapshotDashboard,
   onSelectDetail,
   point,
+  target,
 }: {
+  onOpenSnapshotDashboard: (target: SnapshotInstanceDashboardTarget) => void;
   onSelectDetail: (target: SnapshotDetailTarget) => void;
   point: TrendPoint;
+  target: InstancePanelTarget;
 }) {
   return (
     <li className="border border-neutral-200 bg-white p-3">
@@ -625,14 +678,29 @@ function TrendPointCard({
             저장 당시 상태: {humanizeStatusCode(point.storedApplicationStateCode)} · 저장 이유: {humanizeCaptureReason(point.captureReason)}
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-2 border-neutral-300"
-          onClick={() => onSelectDetail({ snapshotId: point.snapshotId })}
-        >
-          <History className="h-3.5 w-3.5" strokeWidth={1.5} /> 상세 보기
-        </Button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 border-neutral-300"
+            onClick={() => onSelectDetail({ snapshotId: point.snapshotId })}
+          >
+            <History className="h-3.5 w-3.5" strokeWidth={1.5} /> Application Snapshot detail
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 border-neutral-300"
+            onClick={() =>
+              onOpenSnapshotDashboard({
+                ...target,
+                snapshotId: point.snapshotId,
+              })
+            }
+          >
+            <Server className="h-3.5 w-3.5" strokeWidth={1.5} /> Instance snapshot dashboard
+          </Button>
+        </div>
       </div>
       <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] md:grid-cols-4">
         <InfoCell label="수집 근거" value={humanizeSourceCode(point.metricData.statusSource)} />
@@ -640,6 +708,7 @@ function TrendPointCard({
         <InfoCell label="마지막 수집" value={formatOptionalDateTime(point.metricData.lastAcceptedBucketAt)} />
         <InfoCell label="앱 연결" value={humanizeStatusCode(point.starterConnection.connectionMeaning)} />
         <InfoCell label="연결 영향" value={humanizeStatusCode(point.starterConnection.stateImpact)} />
+        <InfoCell label="stored application state" value={humanizeStatusCode(point.storedApplicationStateCode)} />
         <InfoCell label="상태 판단 반영" value={point.applicationTriageContribution.contributed ? "반영됨" : "반영 안 됨"} />
         <InfoCell label="리소스" value={humanizeStatusCode(point.resourceHints.status)} />
         <InfoCell label="상세 근거" value={formatCount(point.endpointEvidenceRefs.length)} />

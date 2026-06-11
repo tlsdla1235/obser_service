@@ -6,6 +6,10 @@ import {
   CONTRACT_PROJECT_ID,
   CONTRACT_SNAPSHOT_ID,
   dashboardContractFixture,
+  instanceDashboardLiveContractFixture,
+  instanceDashboardRetentionGapFixture,
+  instanceDashboardSummaryCapOutsideFixture,
+  instanceDashboardSnapshotContractFixture,
   instanceEvidenceContractFixture,
   instanceTrendContractFixture,
   snapshotDetailContractFixture,
@@ -14,12 +18,20 @@ import {
 } from "../src/app/lib/read-model-contract-fixtures.js";
 import {
   guardApplicationDashboardReadModel,
+  guardInstanceDashboardReadModel,
   guardInstanceEvidenceReadModel,
   guardInstanceSnapshotTrendReadModel,
   guardSnapshotDetailReadModel,
   guardSnapshotHistoryReadModels,
 } from "../src/app/lib/read-model-contract-guard.js";
-import { toDashboardPresentation, toDisplayLatencyBuckets } from "../src/app/lib/read-model-adapters.js";
+import {
+  buildLiveInstanceDashboardPath,
+  buildSnapshotInstanceDashboardPath,
+  toDashboardPresentation,
+  toDisplayLatencyBuckets,
+  validateLiveInstanceDashboardPath,
+  validateSnapshotInstanceDashboardPath,
+} from "../src/app/lib/read-model-adapters.js";
 
 const applicationContext = {
   projectId: CONTRACT_PROJECT_ID,
@@ -30,6 +42,58 @@ const instanceContext = {
   ...applicationContext,
   instanceId: CONTRACT_INSTANCE_ID,
 };
+
+const liveInstanceDashboardPath = buildLiveInstanceDashboardPath(
+  CONTRACT_PROJECT_ID,
+  CONTRACT_APPLICATION_ID,
+  CONTRACT_INSTANCE_ID,
+);
+assert.equal(
+  validateLiveInstanceDashboardPath(
+    liveInstanceDashboardPath,
+    CONTRACT_PROJECT_ID,
+    CONTRACT_APPLICATION_ID,
+    CONTRACT_INSTANCE_ID,
+  ),
+  liveInstanceDashboardPath,
+);
+assert.throws(
+  () =>
+    validateLiveInstanceDashboardPath(
+      `/api/projects/${CONTRACT_PROJECT_ID}/applications/${CONTRACT_APPLICATION_ID}/instances/other/dashboard`,
+      CONTRACT_PROJECT_ID,
+      CONTRACT_APPLICATION_ID,
+      CONTRACT_INSTANCE_ID,
+    ),
+  /live_instance_dashboard_link_invalid/,
+);
+const snapshotInstanceDashboardPath = buildSnapshotInstanceDashboardPath(
+  CONTRACT_PROJECT_ID,
+  CONTRACT_APPLICATION_ID,
+  CONTRACT_SNAPSHOT_ID,
+  CONTRACT_INSTANCE_ID,
+);
+assert.equal(
+  validateSnapshotInstanceDashboardPath(
+    snapshotInstanceDashboardPath,
+    CONTRACT_PROJECT_ID,
+    CONTRACT_APPLICATION_ID,
+    CONTRACT_SNAPSHOT_ID,
+    CONTRACT_INSTANCE_ID,
+  ),
+  snapshotInstanceDashboardPath,
+);
+assert.throws(
+  () =>
+    validateSnapshotInstanceDashboardPath(
+      liveInstanceDashboardPath,
+      CONTRACT_PROJECT_ID,
+      CONTRACT_APPLICATION_ID,
+      CONTRACT_SNAPSHOT_ID,
+      CONTRACT_INSTANCE_ID,
+    ),
+  /snapshot_instance_dashboard_link_invalid/,
+);
 
 const guardedDashboard = guardApplicationDashboardReadModel(dashboardContractFixture, applicationContext);
 assert.equal(guardedDashboard.schemaVersion, "dashboard_read_model.v1");
@@ -343,6 +407,186 @@ assert.throws(
   /snapshot_detail_contract_mismatch/,
 );
 
+const guardedLiveInstanceDashboard = guardInstanceDashboardReadModel(instanceDashboardLiveContractFixture, {
+  ...instanceContext,
+  mode: "live",
+});
+assert.equal(guardedLiveInstanceDashboard.schemaVersion, "instance_dashboard_read_model.v1");
+assert.equal(guardedLiveInstanceDashboard.mode, "live");
+assert.equal(guardedLiveInstanceDashboard.window.name, "recent_30_minutes");
+assert.equal(guardedLiveInstanceDashboard.window.windowSource, "live_recent_30_minutes");
+assert.equal(guardedLiveInstanceDashboard.snapshot, null);
+assert.equal(guardedLiveInstanceDashboard.readSemantics.source, "accepted_metric_buckets");
+assert.equal(guardedLiveInstanceDashboard.readSemantics.snapshotRowSource, null);
+assert.equal(guardedLiveInstanceDashboard.readSemantics.instanceEvidenceReconstructedFromMetrics, false);
+assert.equal(guardedLiveInstanceDashboard.applicationStateRef.lifecycleOwner, "application");
+assert.deepEqual(
+  guardedLiveInstanceDashboard.endpointEvidence.items.map((item) => `${item.localDisplayOrder}:${item.endpointKey}`),
+  ["2:GET /z-contract", "1:POST /a-contract"],
+);
+
+const guardedSnapshotInstanceDashboard = guardInstanceDashboardReadModel(instanceDashboardSnapshotContractFixture, {
+  ...instanceContext,
+  mode: "snapshot",
+  snapshotId: CONTRACT_SNAPSHOT_ID,
+});
+assert.equal(guardedSnapshotInstanceDashboard.mode, "snapshot");
+assert.equal(guardedSnapshotInstanceDashboard.window.windowSource, "selected_application_snapshot");
+assert.equal(guardedSnapshotInstanceDashboard.snapshot?.snapshotRowSource, "dashboard_snapshots");
+assert.equal(guardedSnapshotInstanceDashboard.readSemantics.snapshotRowSource, "dashboard_snapshots");
+assert.equal(guardedSnapshotInstanceDashboard.readSemantics.acceptedAtCutoffApplied, false);
+assert.equal(guardedSnapshotInstanceDashboard.readSemantics.includesLateAcceptedMetrics, true);
+assert.equal(guardedSnapshotInstanceDashboard.readSemantics.mayDifferFromStoredApplicationSnapshot, true);
+assert.equal(guardedSnapshotInstanceDashboard.readSemantics.applicationSnapshotRecalculated, false);
+assert.equal(guardedSnapshotInstanceDashboard.readSemantics.instanceEvidenceReconstructedFromMetrics, true);
+assert.equal(guardedSnapshotInstanceDashboard.readSemantics.markerIsStateSource, false);
+assert.equal(
+  guardedSnapshotInstanceDashboard.endpointEvidence.items[0].presenceOnSelectedInstance,
+  "not_observed",
+);
+assert.equal(
+  guardInstanceDashboardReadModel(instanceDashboardRetentionGapFixture, {
+    ...instanceContext,
+    mode: "snapshot",
+    snapshotId: CONTRACT_SNAPSHOT_ID,
+  }).observationStatus.code,
+  "metric_missing",
+);
+assert.equal(
+  guardInstanceDashboardReadModel(instanceDashboardSummaryCapOutsideFixture, {
+    ...instanceContext,
+    mode: "snapshot",
+    snapshotId: CONTRACT_SNAPSHOT_ID,
+  }).readSemantics.source,
+  "accepted_metric_buckets",
+);
+assert.equal(
+  guardInstanceDashboardReadModel(instanceDashboardSummaryCapOutsideFixture, {
+    ...instanceContext,
+    mode: "snapshot",
+    snapshotId: CONTRACT_SNAPSHOT_ID,
+  }).applicationContribution.reason,
+  "selected_instance_outside_snapshot_summary_cap_reconstructed_from_metrics",
+);
+assert.equal(
+  guardInstanceDashboardReadModel(instanceDashboardSummaryCapOutsideFixture, {
+    ...instanceContext,
+    mode: "snapshot",
+    snapshotId: CONTRACT_SNAPSHOT_ID,
+  }).dataQuality.limitations.some((item) => item.includes("stored instanceSummary.items[]")),
+  true,
+);
+
+assert.throws(
+  () =>
+    guardInstanceDashboardReadModel(
+      {
+        ...instanceDashboardLiveContractFixture,
+        readSemantics: {
+          ...instanceDashboardLiveContractFixture.readSemantics,
+          includesLateAcceptedMetrics: true,
+        },
+      },
+      { ...instanceContext, mode: "live" },
+    ),
+  /instance_dashboard_contract_mismatch/,
+);
+
+assert.throws(
+  () =>
+    guardInstanceDashboardReadModel(
+      {
+        ...instanceDashboardSnapshotContractFixture,
+        readSemantics: {
+          ...instanceDashboardSnapshotContractFixture.readSemantics,
+          acceptedAtCutoffApplied: true,
+        },
+      },
+      { ...instanceContext, mode: "snapshot", snapshotId: CONTRACT_SNAPSHOT_ID },
+    ),
+  /instance_dashboard_contract_mismatch/,
+);
+
+assert.throws(
+  () =>
+    guardInstanceDashboardReadModel(
+      {
+        ...instanceDashboardSnapshotContractFixture,
+        stateCode: "down",
+      } as unknown as typeof instanceDashboardSnapshotContractFixture,
+      { ...instanceContext, mode: "snapshot", snapshotId: CONTRACT_SNAPSHOT_ID },
+    ),
+  /instance_dashboard_contract_mismatch/,
+);
+
+assert.throws(
+  () =>
+    guardInstanceDashboardReadModel(
+      {
+        ...instanceDashboardSnapshotContractFixture,
+        applicationStateRef: {
+          ...instanceDashboardSnapshotContractFixture.applicationStateRef,
+          lifecycleOwner: "instance",
+        },
+      },
+      { ...instanceContext, mode: "snapshot", snapshotId: CONTRACT_SNAPSHOT_ID },
+    ),
+  /instance_dashboard_contract_mismatch/,
+);
+
+assert.throws(
+  () =>
+    guardInstanceDashboardReadModel(
+      {
+        ...instanceDashboardSnapshotContractFixture,
+        endpointEvidence: {
+          ...instanceDashboardSnapshotContractFixture.endpointEvidence,
+          items: [
+            {
+              ...instanceDashboardSnapshotContractFixture.endpointEvidence.items[0],
+              healthScore: 100,
+            },
+          ],
+        },
+      } as unknown as typeof instanceDashboardSnapshotContractFixture,
+      { ...instanceContext, mode: "snapshot", snapshotId: CONTRACT_SNAPSHOT_ID },
+    ),
+  /instance_dashboard_contract_mismatch/,
+);
+
+assert.throws(
+  () =>
+    guardInstanceDashboardReadModel(
+      {
+        ...instanceDashboardSnapshotContractFixture,
+        instance: {
+          ...instanceDashboardSnapshotContractFixture.instance,
+          stateCode: "active",
+        },
+      } as unknown as typeof instanceDashboardSnapshotContractFixture,
+      { ...instanceContext, mode: "snapshot", snapshotId: CONTRACT_SNAPSHOT_ID },
+    ),
+  /instance_dashboard_contract_mismatch/,
+);
+
+assert.throws(
+  () =>
+    guardInstanceDashboardReadModel(
+      {
+        ...instanceDashboardSnapshotContractFixture,
+        instanceSummary: {
+          items: [
+            {
+              instanceId: CONTRACT_INSTANCE_ID,
+            },
+          ],
+        },
+      } as unknown as typeof instanceDashboardSnapshotContractFixture,
+      { ...instanceContext, mode: "snapshot", snapshotId: CONTRACT_SNAPSHOT_ID },
+    ),
+  /instance_dashboard_contract_mismatch/,
+);
+
 const guardedEvidence = guardInstanceEvidenceReadModel(instanceEvidenceContractFixture, instanceContext);
 assert.equal(guardedEvidence.endpointEvidence.items, instanceEvidenceContractFixture.endpointEvidence.items);
 assert.deepEqual(
@@ -430,13 +674,37 @@ assert.throws(
   /instance_snapshot_trend_contract_mismatch/,
 );
 
-for (const path of ["src/app/components/dashboard.tsx", "src/app/components/instance-panels.tsx", "src/app/components/snapshot-history-panel.tsx"]) {
+for (const path of [
+  "src/app/components/dashboard.tsx",
+  "src/app/components/instance-dashboard-surface.tsx",
+  "src/app/components/instance-panels.tsx",
+  "src/app/components/snapshot-detail-surface.tsx",
+  "src/app/components/snapshot-history-panel.tsx",
+]) {
   const source = readFileSync(path, "utf8");
   assert.equal(/\.sort\(|\.toSorted\(|\.reduce\(/.test(source), false, `${path} must preserve server order`);
 }
 
+const instanceDashboardSurfaceSource = readFileSync("src/app/components/instance-dashboard-surface.tsx", "utf8");
+assert.match(instanceDashboardSurfaceSource, /buildLiveInstanceDashboardPath/);
+assert.match(instanceDashboardSurfaceSource, /buildSnapshotInstanceDashboardPath/);
+assert.match(instanceDashboardSurfaceSource, /selected instance에서 관찰되지 않음/);
+assert.match(instanceDashboardSurfaceSource, /Application Snapshot 자체는 dashboard_snapshots\.read_model_json/);
+assert.equal(
+  /not_observed.*(정상|문제 없음|복구 완료)|(정상|문제 없음|복구 완료).*not_observed/.test(instanceDashboardSurfaceSource),
+  false,
+);
+assert.equal(/healthScore|rootCause|recoveryProof/.test(instanceDashboardSurfaceSource), false);
+
+const instancePanelsSource = readFileSync("src/app/components/instance-panels.tsx", "utf8");
+assert.match(instancePanelsSource, /DialogContent/);
+assert.match(instancePanelsSource, /snapshot-dashboard/);
+assert.match(instancePanelsSource, /dashboard_snapshots\.read_model_json\.instanceSummary\.items\[\] stored projection/);
+
 const snapshotDetailSurfaceSource = readFileSync("src/app/components/snapshot-detail-surface.tsx", "utf8");
 assert.match(snapshotDetailSurfaceSource, /보관 기간이 지났거나 저장된 snapshot을 찾을 수 없습니다/);
 assert.match(snapshotDetailSurfaceSource, /live dashboard\/current accepted bucket으로 복원하지 않습니다/);
+assert.match(snapshotDetailSurfaceSource, /Instance Dashboard snapshot detail의 필수 source로 사용하지 않습니다/);
+assert.match(snapshotDetailSurfaceSource, /Instance snapshot dashboard/);
 
 console.log("read-model contract guard fixtures passed");

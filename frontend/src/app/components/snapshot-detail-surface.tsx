@@ -24,6 +24,7 @@ import {
 import type { DashboardSnapshotDetailReadModel, JsonValue } from "../lib/read-model-types";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";
+import type { SnapshotInstanceDashboardTarget } from "./instance-dashboard-surface";
 
 export type SnapshotDetailTarget = {
   activeAnchor?: string | null;
@@ -55,11 +56,13 @@ function SectionLabel({ icon: Icon, children }: { icon: LucideIcon; children: Re
 export function SnapshotDetailSurface({
   applicationId,
   compact = false,
+  onOpenSnapshotInstanceDashboard,
   projectId,
   target,
 }: {
   applicationId: string;
   compact?: boolean;
+  onOpenSnapshotInstanceDashboard?: (target: SnapshotInstanceDashboardTarget) => void;
   projectId: string;
   target: SnapshotDetailTarget | null;
 }) {
@@ -238,6 +241,17 @@ export function SnapshotDetailSurface({
         <div className="mt-1 text-[12px] text-neutral-600">
           저장 당시 인스턴스 {formatCount(detail.instanceSummary.items.length)}개 · source={detail.instanceSummary.source}
         </div>
+        <p className="mt-1 text-[12px] text-neutral-500">
+          instanceSummary.items[]는 stored summary/trend projection source입니다. Instance Dashboard snapshot detail의 필수 source로 사용하지 않습니다.
+        </p>
+        {onOpenSnapshotInstanceDashboard && (
+          <SnapshotInstanceDrillDownList
+            detail={detail}
+            onOpenSnapshotInstanceDashboard={onOpenSnapshotInstanceDashboard}
+            projectId={projectId}
+            applicationId={applicationId}
+          />
+        )}
       </div>
       <details className="border-t border-neutral-100 p-3 text-[11px] text-neutral-500">
         <summary className="cursor-pointer text-neutral-700">기술 세부 정보</summary>
@@ -414,6 +428,58 @@ function numberField(record: Record<string, JsonValue> | null, key: string): str
   }
   const value = record[key];
   return typeof value === "number" && Number.isFinite(value) ? formatCount(value) : "저장값 없음";
+}
+
+function SnapshotInstanceDrillDownList({
+  applicationId,
+  detail,
+  onOpenSnapshotInstanceDashboard,
+  projectId,
+}: {
+  applicationId: string;
+  detail: DashboardSnapshotDetailReadModel;
+  onOpenSnapshotInstanceDashboard: (target: SnapshotInstanceDashboardTarget) => void;
+  projectId: string;
+}) {
+  if (detail.instanceSummary.items.length === 0) {
+    return (
+      <div className="mt-3 border border-neutral-200 bg-neutral-50 p-2 text-[12px] text-neutral-500">
+        stored instance summary에 표시된 row가 없어 이 surface에서는 instance action을 만들 수 없습니다. target instance id가 있는 다른 navigation은 selected snapshot id로 snapshot Instance Dashboard endpoint를 호출할 수 있습니다.
+      </div>
+    );
+  }
+
+  return (
+    <ul className="mt-3 space-y-2">
+      {detail.instanceSummary.items.map((item) => (
+        <li key={item.instanceId} className="flex flex-wrap items-center justify-between gap-2 border border-neutral-200 bg-white p-2">
+          <div className="min-w-0">
+            <div className="truncate text-[12px] text-neutral-900">{item.instanceName}</div>
+            <div className="mt-0.5 truncate text-[11px] text-neutral-500">
+              {item.instanceId} · stored observation {humanizeStatusCode(item.observationStatus)}
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 border-neutral-300"
+            onClick={() =>
+              onOpenSnapshotInstanceDashboard({
+                applicationId,
+                instanceId: item.instanceId,
+                instanceName: item.instanceName,
+                projectId,
+                snapshotDetailLink: detail.links.self,
+                snapshotId: detail.snapshot.snapshotId,
+              })
+            }
+          >
+            <Server className="h-3.5 w-3.5" strokeWidth={1.5} /> Instance snapshot dashboard
+          </Button>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function SnapshotDetailMessage({ body, compact, title }: { body: string; compact: boolean; title: string }) {

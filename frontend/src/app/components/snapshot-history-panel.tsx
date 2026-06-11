@@ -27,6 +27,7 @@ import type {
   OperationalEventHistoryReadModel,
 } from "../lib/read-model-types";
 import { SnapshotDetailSurface, type SnapshotDetailTarget } from "./snapshot-detail-surface";
+import type { SnapshotInstanceDashboardTarget } from "./instance-dashboard-surface";
 import { Button } from "./ui/button";
 
 const SNAPSHOT_RETENTION_DAYS = 14;
@@ -80,10 +81,12 @@ function SectionLabel({ icon: Icon, children }: { icon: LucideIcon; children: Re
  */
 export function SnapshotHistoryPanel({
   dashboard,
+  onOpenSnapshotInstanceDashboard,
   selectedApplication,
   selectedProject,
 }: {
   dashboard: DashboardPresentation;
+  onOpenSnapshotInstanceDashboard: (target: SnapshotInstanceDashboardTarget) => void;
   selectedApplication: ApplicationPresentationItem;
   selectedProject: ProjectPresentationItem;
 }) {
@@ -191,6 +194,7 @@ export function SnapshotHistoryPanel({
         )}
         <SnapshotDetailSurface
           applicationId={selectedApplication.applicationId}
+          onOpenSnapshotInstanceDashboard={onOpenSnapshotInstanceDashboard}
           projectId={selectedProject.projectId}
           target={detailTarget}
         />

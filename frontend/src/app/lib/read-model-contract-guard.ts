@@ -4,6 +4,7 @@ import type {
   DashboardSnapshotDetailReadModel,
   DashboardSnapshotMarkerReadModel,
   HistoryPreset,
+  InstanceDashboardReadModel,
   InstanceEvidenceReadModel,
   InstanceSnapshotTrendReadModel,
   OperationalEventHistoryReadModel,
@@ -17,6 +18,11 @@ type ApplicationContext = {
 
 type InstanceContext = ApplicationContext & {
   instanceId: string;
+};
+
+type InstanceDashboardContext = InstanceContext & {
+  mode: "live" | "snapshot";
+  snapshotId?: string;
 };
 
 type SnapshotHistoryContext = {
@@ -38,12 +44,16 @@ type InstanceTrendContext = InstanceContext & {
 const DASHBOARD_CONTRACT_ERROR = "dashboard_contract_mismatch";
 const SNAPSHOT_HISTORY_CONTRACT_ERROR = "snapshot_history_context_mismatch";
 const SNAPSHOT_DETAIL_CONTRACT_ERROR = "snapshot_detail_contract_mismatch";
+const INSTANCE_DASHBOARD_CONTRACT_ERROR = "instance_dashboard_contract_mismatch";
 const INSTANCE_EVIDENCE_CONTRACT_ERROR = "instance_evidence_contract_mismatch";
 const INSTANCE_TREND_CONTRACT_ERROR = "instance_snapshot_trend_contract_mismatch";
 const DASHBOARD_SCHEMA_VERSION = "dashboard_read_model.v1";
 const DASHBOARD_LIVE_MODE = "live";
 const DASHBOARD_WINDOW_TYPE = "recent_30_minutes";
 const DASHBOARD_READ_SOURCE = "accepted_metric_buckets";
+const INSTANCE_DASHBOARD_SCHEMA_VERSION = "instance_dashboard_read_model.v1";
+const INSTANCE_DASHBOARD_WINDOW_SOURCE_LIVE = "live_recent_30_minutes";
+const INSTANCE_DASHBOARD_WINDOW_SOURCE_SNAPSHOT = "selected_application_snapshot";
 const SOURCE_SCOPED_PERCENTILE_SOURCE = "starter_canonical_percentile";
 const SOURCE_SCOPED_PERCENTILE_SCOPE = "instance_bucket";
 const SOURCE_SCOPED_PERCENTILE_DISPLAY_POLICY = "source_scoped_points";
@@ -61,10 +71,14 @@ const MARKER_TIMELINE_INDEX = "timeline_index";
 const MARKER_STORED_POINT = "stored_read_model_point";
 const FORBIDDEN_INSTANCE_DECISION_FIELDS = [
   "state",
+  "stateCode",
+  "health",
   "lifecycleState",
   "instanceState",
   "currentState",
   "healthScore",
+  "cause",
+  "rootCauseCandidate",
   "recoveryProof",
   "rootCause",
 ] as const;
@@ -407,6 +421,235 @@ export function guardSnapshotDetailReadModel(
   assertArray(snapshotEndpointEvidence.items, SNAPSHOT_DETAIL_CONTRACT_ERROR);
   assertArray(instanceSummary.items, SNAPSHOT_DETAIL_CONTRACT_ERROR);
   return model;
+}
+
+/**
+ * Instance Dashboard live/snapshot read model을 mode별 source semantics로 검증한다.
+ * Application-owned state reference는 허용하지만 selected instance lifecycle/health/root cause field는 거부한다.
+ */
+export function guardInstanceDashboardReadModel(
+  model: InstanceDashboardReadModel,
+  context: InstanceDashboardContext,
+): InstanceDashboardReadModel {
+  const root = asRecord(model, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNoForbiddenFields(root, ["state", "stateCode"], INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNoInstanceDashboardStateFieldsDeep(root, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNoForbiddenFieldsDeep(
+    root,
+    [
+      "health",
+      "lifecycleState",
+      "instanceState",
+      "currentState",
+      "healthScore",
+      "cause",
+      "rootCauseCandidate",
+      "recoveryProof",
+      "rootCause",
+      "endpointPriority",
+      "instanceSummary",
+    ],
+    INSTANCE_DASHBOARD_CONTRACT_ERROR,
+  );
+
+  const application = asRecord(root.application, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  const instance = asRecord(root.instance, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  const window = asRecord(root.window, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  const applicationStateRef = asRecord(root.applicationStateRef, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  const observationStatus = asRecord(root.observationStatus, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  const applicationContribution = asRecord(root.applicationContribution, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  const dataQuality = asRecord(root.dataQuality, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  const starterConnection = asRecord(root.starterConnection, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  const signals = asRecord(root.signals, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  const endpointEvidence = asRecord(root.endpointEvidence, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  const resourceEvidence = asRecord(root.resourceEvidence, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  const readSemantics = asRecord(root.readSemantics, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  const links = asRecord(root.links, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+
+  if (
+    root.schemaVersion !== INSTANCE_DASHBOARD_SCHEMA_VERSION ||
+    root.mode !== context.mode ||
+    application.projectId !== context.projectId ||
+    application.applicationId !== context.applicationId ||
+    instance.instanceId !== context.instanceId ||
+    window.name !== DASHBOARD_WINDOW_TYPE ||
+    window.bucketDurationSeconds !== 30 ||
+    readSemantics.source !== DASHBOARD_READ_SOURCE ||
+    readSemantics.windowSource !== window.windowSource ||
+    readSemantics.acceptedAtCutoffApplied !== false ||
+    readSemantics.applicationSnapshotRecalculated !== false ||
+    readSemantics.markerIsStateSource !== false ||
+    applicationStateRef.lifecycleOwner !== "application" ||
+    dataQuality.source !== DASHBOARD_READ_SOURCE ||
+    starterConnection.statusSource !== "starter_heartbeat" ||
+    endpointEvidence.source !== "accepted_metric_buckets.endpoints_json" ||
+    endpointEvidence.scope !== "instance_recent_30_minutes" ||
+    endpointEvidence.displayOrderingPolicy !== "server_order" ||
+    resourceEvidence.source !== DASHBOARD_READ_SOURCE
+  ) {
+    throw new ApiRequestError(INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  }
+
+  assertDashboardWindow(window, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(root.generatedAt, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(application.name, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(application.environment, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(instance.instanceName, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(instance.firstSeenAt, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(instance.lastSeenAt, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(observationStatus.code, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertOptionalString(observationStatus.reason, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertOptionalString(observationStatus.lastObservedBucketEndUtc, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(applicationContribution.level, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertOptionalString(applicationContribution.reason, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertArray(applicationContribution.evidenceRefs, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(dataQuality.state, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertArray(dataQuality.limitations, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(starterConnection.lastHeartbeatStatus, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(starterConnection.freshnessLabel, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(starterConnection.connectionMeaning, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  if (
+    starterConnection.stateImpact !== "does_not_change_metric_state" &&
+    starterConnection.stateImpact !== "control_plane_only"
+  ) {
+    throw new ApiRequestError(INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  }
+  assertInstanceDashboardSignals(signals);
+  assertInstanceDashboardEndpointEvidence(endpointEvidence);
+  assertInstanceDashboardResourceEvidence(resourceEvidence);
+  assertArray(root.patterns, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertArray(root.excludedCapabilities, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(links.self, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(links.applicationDashboard, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(links.instanceEvidence, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(links.snapshotTrend, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertOptionalString(links.applicationSnapshotDetail, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+
+  if (context.mode === "live") {
+    if (
+      window.windowSource !== INSTANCE_DASHBOARD_WINDOW_SOURCE_LIVE ||
+      root.snapshot !== null ||
+      applicationStateRef.source !== "application_dashboard_live" ||
+      applicationStateRef.snapshotId !== null ||
+      readSemantics.snapshotRowSource !== null ||
+      readSemantics.includesLateAcceptedMetrics !== false ||
+      readSemantics.mayDifferFromStoredApplicationSnapshot !== false ||
+      readSemantics.instanceEvidenceReconstructedFromMetrics !== false
+    ) {
+      throw new ApiRequestError(INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    }
+  } else {
+    const snapshot = asRecord(root.snapshot, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    if (
+      !context.snapshotId ||
+      window.windowSource !== INSTANCE_DASHBOARD_WINDOW_SOURCE_SNAPSHOT ||
+      snapshot.snapshotId !== context.snapshotId ||
+      snapshot.snapshotRowSource !== SNAPSHOT_SOURCE ||
+      snapshot.currentWindowStartUtc !== window.startUtc ||
+      snapshot.currentWindowEndUtc !== window.endUtc ||
+      applicationStateRef.source !== "selected_application_snapshot" ||
+      applicationStateRef.snapshotId !== context.snapshotId ||
+      readSemantics.snapshotRowSource !== SNAPSHOT_SOURCE ||
+      readSemantics.includesLateAcceptedMetrics !== true ||
+      readSemantics.mayDifferFromStoredApplicationSnapshot !== true ||
+      readSemantics.instanceEvidenceReconstructedFromMetrics !== true
+    ) {
+      throw new ApiRequestError(INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    }
+    assertNonEmptyString(snapshot.generatedAt, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertOptionalString(snapshot.captureReason, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertOptionalString(snapshot.storedApplicationStateCode, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  }
+
+  return model;
+}
+
+function assertNoInstanceDashboardStateFieldsDeep(
+  value: unknown,
+  errorCode: string,
+  path: readonly string[] = [],
+) {
+  if (value === null || typeof value !== "object") {
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      assertNoInstanceDashboardStateFieldsDeep(item, errorCode, path);
+    }
+    return;
+  }
+
+  const record = value as Record<string, unknown>;
+  for (const [key, child] of Object.entries(record)) {
+    const childPath = [...path, key];
+    const pathKey = childPath.join(".");
+    if (key === "state" && pathKey !== "dataQuality.state") {
+      throw new ApiRequestError(errorCode);
+    }
+    if (key === "stateCode") {
+      throw new ApiRequestError(errorCode);
+    }
+    assertNoInstanceDashboardStateFieldsDeep(child, errorCode, childPath);
+  }
+}
+
+function assertInstanceDashboardSignals(signals: Record<string, unknown>) {
+  const red = asRecord(signals.red, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertFiniteNumber(red.requestCount, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertFiniteNumber(red.errorCount, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNullableFiniteNumber(red.errorRate, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNullableFiniteNumber(red.slowCountOver500ms, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNullableFiniteNumber(red.slowShareOver500ms, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  if (typeof red.requestSymptomPresent !== "boolean") {
+    throw new ApiRequestError(INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  }
+}
+
+function assertInstanceDashboardEndpointEvidence(endpointEvidence: Record<string, unknown>) {
+  assertNonEmptyString(endpointEvidence.selectionPolicy, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(endpointEvidence.status, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  assertOptionalString(endpointEvidence.reason, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  for (const item of assertArray(endpointEvidence.items, INSTANCE_DASHBOARD_CONTRACT_ERROR)) {
+    const endpoint = asRecord(item, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertNonEmptyString(endpoint.method, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertNonEmptyString(endpoint.route, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertNonEmptyString(endpoint.endpointKey, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertNonEmptyString(endpoint.presenceOnSelectedInstance, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    if (
+      endpoint.presenceOnSelectedInstance !== "observed" &&
+      endpoint.presenceOnSelectedInstance !== "not_observed" &&
+      endpoint.presenceOnSelectedInstance !== "insufficient"
+    ) {
+      throw new ApiRequestError(INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    }
+    assertFiniteNumber(endpoint.requestCount, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertFiniteNumber(endpoint.errorCount, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertNullableFiniteNumber(endpoint.errorRate, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertFiniteNumber(endpoint.localDisplayOrder, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertNonEmptyString(endpoint.status, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertOptionalString(endpoint.reason, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertOptionalString(endpoint.relatedApplicationEndpointEvidenceRef, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  }
+}
+
+function assertInstanceDashboardResourceEvidence(resourceEvidence: Record<string, unknown>) {
+  assertNonEmptyString(resourceEvidence.status, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  for (const item of assertArray(resourceEvidence.items, INSTANCE_DASHBOARD_CONTRACT_ERROR)) {
+    const resource = asRecord(item, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertNonEmptyString(resource.resourceKey, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    if (resource.scope !== "instance") {
+      throw new ApiRequestError(INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    }
+    assertNullableFiniteNumber(resource.usage, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertNullableFiniteNumber(resource.threshold, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertNonEmptyString(resource.status, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertOptionalString(resource.observedAt, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    if (typeof resource.requestSymptomPresent !== "boolean") {
+      throw new ApiRequestError(INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    }
+    assertNonEmptyString(resource.patternContribution, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertNonEmptyString(resource.operatorText, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  }
 }
 
 /**

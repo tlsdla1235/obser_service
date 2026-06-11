@@ -425,6 +425,189 @@ export type InstanceEntry = {
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
+/**
+ * 13.8 backend Instance Dashboard live/snapshot endpoint의 public DTO다.
+ * Instance state를 만들지 않고 application-owned state reference와 selected instance evidence만 표시한다.
+ */
+export type InstanceDashboardReadModel = {
+  schemaVersion: "instance_dashboard_read_model.v1" | (string & {});
+  mode: "live" | "snapshot" | (string & {});
+  generatedAt: IsoDateTimeString;
+  application: InstanceDashboardApplication;
+  instance: InstanceDashboardInstance;
+  window: InstanceDashboardWindow;
+  thresholds: DashboardThresholds;
+  applicationStateRef: InstanceDashboardApplicationStateRef;
+  observationStatus: InstanceDashboardObservationStatus;
+  applicationContribution: InstanceDashboardApplicationContribution;
+  dataQuality: InstanceDashboardDataQuality;
+  starterConnection: InstanceDashboardStarterConnection;
+  signals: InstanceDashboardSignals;
+  endpointEvidence: InstanceDashboardEndpointEvidence;
+  resourceEvidence: InstanceDashboardResourceEvidence;
+  patterns: InstanceDashboardPatternEvidence[];
+  snapshot: InstanceDashboardSnapshot | null;
+  readSemantics: InstanceDashboardReadSemantics;
+  links: InstanceDashboardLinks;
+  excludedCapabilities: string[];
+};
+
+export type InstanceDashboardApplication = {
+  projectId: UuidString;
+  applicationId: UuidString;
+  name: string;
+  environment: string;
+  links: {
+    dashboard: string;
+  };
+};
+
+export type InstanceDashboardInstance = {
+  instanceId: UuidString;
+  instanceName: string;
+  firstSeenAt: IsoDateTimeString;
+  lastSeenAt: IsoDateTimeString;
+};
+
+export type InstanceDashboardWindow = {
+  name: "recent_30_minutes" | (string & {});
+  startUtc: IsoDateTimeString;
+  endUtc: IsoDateTimeString;
+  bucketDurationSeconds: number;
+  windowSource: "live_recent_30_minutes" | "selected_application_snapshot" | (string & {});
+};
+
+export type InstanceDashboardApplicationStateRef = {
+  lifecycleOwner: "application" | (string & {});
+  source: "application_dashboard_live" | "selected_application_snapshot" | (string & {});
+  applicationStateCode: string | null;
+  snapshotId: UuidString | null;
+};
+
+export type InstanceDashboardObservationStatus = {
+  code:
+    | "observed"
+    | "not_observed_in_window"
+    | "metric_missing"
+    | "insufficient_evidence"
+    | "malformed_evidence"
+    | (string & {});
+  reason: string | null;
+  lastObservedBucketEndUtc: IsoDateTimeString | null;
+};
+
+export type InstanceDashboardApplicationContribution = {
+  level: "none" | "attention" | "supporting" | "contributing" | "insufficient" | (string & {});
+  reason: string | null;
+  evidenceRefs: string[];
+};
+
+export type InstanceDashboardDataQuality = {
+  state: string;
+  limitations: string[];
+  source: "accepted_metric_buckets" | (string & {});
+};
+
+export type InstanceDashboardStarterConnection = {
+  statusSource: "starter_heartbeat" | (string & {});
+  lastHeartbeatAt: IsoDateTimeString | null;
+  lastHeartbeatStatus: string;
+  freshnessLabel: string;
+  connectionMeaning: string;
+  stateImpact: "does_not_change_metric_state" | "control_plane_only" | (string & {});
+};
+
+export type InstanceDashboardSignals = {
+  red: InstanceDashboardRedSignals;
+};
+
+export type InstanceDashboardRedSignals = {
+  requestCount: number;
+  errorCount: number;
+  errorRate: number | null;
+  slowCountOver500ms: number | null;
+  slowShareOver500ms: number | null;
+  requestSymptomPresent: boolean;
+};
+
+export type InstanceDashboardEndpointEvidence = {
+  source: "accepted_metric_buckets.endpoints_json" | (string & {});
+  scope: "instance_recent_30_minutes" | (string & {});
+  selectionPolicy: string;
+  displayOrderingPolicy: "server_order" | (string & {});
+  status: string;
+  reason: string | null;
+  items: InstanceDashboardEndpointEvidenceItem[];
+};
+
+export type InstanceDashboardEndpointEvidenceItem = {
+  method: string;
+  route: string;
+  endpointKey: string;
+  presenceOnSelectedInstance: "observed" | "not_observed" | "insufficient" | (string & {});
+  requestCount: number;
+  errorCount: number;
+  errorRate: number | null;
+  localDisplayOrder: number;
+  status: string;
+  reason: string | null;
+  relatedApplicationEndpointEvidenceRef: string | null;
+};
+
+export type InstanceDashboardResourceEvidence = {
+  source: "accepted_metric_buckets" | (string & {});
+  status: string;
+  items: InstanceDashboardResourceEvidenceItem[];
+};
+
+export type InstanceDashboardResourceEvidenceItem = {
+  resourceKey: string;
+  scope: "instance" | (string & {});
+  usage: number | null;
+  threshold: number | null;
+  status: string;
+  observedAt: IsoDateTimeString | null;
+  requestSymptomPresent: boolean;
+  patternContribution: "none" | "attention_only" | "shared_resource_pressure_pattern" | (string & {});
+  operatorText: string;
+};
+
+export type InstanceDashboardPatternEvidence = {
+  patternKey: string;
+  contribution: string;
+  evidenceRefs: string[];
+};
+
+export type InstanceDashboardSnapshot = {
+  snapshotId: UuidString;
+  snapshotRowSource: "dashboard_snapshots" | (string & {});
+  generatedAt: IsoDateTimeString;
+  currentWindowStartUtc: IsoDateTimeString;
+  currentWindowEndUtc: IsoDateTimeString;
+  captureReason: string | null;
+  storedApplicationStateCode: string | null;
+};
+
+export type InstanceDashboardReadSemantics = {
+  source: "accepted_metric_buckets" | (string & {});
+  windowSource: "live_recent_30_minutes" | "selected_application_snapshot" | (string & {});
+  snapshotRowSource: "dashboard_snapshots" | null | (string & {});
+  acceptedAtCutoffApplied: boolean;
+  includesLateAcceptedMetrics: boolean;
+  mayDifferFromStoredApplicationSnapshot: boolean;
+  applicationSnapshotRecalculated: boolean;
+  instanceEvidenceReconstructedFromMetrics: boolean;
+  markerIsStateSource: boolean;
+};
+
+export type InstanceDashboardLinks = {
+  self: string;
+  applicationDashboard: string;
+  instanceEvidence: string;
+  snapshotTrend: string;
+  applicationSnapshotDetail: string | null;
+};
+
 export type InstanceEvidenceReadModel = {
   generatedAt: IsoDateTimeString;
   application: EvidenceApplication;

@@ -404,6 +404,7 @@ export function Dashboard() {
               error={dashboardError}
               loading={dashboardLoading}
               onOpenEvidence={instanceView.openEvidence}
+              onOpenSnapshotDashboard={instanceView.openSnapshotDashboard}
               onOpenTrend={instanceView.openTrend}
               onReload={dashboardResource.reload}
               selectedApplication={selectedApplication}
@@ -416,6 +417,7 @@ export function Dashboard() {
           view={instanceView.view}
           onClose={instanceView.close}
           onOpenTrend={instanceView.openTrend}
+          onOpenSnapshotDashboard={instanceView.openSnapshotDashboard}
           onOpenEvidence={instanceView.openEvidence}
         />
       </div>
@@ -578,6 +580,7 @@ function DashboardMain({
   error,
   loading,
   onOpenEvidence,
+  onOpenSnapshotDashboard,
   onOpenTrend,
   onReload,
   selectedApplication,
@@ -587,6 +590,7 @@ function DashboardMain({
   error: Error | null;
   loading: boolean;
   onOpenEvidence: ReturnType<typeof useInstanceView>["openEvidence"];
+  onOpenSnapshotDashboard: ReturnType<typeof useInstanceView>["openSnapshotDashboard"];
   onOpenTrend: ReturnType<typeof useInstanceView>["openTrend"];
   onReload: () => void;
   selectedApplication: ApplicationPresentationItem | null;
@@ -639,7 +643,12 @@ function DashboardMain({
           </div>
         </TabsContent>
         <TabsContent value="snapshots" className="mt-0">
-          <SnapshotHistoryPanel dashboard={dashboard} selectedApplication={selectedApplication} selectedProject={selectedProject} />
+          <SnapshotHistoryPanel
+            dashboard={dashboard}
+            onOpenSnapshotInstanceDashboard={onOpenSnapshotDashboard}
+            selectedApplication={selectedApplication}
+            selectedProject={selectedProject}
+          />
         </TabsContent>
       </Tabs>
     </div>
@@ -1639,8 +1648,8 @@ function InstancesPanel({
                 <div className="text-[13px] text-neutral-900">{instance.instanceName}</div>
                 <div className="mt-0.5 text-[11px] text-neutral-500">마지막 관측 {formatOptionalDateTime(instance.lastSeenAt)}</div>
                 <div className="mt-2 flex gap-3 text-[11px] text-neutral-700">
-                  <button onClick={() => onOpenEvidence(target)} className="underline underline-offset-2 hover:text-neutral-900">근거 보기</button>
-                  <button onClick={() => onOpenTrend(target)} className="underline underline-offset-2 hover:text-neutral-900">변화 보기</button>
+                  <button onClick={() => onOpenEvidence(target)} className="underline underline-offset-2 hover:text-neutral-900">Live dashboard</button>
+                  <button onClick={() => onOpenTrend(target)} className="underline underline-offset-2 hover:text-neutral-900">Stored trend</button>
                 </div>
               </li>
             );
