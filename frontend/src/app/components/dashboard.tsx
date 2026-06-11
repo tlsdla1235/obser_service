@@ -595,16 +595,13 @@ function DashboardMain({
   return (
     <div className="grid gap-4 p-3 md:p-5">
       <DashboardContext selectedProject={selectedProject} dashboard={dashboard} />
-      <DataQualityFreshnessStrip dashboard={dashboard} />
       <LifecycleStateHero dashboard={dashboard} />
-      <DirectStateReasonsPanel reasons={dashboard.stateReasons} />
-      <AttentionAndFirstLookPanel
-        evidence={dashboard.attentionEvidence}
-        firstLookCandidates={dashboard.firstLookCandidates}
-      />
-      <EndpointResourceEvidencePanel dashboard={dashboard} />
-      <MetricDetailSection dashboard={dashboard} />
       <StarterConnectionStrip dashboard={dashboard} />
+      <DataQualityFreshnessStrip dashboard={dashboard} />
+      <GoldenSignalsGrid dashboard={dashboard} />
+      <FirstLookCandidatesPanel candidates={dashboard.firstLookCandidates} />
+      <EndpointPriorityPanel items={dashboard.endpointPriority} />
+      <ResourceSignalsPanel dashboard={dashboard} />
       <InstancesPanel dashboard={dashboard} onOpenEvidence={onOpenEvidence} />
       <SnapshotHistoryPanel
         dashboard={dashboard}
@@ -612,7 +609,15 @@ function DashboardMain({
         selectedApplication={selectedApplication}
         selectedProject={selectedProject}
       />
-      <CredentialLifecyclePanel selectedProject={selectedProject} />
+      <MetricDetailSection dashboard={dashboard} />
+      <details className="border border-neutral-200 bg-white">
+        <summary className="cursor-pointer px-3 py-2.5 text-[11px] uppercase text-neutral-500">
+          Starter credential lifecycle
+        </summary>
+        <div className="border-t border-neutral-100 p-3">
+          <CredentialLifecyclePanel selectedProject={selectedProject} />
+        </div>
+      </details>
     </div>
   );
 }
@@ -654,40 +659,41 @@ function DashboardContext({ dashboard, selectedProject }: { dashboard: Dashboard
 
 function DataQualityFreshnessStrip({ dashboard }: { dashboard: DashboardPresentation }) {
   return (
-    <div className="border border-neutral-200 bg-white p-3">
-      <div className="flex items-center justify-between gap-3">
+    <details className="border border-neutral-200 bg-white">
+      <summary className="grid cursor-pointer gap-2 px-3 py-2.5 text-[11px] uppercase text-neutral-500 md:grid-cols-[minmax(180px,0.55fr)_minmax(0,1.4fr)_minmax(200px,0.8fr)]">
         <SectionLabel icon={Activity}>Data quality / freshness</SectionLabel>
-        <StatusBadge className={statusBadgeClassName(dashboard.dataQuality.state)}>
-          {humanizeStatusCode(dashboard.dataQuality.state)}
-        </StatusBadge>
+        <span className="text-neutral-700">
+          {formatCount(dashboard.dataQuality.requestCount)} / 최소 {formatCount(dashboard.dataQuality.minimumRequestCount)}
+        </span>
+        <span className="text-neutral-700">{humanizeStatusCode(dashboard.dataQuality.state)} · {dashboard.dataQualityLastObservedDisplay}</span>
+      </summary>
+      <div className={`grid gap-3 border-t border-neutral-100 border-l-4 p-3 md:grid-cols-[minmax(180px,0.55fr)_minmax(0,1.4fr)_minmax(200px,0.8fr)] md:items-center ${stateStripAccentClassName(dashboard.dataQuality.state)}`}>
+        <div>
+          <StatusBadge className={statusBadgeClassName(dashboard.dataQuality.state)}>
+            {humanizeStatusCode(dashboard.dataQuality.state)}
+          </StatusBadge>
+          <h2 className="mt-2 text-[16px] font-medium leading-tight text-neutral-950">
+            {formatCount(dashboard.dataQuality.requestCount)} / 최소 {formatCount(dashboard.dataQuality.minimumRequestCount)}
+          </h2>
+        </div>
+        <div className="text-[13px] leading-5 text-neutral-900">
+          마지막 관측 {dashboard.dataQualityLastObservedDisplay}
+          <p className="text-[12px] text-neutral-600">마지막 수집 구간 {dashboard.lastAcceptedBucketDisplay}</p>
+        </div>
+        <div className="text-[12px] text-neutral-600">
+          <p>stale {formatOptionalDateTime(dashboard.application.freshness.staleAt)}</p>
+          <p>down {formatOptionalDateTime(dashboard.application.freshness.downAt)}</p>
+          <p className="mt-1 text-[11px] text-neutral-500">
+            baseline not used · histogram percentile {dashboard.readSemantics.histogramBucketsUsedForPercentiles ? "사용" : "사용 안 함"}
+          </p>
+          <p className="mt-1 truncate text-[11px] text-neutral-500" title={dashboard.dataQuality.limitations.map(humanizeStatusCode).join(" · ")}>
+            {dashboard.dataQuality.limitations.length > 0
+              ? dashboard.dataQuality.limitations.map(humanizeStatusCode).join(" · ")
+              : "서버가 별도 data quality limitation을 제공하지 않았습니다."}
+          </p>
+        </div>
       </div>
-      <div className="mt-3 grid grid-cols-1 gap-2 text-[11px] text-neutral-600 sm:grid-cols-2 lg:grid-cols-4">
-        <InfoCell label="판단 요청 수" value={`${formatCount(dashboard.dataQuality.requestCount)} / 최소 ${formatCount(dashboard.dataQuality.minimumRequestCount)}`} />
-        <InfoCell label="마지막 관측" value={dashboard.dataQualityLastObservedDisplay} />
-        <InfoCell label="마지막 수집 구간" value={dashboard.lastAcceptedBucketDisplay} />
-        <InfoCell label="baseline" value="baseline not used" />
-        <InfoCell label="stale 기준" value={formatOptionalDateTime(dashboard.application.freshness.staleAt)} />
-        <InfoCell label="down 기준" value={formatOptionalDateTime(dashboard.application.freshness.downAt)} />
-        <InfoCell label="histogram percentile" value={dashboard.readSemantics.histogramBucketsUsedForPercentiles ? "사용" : "사용 안 함"} />
-        <InfoCell label="분포 source" value={dashboard.readSemanticsBucketSourceDisplay} />
-      </div>
-      <LimitationList limitations={dashboard.dataQuality.limitations} />
-    </div>
-  );
-}
-
-function LimitationList({ limitations }: { limitations: string[] }) {
-  if (limitations.length === 0) {
-    return <div className="mt-3 text-[12px] text-neutral-500">서버가 별도 data quality limitation을 제공하지 않았습니다.</div>;
-  }
-  return (
-    <ul className="mt-3 grid grid-cols-1 gap-2 text-[12px] text-neutral-600 md:grid-cols-2">
-      {limitations.map((limitation) => (
-        <li key={limitation} className="border-l-2 border-neutral-300 pl-2">
-          {humanizeStatusCode(limitation)}
-        </li>
-      ))}
-    </ul>
+    </details>
   );
 }
 
@@ -705,11 +711,14 @@ function LifecycleStateHero({ dashboard }: { dashboard: DashboardPresentation })
           </InlineHelp>
         </div>
         <StatusBadge className={`mt-2 ${dashboard.metricStateClassName}`}>{applicationStateDisplayText(dashboard.state.code)}</StatusBadge>
-        <h2 className="mt-2 text-[16px] font-medium leading-tight text-neutral-950">{dashboard.operatorSummary.headline}</h2>
+        <h2 className="mt-2 text-[16px] font-medium leading-tight text-neutral-950">{applicationStateDisplayText(dashboard.state.code)}</h2>
       </div>
-      <p className="text-[13px] text-neutral-900">{applicationStateSummary(dashboard)}</p>
+      <div className="text-[13px] text-neutral-900">
+        <p className="line-clamp-1">{dashboard.operatorSummary.headline}</p>
+        <p className="line-clamp-2 text-[12px] text-neutral-600">{applicationStateSummary(dashboard)}</p>
+      </div>
       <div className="text-[12px] text-neutral-600">
-        <p>{dashboard.state.recommendedAction}</p>
+        <p className="line-clamp-2">{dashboard.state.recommendedAction}</p>
         {dashboard.recovery.isRecovering && (
           <p className="mt-2 border border-neutral-300 bg-neutral-50 p-2">
             {dashboard.recovery.recommendedAction ?? "회복 여부를 확정하지 말고 다음 수집 데이터까지 관찰하세요."}
@@ -816,25 +825,25 @@ function EvidenceListPanel({
 function FirstLookCandidatesPanel({ candidates }: { candidates: DashboardFirstLookCandidate[] }) {
   return (
     <div className="border border-neutral-200 bg-white">
-      <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2.5">
-        <SectionLabel icon={ListChecks}>First look candidates</SectionLabel>
+      <div className="flex items-start justify-between gap-3 border-b border-neutral-200 px-3 py-2.5">
+        <div>
+          <SectionLabel icon={ListChecks}>First look candidates</SectionLabel>
+          <p className="mt-1 text-[12px] text-neutral-500">최대 3개만 보여주는 bounded evidence queue입니다.</p>
+        </div>
         <span className="text-[11px] text-neutral-500">server order</span>
       </div>
       {candidates.length === 0 ? (
         <div className="p-3 text-[12px] text-neutral-500">서버가 먼저 볼 후보를 제공하지 않았습니다.</div>
       ) : (
-        <ol>
+        <ol className="grid gap-3 p-3 lg:grid-cols-3">
           {candidates.map((candidate) => (
-            <li key={`${candidate.rank}-${candidate.type}-${candidate.target ?? "none"}`} className="border-b border-neutral-100 p-3 last:border-b-0">
-              <div className="flex items-start gap-3">
-                <span className="text-[12px] tabular-nums text-neutral-400">{String(candidate.rank).padStart(2, "0")}</span>
-                <div>
-                  <div className="text-[13px] text-neutral-900">{candidate.operatorText}</div>
-                  <div className="mt-1 text-[11px] text-neutral-500">
-                    {humanizeStatusCode(candidate.type)} · {candidate.target ?? "target 없음"} · {humanizeSourceCode(candidate.source)}
-                  </div>
-                </div>
+            <li key={`${candidate.rank}-${candidate.type}-${candidate.target ?? "none"}`} className="border border-neutral-200 p-3">
+              <StatusBadge>{humanizeStatusCode(candidate.type)}</StatusBadge>
+              <h3 className="mt-2 text-[14px] font-medium leading-snug text-neutral-950">{candidate.target ?? candidate.reasonCode}</h3>
+              <div className="mt-1 text-[11px] text-neutral-500">
+                rank {candidate.rank} · {humanizeSourceCode(candidate.source)}
               </div>
+              <p className="mt-2 text-[12px] leading-5 text-neutral-700">{candidate.operatorText}</p>
             </li>
           ))}
         </ol>
@@ -845,10 +854,10 @@ function FirstLookCandidatesPanel({ candidates }: { candidates: DashboardFirstLo
 
 function StarterConnectionStrip({ dashboard }: { dashboard: DashboardPresentation }) {
   return (
-    <div className="border border-neutral-300 bg-white p-3">
-      <div className="flex items-center justify-between gap-3">
+    <div className="grid gap-3 border border-neutral-900 border-l-4 border-l-emerald-600 bg-white p-3 md:grid-cols-[minmax(180px,0.55fr)_minmax(0,1.4fr)_minmax(200px,0.8fr)] md:items-center">
+      <div>
         <div className="flex items-center gap-2">
-          <SectionLabel icon={Radio}>Starter control-plane</SectionLabel>
+          <SectionLabel icon={Radio}>StarterConnection</SectionLabel>
           <InlineHelp label="상태 판단 영향 설명">
             <div className="space-y-1">
               <div>마지막 연결 신호는 앱이 마지막으로 살아 있다고 알려온 시각입니다.</div>
@@ -856,19 +865,19 @@ function StarterConnectionStrip({ dashboard }: { dashboard: DashboardPresentatio
             </div>
           </InlineHelp>
         </div>
-        <StatusBadge className={statusBadgeClassName(dashboard.starterConnection.lastHeartbeatStatus)}>
+        <StatusBadge className={`mt-2 ${statusBadgeClassName(dashboard.starterConnection.lastHeartbeatStatus)}`}>
           {statusDisplayText(dashboard.starterConnection.lastHeartbeatStatus)}
         </StatusBadge>
+        <h2 className="mt-2 text-[16px] font-medium leading-tight text-neutral-950">Control-plane only</h2>
       </div>
-      <div className="mt-2 text-[13px] text-neutral-900">Control-plane only</div>
-      <div className="mt-1 text-[12px] text-neutral-600">
+      <div className="text-[13px] text-neutral-900">
+        heartbeat {dashboard.starterLastHeartbeatDisplay}, metric state 변경 없음
+      </div>
+      <div className="text-[12px] text-neutral-600">
         heartbeat는 accepted bucket freshness나 application lifecycle state를 직접 만들지 않습니다.
-      </div>
-      <div className="mt-2 grid grid-cols-1 gap-2 text-[12px] sm:grid-cols-2">
-        <InfoCell label="마지막 연결 확인" value={dashboard.starterLastHeartbeatDisplay} />
-        <InfoCell label="연결 의미" value={humanizeStatusCode(dashboard.starterConnection.connectionMeaning)} />
-        <InfoCell label="state impact" value={starterStateImpactText(dashboard.starterConnection.stateImpact)} />
-        <InfoCell label="source" value={humanizeSourceCode(dashboard.starterConnection.statusSource)} />
+        <p className="mt-1 text-[11px] text-neutral-500">
+          {humanizeStatusCode(dashboard.starterConnection.connectionMeaning)} · {humanizeSourceCode(dashboard.starterConnection.statusSource)}
+        </p>
       </div>
     </div>
   );
@@ -892,11 +901,11 @@ function ResourceSignalsPanel({ dashboard }: { dashboard: DashboardPresentation 
 
   return (
     <div className="border border-neutral-200 bg-white">
-      <div className="px-4 py-3 border-b border-neutral-200">
+      <div className="border-b border-neutral-200 px-3 py-2.5">
         <SectionLabel icon={Activity}>Resource evidence</SectionLabel>
         <p className="mt-1 text-[12px] text-neutral-500">root cause 확정이 아니라 server read model의 USE hint를 표시합니다.</p>
       </div>
-      <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 p-3 md:grid-cols-3">
         {resources.map(([key, label, signal]) => (
           <ResourceSignalCard key={key} label={label} signal={signal} />
         ))}
@@ -924,25 +933,21 @@ function ResourceSignalCard({ label, signal }: { label: string; signal: Dashboar
 
 function MetricDetailSection({ dashboard }: { dashboard: DashboardPresentation }) {
   return (
-    <div className="space-y-4">
-      <div className="border border-neutral-200 bg-white">
-        <div className="px-4 py-3 border-b border-neutral-200">
-          <SectionLabel icon={Gauge}>Metric detail</SectionLabel>
-          <p className="mt-1 text-[12px] text-neutral-500">
-            request/error/slow share와 source-scoped starter percentile, bucket distribution을 표시합니다.
-          </p>
-        </div>
-        <GoldenSignalsGrid dashboard={dashboard} />
+    <details className="border border-neutral-200 bg-white">
+      <summary className="cursor-pointer px-3 py-2.5 text-[11px] uppercase text-neutral-500">
+        Metric provenance
+      </summary>
+      <div className="grid gap-3 border-t border-neutral-100 p-3">
+        <SourceScopedPercentilesPanel dashboard={dashboard} />
+        <HistogramPanel dashboard={dashboard} />
       </div>
-      <SourceScopedPercentilesPanel dashboard={dashboard} />
-      <HistogramPanel dashboard={dashboard} />
-    </div>
+    </details>
   );
 }
 
 function GoldenSignalsGrid({ dashboard }: { dashboard: DashboardPresentation }) {
   return (
-    <div className="grid grid-cols-1 gap-0 bg-white md:grid-cols-4">
+    <section className="grid grid-cols-1 gap-0 border border-neutral-200 bg-white md:grid-cols-4" aria-label="golden signals">
       <MetricCell label="RED Rate" note="최근 30분 요청량" value={formatCount(dashboard.signals.red.requestCount)} />
       <MetricCell label="RED Errors" note={dashboard.signals.red.errorSemantic} value={formatRatio(dashboard.signals.red.errorRate)} />
       <MetricCell label="RED Duration" note="500ms 초과 요청 비율" value={formatNullableRatio(dashboard.signals.red.slowShareOver500ms)} />
@@ -952,7 +957,7 @@ function GoldenSignalsGrid({ dashboard }: { dashboard: DashboardPresentation }) 
         value={formatNullableRatio(dashboard.signals.use.datasourcePoolUsage.max)}
         last
       />
-    </div>
+    </section>
   );
 }
 
@@ -1128,7 +1133,7 @@ function TriageCardItem({ card }: { card: TriageCard }) {
 function EndpointPriorityPanel({ items }: { items: EndpointPriorityItem[] }) {
   return (
     <div className="border border-neutral-200 bg-white">
-      <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between">
+      <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2.5">
         <div>
           <SectionLabel icon={ListChecks}>Endpoint evidence</SectionLabel>
           <p className="mt-1 text-[12px] text-neutral-500">server-provided order와 rank를 그대로 표시합니다.</p>
@@ -1136,9 +1141,9 @@ function EndpointPriorityPanel({ items }: { items: EndpointPriorityItem[] }) {
         <span className="text-[11px] text-neutral-500">server order</span>
       </div>
       {items.length === 0 ? (
-        <div className="p-4 text-[12px] text-neutral-500">서버가 제공한 endpoint evidence 후보가 없습니다.</div>
+        <div className="p-3 text-[12px] text-neutral-500">서버가 제공한 endpoint evidence 후보가 없습니다.</div>
       ) : (
-        <ol className="grid gap-2 p-4">
+        <ol className="grid gap-2 p-3">
           {items.map((item) => (
             <EndpointPriorityRow item={item} key={`${item.rank}-${item.endpointKey}`} />
           ))}
@@ -1782,9 +1787,9 @@ function MetricCell({
 
 function InfoCell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 border border-neutral-200 bg-white p-2">
+    <div className="min-w-0 border border-neutral-200 bg-white p-2" title={`${label}: ${value}`}>
       <div className="text-neutral-500">{label}</div>
-      <div className="mt-0.5 break-words text-neutral-900">{value}</div>
+      <div className="mt-0.5 truncate text-neutral-900">{value}</div>
     </div>
   );
 }

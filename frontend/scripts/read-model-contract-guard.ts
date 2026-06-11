@@ -707,20 +707,22 @@ for (const path of [
 }
 
 // Story 14.2: Live dashboard와 Snapshot/History는 tab으로 분리하지 않고 같은 main flow anchor를 유지한다.
+// SoT 화면 순서는 lifecycle/starter/golden signal 이후 evidence panel로 이어지는 compact flow를 기준으로 검증한다.
 const dashboardSource = readFileSync("src/app/components/dashboard.tsx", "utf8");
 assert.equal(/from "\.\/ui\/tabs"/.test(dashboardSource), false, "DashboardMain must not reintroduce tab-only dashboard flow");
 assert.equal(/<Tabs|TabsList|TabsTrigger|TabsContent/.test(dashboardSource), false, "DashboardMain must keep Snapshot/History in the same flow");
 const dashboardFlowAnchors = [
   "<DashboardContext",
-  "<DataQualityFreshnessStrip",
   "<LifecycleStateHero",
-  "<DirectStateReasonsPanel",
-  "<AttentionAndFirstLookPanel",
-  "<EndpointResourceEvidencePanel",
-  "<MetricDetailSection",
   "<StarterConnectionStrip",
+  "<DataQualityFreshnessStrip",
+  "<GoldenSignalsGrid",
+  "<FirstLookCandidatesPanel",
+  "<EndpointPriorityPanel",
+  "<ResourceSignalsPanel",
   "<InstancesPanel",
   "<SnapshotHistoryPanel",
+  "<MetricDetailSection",
 ];
 let previousDashboardAnchor = -1;
 for (const anchor of dashboardFlowAnchors) {

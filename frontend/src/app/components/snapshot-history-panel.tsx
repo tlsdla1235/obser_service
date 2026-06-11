@@ -163,7 +163,12 @@ export function SnapshotHistoryPanel({
   return (
     <div className="border border-neutral-200 bg-white">
       <div className="flex items-center justify-between gap-2 border-b border-neutral-200 px-3 py-2.5">
-        <SectionLabel icon={History}>스냅샷 기록</SectionLabel>
+        <div>
+          <SectionLabel icon={History}>Snapshot / History</SectionLabel>
+          <p className="mt-1 text-[12px] text-neutral-500">
+            최근/중요 snapshot marker를 먼저 보고, 14일치 30분 scheduled point는 날짜와 slot으로 탐색합니다.
+          </p>
+        </div>
         <StatusBadge>{presetDisplayText(preset)}</StatusBadge>
       </div>
       <div className="border-b border-neutral-100 p-3">
@@ -268,7 +273,7 @@ function SnapshotHistoryReady({
       <div className="space-y-2 border border-neutral-200 bg-white p-3">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <SectionLabel icon={History}>Snapshot / History</SectionLabel>
+            <SectionLabel icon={History}>Retention policy</SectionLabel>
             <p className="mt-1 text-[12px] text-neutral-500">
               markerBucket은 state가 아니라 30분 dashboard point 탐색 색인입니다. detail은 stored read model에서만 복원합니다.
             </p>

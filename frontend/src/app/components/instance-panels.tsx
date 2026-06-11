@@ -48,8 +48,8 @@ export function InstancePanels({
 
   return (
     <Dialog open={dashboardOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[calc(100vh-2rem)] w-[min(1120px,calc(100vw-2rem))] max-w-none sm:max-w-none overflow-y-auto overscroll-contain rounded-md border-neutral-300 bg-white p-0 text-neutral-900">
-        <DialogHeader className="sticky top-0 z-10 border-b border-neutral-200 bg-white/95 px-5 py-4 pr-12 backdrop-blur">
+      <DialogContent className="max-h-[calc(100vh-2rem)] w-[min(1120px,calc(100vw-2rem))] max-w-none sm:max-w-none overflow-y-auto overscroll-contain rounded-none border-neutral-300 bg-white p-0 text-neutral-900">
+        <DialogHeader className="sticky top-0 z-10 border-b border-neutral-200 bg-white/95 px-4 py-3 pr-12 backdrop-blur">
           <DialogTitle className="text-[16px] font-medium">
             {dashboardTarget?.instanceName ?? "Instance Dashboard"}
           </DialogTitle>
@@ -57,7 +57,7 @@ export function InstancePanels({
             Application 판단을 대체하지 않고 같은 window의 selected instance evidence만 보여줍니다.
           </DialogDescription>
         </DialogHeader>
-        <div className="p-5">
+        <div className="p-4">
           {view.kind === "live-dashboard" && dashboardTarget && (
             <InstanceDashboardSurface mode="live" target={dashboardTarget} />
           )}
