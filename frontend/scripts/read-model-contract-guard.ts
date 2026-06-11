@@ -286,8 +286,10 @@ assert.equal(snapshotSlotDayKey("2026-06-09T00:30:00Z"), "2026-06-09");
 assert.equal(snapshotSlotIndexFromWindowEndUtc("2026-06-09T00:00:00Z"), 47);
 assert.equal(snapshotSlotIndexFromWindowEndUtc("2026-06-09T00:30:00Z"), 0);
 assert.equal(snapshotSlotIndexFromWindowEndUtc("2026-06-09T23:30:00Z"), 46);
-assert.equal(snapshotSlotTimeLabel(0), "00:30Z");
-assert.equal(snapshotSlotTimeLabel(47), "24:00Z");
+assert.equal(snapshotSlotTimeLabel(0), "09:30 KST");
+assert.equal(snapshotSlotTimeLabel(25), "22:00 KST");
+assert.equal(snapshotSlotTimeLabel(29), "D+1 00:00 KST");
+assert.equal(snapshotSlotTimeLabel(47), "D+1 09:00 KST");
 assert.throws(
   () =>
     guardSnapshotHistoryReadModels(
