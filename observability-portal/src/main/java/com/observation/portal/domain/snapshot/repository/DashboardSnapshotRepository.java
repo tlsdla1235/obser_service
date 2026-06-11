@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -197,30 +198,50 @@ public class DashboardSnapshotRepository {
     }
 
     /**
-     * 같은 application의 strictly earlier snapshot 중 previous state source row를 하나 조회한다.
+     * 같은 application의 retention horizon 안 strictly earlier snapshot 중 previous state source row를 하나 조회한다.
      */
     @Transactional(readOnly = true)
     public Optional<DashboardSnapshotSourceRow> findPreviousSnapshot(
             UUID applicationId,
-            OffsetDateTime currentWindowEndUtc) {
+            OffsetDateTime currentWindowEndUtc,
+            OffsetDateTime currentWindowEndSince) {
         List<DashboardSnapshotSourceRow> rows = jpaRepository.findPreviousRows(
                 Objects.requireNonNull(applicationId, "applicationId must not be null"),
                 Objects.requireNonNull(currentWindowEndUtc, "currentWindowEndUtc must not be null"),
+                Objects.requireNonNull(currentWindowEndSince, "currentWindowEndSince must not be null"),
                 PageRequest.of(0, 1));
         return rows.stream().findFirst();
     }
 
     /**
-     * 같은 application의 strictly earlier active snapshot 중 normalized lastHealthyAt source row를 하나 조회한다.
+     * 같은 application의 retention horizon 안 strictly earlier active snapshot 중 lastHealthyAt source row를 하나 조회한다.
      */
     @Transactional(readOnly = true)
     public Optional<DashboardSnapshotSourceRow> findPreviousActiveSnapshot(
             UUID applicationId,
-            OffsetDateTime currentWindowEndUtc) {
+            OffsetDateTime currentWindowEndUtc,
+            OffsetDateTime currentWindowEndSince) {
         List<DashboardSnapshotSourceRow> rows = jpaRepository.findPreviousActiveRows(
                 Objects.requireNonNull(applicationId, "applicationId must not be null"),
                 Objects.requireNonNull(currentWindowEndUtc, "currentWindowEndUtc must not be null"),
+                Objects.requireNonNull(currentWindowEndSince, "currentWindowEndSince must not be null"),
                 PageRequest.of(0, 1));
         return rows.stream().findFirst();
+    }
+
+    /**
+     * retention cleanup이 `current_window_end_utc < snapshotCutoffUtc`인 snapshot row만 물리 삭제하도록 위임한다.
+     *
+     * <p>`generated_at`, `created_at`, `accepted_at` 계열 timestamp는 cleanup predicate로 사용하지 않는다.</p>
+     */
+    @Transactional
+    public long deleteDashboardSnapshotsWindowEndedBefore(OffsetDateTime snapshotCutoffUtc) {
+        return jpaRepository.deleteDashboardSnapshotsWindowEndedBefore(
+                toUtcOffsetDateTime(snapshotCutoffUtc));
+    }
+
+    private static OffsetDateTime toUtcOffsetDateTime(OffsetDateTime offsetDateTime) {
+        return Objects.requireNonNull(offsetDateTime, "offsetDateTime must not be null")
+                .withOffsetSameInstant(ZoneOffset.UTC);
     }
 }

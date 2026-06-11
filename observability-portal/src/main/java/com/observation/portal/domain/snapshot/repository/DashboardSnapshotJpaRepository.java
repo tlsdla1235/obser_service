@@ -9,6 +9,7 @@ import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -154,10 +155,12 @@ interface DashboardSnapshotJpaRepository extends JpaRepository<DashboardSnapshot
             + "from DashboardSnapshotEntity snapshot "
             + "where snapshot.applicationId = :applicationId "
             + "and snapshot.currentWindowEndUtc < :currentWindowEndUtc "
+            + "and snapshot.currentWindowEndUtc >= :currentWindowEndSince "
             + "order by snapshot.currentWindowEndUtc desc, snapshot.generatedAt desc, snapshot.id asc")
     List<DashboardSnapshotSourceRow> findPreviousRows(
             @Param("applicationId") UUID applicationId,
             @Param("currentWindowEndUtc") OffsetDateTime currentWindowEndUtc,
+            @Param("currentWindowEndSince") OffsetDateTime currentWindowEndSince,
             Pageable pageable);
 
     /**
@@ -171,12 +174,23 @@ interface DashboardSnapshotJpaRepository extends JpaRepository<DashboardSnapshot
             + "from DashboardSnapshotEntity snapshot "
             + "where snapshot.applicationId = :applicationId "
             + "and snapshot.currentWindowEndUtc < :currentWindowEndUtc "
+            + "and snapshot.currentWindowEndUtc >= :currentWindowEndSince "
             + "and snapshot.stateCode = 'active' "
             + "order by snapshot.currentWindowEndUtc desc, snapshot.generatedAt desc, snapshot.id asc")
     List<DashboardSnapshotSourceRow> findPreviousActiveRows(
             @Param("applicationId") UUID applicationId,
             @Param("currentWindowEndUtc") OffsetDateTime currentWindowEndUtc,
+            @Param("currentWindowEndSince") OffsetDateTime currentWindowEndSince,
             Pageable pageable);
+
+    /**
+     * cleanup cutoff보다 오래된 dashboard snapshot row를 current window end 기준으로 물리 삭제한다.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from DashboardSnapshotEntity snapshot "
+            + "where snapshot.currentWindowEndUtc < :snapshotCutoffUtc")
+    int deleteDashboardSnapshotsWindowEndedBefore(
+            @Param("snapshotCutoffUtc") OffsetDateTime snapshotCutoffUtc);
 
     /**
      * writer upsert identity에 해당하는 row를 transaction 안에서 잠그고 조회한다.

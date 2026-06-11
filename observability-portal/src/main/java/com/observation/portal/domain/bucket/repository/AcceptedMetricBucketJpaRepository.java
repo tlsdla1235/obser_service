@@ -12,6 +12,7 @@ import com.observation.portal.domain.bucket.model.RuntimeRatioEvidenceRow;
 import com.observation.portal.domain.bucket.model.WindowBucketAggregate;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -645,4 +646,13 @@ interface AcceptedMetricBucketJpaRepository extends JpaRepository<AcceptedMetric
             @Param("windowEndUtc") OffsetDateTime windowEndUtc,
             @Param("acceptedAtCutoffUtc") OffsetDateTime acceptedAtCutoffUtc,
             Pageable pageable);
+
+    /**
+     * cleanup cutoff보다 오래된 accepted bucket row를 bucket end 기준으로 물리 삭제한다.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from AcceptedMetricBucketEntity bucket "
+            + "where bucket.bucketEndUtc < :metricEvidenceCutoffUtc")
+    int deleteAcceptedMetricBucketsEndedBefore(
+            @Param("metricEvidenceCutoffUtc") OffsetDateTime metricEvidenceCutoffUtc);
 }

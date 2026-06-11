@@ -231,6 +231,33 @@ class InstanceSnapshotTrendServiceTest {
     }
 
     @Test
+    void filtersRepositoryRowsOutsideEffectiveRetentionHorizonBeforeTrendProjection() {
+        UUID expiredSnapshotId = UUID.fromString("00000000-0000-0000-0000-000000005741");
+        UUID retainedSnapshotId = UUID.fromString("00000000-0000-0000-0000-000000005742");
+        when(dashboardSnapshotRepository.findTrendRowsNewestFirst(
+                PROJECT_ID,
+                APPLICATION_ID,
+                OffsetDateTime.parse("2026-05-19T08:10:35Z"),
+                OffsetDateTime.parse("2026-05-26T08:10:35Z"),
+                336))
+                .thenReturn(List.of(
+                        row(expiredSnapshotId, "2026-05-19T08:20:00Z", "2026-05-19T08:10:34Z", "hourly_scheduled"),
+                        row(retainedSnapshotId, "2026-05-19T08:20:01Z", "2026-05-19T08:10:35Z", "hourly_scheduled")));
+
+        InstanceSnapshotTrendReadModel trend = service.getTrend(
+                        PROJECT_ID,
+                        APPLICATION_ID,
+                        INSTANCE_ID,
+                        "7d",
+                        null)
+                .orElseThrow();
+
+        assertThat(trend.points())
+                .extracting(InstanceSnapshotTrendReadModel.Point::snapshotId)
+                .containsExactly(retainedSnapshotId);
+    }
+
+    @Test
     void constructorDoesNotAcceptForbiddenCurrentRecalculationDependencies() {
         List<String> constructorParameterTypeNames = Arrays.stream(InstanceSnapshotTrendService.class
                         .getConstructors())

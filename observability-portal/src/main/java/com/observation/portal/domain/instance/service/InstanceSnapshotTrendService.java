@@ -119,6 +119,7 @@ public class InstanceSnapshotTrendService {
                 effectiveQuery.until(),
                 effectiveQuery.limit());
         List<InstanceSnapshotTrendReadModel.Point> points = rows.stream()
+                .filter(row -> rowInHorizon(row, effectiveQuery.since(), effectiveQuery.until()))
                 .flatMap(row -> parser.projectPoint(row, targetInstanceId).stream())
                 .sorted(Comparator.comparing(InstanceSnapshotTrendReadModel.Point::currentWindowEndUtc)
                         .thenComparing(InstanceSnapshotTrendReadModel.Point::capturedAt)
@@ -152,6 +153,15 @@ public class InstanceSnapshotTrendService {
                         InstanceSnapshotTrendReadModel.MAX_LIMIT,
                         InstanceSnapshotTrendReadModel.ORDER),
                 points);
+    }
+
+    private static boolean rowInHorizon(
+            DashboardSnapshotTrendRow row,
+            OffsetDateTime currentWindowEndSince,
+            OffsetDateTime currentWindowEndUntil) {
+        OffsetDateTime currentWindowEndUtc = row.currentWindowEndUtc().withOffsetSameInstant(ZoneOffset.UTC);
+        return !currentWindowEndUtc.isBefore(currentWindowEndSince)
+                && !currentWindowEndUtc.isAfter(currentWindowEndUntil);
     }
 
     private EffectiveQuery effectiveQuery(String since, String limit) {

@@ -12,7 +12,10 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Constructor;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -33,6 +36,8 @@ class DashboardSnapshotDetailServiceTest {
     private static final UUID SNAPSHOT_ID = UUID.fromString("00000000-0000-0000-0000-000000005821");
     private static final UUID PREVIOUS_SNAPSHOT_ID = UUID.fromString("00000000-0000-0000-0000-000000005822");
     private static final UUID HEALTHY_SNAPSHOT_ID = UUID.fromString("00000000-0000-0000-0000-000000005823");
+    private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-05-27T08:10:35Z"), ZoneOffset.UTC);
+    private static final OffsetDateTime SNAPSHOT_CUTOFF = offset("2026-05-13T08:10:35Z");
 
     private final ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
     private final DashboardSnapshotRepository snapshotRepository = mock(DashboardSnapshotRepository.class);
@@ -49,7 +54,9 @@ class DashboardSnapshotDetailServiceTest {
                 applicationRepository,
                 snapshotRepository,
                 parser,
-                classifier);
+                classifier,
+                CLOCK,
+                14);
         when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
                 .thenReturn(Optional.of(application()));
     }
@@ -58,9 +65,9 @@ class DashboardSnapshotDetailServiceTest {
     void returnsStoredSnapshotDetailWithoutCurrentRecalculation() {
         DashboardSnapshotDetailRow row = row("degraded", "hourly_scheduled", storedJson());
         when(snapshotRepository.findDetailRow(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID)).thenReturn(Optional.of(row));
-        when(snapshotRepository.findPreviousSnapshot(APPLICATION_ID, row.currentWindowEndUtc()))
+        when(snapshotRepository.findPreviousSnapshot(APPLICATION_ID, row.currentWindowEndUtc(), SNAPSHOT_CUTOFF))
                 .thenReturn(Optional.of(sourceRow(PREVIOUS_SNAPSHOT_ID, "active", "2026-05-26T07:00:00Z")));
-        when(snapshotRepository.findPreviousActiveSnapshot(APPLICATION_ID, row.currentWindowEndUtc()))
+        when(snapshotRepository.findPreviousActiveSnapshot(APPLICATION_ID, row.currentWindowEndUtc(), SNAPSHOT_CUTOFF))
                 .thenReturn(Optional.of(sourceRow(HEALTHY_SNAPSHOT_ID, "active", "2026-05-26T06:00:00Z")));
 
         DashboardSnapshotDetailReadModel detail = service.getDetail(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID)
@@ -106,9 +113,9 @@ class DashboardSnapshotDetailServiceTest {
     void recoveryObservedSnapshotDetailKeepsStoredObservationCopyWithoutCurrentFallback() {
         DashboardSnapshotDetailRow row = row("unknown", "state_change", recoveryJson());
         when(snapshotRepository.findDetailRow(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID)).thenReturn(Optional.of(row));
-        when(snapshotRepository.findPreviousSnapshot(APPLICATION_ID, row.currentWindowEndUtc()))
+        when(snapshotRepository.findPreviousSnapshot(APPLICATION_ID, row.currentWindowEndUtc(), SNAPSHOT_CUTOFF))
                 .thenReturn(Optional.of(sourceRow(PREVIOUS_SNAPSHOT_ID, "down", "2026-05-26T07:30:00Z")));
-        when(snapshotRepository.findPreviousActiveSnapshot(APPLICATION_ID, row.currentWindowEndUtc()))
+        when(snapshotRepository.findPreviousActiveSnapshot(APPLICATION_ID, row.currentWindowEndUtc(), SNAPSHOT_CUTOFF))
                 .thenReturn(Optional.of(sourceRow(HEALTHY_SNAPSHOT_ID, "active", "2026-05-26T06:00:00Z")));
 
         DashboardSnapshotDetailReadModel detail = service.getDetail(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID)
@@ -144,7 +151,23 @@ class DashboardSnapshotDetailServiceTest {
         when(snapshotRepository.findDetailRow(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID)).thenReturn(Optional.empty());
 
         assertThat(service.getDetail(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID)).isEmpty();
-        verify(snapshotRepository, never()).findPreviousSnapshot(APPLICATION_ID, offset("2026-05-26T08:00:00Z"));
+        verify(snapshotRepository, never()).findPreviousSnapshot(APPLICATION_ID, offset("2026-05-26T08:00:00Z"), SNAPSHOT_CUTOFF);
+    }
+
+    @Test
+    void snapshotRowOutsideRetentionReturnsEmptyWithoutStoredJsonRendering() {
+        DashboardSnapshotDetailRow expiredRow = rowAt(
+                "2026-05-12T08:00:00Z",
+                "active",
+                "hourly_scheduled",
+                storedJson());
+        when(snapshotRepository.findDetailRow(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID))
+                .thenReturn(Optional.of(expiredRow));
+
+        assertThat(service.getDetail(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID)).isEmpty();
+
+        verify(snapshotRepository, never()).findPreviousSnapshot(APPLICATION_ID, expiredRow.currentWindowEndUtc(), SNAPSHOT_CUTOFF);
+        verify(snapshotRepository, never()).findPreviousActiveSnapshot(APPLICATION_ID, expiredRow.currentWindowEndUtc(), SNAPSHOT_CUTOFF);
     }
 
     @Test
@@ -154,7 +177,7 @@ class DashboardSnapshotDetailServiceTest {
 
         assertThatThrownBy(() -> service.getDetail(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID))
                 .isInstanceOf(DashboardSnapshotProjectionException.class);
-        verify(snapshotRepository, never()).findPreviousSnapshot(APPLICATION_ID, row.currentWindowEndUtc());
+        verify(snapshotRepository, never()).findPreviousSnapshot(APPLICATION_ID, row.currentWindowEndUtc(), SNAPSHOT_CUTOFF);
     }
 
     @Test
@@ -177,15 +200,24 @@ class DashboardSnapshotDetailServiceTest {
     }
 
     private static DashboardSnapshotDetailRow row(String stateCode, String captureReason, String readModelJson) {
+        return rowAt("2026-05-26T08:00:00Z", stateCode, captureReason, readModelJson);
+    }
+
+    private static DashboardSnapshotDetailRow rowAt(
+            String currentWindowEndUtc,
+            String stateCode,
+            String captureReason,
+            String readModelJson) {
+        OffsetDateTime currentWindowEnd = offset(currentWindowEndUtc);
         return new DashboardSnapshotDetailRow(
                 SNAPSHOT_ID,
                 PROJECT_ID,
                 APPLICATION_ID,
-                offset("2026-05-26T08:00:00Z"),
-                offset("2026-05-26T07:45:00Z"),
-                offset("2026-05-26T08:00:00Z"),
-                offset("2026-05-26T07:30:00Z"),
-                offset("2026-05-26T07:45:00Z"),
+                currentWindowEnd,
+                currentWindowEnd.minusMinutes(15),
+                currentWindowEnd,
+                currentWindowEnd.minusMinutes(30),
+                currentWindowEnd.minusMinutes(15),
                 stateCode,
                 captureReason,
                 "global_error_spike",

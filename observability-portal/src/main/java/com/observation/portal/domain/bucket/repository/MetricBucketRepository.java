@@ -256,6 +256,18 @@ public class MetricBucketRepository {
     }
 
     /**
+     * retention cleanup이 `bucket_end_utc < metricEvidenceCutoffUtc`인 accepted bucket row만 물리 삭제하도록 위임한다.
+     *
+     * <p>`accepted_at`이나 row 생성 시각은 cleanup predicate로 사용하지 않는다. snapshot retention의 가장 오래된 30분
+     * window evidence를 보존하기 위한 grace cutoff는 caller가 계산해서 전달한다.</p>
+     */
+    @Transactional
+    public long deleteAcceptedMetricBucketsEndedBefore(OffsetDateTime metricEvidenceCutoffUtc) {
+        return acceptedMetricBucketJpaRepository.deleteAcceptedMetricBucketsEndedBefore(
+                toUtcOffsetDateTime(metricEvidenceCutoffUtc));
+    }
+
+    /**
      * application scope의 마지막 accepted bucket endUtc timestamp만 조회한다.
      *
      * <p>freshness나 lifecycle state 의미 판단은 service/model 계층에서 수행한다.</p>

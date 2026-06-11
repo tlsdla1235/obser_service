@@ -125,6 +125,35 @@ class InstanceDashboardReadModelServiceTest {
     }
 
     @Test
+    @DisplayName("retention cutoff와 같은 selected snapshot row는 metric evidence 조회 대상으로 유지한다")
+    void snapshotDashboardAtRetentionCutoffBoundaryIsStillRetained() {
+        OffsetDateTime cutoffWindowEnd = offset("2026-05-27T08:10:35Z");
+        OffsetDateTime cutoffWindowStart = cutoffWindowEnd.minusMinutes(30);
+        when(snapshotRepository.findDetailRow(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID))
+                .thenReturn(Optional.of(snapshotRowAt(
+                        cutoffWindowStart,
+                        cutoffWindowEnd,
+                        """
+                                {"instanceSummary":{"items":[]}}
+                                """)));
+        stubWindowMetricEvidence(cutoffWindowStart.toInstant(), cutoffWindowEnd.toInstant(), 31L, 0L);
+
+        InstanceDashboardReadModel dashboard = service.getSnapshotDashboard(
+                        PROJECT_ID,
+                        APPLICATION_ID,
+                        SNAPSHOT_ID,
+                        INSTANCE_ID)
+                .orElseThrow();
+
+        assertThat(dashboard.window().endUtc()).isEqualTo(cutoffWindowEnd);
+        assertThat(dashboard.signals().red().requestCount()).isEqualTo(31L);
+        verify(metricBucketRepository).findWindowAggregateByApplicationInstanceId(
+                INSTANCE_ID,
+                cutoffWindowStart.toInstant(),
+                cutoffWindowEnd.toInstant());
+    }
+
+    @Test
     @DisplayName("snapshot endpoint anchor가 selected instance에서 없으면 not_observed로 연결한다")
     void snapshotDashboardConnectsStoredEndpointAnchorAsNotObservedWhenSelectedInstanceDoesNotHaveIt() {
         when(snapshotRepository.findDetailRow(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID))

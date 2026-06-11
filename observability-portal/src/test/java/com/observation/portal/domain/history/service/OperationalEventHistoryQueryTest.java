@@ -39,6 +39,15 @@ class OperationalEventHistoryQueryTest {
     }
 
     @Test
+    void configuredRetentionDaysCanClampBelowFourteenDays() {
+        OperationalEventHistoryQuery fourteenDaysWithSevenDayRetention =
+                OperationalEventHistoryQuery.from("14d", "50", CLOCK, 7);
+
+        assertThat(fourteenDaysWithSevenDayRetention.requestedSince()).isEqualTo("14d");
+        assertThat(fourteenDaysWithSevenDayRetention.since()).isEqualTo(offset("2026-05-20T13:10:35Z"));
+    }
+
+    @Test
     void supportsRepresentativeSinceFixturesWithinRetentionBoundary() {
         OperationalEventHistoryQuery twentyFourHours = OperationalEventHistoryQuery.from("24h", "50", CLOCK);
         OperationalEventHistoryQuery sevenDays = OperationalEventHistoryQuery.from("7d", "50", CLOCK);

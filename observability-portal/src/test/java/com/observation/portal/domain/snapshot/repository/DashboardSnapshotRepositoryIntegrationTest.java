@@ -27,6 +27,7 @@ import java.sql.SQLException;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -303,12 +304,19 @@ class DashboardSnapshotRepositoryIntegrationTest {
                 10);
         DashboardSnapshotSourceRow previous = dashboardSnapshotRepository.findPreviousSnapshot(
                         APPLICATION_ID,
-                        OffsetDateTime.parse("2026-05-26T07:00:00Z"))
+                        OffsetDateTime.parse("2026-05-26T07:00:00Z"),
+                        OffsetDateTime.parse("2026-05-26T04:30:00Z"))
                 .orElseThrow();
         DashboardSnapshotSourceRow previousActive = dashboardSnapshotRepository.findPreviousActiveSnapshot(
                         APPLICATION_ID,
-                        OffsetDateTime.parse("2026-05-26T07:00:00Z"))
+                        OffsetDateTime.parse("2026-05-26T07:00:00Z"),
+                        OffsetDateTime.parse("2026-05-26T04:30:00Z"))
                 .orElseThrow();
+        Optional<DashboardSnapshotSourceRow> previousActiveOutsideCutoff =
+                dashboardSnapshotRepository.findPreviousActiveSnapshot(
+                        APPLICATION_ID,
+                        OffsetDateTime.parse("2026-05-26T07:00:00Z"),
+                        OffsetDateTime.parse("2026-05-26T05:30:00Z"));
 
         assertThat(detail.snapshotId()).isEqualTo(currentSnapshotId);
         assertThat(detail.captureReason()).isEqualTo("query_fallback");
@@ -319,6 +327,7 @@ class DashboardSnapshotRepositoryIntegrationTest {
         assertThat(previous.stateCode()).isEqualTo("degraded");
         assertThat(previousActive.snapshotId()).isEqualTo(activeSnapshotId);
         assertThat(previousActive.generatedAt()).isEqualTo(OffsetDateTime.parse("2026-05-26T08:40:00Z"));
+        assertThat(previousActiveOutsideCutoff).isEmpty();
         assertThat(dashboardSnapshotRepository.findDetailRow(OTHER_PROJECT_ID, APPLICATION_ID, currentSnapshotId))
                 .isEmpty();
     }
@@ -397,6 +406,65 @@ class DashboardSnapshotRepositoryIntegrationTest {
         assertThat(rows.get(0).primaryEndpointKey()).isEqualTo("GET /checkout");
         assertThat(rows.get(0).maxConfidence()).isEqualByComparingTo(new BigDecimal("0.910"));
         assertThat(rows.get(0).readModelJson()).contains("snapshotEndpointEvidence");
+    }
+
+    @Test
+    void deletesDashboardSnapshotsStrictlyBeforeCurrentWindowEndCutoffOnly() throws SQLException {
+        OffsetDateTime snapshotCutoffUtc = OffsetDateTime.parse("2026-05-27T16:15:00Z");
+        UUID generatedLateButExpired = UUID.fromString("00000000-0000-0000-0000-000000005751");
+        UUID generatedEarlyButRetained = UUID.fromString("00000000-0000-0000-0000-000000005752");
+        UUID boundarySnapshot = UUID.fromString("00000000-0000-0000-0000-000000005753");
+        UUID afterBoundarySnapshot = UUID.fromString("00000000-0000-0000-0000-000000005754");
+        insertSnapshot(
+                generatedLateButExpired,
+                PROJECT_ID,
+                APPLICATION_ID,
+                "2026-05-27T17:00:00Z",
+                "2026-05-27T16:14:59Z",
+                "active",
+                "hourly_scheduled",
+                "{\"triageCards\":[]}");
+        insertSnapshot(
+                generatedEarlyButRetained,
+                PROJECT_ID,
+                APPLICATION_ID,
+                "2026-05-25T01:00:00Z",
+                "2026-05-27T16:15:01Z",
+                "active",
+                "hourly_scheduled",
+                "{\"triageCards\":[]}");
+        insertSnapshot(
+                boundarySnapshot,
+                PROJECT_ID,
+                APPLICATION_ID,
+                "2026-05-27T16:15:05Z",
+                "2026-05-27T16:15:00Z",
+                "active",
+                "hourly_scheduled",
+                "{\"triageCards\":[]}");
+        insertSnapshot(
+                afterBoundarySnapshot,
+                PROJECT_ID,
+                APPLICATION_ID,
+                "2026-05-27T16:45:05Z",
+                "2026-05-27T16:45:00Z",
+                "active",
+                "hourly_scheduled",
+                "{\"triageCards\":[]}");
+
+        long deleted = dashboardSnapshotRepository.deleteDashboardSnapshotsWindowEndedBefore(snapshotCutoffUtc);
+        long repeated = dashboardSnapshotRepository.deleteDashboardSnapshotsWindowEndedBefore(snapshotCutoffUtc);
+
+        assertThat(deleted).isEqualTo(1L);
+        assertThat(repeated).isZero();
+        assertThat(dashboardSnapshotRepository.findDetailRow(PROJECT_ID, APPLICATION_ID, generatedLateButExpired))
+                .isEmpty();
+        assertThat(dashboardSnapshotRepository.findDetailRow(PROJECT_ID, APPLICATION_ID, generatedEarlyButRetained))
+                .isPresent();
+        assertThat(dashboardSnapshotRepository.findDetailRow(PROJECT_ID, APPLICATION_ID, boundarySnapshot))
+                .isPresent();
+        assertThat(dashboardSnapshotRepository.findDetailRow(PROJECT_ID, APPLICATION_ID, afterBoundarySnapshot))
+                .isPresent();
     }
 
     private static void cleanAndMigrate() {

@@ -91,8 +91,10 @@ public class DashboardSnapshotMarkerService {
                 effectiveQuery.since(),
                 effectiveQuery.until(),
                 effectiveQuery.limit());
+        OffsetDateTime snapshotCutoffUtc = snapshotCutoffUtc();
         List<DashboardSnapshotMarkerItem> markers = rows.stream()
-                .map(row -> marker(requiredProjectId, requiredApplicationId, row))
+                .filter(row -> rowInHorizon(row, effectiveQuery.since(), effectiveQuery.until()))
+                .map(row -> marker(requiredProjectId, requiredApplicationId, row, snapshotCutoffUtc))
                 .sorted(Comparator.comparing(DashboardSnapshotMarkerItem::currentWindowEndUtc)
                         .thenComparing(DashboardSnapshotMarkerItem::capturedAt)
                         .thenComparing(DashboardSnapshotMarkerItem::snapshotId))
@@ -114,14 +116,25 @@ public class DashboardSnapshotMarkerService {
                 markers));
     }
 
+    private static boolean rowInHorizon(
+            DashboardSnapshotDetailRow row,
+            OffsetDateTime currentWindowEndSince,
+            OffsetDateTime currentWindowEndUntil) {
+        OffsetDateTime currentWindowEndUtc = row.currentWindowEndUtc().withOffsetSameInstant(ZoneOffset.UTC);
+        return !currentWindowEndUtc.isBefore(currentWindowEndSince)
+                && !currentWindowEndUtc.isAfter(currentWindowEndUntil);
+    }
+
     private DashboardSnapshotMarkerItem marker(
             UUID projectId,
             UUID applicationId,
-            DashboardSnapshotDetailRow row) {
+            DashboardSnapshotDetailRow row,
+            OffsetDateTime snapshotCutoffUtc) {
         DashboardSnapshotStoredReadModelProjection projection = projectionParser.project(row.readModelJson());
         PreviousState previousState = dashboardSnapshotRepository.findPreviousSnapshot(
                         row.applicationId(),
-                        row.currentWindowEndUtc())
+                        row.currentWindowEndUtc(),
+                        snapshotCutoffUtc)
                 .map(DashboardSnapshotMarkerService::previousState)
                 .orElseGet(PreviousState::none);
         return markerClassifier.marker(
@@ -129,6 +142,11 @@ public class DashboardSnapshotMarkerService {
                 previousState,
                 projection,
                 DashboardSnapshotDetailService.snapshotLink(projectId, applicationId, row.snapshotId()));
+    }
+
+    private OffsetDateTime snapshotCutoffUtc() {
+        return OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)
+                .minusDays(retentionDays);
     }
 
     private static PreviousState previousState(com.observation.portal.domain.snapshot.model.DashboardSnapshotSourceRow row) {

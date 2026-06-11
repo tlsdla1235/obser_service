@@ -248,6 +248,45 @@ class MetricBucketRepositoryIntegrationTest {
     }
 
     @Test
+    void deletesAcceptedMetricBucketsStrictlyBeforeBucketEndEvidenceCutoffOnly() throws SQLException {
+        OffsetDateTime metricEvidenceCutoffUtc = OffsetDateTime.parse("2026-05-27T15:45:00Z");
+        AcceptedMetricBucketWriteCommand oldBucketAcceptedLate = command(
+                "retention-cleanup:old-late-accepted",
+                "hash-retention-old",
+                "2026-05-27T15:44:00Z",
+                OffsetDateTime.parse("2026-06-10T16:15:00Z"));
+        AcceptedMetricBucketWriteCommand boundaryBucketAcceptedOld = command(
+                "retention-cleanup:boundary-old-accepted",
+                "hash-retention-boundary",
+                "2026-05-27T15:44:30Z",
+                OffsetDateTime.parse("2026-05-20T00:00:00Z"));
+        AcceptedMetricBucketWriteCommand afterBoundaryBucketAcceptedOld = command(
+                "retention-cleanup:after-boundary-old-accepted",
+                "hash-retention-after-boundary",
+                "2026-05-27T15:45:00Z",
+                OffsetDateTime.parse("2026-05-20T00:00:00Z"));
+        metricBucketRepository.insert(oldBucketAcceptedLate);
+        metricBucketRepository.insert(boundaryBucketAcceptedOld);
+        metricBucketRepository.insert(afterBoundaryBucketAcceptedOld);
+
+        long deleted = metricBucketRepository.deleteAcceptedMetricBucketsEndedBefore(metricEvidenceCutoffUtc);
+        long repeated = metricBucketRepository.deleteAcceptedMetricBucketsEndedBefore(metricEvidenceCutoffUtc);
+
+        assertThat(deleted).isEqualTo(1L);
+        assertThat(repeated).isZero();
+        assertThat(metricBucketRepository.findByProjectIdAndIdempotencyKey(
+                PROJECT_ID,
+                oldBucketAcceptedLate.idempotencyKey())).isEmpty();
+        assertThat(metricBucketRepository.findByProjectIdAndIdempotencyKey(
+                PROJECT_ID,
+                boundaryBucketAcceptedOld.idempotencyKey())).isPresent();
+        assertThat(metricBucketRepository.findByProjectIdAndIdempotencyKey(
+                PROJECT_ID,
+                afterBoundaryBucketAcceptedOld.idempotencyKey())).isPresent();
+        assertThat(countAcceptedBuckets()).isEqualTo(2L);
+    }
+
+    @Test
     void findsSelectedInstanceLatestBucketAndAggregateWithWindowBoundarySemantics() {
         OffsetDateTime windowStart = OffsetDateTime.parse("2026-05-08T01:17:30Z");
         OffsetDateTime windowEnd = OffsetDateTime.parse("2026-05-08T01:32:30Z");

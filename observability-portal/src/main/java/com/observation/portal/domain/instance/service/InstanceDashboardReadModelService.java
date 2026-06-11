@@ -289,7 +289,9 @@ public class InstanceDashboardReadModelService {
 
     private boolean snapshotInRetention(DashboardSnapshotDetailRow row) {
         OffsetDateTime cutoff = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC).minusDays(retentionDays);
-        return !row.currentWindowEndUtc().isBefore(cutoff);
+        return !row.currentWindowEndUtc()
+                .withOffsetSameInstant(ZoneOffset.UTC)
+                .isBefore(cutoff);
     }
 
     private static InstanceDashboardReadModel.Thresholds thresholds() {
