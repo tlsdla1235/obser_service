@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-06-11T15:32:31+0900
+# last_updated: 2026-06-11T15:39:29+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -65,9 +65,10 @@
 # - Epic 13은 Dashboard Source of Truth Realignment tracking epic이다. 완료된 Epic 4/5/6/10 story는 당시 구현 이력으로 보존하고, 새 alignment story에서 Aligns/Supersedes/Hardens 관계로만 참조한다.
 # - Epic 13은 Source of Truth 문서를 재정의하지 않고 Application Dashboard, Snapshot, Instance Dashboard, Retention 흐름을 phase별 rollback 가능한 story로 정렬한다.
 # - 2026-06-11 D2 documentation alignment: Story 13.2 -> 13.10 완료 구현 결과를 planning/source-of-truth 문서의 상태/용어/참조와 맞췄다. Source of Truth 의미는 재정의하지 않는다.
+# - 2026-06-11 D3 final consolidation: Story 13.11은 frontend guard/typecheck/build, focused/full backend regression, smoke focused bundle evidence 기준으로 done이다. Full authenticated browser demo route/fixture가 없어 Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired path를 하나의 browser smoke로 닫은 evidence는 follow-up gap으로 남긴다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-06-11T15:32:31+0900
+last_updated: 2026-06-11T15:39:29+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -166,7 +167,7 @@ development_status:
   12-6-benchmark-evidence-run-and-report: done
   epic-12-retrospective: optional
 
-  epic-13: in-progress
+  epic-13: done
   13-doc-0-documentation-alignment-plan: done
   13-1-alignment-story-status-planning: done
   13-doc-1-alignment-epic-story-creation: done
@@ -181,5 +182,5 @@ development_status:
   13-10-retention-cleanup-alignment: done
   13-doc-2-per-slice-documentation-updates: done
   13-11-end-to-end-acceptance-and-demo-hardening: done
-  13-doc-3-final-planning-status-consolidation: backlog
+  13-doc-3-final-planning-status-consolidation: done
   epic-13-retrospective: optional

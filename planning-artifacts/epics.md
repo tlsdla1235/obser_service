@@ -336,21 +336,23 @@ Epic 12의 기본 consumer는 Spring Boot portal 내부 worker다. Lambda consum
 
 이 epic은 완료된 Epic 4/5/6/10 story를 다시 여는 작업이 아니다. 완료 story는 당시 구현 이력으로 보존하고, 새 alignment story에서 Background / Aligns / Supersedes / Hardens 관계로만 참조한다.
 
-이번 D1 후속 승인으로 `implementation-artifacts/sprint-status.yaml`에는 Epic 13 tracking key만 최소 추가한다. 이후 status 전환은 별도 리뷰 또는 D3 final planning/status consolidation에서 실제 evidence를 기준으로 수행한다.
+2026-06-11 D3 final planning/status consolidation 기준 `implementation-artifacts/sprint-status.yaml`에서 Epic 13은 done이다. `13-2`부터 `13-11`까지의 implementation/validation story와 `13-doc-0`부터 `13-doc-3`까지의 documentation tracking story는 완료 상태로 정렬한다.
+
+13.11 acceptance evidence는 frontend `guard:read-model-contract`/typecheck/build, focused backend regression bundle, full backend regression, smoke focused bundle 통과로 남겼다. 단, full authenticated browser demo route/fixture가 없어 `Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired` path를 하나의 browser smoke로 닫은 evidence는 없으며, 이 gap은 후속 demo fixture/runbook 보강으로 남긴다.
 
 Guardrails:
 
 - Source of Truth 문서는 read-only 기준으로 참조하고 의미를 재정의하지 않는다.
-- production code, migration, test code 구현은 D1 범위가 아니다.
+- D3 consolidation은 production code, frontend implementation, backend test, migration/schema 변경 범위가 아니다.
 - 완료된 story 파일 본문과 done 상태를 수정하지 않는다.
-- `epics.md`의 이 섹션은 새 alignment epic/story 생성을 위한 최소 pointer다.
+- `epics.md`의 이 섹션은 Epic 13 완료 결과와 남은 evidence gap을 요약하는 planning/status rollup이다.
 
 ### Documentation Tracking Stories
 
-- `13-doc-0-documentation-alignment-plan`: D0 문서 정렬 phase, 금지 문서, just-in-time/final consolidation 원칙을 고정한다.
-- `13-doc-1-alignment-epic-story-creation`: D1 새 alignment epic/story artifact와 최소 planning 문서 정렬을 수행한다.
-- `13-doc-2-per-slice-documentation-updates`: D2 각 vertical slice 구현 직후 contract/architecture/story 문서를 필요한 범위로만 정렬한다.
-- `13-doc-3-final-planning-status-consolidation`: D3 P10 acceptance 이후 공식 planning/status 문서를 실제 결과 기준으로 정리한다.
+- `13-doc-0-documentation-alignment-plan`: D0 문서 정렬 phase, 금지 문서, just-in-time/final consolidation 원칙을 고정했다.
+- `13-doc-1-alignment-epic-story-creation`: D1 새 alignment epic/story artifact와 최소 planning 문서 정렬을 수행했다.
+- `13-doc-2-per-slice-documentation-updates`: D2 각 vertical slice 구현 직후 contract/architecture/story 문서를 필요한 범위로만 정렬했다.
+- `13-doc-3-final-planning-status-consolidation`: D3 P10 acceptance 이후 공식 planning/status 문서를 실제 결과 기준으로 정리했다.
 
 ### Planning And Production Alignment Stories
 
@@ -375,7 +377,7 @@ Guardrails:
 10. `13-10-retention-cleanup-alignment`
    - P9 14일 retention UX와 physical cleanup 기준을 current_window_end_utc, bucket_end_utc, 30분 evidence grace로 정렬한다.
 11. `13-11-end-to-end-acceptance-and-demo-hardening`
-   - P10 Application live, snapshot, instance, retention path를 Source of Truth 기준으로 end-to-end 검증한다.
+   - P10 Application live, snapshot, instance, retention path를 Source of Truth 기준으로 검증했다. Frontend guard/typecheck/build, focused/full backend regression, smoke focused bundle은 통과 evidence로 남겼고, full browser demo route/fixture 부재는 follow-up gap으로 남긴다.
 
 ## Post-MVP Candidate Backlog
 

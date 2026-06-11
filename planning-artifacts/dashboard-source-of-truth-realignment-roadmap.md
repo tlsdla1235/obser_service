@@ -2,7 +2,7 @@
 artifactType: implementation-roadmap
 projectName: Spring Boot 운영 첫 화면 포털
 architectureStyle: Traditional MVC
-status: aligned-through-epic-13-p9
+status: epic-13-final-consolidated
 date: 2026-06-11
 primarySourceOfTruth:
   - planning-artifacts/source-of-truth/current-product-source-of-truth.md
@@ -41,13 +41,14 @@ primarySourceOfTruth:
 
 ## 3. Epic 13 정렬 상태
 
-2026-06-11 기준 Epic 13은 P1부터 P9까지 구현 완료 상태다. D2 문서 정렬은 완료된 Story `13-2`부터 `13-10`까지의 구현 결과와 planning/source-of-truth 문서 사이의 상태, 용어, 참조 불일치를 좁히는 작업으로 처리했다.
+2026-06-11 D3 final consolidation 기준 Epic 13은 Story `13-2`부터 `13-11`까지와 documentation tracking `13-doc-0`부터 `13-doc-3`까지 완료 상태다. D2 문서 정렬은 완료된 Story `13-2`부터 `13-10`까지의 구현 결과와 planning/source-of-truth 문서 사이의 상태, 용어, 참조 불일치를 좁히는 작업으로 처리했고, D3는 13.11 acceptance evidence와 남은 demo smoke gap을 planning/status 문서에 반영하는 범위로 닫았다.
 
 - `13-2` -> `13-5`: frontend guard, backend 30분 live window, canonical Application Dashboard shape, Application Dashboard IA 정렬 완료.
 - `13-6` -> `13-7`: 30분 scheduled snapshot slot, legacy persisted token 의미 분리, slot-first history/detail surface 정렬 완료.
 - `13-8` -> `13-9`: Instance Dashboard live/snapshot mode split과 frontend instance surface split 완료.
 - `13-10`: retention cleanup scheduler/service/properties와 physical delete/read-surface guard 구현 완료. Cleanup rollout control은 기본 disabled이며 schedule/cutoff 의미와 분리한다.
-- 남은 Epic 13 작업은 `13-11-end-to-end-acceptance-and-demo-hardening`과 `13-doc-3-final-planning-status-consolidation`이다.
+- `13-11`: frontend `guard:read-model-contract`/typecheck/build, focused backend regression bundle, full `:observability-portal:test`, smoke focused bundle을 통과 evidence로 남겼다.
+- 남은 gap: full authenticated browser demo route/fixture가 없어 `Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired` 흐름을 하나의 browser smoke로 닫은 evidence는 없다. 이 gap은 Source of Truth 재정의나 Epic 13 완료 story rollback이 아니라 demo fixture/runbook 후속 보강으로 분리한다.
 
 ## 3.1 초기 Gap Map
 
@@ -337,7 +338,7 @@ Rollback 가능한 단위:
 - BE-4는 repository query를 generatedAt/currentWindowEndUtc path로 일시 병존시킬 수 있다.
 - BE-6 cleanup은 dry-run/count-first, disabled-by-default로 시작한다.
 
-## 9. 검증 전략
+## 9. 검증 전략과 P10 결과
 
 Frontend:
 
@@ -353,6 +354,13 @@ Backend:
 - Marker/history/trend query가 `current_window_end_utc` horizon을 쓰는지 검증한다.
 - Cleanup은 cutoff 계산, idempotency, 30분 evidence grace를 테스트한다.
 
+P10 acceptance evidence:
+
+- Frontend guard/type/build: `cd frontend && npm run guard:read-model-contract`, `npm run typecheck`, `npm run build`가 통과했다.
+- Backend focused/full regression: dashboard, snapshot, instance, cleanup focused bundle과 `./gradlew :observability-portal:test` 전체 regression이 통과했다.
+- Smoke focused bundle: `PortalModuleSmokeTest`, `ProjectNavigationResourceAuthorizationTest`, `SmokeProjectSeedServiceTest`가 통과했다.
+- Browser smoke gap: 별도 authenticated live fixture/demo route가 없어 Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired path를 하나의 browser smoke로 검증하지 못했다. Snapshot/Instance/Retention 의미는 focused backend tests와 frontend contract guard/build evidence로만 닫았다.
+
 ## 10. Epic 13 Story 상태
 
 ### Done
@@ -366,9 +374,12 @@ Backend:
 - `13-8-backend-instance-dashboard-live-snapshot-mode-split`
 - `13-9-frontend-instance-surface-split`
 - `13-10-retention-cleanup-alignment`
-- `13-doc-2-per-slice-documentation-updates`
-
-### Remaining
-
 - `13-11-end-to-end-acceptance-and-demo-hardening`
+- `13-doc-0-documentation-alignment-plan`
+- `13-doc-1-alignment-epic-story-creation`
+- `13-doc-2-per-slice-documentation-updates`
 - `13-doc-3-final-planning-status-consolidation`
+
+### Follow-up / Handoff
+
+- Full authenticated browser demo route/fixture를 추가해 Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired path를 하나의 browser smoke로 검증하는 evidence는 아직 없다.

@@ -1,15 +1,15 @@
 # Dashboard Source of Truth Realignment 실행 순서와 상태 정렬 문서다.
-# Epic 13 P1-P9 완료 결과와 13-doc-2 문서 정렬 결과를 planning/source-of-truth 참조와 맞춰 기록한다.
+# Epic 13 P1-P10/D2/D3 완료 결과와 남은 browser smoke gap을 planning/status 참조와 맞춰 기록한다.
 metadata:
   generated_date: "2026-06-09"
-  last_aligned_date: "2026-06-11"
+  last_aligned_date: "2026-06-11T15:39:29+0900"
   generated_timezone: "Asia/Seoul"
-  status: aligned-through-p9-and-d2
-  document_role: "Dashboard Source of Truth Realignment 실행 순서 및 D2 문서 정렬 상태"
+  status: final-consolidated-through-p10-and-d3
+  document_role: "Dashboard Source of Truth Realignment 실행 순서 및 최종 planning/status 정렬 상태"
   project_root: "/Users/tlsdla1235/study/obser_service"
   source_roadmap_path: "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-roadmap.md"
   official_sprint_status_path: "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
-  note: "implementation-artifacts/sprint-status.yaml is the official status source; this document mirrors Epic 13 completion through 13.10 and 13-doc-2 without redefining Source of Truth meaning."
+  note: "implementation-artifacts/sprint-status.yaml is the official status source; this document mirrors Epic 13 completion through 13-doc-3 and records the P10 browser-smoke evidence gap without redefining Source of Truth meaning."
   source_documents:
     - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/current-product-source-of-truth.md"
     - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/dashboard-snapshot-mvp-source-of-truth.md"
@@ -27,7 +27,7 @@ execution_principles:
     implication: "Epic 4/5/6/10의 done story는 당시 구현 이력으로 보존하고, 새 alignment story에서 Aligns/Supersedes/Hardens로 참조한다."
   - id: track_as_alignment_epic
     principle: "새 alignment epic/story로 추적한다."
-    implication: "Epic 13 alignment story는 공식 sprint-status.yaml에서 추적하며, P10/D3는 남은 후속 단계로 둔다."
+    implication: "Epic 13 alignment story는 공식 sprint-status.yaml에서 추적했고, P10/D3까지 완료 상태로 정렬했다."
   - id: contract_guard_before_production_code
     principle: "production code 수정 전 contract guard를 먼저 둔다."
     implication: "UI adapter/type/fixture guard로 server-computed state, order, source semantics 보존을 먼저 고정한다."
@@ -155,6 +155,39 @@ documentation_alignment_plan:
       - "Source of Truth 의미를 재정의하지 않고 Story 13.10 구현 상태 메모만 정렬한다."
       - "완료 story 13.2 -> 13.10의 구현 의미와 done 상태를 바꾸지 않는다."
       - "production code, tests, frontend implementation, migration/schema, dbml-error.log는 수정하지 않는다."
+  d3_final_consolidation_context:
+    status: done
+    aligned_at: "2026-06-11T15:39:29+0900"
+    modified_documents:
+      - "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/epics.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-roadmap.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-sequence.yaml"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture-implementation-supplement.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/project-structure.md"
+    not_modified:
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-2*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-3*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-4*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-5*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-6*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-7*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-8*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-9*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-10*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-11*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture-rewrite-index.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/index.md"
+    evidence_summary:
+      - "Story 13.2 -> 13.11과 13-doc-0 -> 13-doc-3를 done으로 정렬했다."
+      - "13.11 frontend guard/typecheck/build, focused/full backend regression, smoke focused bundle 통과 evidence를 planning/status 문서에 반영했다."
+      - "Full authenticated browser demo route/fixture 부재로 Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired path를 하나의 browser smoke로 닫은 evidence는 follow-up gap으로 남겼다."
+    guardrail:
+      - "Source of Truth 의미를 재정의하지 않는다."
+      - "완료 story 13.2 -> 13.11 본문/status를 되돌리거나 재작성하지 않는다."
+      - "production code, frontend implementation, backend tests, migration/schema, dbml-error.log는 수정하지 않는다."
 
 alignment_story_status_plan:
   owner_phase: P0
@@ -791,7 +824,7 @@ phases:
     title: "End-to-end acceptance and demo hardening"
     intent: "Application live, snapshot detail/history, instance live/snapshot/trend, retention guard가 Source of Truth 기준으로 연결되는지 end-to-end로 검증한다."
     work_type: validation
-    status: proposed
+    status: done
     depends_on:
       - D2
       - P0
@@ -826,6 +859,8 @@ phases:
     rollback_unit: "acceptance fixture, demo route, smoke data, verification script 변경 단위로 rollback한다."
     notes:
       - "P10은 공식 sprint-status.yaml 반영 전 최종 evidence로 사용할 수 있다."
+      - "13.11 completion evidence 기준 frontend guard/typecheck/build, focused/full backend regression, smoke focused bundle은 통과했다."
+      - "Full authenticated browser demo route/fixture가 없어 Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired path를 하나의 browser smoke로 닫은 evidence는 없다."
 
   - id: D2
     title: "Per-slice documentation updates"
@@ -887,7 +922,7 @@ phases:
         summary:
           - "13.2 -> 13.10 완료 상태를 planning sequence/status snapshot과 맞췄다."
           - "Retention cleanup 구현 상태를 Source of Truth의 현재 코드 정렬 섹션에 반영했다."
-          - "P10/D3는 후속 backlog로 남겼다."
+          - "D2 시점에는 P10/D3를 후속 backlog로 남겼고, 이후 D3 final consolidation에서 13.11과 13-doc-3를 done으로 정렬했다."
     source_of_truth_handling:
       policy: "Source of Truth 문서는 read-only 기준으로 사용한다."
       allowed_change: "오탈자, 링크, 명백한 errata만 별도 리뷰 후 최소 수정한다."
@@ -905,7 +940,7 @@ phases:
     title: "Final planning/status consolidation"
     intent: "최종 acceptance 후 epics.md, sprint-status.yaml, architecture/project-structure/index 계열 문서를 실제 결과 기준으로 정리한다."
     work_type: planning
-    status: proposed
+    status: done
     depends_on:
       - D2
       - P10
@@ -922,7 +957,7 @@ phases:
     expected_outputs:
       - "final epics.md alignment summary"
       - "final sprint-status.yaml status update"
-      - "architecture/project-structure/index 계열 문서의 최종 링크와 구조 정리"
+      - "architecture/project-structure 계열 문서의 Epic 13 최종 상태 정리"
       - "완료 story 참조 정책의 최종 기록"
     documents_to_modify_after_acceptance:
       official_status:
@@ -947,8 +982,10 @@ phases:
       - "architecture/project-structure/index 계열 문서는 실제 파일 구조와 구현 boundary를 반영한다."
     rollback_unit: "final consolidation 문서 변경 commit 단위로 rollback한다."
     notes:
-      - "D3 전에는 공식 sprint-status.yaml 대규모 갱신을 하지 않는다."
       - "D3는 acceptance 후 정리 phase이며 production code 변경 phase가 아니다."
+      - "architecture.md, architecture-implementation-supplement.md, project-structure.md는 Epic 13이 supersede한 15분/baseline, 1시간 scheduled snapshot, Epic 6 UI order 표현을 최종 상태에 맞춰 정리했다."
+      - "architecture-rewrite-index.md와 planning-artifacts/index.md는 구조/링크 신규 변경이 없어 수정하지 않았다. planning-artifacts/index.md는 현재 존재하지 않는다."
+      - "13.11 full browser demo route/fixture gap은 완료 상태를 되돌리지 않고 follow-up handoff로 남긴다."
 
 dependency_graph:
   edges:
@@ -1048,7 +1085,7 @@ dependency_graph:
 
 context_sequence_risk_assessment:
   question: "이런 식으로 한 컨텍스트에서 작업순서를 정의하는 게 위험한가?"
-  answer: "초기에는 공식 sprint-status.yaml을 바로 바꾸지 않고 draft sequence로 dependency, gate, rollback을 검토하는 방식이 안전했다. 현재는 Epic 13이 공식 sprint-status.yaml에 반영되어 있으므로 이 문서는 완료된 P1-P9/D2 상태를 mirror하고, P10/D3만 후속 단계로 남긴다."
+  answer: "초기에는 공식 sprint-status.yaml을 바로 바꾸지 않고 draft sequence로 dependency, gate, rollback을 검토하는 방식이 안전했다. 현재는 Epic 13이 공식 sprint-status.yaml에 반영되어 있으므로 이 문서는 완료된 P1-P10/D2/D3 상태와 13.11 browser-smoke evidence gap을 mirror한다."
   risk_level: "low when mirroring official status and preserving Source of Truth meaning"
   safe_when:
     - "공식 sprint-status.yaml의 실제 완료/리뷰 상태만 mirror한다."
@@ -1063,17 +1100,18 @@ context_sequence_risk_assessment:
 
 official_sprint_status_alignment:
   source: "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
-  aligned_at: "2026-06-11T14:13:19+0900"
-  scope: "13-doc-2 D2 documentation alignment; P10/D3 remain future work."
+  aligned_at: "2026-06-11T15:39:29+0900"
+  scope: "13-doc-3 D3 final planning/status consolidation after 13.11 done."
   status_policy:
     - "sprint-status.yaml은 공식 sprint 상태 source다."
-    - "이 문서는 13.2 -> 13.10 완료 상태와 13-doc-2 문서 정렬 완료 상태를 mirror한다."
-    - "P10 acceptance와 D3 final consolidation 전에는 Epic 13 전체를 done으로 닫지 않는다."
+    - "이 문서는 13.2 -> 13.11 완료 상태와 13-doc-3 최종 planning/status 정렬 완료 상태를 mirror한다."
+    - "Epic 13은 Source of Truth 의미를 재정의하지 않고 완료 story 본문/status를 되돌리지 않는 조건에서 done으로 닫는다."
+    - "13.11 full browser demo route/fixture gap은 done 상태를 과장하지 않기 위해 follow-up handoff로 따로 남긴다."
   tracked_alignment_epic:
     preferred_key: "epic-13-dashboard-source-of-truth-realignment"
     rationale: "Epic 13은 완료된 Epic 4/5/6/10 구현 이력을 다시 쓰지 않고 Source of Truth alignment를 별도 story 묶음으로 추적한다."
     development_status_keys:
-      epic-13: in-progress
+      epic-13: done
       13-1-alignment-story-status-planning: done
       13-2-frontend-read-model-contract-guard: done
       13-3-backend-recent-30-minutes-window-alignment: done
@@ -1084,13 +1122,13 @@ official_sprint_status_alignment:
       13-8-backend-instance-dashboard-live-snapshot-mode-split: done
       13-9-frontend-instance-surface-split: done
       13-10-retention-cleanup-alignment: done
-      13-11-end-to-end-acceptance-and-demo-hardening: backlog
+      13-11-end-to-end-acceptance-and-demo-hardening: done
       epic-13-retrospective: optional
     documentation_status_keys:
       13-doc-0-documentation-alignment-plan: done
       13-doc-1-alignment-epic-story-creation: done
       13-doc-2-per-slice-documentation-updates: done
-      13-doc-3-final-planning-status-consolidation: backlog
+      13-doc-3-final-planning-status-consolidation: done
   completed_story_reference_policy:
     epic_4:
       relation: "Hardens"
@@ -1129,9 +1167,8 @@ official_sprint_status_alignment:
         - 10-4-wire-evidence-trend-and-credential-surfaces
         - 10-7-run-acceptance-gate
       guidance: "실서비스 Vite SPA 인수 결과를 되돌리지 않고, 새 backend endpoint 또는 UI-side lifecycle/p95/p99/endpoint priority/snapshot event 계산을 만들지 않는 guard로 강화한다."
-  proposed_review_flow:
-    - "이 draft sequence YAML을 리뷰한다."
-    - "D0-D3 문서 정렬 phase와 문서별 수정 시점을 확정한다."
-    - "phase scope와 candidate epic/story key를 확정한다."
-    - "별도 변경으로 sprint-status.yaml에 alignment epic/status key를 추가한다."
-    - "각 phase를 story 파일로 만들 때 완료 story 본문은 수정하지 않고 Aligns / Supersedes / Hardens 참조를 남긴다."
+  final_handoff:
+    - "D0-D3 문서 정렬 phase와 문서별 수정 시점은 Epic 13 완료 이력으로 보존한다."
+    - "sprint-status.yaml은 Epic 13과 13-doc-3를 done으로 mirror한다."
+    - "완료 story 13.2 -> 13.11 본문은 수정하지 않고 Aligns / Supersedes / Hardens 참조 정책을 유지한다."
+    - "남은 gap은 full authenticated browser demo route/fixture를 만들어 Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired path를 browser smoke로 검증하는 follow-up이다."
