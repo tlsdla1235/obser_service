@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-06-11T15:53:30+0900
+# last_updated: 2026-06-11T17:38:25+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -66,9 +66,12 @@
 # - Epic 13은 Source of Truth 문서를 재정의하지 않고 Application Dashboard, Snapshot, Instance Dashboard, Retention 흐름을 phase별 rollback 가능한 story로 정렬한다.
 # - 2026-06-11 D2 documentation alignment: Story 13.2 -> 13.10 완료 구현 결과를 planning/source-of-truth 문서의 상태/용어/참조와 맞췄다. Source of Truth 의미는 재정의하지 않는다.
 # - 2026-06-11 D3 final consolidation: Story 13.11은 frontend guard/typecheck/build, focused/full backend regression, smoke focused bundle evidence 기준으로 done이다. Full authenticated browser demo route/fixture가 없어 Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired path를 하나의 browser smoke로 닫은 evidence는 follow-up gap으로 남긴다.
+# - Epic 14는 Dashboard Mockup Design Parity planning epic이다. 목표는 pixel-perfect clone이 아니라 source-of-truth-dashboard-mockup.html의 IA, first-screen structure, rail density, compact neutral visual grammar, Snapshot/History picker, Instance wide modal, retention expired state를 실제 Vite Dashboard UI에 맞추는 것이다.
+# - Epic 14는 Epic 13에서 닫은 accepted_metric_buckets, dashboard_snapshots.read_model_json, recent_30_minutes, selected snapshot instance semantics, retention expired no-fallback guardrail을 재정의하지 않는다.
+# - Epic 14 상세 planning source는 planning-artifacts/epic-14-dashboard-mockup-design-parity.md이며, story 파일은 구현 착수 시 필요하면 14-1 -> 14-4로 승격한다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-06-11T15:53:30+0900
+last_updated: 2026-06-11T17:38:25+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -184,3 +187,10 @@ development_status:
   13-11-end-to-end-acceptance-and-demo-hardening: done
   13-doc-3-final-planning-status-consolidation: done
   epic-13-retrospective: done
+
+  epic-14: in-progress
+  14-1-design-parity-baseline-and-visual-guardrails: done
+  14-2-dashboard-shell-rails-and-live-surface-realignment: backlog
+  14-3-snapshot-history-detail-and-retention-surface-realignment: backlog
+  14-4-instance-wide-modal-and-end-to-end-visual-qa: backlog
+  epic-14-retrospective: optional

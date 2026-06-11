@@ -1,0 +1,71 @@
+[
+  {
+    "name": "desktop",
+    "width": 1440,
+    "height": 1000,
+    "status": 200,
+    "consoleMessages": [
+      "debug: [vite] connecting...",
+      "debug: [vite] connected.",
+      "info: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+    ],
+    "observation": {
+      "title": "Observation Portal",
+      "url": "http://127.0.0.1:5173/dashboard",
+      "text": "Observation Portal Dashboard Docs GitHub 로그인 Projects 선택 대기 GitHub 로그인 필요 Reload PROJECTS 인증 필요 GitHub 로그인 후 사용할 수 있습니다. 다시 시도 Project 등록 OPEN APPLICATIONS Project 선택 대기 Project 목록이 로드되면 application link를 통해 다음 목록을 불러옵니다. Project를 선택하세요 Project 목록이 로드된 뒤 application 목록을 불러옵니다.",
+      "rails": [
+        "PROJECTS 인증 필요 GitHub 로그인 후 사용할 수 있습니다. 다시 시도 Project 등록 OPEN",
+        "APPLICATIONS Project 선택 대기 Project 목록이 로드되면 application link를 통해 다음 목록을 불러옵니다."
+      ],
+      "main": "Project를 선택하세요 Project 목록이 로드된 뒤 application 목록을 불러옵니다.",
+      "bodyWidth": 1440,
+      "viewportWidth": 1440
+    }
+  },
+  {
+    "name": "tablet",
+    "width": 1024,
+    "height": 900,
+    "status": 200,
+    "consoleMessages": [
+      "debug: [vite] connecting...",
+      "debug: [vite] connected.",
+      "info: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+    ],
+    "observation": {
+      "title": "Observation Portal",
+      "url": "http://127.0.0.1:5173/dashboard",
+      "text": "Observation Portal Dashboard Docs GitHub 로그인 Projects 선택 대기 GitHub 로그인 필요 Reload PROJECTS 인증 필요 GitHub 로그인 후 사용할 수 있습니다. 다시 시도 Project 등록 OPEN APPLICATIONS Project 선택 대기 Project 목록이 로드되면 application link를 통해 다음 목록을 불러옵니다. Project를 선택하세요 Project 목록이 로드된 뒤 application 목록을 불러옵니다.",
+      "rails": [
+        "PROJECTS 인증 필요 GitHub 로그인 후 사용할 수 있습니다. 다시 시도 Project 등록 OPEN",
+        "APPLICATIONS Project 선택 대기 Project 목록이 로드되면 application link를 통해 다음 목록을 불러옵니다."
+      ],
+      "main": "Project를 선택하세요 Project 목록이 로드된 뒤 application 목록을 불러옵니다.",
+      "bodyWidth": 1024,
+      "viewportWidth": 1024
+    }
+  },
+  {
+    "name": "mobile",
+    "width": 390,
+    "height": 844,
+    "status": 200,
+    "consoleMessages": [
+      "debug: [vite] connecting...",
+      "debug: [vite] connected.",
+      "info: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+    ],
+    "observation": {
+      "title": "Observation Portal",
+      "url": "http://127.0.0.1:5173/dashboard",
+      "text": "Observation Portal Dashboard Docs GitHub 로그인 Projects 선택 대기 Reload PROJECTS 인증 필요 GitHub 로그인 후 사용할 수 있습니다. 다시 시도 Project 등록 OPEN APPLICATIONS Project 선택 대기 Project 목록이 로드되면 application link를 통해 다음 목록을 불러옵니다. Project를 선택하세요 Project 목록이 로드된 뒤 application 목록을 불러옵니다.",
+      "rails": [
+        "PROJECTS 인증 필요 GitHub 로그인 후 사용할 수 있습니다. 다시 시도 Project 등록 OPEN",
+        "APPLICATIONS Project 선택 대기 Project 목록이 로드되면 application link를 통해 다음 목록을 불러옵니다."
+      ],
+      "main": "Project를 선택하세요 Project 목록이 로드된 뒤 application 목록을 불러옵니다.",
+      "bodyWidth": 504,
+      "viewportWidth": 390
+    }
+  }
+]

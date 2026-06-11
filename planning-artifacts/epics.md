@@ -379,6 +379,37 @@ Guardrails:
 11. `13-11-end-to-end-acceptance-and-demo-hardening`
    - P10 Application live, snapshot, instance, retention path를 Source of Truth 기준으로 검증했다. Frontend guard/typecheck/build, focused/full backend regression, smoke focused bundle은 통과 evidence로 남겼고, full browser demo route/fixture 부재는 follow-up gap으로 남긴다.
 
+## Epic 14. Dashboard Mockup Design Parity
+
+목표: 실제 Vite Dashboard UI가 `source-of-truth-dashboard-mockup.html`의 IA, first-screen structure, rail density, compact neutral visual grammar, Snapshot/History picker, Instance wide modal, retention expired state를 strict mockup conformance 기준으로 최대한 동일하게 따르도록 정렬한다.
+
+Epic 14는 HTML/CSS/JS byte-level pixel-perfect clone이 아니다. 그러나 이 non-goal은 "대충 비슷하면 됨"을 뜻하지 않는다. IA, layout hierarchy, visual density, spacing rhythm, neutral panel grammar, information ordering, wide modal, Snapshot/History picker, retention expired/source absence state는 strict conformance target이다. Epic 13에서 닫은 read model/backend semantics를 재정의하지 않고, 완료된 Epic 13 story를 reopen하지 않으며, `Aligns / Hardens / Visualizes` 관계로 dashboard mockup conformance만 이어받는다.
+
+상세 planning source는 `planning-artifacts/epic-14-dashboard-mockup-design-parity.md`다.
+
+Guardrails:
+
+- `accepted_metric_buckets`, `dashboard_snapshots.read_model_json`, `recent_30_minutes`, selected snapshot instance semantics, retention expired no-fallback 기준을 유지한다.
+- Source of Truth mockup의 prototype controls, hard-coded JS demo data, temporary runtime을 production UI 요구사항으로 복사하지 않는다.
+- Mockup과 다른 구조, 밀도, 색상 문법, 정보 순서, modal/surface form, Snapshot/History interaction은 design choice가 아니라 deviation으로 기록한다.
+- 허용 deviation은 production data/read model 제약, responsive/mobile 물리 제약, mockup-only runtime/control 제외, 시각 구조를 해치지 않는 accessibility/focus/ARIA 보강으로 제한한다.
+- "더 예쁘게", "더 현대적으로", "더 카드스럽게", "더 마케팅스럽게" 보이도록 임의 변경하는 discretionary redesign은 blocker다.
+- 14.1은 `implementation-artifacts/epic-14-dashboard-design-parity-qa/deviation-log.md` 또는 동등한 deviation log와 conformance checklist를 후속 story gate로 고정한다.
+- Backend/read model 의미 변경, backend tests, migration/schema, completed Epic 13 story 본문/status 수정은 범위 밖이다.
+- `planning-artifacts/source-of-truth/source-of-truth-dashboard-snapshot-picker.png`는 제거됐거나 제거 대상인 screenshot export이며 Source of Truth 기준으로 삼지 않는다. 기준은 HTML mockup이다.
+- Full authenticated browser demo route/fixture가 없어 `Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired` path를 하나의 browser smoke로 닫은 evidence는 아직 없으며, 이 gap은 Epic 14 구현/QA handoff에서 과장 없이 추적한다.
+
+### Stories
+
+1. `14-1-design-parity-baseline-and-visual-guardrails`
+   - 현재 Dashboard UI와 HTML mockup 사이의 conformance gap을 desktop/tablet/mobile baseline으로 잡고 Epic 14 conformance checklist, deviation log, no discretionary redesign guardrail을 고정한다.
+2. `14-2-dashboard-shell-rails-and-live-surface-realignment`
+   - Project rail, Application rail, Application Dashboard live surface를 mockup의 3-column first-screen structure와 compact neutral visual grammar로 정렬한다.
+3. `14-3-snapshot-history-detail-and-retention-surface-realignment`
+   - Snapshot/History picker, stored Snapshot detail, retention expired/source absence surface를 marker-first 30분 point 탐색과 no-fallback visual grammar로 정렬한다.
+4. `14-4-instance-wide-modal-and-end-to-end-visual-qa`
+   - Instance live/snapshot detail을 wide modal/detail surface로 다듬고 Dashboard shell, snapshot, instance, retention 흐름을 browser visual QA evidence로 마감한다.
+
 ## Post-MVP Candidate Backlog
 
 ### Runtime Gauge Aggregate Extension
