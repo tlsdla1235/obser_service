@@ -160,12 +160,7 @@ export function InstanceDashboardSurface({
 
   return (
     <div className="space-y-4 text-[13px] text-neutral-900">
-      <div className={`border p-3 ${mode === "snapshot" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-neutral-200 bg-neutral-50 text-neutral-700"}`}>
-        {mode === "snapshot"
-          ? "selected Application Snapshot row window 기준 evidence입니다. Application Snapshot 자체는 dashboard_snapshots.read_model_json 저장본이고, 이 instance evidence는 selected snapshot row metadata와 accepted_metric_buckets를 사용해 재구성합니다. late-arriving metric이 포함될 수 있어 stored Application Snapshot과 일부 다를 수 있습니다."
-          : "live context evidence입니다. 현재 query 시각 기준 recent 30 minutes accepted_metric_buckets에서 selected instance evidence를 봅니다. Application 판단을 새로 만들지 않고 application-owned state reference만 표시합니다."}
-      </div>
-      <ContextHeader dashboard={dashboard} mode={mode} onOpenTrend={onOpenTrend} />
+      <InstanceContextNote dashboard={dashboard} mode={mode} onOpenTrend={onOpenTrend} />
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <ApplicationStateReferencePanel dashboard={dashboard} />
         <ReadSemanticsPanel dashboard={dashboard} />
@@ -181,7 +176,7 @@ export function InstanceDashboardSurface({
   );
 }
 
-function ContextHeader({
+function InstanceContextNote({
   dashboard,
   mode,
   onOpenTrend,
@@ -190,13 +185,17 @@ function ContextHeader({
   mode: InstanceDashboardMode;
   onOpenTrend: (snapshotTrendLink: string) => void;
 }) {
+  const snapshotCopy = "selected Application Snapshot row window 기준 evidence입니다. Application Snapshot 자체는 dashboard_snapshots.read_model_json 저장본이고, selected instance evidence는 selected snapshot row metadata와 accepted_metric_buckets로 재구성합니다. late accepted metric이 포함될 수 있습니다. stored Application Snapshot state/evidence를 override, 검증, 대체하지 않습니다.";
+  const liveCopy = "live context evidence입니다. 현재 query 시각 기준 recent_30_minutes accepted_metric_buckets에서 selected instance evidence를 봅니다. Application 판단을 새로 만들지 않고 application-owned state reference만 표시합니다.";
   return (
-    <section className="border border-neutral-900 bg-white p-4">
+    <section className={`border p-3 ${mode === "snapshot" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-neutral-200 bg-neutral-50 text-neutral-700"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <SectionLabel icon={Server}>Instance Dashboard</SectionLabel>
-          <div className="mt-1 text-[16px] text-neutral-950">{dashboard.instance.instanceName}</div>
-          <div className="mt-1 text-[12px] text-neutral-500">
+          <SectionLabel icon={Server}>Context note</SectionLabel>
+          <p className="mt-2 max-w-3xl text-[12px] leading-5">
+            {mode === "snapshot" ? snapshotCopy : liveCopy}
+          </p>
+          <div className="mt-2 text-[11px] text-neutral-500">
             {dashboard.application.name} · {dashboard.application.environment} · {dashboard.instance.instanceId}
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -240,6 +239,7 @@ function ApplicationStateReferencePanel({ dashboard }: { dashboard: InstanceDash
         <InfoCell label="source" value={humanizeSourceCode(ref.source)} />
         <InfoCell label="applicationStateCode" value={ref.applicationStateCode ? humanizeStatusCode(ref.applicationStateCode) : "참조 없음"} />
         <InfoCell label="snapshotId" value={ref.snapshotId ?? "live reference"} />
+        <InfoCell label="instance top-level state" value="없음" />
       </div>
       <p className="border-t border-neutral-100 p-3 text-[12px] text-neutral-500">
         Application Dashboard/Application Snapshot이 소유한 state 참조만 표시합니다. selected instance evidence는 이 판단을 대체하지 않습니다.
@@ -256,6 +256,9 @@ function ReadSemanticsPanel({ dashboard }: { dashboard: InstanceDashboardReadMod
         <SectionLabel icon={ListChecks}>Read semantics</SectionLabel>
       </div>
       <div className="grid grid-cols-2 gap-2 p-3 text-[11px] md:grid-cols-4 lg:grid-cols-2">
+        <InfoCell label="mode" value={dashboard.mode} />
+        <InfoCell label="source" value={humanizeSourceCode(semantics.source)} />
+        <InfoCell label="window" value={humanizeStatusCode(dashboard.window.name)} />
         <InfoCell label="windowSource" value={humanizeSourceCode(semantics.windowSource)} />
         <InfoCell label="snapshotRowSource" value={semantics.snapshotRowSource ?? "n/a"} />
         <InfoCell label="acceptedAtCutoffApplied" value={String(semantics.acceptedAtCutoffApplied)} />

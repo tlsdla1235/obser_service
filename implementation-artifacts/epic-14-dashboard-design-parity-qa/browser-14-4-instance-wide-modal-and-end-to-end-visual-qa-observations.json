@@ -1,0 +1,71 @@
+{
+  "story": "14-4-instance-wide-modal-and-end-to-end-visual-qa",
+  "targetUrl": "http://127.0.0.1:5173/dashboard",
+  "fixtureStatus": "auth-blocked; no .private/smoke-auth.env access token fixture found",
+  "fullAuthenticatedPath": "not exercised",
+  "observations": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 1000
+      },
+      "screenshotPath": "/Users/tlsdla1235/study/obser_service/implementation-artifacts/epic-14-dashboard-design-parity-qa/current-14-4-dashboard-auth-blocked-desktop-1440x1000.png",
+      "metrics": {
+        "bodyClientWidth": 1440,
+        "bodyScrollWidth": 1440,
+        "documentScrollWidth": 1440,
+        "hasAuthRequiredCopy": true,
+        "hasProjectRailCopy": true,
+        "horizontalOverflow": false,
+        "title": "Observation Portal",
+        "url": "http://127.0.0.1:5173/dashboard",
+        "viewportHeight": 1000,
+        "viewportWidth": 1440,
+        "visibleText": "Observation Portal Dashboard Docs GitHub 로그인 Projects 선택 대기 GitHub 로그인 필요 Reload PROJECTS 인증 필요 GitHub 로그인 후 사용할 수 있습니다. 다시 시도 Project 등록 OPEN APPLICATIONS Project 선택 대기 Project 목록이 로드되면 application link를 통해 다음 목록을 불러옵니다. Project를 선택하세요 Project 목록이 로드된 뒤 application 목록을 불러옵니다."
+      }
+    },
+    {
+      "viewport": {
+        "name": "tablet",
+        "width": 1024,
+        "height": 900
+      },
+      "screenshotPath": "/Users/tlsdla1235/study/obser_service/implementation-artifacts/epic-14-dashboard-design-parity-qa/current-14-4-dashboard-auth-blocked-tablet-1024x900.png",
+      "metrics": {
+        "bodyClientWidth": 1024,
+        "bodyScrollWidth": 1024,
+        "documentScrollWidth": 1024,
+        "hasAuthRequiredCopy": true,
+        "hasProjectRailCopy": true,
+        "horizontalOverflow": false,
+        "title": "Observation Portal",
+        "url": "http://127.0.0.1:5173/dashboard",
+        "viewportHeight": 900,
+        "viewportWidth": 1024,
+        "visibleText": "Observation Portal Dashboard Docs GitHub 로그인 Projects 선택 대기 GitHub 로그인 필요 Reload PROJECTS 인증 필요 GitHub 로그인 후 사용할 수 있습니다. 다시 시도 Project 등록 OPEN APPLICATIONS Project 선택 대기 Project 목록이 로드되면 application link를 통해 다음 목록을 불러옵니다. Project를 선택하세요 Project 목록이 로드된 뒤 application 목록을 불러옵니다."
+      }
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844
+      },
+      "screenshotPath": "/Users/tlsdla1235/study/obser_service/implementation-artifacts/epic-14-dashboard-design-parity-qa/current-14-4-dashboard-auth-blocked-mobile-390x844.png",
+      "metrics": {
+        "bodyClientWidth": 390,
+        "bodyScrollWidth": 390,
+        "documentScrollWidth": 390,
+        "hasAuthRequiredCopy": true,
+        "hasProjectRailCopy": true,
+        "horizontalOverflow": false,
+        "title": "Observation Portal",
+        "url": "http://127.0.0.1:5173/dashboard",
+        "viewportHeight": 844,
+        "viewportWidth": 390,
+        "visibleText": "Observation Portal Dashboard Docs GitHub 로그인 Projects 선택 대기 Reload PROJECTS 인증 필요 GitHub 로그인 후 사용할 수 있습니다. 다시 시도 Project 등록 OPEN APPLICATIONS Project 선택 대기 Project 목록이 로드되면 application link를 통해 다음 목록을 불러옵니다. Project를 선택하세요 Project 목록이 로드된 뒤 application 목록을 불러옵니다."
+      }
+    }
+  ]
+}

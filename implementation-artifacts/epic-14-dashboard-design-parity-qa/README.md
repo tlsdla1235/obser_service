@@ -23,8 +23,10 @@
 | `side-by-side-tablet-1024x900.md` | tablet 비교 note와 screenshot reference |
 | `side-by-side-mobile-390x844.md` | mobile 비교 note와 screenshot reference |
 | `browser-baseline-observations.json` | Playwright로 관찰한 current `/dashboard` DOM 요약 |
+| `browser-14-4-instance-wide-modal-and-end-to-end-visual-qa-observations.json` | 14.4 desktop/tablet/mobile auth-blocked browser QA와 full-path coverage gap 기록 |
 | `source-semantics-sentinel-review.md` | 기존 frontend guard/static sentinel coverage와 후속 후보 |
 | `guard-14-1-20260611-1716.md` | 14.1 guard/typecheck/build/YAML parse command result |
+| `guard-14-4-instance-wide-modal-and-end-to-end-visual-qa-20260611-2000.md` | 14.4 guard/typecheck/build/static grep/browser scope evidence |
 
 ## Baseline Evidence
 
@@ -67,3 +69,5 @@ Story 14.1 시작 직후 실행한 `git status --short --branch --untracked-file
 ## Known Gap
 
 Full authenticated browser fixture/runbook이 없어 `Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired` path를 하나의 browser smoke로 닫은 evidence는 없다. 14.1 산출물은 이 gap을 닫았다고 주장하지 않는다. 후속 14.2~14.4는 가능한 authenticated fixture가 생기면 같은 naming convention과 checklist로 evidence를 추가해야 한다.
+
+14.4 final QA 기준으로도 `.private/smoke-auth.env` access token fixture가 없어 full authenticated path는 닫지 않았다. `current-14-4-dashboard-auth-blocked-{desktop|tablet|mobile}-*.png`와 `browser-14-4-instance-wide-modal-and-end-to-end-visual-qa-observations.json`은 `/dashboard` auth-blocked shell, no horizontal overflow, code/static guard evidence 범위만 증명한다.

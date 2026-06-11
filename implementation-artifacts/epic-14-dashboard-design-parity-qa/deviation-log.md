@@ -19,12 +19,15 @@ Mockup과 실제 Vite Dashboard가 다른 모든 구조, 밀도, color/visual gr
 
 14.2에서는 `DashboardMain`의 tab split을 해소해 live surface와 Snapshot/History handoff를 같은 main flow 안에 두었다. 이 변경으로 tab split deviation은 별도 승인 없이 제거됐으며, 새 allowed deviation은 추가하지 않았다.
 
+14.4에서는 Instance live/snapshot detail의 body order를 mockup wide modal grammar에 맞춰 정렬하고 sticky header/static sentinel을 보강했다. 새 allowed deviation은 추가하지 않았다. Full authenticated browser path는 여전히 아래 Known Evidence Gap으로만 남기며 conformance deviation으로 승인하지 않는다.
+
 ## Known Evidence Gap
 
 | Gap | Evidence | Disposition |
 |---|---|---|
 | Full authenticated browser path 없음 | `/dashboard`는 desktop/tablet/mobile에서 HTTP 200이지만 token fixture가 없어 Project rail auth error까지만 렌더링됨 | Deviation이 아니라 QA coverage gap. 후속 fixture/runbook으로 닫아야 하며 "authenticated dashboard conformant"라고 쓰지 않는다 |
 | Mobile auth-blocked baseline horizontal overflow | 14.1 `browser-baseline-observations.json`에서 mobile `bodyWidth=504`, `viewportWidth=390` | 14.2에서 global nav wrapping을 조정한 뒤 `browser-14-2-dashboard-shell-rails-and-live-surface-realignment-observations.json` 기준 mobile `bodyScrollWidth=390`, `viewportWidth=390`으로 auth-blocked overflow는 해소됐다. Authenticated dashboard/mobile conformance는 여전히 fixture 부재로 미검증이다 |
+| 14.4 authenticated Instance modal/retention path 미검증 | `browser-14-4-instance-wide-modal-and-end-to-end-visual-qa-observations.json`은 auth-blocked `/dashboard` shell과 no horizontal overflow만 증명함 | Deviation이 아니라 QA coverage gap. Instance wide modal, Snapshot detail, retention/source absence는 code/static guard evidence로 판정하고 authenticated visual proof로 과장하지 않는다 |
 
 ## Recorded Responsive Deviations
 

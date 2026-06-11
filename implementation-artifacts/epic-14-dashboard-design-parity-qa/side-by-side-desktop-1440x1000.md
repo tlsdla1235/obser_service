@@ -64,3 +64,22 @@ Authenticated Project rail, Application rail, Main live surface, Snapshot picker
 | 48-slot grid | code/static conformant, browser coverage gap | Desktop class keeps 8-column grid; authenticated clipping not browser-proven |
 | Snapshot detail | code/static conformant, browser coverage gap | Stored source flags are visible in code and guard; authenticated detail route not browser-proven |
 | Retention/source absence | code/static conformant, browser coverage gap | Error copy has no live/current fallback CTA; authenticated 404/expired path not browser-proven |
+
+## 14.4 Update - Instance Wide Modal And Final QA
+
+- Current Vite evidence: `current-14-4-dashboard-auth-blocked-desktop-1440x1000.png`
+- Observation JSON: `browser-14-4-instance-wide-modal-and-end-to-end-visual-qa-observations.json`
+- Result: `/dashboard` remains auth-blocked without `.private/smoke-auth.env`, so authenticated Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired was not exercised.
+- Auth-blocked viewport check: `bodyScrollWidth=1440`, `viewportWidth=1440`, `hasHorizontalOverflow=false`.
+- Code/static evidence: live/snapshot Instance Dashboard detail uses `DialogContent` with `w-[min(1120px,calc(100vw-2rem))]`, sticky `DialogHeader`, modal body order sentinel, context note, Application state reference, Read semantics, selected metrics, endpoint evidence, resource evidence, starter connection, and normalized endpoint table.
+- Code/static evidence: snapshot note states selected Application Snapshot row window, late accepted metric possibility, and no stored Application Snapshot state/evidence override. Stored trend remains a separate `Sheet` and declares `dashboard_snapshots.read_model_json.instanceSummary.items[]` projection source.
+
+| Area | 14.4 Final Judgment | Note |
+|---|---|---|
+| Project rail | auth-blocked shell conformant, authenticated browser coverage gap | 3-column shell visible with no page overflow; authenticated compact rows remain code/static evidence |
+| Application rail | auth-blocked shell conformant, authenticated browser coverage gap | Project not selected in browser; authenticated row density remains code/static evidence |
+| Main live surface | code/static conformant, browser coverage gap | Same-flow order remains guarded; authenticated read model not rendered |
+| Snapshot/History | code/static conformant, browser coverage gap | 14d marker/date/slot guard evidence remains the available proof |
+| Snapshot detail | code/static conformant, browser coverage gap | Stored source flags guarded; authenticated detail route not rendered |
+| Instance wide modal | code/static conformant, browser coverage gap | Wide dialog, sticky header, modal order, snapshot note, table overflow containment guarded by 14.4 sentinel; modal not browser-opened without auth |
+| Retention/source absence | code/static conformant, browser coverage gap | Safe no-fallback copy guarded; authenticated expired/source absence path not rendered |

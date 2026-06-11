@@ -65,3 +65,20 @@ This is an auth-blocked route observation. It must not be used as proof that the
 | 48-slot grid | allowed deviation + browser coverage gap | Mobile 4-column adaptation category 2; authenticated clipping not browser-proven |
 | Snapshot detail | code/static conformant, browser coverage gap | Top source flags wrap instead of truncating |
 | Retention/source absence | code/static conformant, browser coverage gap | Safe copy has no fallback CTA; authenticated expired path not browser-proven |
+
+## 14.4 Update - Instance Wide Modal And Final QA
+
+- Current Vite evidence: `current-14-4-dashboard-auth-blocked-mobile-390x844.png`
+- Observation JSON: `browser-14-4-instance-wide-modal-and-end-to-end-visual-qa-observations.json`
+- Result: `/dashboard` remains auth-blocked without `.private/smoke-auth.env`; authenticated Instance modal and retention expired path were not exercised.
+- Auth-blocked viewport check: `bodyScrollWidth=390`, `viewportWidth=390`, `hasHorizontalOverflow=false`.
+- Code/static evidence: Instance Dashboard modal uses `w-[min(1120px,calc(100vw-2rem))]` so mobile keeps viewport padding without page overflow; modal header is sticky and body table uses internal overflow. The 14.4 sentinel verifies section order and snapshot semantics copy.
+
+| Area | 14.4 Final Judgment | Note |
+|---|---|---|
+| Page horizontal scroll | conformant in auth-blocked shell | No horizontal overflow in accessible route state |
+| Project -> Application -> Main order | conformant in auth-blocked shell | Stack order preserved from 14.2 |
+| Snapshot/History | code/static conformant, browser coverage gap | Mobile 4-column slot adaptation remains approved category 2 deviation |
+| Snapshot detail | code/static conformant, browser coverage gap | Stored source flags guarded |
+| Instance wide modal | code/static conformant, browser coverage gap | Width, sticky header, modal section order, table overflow containment guarded; authenticated modal not browser-opened |
+| Retention/source absence | code/static conformant, browser coverage gap | Safe no-fallback copy guarded; expired path not browser-rendered |

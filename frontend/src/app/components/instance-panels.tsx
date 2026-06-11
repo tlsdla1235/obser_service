@@ -116,8 +116,8 @@ export function InstancePanels({
   return (
     <>
       <Dialog open={dashboardOpen} onOpenChange={(open) => !open && onClose()}>
-        <DialogContent className="max-h-[calc(100vh-2rem)] w-[min(1120px,calc(100vw-2rem))] max-w-none overflow-y-auto rounded-md border-neutral-300 bg-white p-0 text-neutral-900">
-          <DialogHeader className="border-b border-neutral-200 px-5 py-4 pr-12">
+        <DialogContent className="max-h-[calc(100vh-2rem)] w-[min(1120px,calc(100vw-2rem))] max-w-none overflow-y-auto overscroll-contain rounded-md border-neutral-300 bg-white p-0 text-neutral-900">
+          <DialogHeader className="sticky top-0 z-10 border-b border-neutral-200 bg-white/95 px-5 py-4 pr-12 backdrop-blur">
             <DialogTitle className="text-[16px] font-medium">
               {dashboardTarget?.instanceName ?? "Instance Dashboard"}
             </DialogTitle>

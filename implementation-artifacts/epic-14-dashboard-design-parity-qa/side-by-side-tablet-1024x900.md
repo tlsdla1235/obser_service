@@ -59,3 +59,22 @@
 | 48-slot grid | code/static conformant, browser coverage gap | Tablet class uses 6-column adaptation; authenticated clipping not browser-proven |
 | Snapshot detail | code/static conformant, browser coverage gap | Stored source flags are visible in code and guard |
 | Retention/source absence | code/static conformant, browser coverage gap | Safe copy has no fallback CTA; authenticated 404/expired path not browser-proven |
+
+## 14.4 Update - Instance Wide Modal And Final QA
+
+- Current Vite evidence: `current-14-4-dashboard-auth-blocked-tablet-1024x900.png`
+- Observation JSON: `browser-14-4-instance-wide-modal-and-end-to-end-visual-qa-observations.json`
+- Result: `/dashboard` remains auth-blocked without `.private/smoke-auth.env`; authenticated Snapshot/Instance/retention path was not exercised.
+- Auth-blocked viewport check: `bodyScrollWidth=1024`, `viewportWidth=1024`, `hasHorizontalOverflow=false`.
+- Code/static evidence: Instance live/snapshot detail remains a wide Dialog, not a narrow Sheet. The 14.4 sentinel verifies width class, sticky header, modal section order, source flags, no extra body header panel before Application state reference, and stored trend source separation.
+
+| Area | 14.4 Final Judgment | Note |
+|---|---|---|
+| Rail/main adaptation | auth-blocked shell conformant, authenticated browser coverage gap | Tablet shell still avoids horizontal overflow in accessible state |
+| Project rail | coverage gap | Auth error row only |
+| Application rail | coverage gap | Project not selected |
+| Main live surface | code/static conformant, browser coverage gap | Same-flow order guarded |
+| Snapshot/History | code/static conformant, browser coverage gap | 6-column tablet slot adaptation remains code/static evidence |
+| Snapshot detail | code/static conformant, browser coverage gap | Stored source flags guarded |
+| Instance wide modal | code/static conformant, browser coverage gap | Wide modal/sticky header/order/table containment guarded; authenticated modal not browser-opened |
+| Retention/source absence | code/static conformant, browser coverage gap | Safe no-fallback copy guarded; expired path not browser-rendered |

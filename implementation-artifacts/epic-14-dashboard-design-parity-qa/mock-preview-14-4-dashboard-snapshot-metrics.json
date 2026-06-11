@@ -1,0 +1,98 @@
+[
+  {
+    "name": "application-dashboard-desktop",
+    "url": "http://127.0.0.1:4174/mock-preview-14-4-instance-modal.html",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "path": "/Users/tlsdla1235/study/obser_service/implementation-artifacts/epic-14-dashboard-design-parity-qa/mock-preview-14-4-application-dashboard-desktop-1440x1000.png",
+    "metrics": {
+      "bodyClientWidth": 1440,
+      "bodyScrollWidth": 1440,
+      "hasHorizontalOverflow": false,
+      "modalHiddenByDefault": true,
+      "applicationDashboardTop": 68,
+      "snapshotDetailTop": 1382,
+      "hasLiveSource": true,
+      "hasRecentWindow": true,
+      "hasDataQuality": true,
+      "hasSnapshotSource": true,
+      "hasNoRecalculate": true,
+      "hasNoFallbackCopy": true,
+      "hasInstanceEntry": true
+    }
+  },
+  {
+    "name": "snapshot-detail-desktop",
+    "url": "http://127.0.0.1:4174/mock-preview-14-4-instance-modal.html#snapshot-detail",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "path": "/Users/tlsdla1235/study/obser_service/implementation-artifacts/epic-14-dashboard-design-parity-qa/mock-preview-14-4-snapshot-detail-desktop-1440x1000.png",
+    "metrics": {
+      "bodyClientWidth": 1440,
+      "bodyScrollWidth": 1440,
+      "hasHorizontalOverflow": false,
+      "modalHiddenByDefault": true,
+      "applicationDashboardTop": -872,
+      "snapshotDetailTop": 442,
+      "hasLiveSource": true,
+      "hasRecentWindow": true,
+      "hasDataQuality": true,
+      "hasSnapshotSource": true,
+      "hasNoRecalculate": true,
+      "hasNoFallbackCopy": true,
+      "hasInstanceEntry": true
+    }
+  },
+  {
+    "name": "application-dashboard-mobile",
+    "url": "http://127.0.0.1:4174/mock-preview-14-4-instance-modal.html",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "path": "/Users/tlsdla1235/study/obser_service/implementation-artifacts/epic-14-dashboard-design-parity-qa/mock-preview-14-4-application-dashboard-mobile-390x844.png",
+    "metrics": {
+      "bodyClientWidth": 390,
+      "bodyScrollWidth": 390,
+      "hasHorizontalOverflow": false,
+      "modalHiddenByDefault": true,
+      "applicationDashboardTop": 600,
+      "snapshotDetailTop": 3598,
+      "hasLiveSource": true,
+      "hasRecentWindow": true,
+      "hasDataQuality": true,
+      "hasSnapshotSource": true,
+      "hasNoRecalculate": true,
+      "hasNoFallbackCopy": true,
+      "hasInstanceEntry": true
+    }
+  },
+  {
+    "name": "snapshot-detail-mobile",
+    "url": "http://127.0.0.1:4174/mock-preview-14-4-instance-modal.html#snapshot-detail",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "path": "/Users/tlsdla1235/study/obser_service/implementation-artifacts/epic-14-dashboard-design-parity-qa/mock-preview-14-4-snapshot-detail-mobile-390x844.png",
+    "metrics": {
+      "bodyClientWidth": 390,
+      "bodyScrollWidth": 390,
+      "hasHorizontalOverflow": false,
+      "modalHiddenByDefault": true,
+      "applicationDashboardTop": -2998,
+      "snapshotDetailTop": 0,
+      "hasLiveSource": true,
+      "hasRecentWindow": true,
+      "hasDataQuality": true,
+      "hasSnapshotSource": true,
+      "hasNoRecalculate": true,
+      "hasNoFallbackCopy": true,
+      "hasInstanceEntry": true
+    }
+  }
+]

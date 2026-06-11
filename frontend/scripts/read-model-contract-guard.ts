@@ -735,6 +735,28 @@ assert.match(instanceDashboardSurfaceSource, /buildLiveInstanceDashboardPath/);
 assert.match(instanceDashboardSurfaceSource, /buildSnapshotInstanceDashboardPath/);
 assert.match(instanceDashboardSurfaceSource, /selected instance에서 관찰되지 않음/);
 assert.match(instanceDashboardSurfaceSource, /Application Snapshot 자체는 dashboard_snapshots\.read_model_json/);
+assert.match(instanceDashboardSurfaceSource, /stored Application Snapshot state\/evidence를 override, 검증, 대체하지 않습니다/);
+const instanceDashboardModalAnchors = [
+  "<InstanceContextNote",
+  "<ApplicationStateReferencePanel",
+  "<ReadSemanticsPanel",
+  "<MetricGrid",
+  "<EndpointEvidencePanel",
+  "<ResourceEvidencePanel",
+  "<StarterConnectionPanel",
+  "<NormalizedEndpointEvidenceTable",
+];
+let previousInstanceDashboardAnchor = -1;
+for (const anchor of instanceDashboardModalAnchors) {
+  const currentInstanceDashboardAnchor = instanceDashboardSurfaceSource.indexOf(anchor);
+  assert.notEqual(currentInstanceDashboardAnchor, -1, `InstanceDashboardSurface missing ${anchor}`);
+  assert.ok(currentInstanceDashboardAnchor > previousInstanceDashboardAnchor, `InstanceDashboardSurface modal order regression at ${anchor}`);
+  previousInstanceDashboardAnchor = currentInstanceDashboardAnchor;
+}
+assert.equal(/<ContextHeader/.test(instanceDashboardSurfaceSource), false, "Instance modal body must not insert an extra header panel before Application state reference");
+assert.match(instanceDashboardSurfaceSource, /InfoCell label="mode"/);
+assert.match(instanceDashboardSurfaceSource, /InfoCell label="source"/);
+assert.match(instanceDashboardSurfaceSource, /InfoCell label="instance top-level state" value="없음"/);
 assert.equal(
   /not_observed.*(정상|문제 없음|복구 완료)|(정상|문제 없음|복구 완료).*not_observed/.test(instanceDashboardSurfaceSource),
   false,
@@ -743,6 +765,8 @@ assert.equal(/healthScore|rootCause|recoveryProof/.test(instanceDashboardSurface
 
 const instancePanelsSource = readFileSync("src/app/components/instance-panels.tsx", "utf8");
 assert.match(instancePanelsSource, /DialogContent/);
+assert.match(instancePanelsSource, /w-\[min\(1120px,calc\(100vw-2rem\)\)\]/);
+assert.match(instancePanelsSource, /DialogHeader className="[^"]*sticky[^"]*top-0/);
 assert.match(instancePanelsSource, /snapshot-dashboard/);
 assert.match(instancePanelsSource, /dashboard_snapshots\.read_model_json\.instanceSummary\.items\[\] stored projection/);
 
