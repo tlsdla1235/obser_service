@@ -758,7 +758,7 @@ phases:
       hardens:
         - 10-7-run-acceptance-gate
     expected_outputs:
-      - "매일 01:30 KST cleanup schedule 후보"
+      - "매일 01:15 KST cleanup schedule 후보"
       - "snapshotCutoffUtc와 metricEvidenceCutoffUtc 계산 guard"
       - "dashboard_snapshots current_window_end_utc bulk delete와 accepted_metric_buckets bucket_end_utc bulk delete"
       - "snapshot detail, marker/history/date map, Instance Dashboard snapshot mode retention guard test"

@@ -58,17 +58,18 @@ backend 구현자로서, scheduled snapshot 저장 주기를 dashboard의 30분 
 7. `planning-artifacts/source-of-truth/dashboard-snapshot-mvp-source-of-truth.md`
 8. `planning-artifacts/source-of-truth/dashboard-snapshot-retention-cleanup-source-of-truth.md`
 9. `planning-artifacts/source-of-truth/instance-dashboard-read-model-mvp-source-of-truth.md`
-10. `planning-artifacts/stories/13-3-backend-recent-30-minutes-window-alignment.md`
-11. `planning-artifacts/stories/13-4-backend-application-dashboard-read-model-shape-alignment.md`
-12. `planning-artifacts/stories/13-5-frontend-application-dashboard-ia-realignment.md`
-13. `_bmad/custom/project-context.md`
-14. `planning-artifacts/architecture.md`
-15. `planning-artifacts/architecture-implementation-supplement.md`
-16. `planning-artifacts/project-structure.md`
+10. `planning-artifacts/stories/13-2-frontend-read-model-contract-guard.md`
+11. `planning-artifacts/stories/13-3-backend-recent-30-minutes-window-alignment.md`
+12. `planning-artifacts/stories/13-4-backend-application-dashboard-read-model-shape-alignment.md`
+13. `planning-artifacts/stories/13-5-frontend-application-dashboard-ia-realignment.md`
+14. `_bmad/custom/project-context.md`
+15. `planning-artifacts/architecture.md`
+16. `planning-artifacts/architecture-implementation-supplement.md`
+17. `planning-artifacts/project-structure.md`
 
 ## Background
 
-Epic 13은 완료된 Epic 4/5/6/10 story를 다시 여는 작업이 아니라, 확정된 Dashboard Source of Truth를 새 alignment story 묶음으로 적용하는 tracking epic이다. Story 13.3은 Application Dashboard live와 Instance live/evidence를 `recent_30_minutes` accepted bucket window로 정렬했고, Story 13.4는 live response와 snapshot 저장 payload가 공유할 canonical `dashboard_read_model.v1` shape를 닫았으며, Story 13.5는 frontend live Application Dashboard IA를 그 shape에 맞췄다.
+Epic 13은 완료된 Epic 4/5/6/10 story를 다시 여는 작업이 아니라, 확정된 Dashboard Source of Truth를 새 alignment story 묶음으로 적용하는 tracking epic이다. Story 13.2는 frontend read model contract guard로 server-computed state/order/source semantics를 fail-closed로 고정했고, Story 13.3은 Application Dashboard live와 Instance live/evidence를 `recent_30_minutes` accepted bucket window로 정렬했다. Story 13.4는 live response와 snapshot 저장 payload가 공유할 canonical `dashboard_read_model.v1` shape를 닫았으며, Story 13.5는 frontend live Application Dashboard IA를 그 shape에 맞췄다.
 
 P5의 목적은 저장된 snapshot point와 read-side horizon을 30분 dashboard slot 의미에 맞추는 것이다. 현재 코드 관찰 기준으로 `DashboardSnapshotScheduler`는 hourly target span, hourly method/comment, `utc_hourly_scheduler` trigger source를 사용하고, `DashboardSnapshotProperties`의 fallback staleness base도 1시간 cadence에 묶여 있다. 반면 Source of Truth는 dashboard 판단 window와 scheduled snapshot cadence를 모두 30분으로 두며, 30분마다 "그 시점의 최근 30분 dashboard read model"을 저장해야 한다고 고정한다.
 
@@ -84,6 +85,7 @@ Read-side horizon도 현재는 generated time 중심으로 남아 있다. `Dashb
 - `5-9-a-operational-event-history-api-skeleton-and-source-boundary`: operational history는 `DashboardSnapshotRepository` source row를 읽고 current dashboard를 재계산하지 않는다.
 - `5-9-b-operational-event-promotion-suppression-and-period-folding`: event projection은 stored snapshot/read model source를 기반으로 하며 repository가 event 의미를 계산하지 않는다.
 - `12-4-snapshot-delay-and-pipeline-lag-semantics`: capture delay, accepted_at cutoff, queue/ingest lag 의미를 dashboard current 판단과 섞지 않는다.
+- `13-2-frontend-read-model-contract-guard`: frontend가 marker/history/trend order와 read semantics를 재계산하지 않는 guard를 유지하므로 backend는 slot-first order와 source semantics를 명확히 내려준다.
 - `13-3-backend-recent-30-minutes-window-alignment`: scheduled capture target window도 recent 30 minutes dashboard point 의미를 따른다.
 - `13-4-backend-application-dashboard-read-model-shape-alignment`: stored snapshot payload는 canonical `dashboard_read_model.v1` read model 복원 source다.
 - `13-5-frontend-application-dashboard-ia-realignment`: frontend live dashboard가 소비하는 30분/readSemantics 계약과 snapshot 후속 surface가 같은 source 언어를 사용한다.
@@ -194,6 +196,7 @@ Read-side horizon도 현재는 generated time 중심으로 남아 있다. `Dashb
 ## Dev Notes
 
 - Active implementation baseline은 Traditional MVC + Service/Repository Layering이다. Portal package는 `com.observation.portal.domain` feature-first MVC 구조를 따른다.
+- 문서, Javadoc, test display name, 핵심 구현 주석은 프로젝트 `AGENTS.md` 지침에 맞춰 한국어로 작성한다. 외부 API 이름, 클래스명, persisted token처럼 원문 유지가 더 명확한 표현만 필요한 범위에서 영어를 함께 쓴다.
 - Controller는 request/response/status mapping을 맡고 service를 호출한다. Repository/JPA entity는 public API response DTO나 service external return model로 직접 노출하지 않는다.
 - Flyway migration이 schema source of truth다. 이번 story의 기본 scope는 migration/schema 변경 없음이다.
 - `DashboardSnapshotScheduler`는 현재 `HOURLY_TARGET_SPAN = Duration.ofHours(1)`, `dispatchHourlyScheduledCaptures()`, `targetWindowEnd(...).truncatedTo(ChronoUnit.HOURS)`, `triggerSource="utc_hourly_scheduler"`를 사용한다. P5 implementation은 30분 slot target 계산으로 바꾸되 persisted capture reason token은 그대로 둔다.
@@ -277,6 +280,10 @@ Read-side horizon도 현재는 generated time 중심으로 남아 있다. `Dashb
   --tests 'com.observation.portal.domain.instance.controller.InstanceSnapshotTrendControllerTest' \
   --tests 'com.observation.portal.domain.instance.model.InstanceSnapshotTrendReadModelShapeTest'
 
+cd frontend && npm run guard:read-model-contract
+
+./gradlew :observability-portal:test
+
 rg -n "HOURLY_TARGET_SPAN|dispatchHourlyScheduledCaptures|utc_hourly_scheduler|hourly scheduled|hourly_scheduled|30분 정기 저장|30 minute scheduled|30-minute scheduled" \
   observability-portal/src/main/java observability-portal/src/test/java frontend/src planning-artifacts/stories/13-6-backend-30-minute-scheduled-snapshot-and-slot-horizon-alignment.md
 
@@ -303,6 +310,7 @@ git status --short
 - `planning-artifacts/source-of-truth/dashboard-snapshot-mvp-source-of-truth.md`
 - `planning-artifacts/source-of-truth/dashboard-snapshot-retention-cleanup-source-of-truth.md`
 - `planning-artifacts/source-of-truth/instance-dashboard-read-model-mvp-source-of-truth.md`
+- `planning-artifacts/stories/13-2-frontend-read-model-contract-guard.md`
 - `planning-artifacts/stories/13-3-backend-recent-30-minutes-window-alignment.md`
 - `planning-artifacts/stories/13-4-backend-application-dashboard-read-model-shape-alignment.md`
 - `planning-artifacts/stories/13-5-frontend-application-dashboard-ia-realignment.md`
@@ -337,6 +345,11 @@ GPT-5 Codex
 - Review fix story 후보 검증: Story 13.6 backend focused `./gradlew :observability-portal:test --tests ...` 명령 통과.
 - Review fix full regression: `./gradlew :observability-portal:test` 통과.
 - Review fix quality gate: `git diff --check` 통과, old `generatedAt` timeline 및 168/336 horizon 잔존 패턴 검색 검증 통과.
+- Done 상태 확인 후 재검증(2026-06-10): `git status --short`에서 기존 untracked `dbml-error.log`는 그대로 남아 있고 이 story 문서만 modified 상태임을 확인했다.
+- Done 상태 확인 후 재검증(2026-06-10): `implementation-artifacts/sprint-status.yaml`의 `13-6-backend-30-minute-scheduled-snapshot-and-slot-horizon-alignment`는 `done`이라 reopen/status rollback 없이 유지했다.
+- Done 상태 확인 후 재검증(2026-06-10): story 후보 backend focused `./gradlew :observability-portal:test --tests ...` 명령 통과, `frontend`의 `npm run guard:read-model-contract` 통과, 전체 `./gradlew :observability-portal:test` 통과.
+- Done 상태 확인 후 재검증(2026-06-10): `git diff --check` 통과, `git diff --name-only`가 이 story 문서만 표시해 Source of Truth 문서, 완료 story 13.2/13.3/13.4/13.5, migration/schema, frontend snapshot UI, instance dashboard split, cleanup physical delete diff가 없음을 확인했다.
+- Done 상태 확인 후 재검증(2026-06-10): `rg`로 old scheduler identifier와 generatedAt horizon predicate 잔존을 확인했고, `thirty_minute_scheduled`는 persisted token 추가가 아니라 negative guard test에만 남아 있음을 확인했다.
 
 ### Completion Notes List
 
@@ -348,6 +361,7 @@ GPT-5 Codex
 - Operational history projection은 repository slot order를 보존하도록 `currentWindowEndUtc` 우선, `generatedAt`/snapshot id tie-breaker 순으로 정렬하고 event 발생/해소 시각도 slot end 기준으로 맞췄다.
 - Marker/trend 30분 slot horizon은 7일 기본 336개, 14일 최대 672개로 정렬했다.
 - Migration/schema, Source of Truth 문서, 완료 story 13.2/13.3/13.4/13.5, frontend snapshot history/detail UI, instance dashboard mode split, cleanup physical delete는 수정하지 않았다.
+- 2026-06-10 done 상태 재검증에서 production code와 sprint-status는 추가 수정하지 않았고, focused backend tests, frontend read-model contract guard, 전체 backend regression, diff 보호 확인을 모두 통과했다.
 
 ### File List
 
@@ -377,8 +391,10 @@ GPT-5 Codex
 - `observability-portal/src/test/java/com/observation/portal/domain/snapshot/service/DashboardSnapshotPropertiesTest.java`
 - `observability-portal/src/test/java/com/observation/portal/domain/snapshot/service/DashboardSnapshotSchedulerTest.java`
 - `observability-portal/src/test/java/com/observation/portal/domain/snapshot/service/DashboardSnapshotWriterServiceTest.java`
+- 2026-06-10 done 상태 재검증의 추가 작업 트리 diff는 `planning-artifacts/stories/13-6-backend-30-minute-scheduled-snapshot-and-slot-horizon-alignment.md` 기록 갱신뿐이다.
 
 ### Change Log
 
 - 2026-06-10: 30분 scheduled snapshot cadence, legacy `hourly_scheduled` token guard, `current_window_end_utc` repository horizon/order alignment, related backend tests, story/sprint status review 전환을 완료했다.
 - 2026-06-10: BMAD code review 후 operational history slot-first projection, marker/trend 30분 horizon 최대치, related tests를 보강하고 story/sprint status done 전환을 완료했다.
+- 2026-06-10: 이미 done인 story/sprint 상태를 유지한 채 BMAD dev-story 재검증을 수행했고 focused backend tests, frontend contract guard, full regression, diff 보호 확인을 최신화했다.

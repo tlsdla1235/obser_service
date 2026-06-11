@@ -2,7 +2,7 @@
 artifactType: source-of-truth
 projectName: Observation Portal
 status: active
-date: 2026-06-09
+date: 2026-06-11
 dependsOn:
   - planning-artifacts/source-of-truth/current-product-source-of-truth.md
   - planning-artifacts/source-of-truth/dashboard-snapshot-mvp-source-of-truth.md
@@ -21,13 +21,13 @@ dependsOn:
 
 ## 2. 한 줄 결정
 
-MVP retention cleanup은 "14일마다 cleanup"이 아니라, 매일 `Asia/Seoul` 기준 01:30에 cleanup job을 실행하고 실행 기준 시각에서 14일보다 오래된 snapshot/metric 기록을 UTC timestamp 비교로 삭제하는 정책이다.
+MVP retention cleanup은 "14일마다 cleanup"이 아니라, 매일 `Asia/Seoul` 기준 01:15에 cleanup job을 실행하고 실행 기준 시각에서 14일보다 오래된 snapshot/metric 기록을 UTC timestamp 비교로 삭제하는 정책이다.
 
 ## 3. Hard Contract
 
 아래 항목은 MVP에서 흔들지 않는다.
 
-1. Cleanup schedule은 매일 01:30 KST다.
+1. Cleanup schedule은 매일 01:15 KST다.
 2. Cutoff 계산과 DB timestamp 비교는 UTC 기준으로 수행한다.
 3. 기본 retention horizon은 14일이다.
 4. 삭제 대상에는 최소 `dashboard_snapshots`가 포함된다.
@@ -43,7 +43,7 @@ MVP retention cleanup은 "14일마다 cleanup"이 아니라, 매일 `Asia/Seoul`
 Cleanup trigger는 KST wall-clock 기준으로 잡는다.
 
 ```java
-@Scheduled(cron = "0 30 1 * * *", zone = "Asia/Seoul")
+@Scheduled(cron = "0 15 1 * * *", zone = "Asia/Seoul")
 ```
 
 Job이 실제로 실행되면 service는 `Clock`에서 현재 시각을 얻고 UTC로 정규화한다.
@@ -61,7 +61,9 @@ delete when retention_column < effectiveCutoffUtc
 keep when retention_column >= effectiveCutoffUtc
 ```
 
-예를 들어 2026-06-09 01:30 KST는 2026-06-08 16:30 UTC다. 기본 14일 retention이면 snapshot cutoff는 2026-05-25 16:30 UTC다. 30분 dashboard window를 완전히 복원하기 위해 metric evidence cutoff는 2026-05-25 16:00 UTC가 된다.
+예를 들어 2026-06-09 01:15 KST는 2026-06-08 16:15 UTC다. 기본 14일 retention이면 snapshot cutoff는 2026-05-25 16:15 UTC다. 30분 dashboard window를 완전히 복원하기 위해 metric evidence cutoff는 2026-05-25 15:45 UTC가 된다.
+
+01:15 KST는 30분 scheduled snapshot slot 경계인 `:00`/`:30`과 capture delay 이후 dispatch가 몰리는 `:02`/`:32` 근처를 피하기 위한 운영 시간이다. 이 선택은 cleanup cadence만 조정하며 retention horizon, cutoff 계산식, 삭제 기준 컬럼, source boundary는 바꾸지 않는다.
 
 KST는 schedule을 사람이 예측하기 쉽게 만드는 기준일 뿐이다. DB에 저장된 `timestamptz`와 cleanup 비교는 UTC timestamp 의미로만 해석한다.
 
@@ -207,7 +209,7 @@ Scheduler는 cron trigger만 담당하고, cutoff 계산과 repository 호출은
 후보 annotation:
 
 ```java
-@Scheduled(cron = "0 30 1 * * *", zone = "Asia/Seoul")
+@Scheduled(cron = "0 15 1 * * *", zone = "Asia/Seoul")
 ```
 
 Scheduler method는 중복 실행되어도 같은 cutoff 기준에서 안전해야 한다. 단일 JVM MVP에서는 synchronized guard 정도로 충분할 수 있으나, 다중 instance 배포에서는 DB lock 또는 distributed lock이 후속 검토 대상이다.
@@ -260,7 +262,7 @@ Cleanup failure는 부분 삭제 가능성을 고려해 table별 transaction 경
 
 ### 11.2 Scheduler
 
-- Scheduler는 `0 30 1 * * *` cron과 `Asia/Seoul` zone으로 등록된다.
+- Scheduler는 `0 15 1 * * *` cron과 `Asia/Seoul` zone으로 등록된다.
 - Scheduler는 `Clock` 기준 현재 시각을 UTC로 정규화해 cutoff를 계산한다.
 - Retention-days가 0 이하이면 설정 오류로 빠르게 실패한다.
 
