@@ -66,7 +66,7 @@
 - Observation JSON: `browser-14-4-instance-wide-modal-and-end-to-end-visual-qa-observations.json`
 - Result: `/dashboard` remains auth-blocked without `.private/smoke-auth.env`; authenticated Snapshot/Instance/retention path was not exercised.
 - Auth-blocked viewport check: `bodyScrollWidth=1024`, `viewportWidth=1024`, `hasHorizontalOverflow=false`.
-- Code/static evidence: Instance live/snapshot detail remains a wide Dialog, not a narrow Sheet. The 14.4 sentinel verifies width class, sticky header, modal section order, source flags, no extra body header panel before Application state reference, and stored trend source separation.
+- Code/static evidence: Instance live/snapshot detail remains a wide Dialog, not a narrow Sheet. The 14.4 sentinel verifies width class, sticky header, modal section order, source flags, no extra body header panel before Application state reference, and absence of Stored trend/projection trend surface in `InstancePanels`.
 
 | Area | 14.4 Final Judgment | Note |
 |---|---|---|

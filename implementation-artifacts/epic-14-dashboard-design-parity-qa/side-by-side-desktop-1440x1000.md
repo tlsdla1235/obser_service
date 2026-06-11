@@ -72,7 +72,7 @@ Authenticated Project rail, Application rail, Main live surface, Snapshot picker
 - Result: `/dashboard` remains auth-blocked without `.private/smoke-auth.env`, so authenticated Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired was not exercised.
 - Auth-blocked viewport check: `bodyScrollWidth=1440`, `viewportWidth=1440`, `hasHorizontalOverflow=false`.
 - Code/static evidence: live/snapshot Instance Dashboard detail uses `DialogContent` with `w-[min(1120px,calc(100vw-2rem))]`, sticky `DialogHeader`, modal body order sentinel, context note, Application state reference, Read semantics, selected metrics, endpoint evidence, resource evidence, starter connection, and normalized endpoint table.
-- Code/static evidence: snapshot note states selected Application Snapshot row window, late accepted metric possibility, and no stored Application Snapshot state/evidence override. Stored trend remains a separate `Sheet` and declares `dashboard_snapshots.read_model_json.instanceSummary.items[]` projection source.
+- Code/static evidence: snapshot note states selected Application Snapshot row window, late accepted metric possibility, and no stored Application Snapshot state/evidence override. Stored trend/projection trend Sheet is retired for MVP; the static guard rejects `InstanceTrendView`, `Stored trend`, `SheetContent`, and `snapshotTrend` in `InstancePanels`.
 
 | Area | 14.4 Final Judgment | Note |
 |---|---|---|

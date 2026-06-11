@@ -37,7 +37,7 @@
 - [ ] Instance live/snapshot detail은 wide Dialog/modal 또는 동등한 wide detail surface다.
 - [ ] Modal order는 Application state reference, Read semantics, selected metrics, endpoint evidence, resource evidence, starter connection, normalized endpoint table을 따른다.
 - [ ] Snapshot mode note는 selected snapshot row window, late accepted metric possibility, no stored Application Snapshot override를 드러낸다.
-- [ ] Stored trend는 `dashboard_snapshots.read_model_json.instanceSummary.items[]` projection으로 분리돼 있다.
+- [ ] Stored trend/projection trend/`InstanceTrendView`/narrow Sheet 진입점이 없고, 과거 instance evidence는 Snapshot/History -> snapshot-mode wide modal 경로만 사용한다.
 - [ ] Project rail, Application rail, Main surface, Snapshot picker, Snapshot detail, Instance wide modal, retention expired state별 final conformance 판정을 남겼다.
 - [ ] Unresolved non-allowed deviation이 없다.
 

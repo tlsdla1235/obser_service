@@ -768,7 +768,9 @@ assert.match(instancePanelsSource, /DialogContent/);
 assert.match(instancePanelsSource, /w-\[min\(1120px,calc\(100vw-2rem\)\)\]/);
 assert.match(instancePanelsSource, /DialogHeader className="[^"]*sticky[^"]*top-0/);
 assert.match(instancePanelsSource, /snapshot-dashboard/);
-assert.match(instancePanelsSource, /dashboard_snapshots\.read_model_json\.instanceSummary\.items\[\] stored projection/);
+// Epic 13 instance-summary SoT 정렬(D1): 시계열 stored-projection trend surface는 MVP 범위 밖이라 retire한다.
+// Instance 상세는 단일 wide modal로만 본다(과거는 snapshot-mode modal). trend/evidence Sheet 회귀를 막는다.
+assert.equal(/InstanceTrendView|Stored trend|SheetContent|snapshotTrend/.test(instancePanelsSource), false);
 
 const snapshotDetailSurfaceSource = readFileSync("src/app/components/snapshot-detail-surface.tsx", "utf8");
 const snapshotHistoryPanelSource = readFileSync("src/app/components/snapshot-history-panel.tsx", "utf8");

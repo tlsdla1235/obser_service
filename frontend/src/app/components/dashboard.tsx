@@ -402,7 +402,6 @@ export function Dashboard() {
               loading={dashboardLoading}
               onOpenEvidence={instanceView.openEvidence}
               onOpenSnapshotDashboard={instanceView.openSnapshotDashboard}
-              onOpenTrend={instanceView.openTrend}
               onReload={dashboardResource.reload}
               selectedApplication={selectedApplication}
               selectedProject={selectedProject}
@@ -413,9 +412,6 @@ export function Dashboard() {
         <InstancePanels
           view={instanceView.view}
           onClose={instanceView.close}
-          onOpenTrend={instanceView.openTrend}
-          onOpenSnapshotDashboard={instanceView.openSnapshotDashboard}
-          onOpenEvidence={instanceView.openEvidence}
         />
       </div>
     </TooltipProvider>
@@ -568,7 +564,6 @@ function DashboardMain({
   loading,
   onOpenEvidence,
   onOpenSnapshotDashboard,
-  onOpenTrend,
   onReload,
   selectedApplication,
   selectedProject,
@@ -578,7 +573,6 @@ function DashboardMain({
   loading: boolean;
   onOpenEvidence: ReturnType<typeof useInstanceView>["openEvidence"];
   onOpenSnapshotDashboard: ReturnType<typeof useInstanceView>["openSnapshotDashboard"];
-  onOpenTrend: ReturnType<typeof useInstanceView>["openTrend"];
   onReload: () => void;
   selectedApplication: ApplicationPresentationItem | null;
   selectedProject: ProjectPresentationItem | null;
@@ -611,7 +605,7 @@ function DashboardMain({
       <EndpointResourceEvidencePanel dashboard={dashboard} />
       <MetricDetailSection dashboard={dashboard} />
       <StarterConnectionStrip dashboard={dashboard} />
-      <InstancesPanel dashboard={dashboard} onOpenEvidence={onOpenEvidence} onOpenTrend={onOpenTrend} />
+      <InstancesPanel dashboard={dashboard} onOpenEvidence={onOpenEvidence} />
       <SnapshotHistoryPanel
         dashboard={dashboard}
         onOpenSnapshotInstanceDashboard={onOpenSnapshotDashboard}
@@ -1598,11 +1592,9 @@ function credentialErrorCopy(error: Error): string {
 function InstancesPanel({
   dashboard,
   onOpenEvidence,
-  onOpenTrend,
 }: {
   dashboard: DashboardPresentation;
   onOpenEvidence: ReturnType<typeof useInstanceView>["openEvidence"];
-  onOpenTrend: ReturnType<typeof useInstanceView>["openTrend"];
 }) {
   return (
     <div className="border border-neutral-200 bg-white">
@@ -1635,10 +1627,7 @@ function InstancesPanel({
                 </div>
                 <div className="flex flex-wrap gap-2 text-[11px] text-neutral-700">
                   <Button variant="outline" size="sm" className="h-8 border-neutral-300" onClick={() => onOpenEvidence(target)}>
-                    Wide modal
-                  </Button>
-                  <Button variant="outline" size="sm" className="h-8 border-neutral-300" onClick={() => onOpenTrend(target)}>
-                    Stored trend
+                    Open modal
                   </Button>
                 </div>
               </li>

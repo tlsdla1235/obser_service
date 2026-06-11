@@ -61,7 +61,7 @@ Story 14.1 시작 직후 실행한 `git status --short --branch --untracked-file
 보호 대상:
 
 - `dbml-error.log`: 수정, 삭제, stage 금지.
-- `planning-artifacts/stories/13-ui-dashboard-source-of-truth-surface-realignment.md`: read-only seed/handoff 자료.
+- `planning-artifacts/stories/13-ui-dashboard-source-of-truth-surface-realignment.md`: 현재 single-modal contract companion 문서. 2026-06-11 문서 정렬에서 trend-retired MVP 계약에 맞춰 함께 갱신됐다.
 - 완료된 Epic 13 story 본문/status: 되돌리거나 재작성하지 않음.
 - `planning-artifacts/source-of-truth/source-of-truth-dashboard-mockup.html`: read-only Source of Truth.
 - `planning-artifacts/source-of-truth/source-of-truth-dashboard-snapshot-picker.png`: Source of Truth 기준 아님. 기존 삭제 상태를 되돌리거나 재생성하지 않음.

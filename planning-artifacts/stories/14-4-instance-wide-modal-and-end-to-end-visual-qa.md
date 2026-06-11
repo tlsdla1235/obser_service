@@ -8,11 +8,12 @@ architectureStyle: Traditional MVC
 status: review
 date: 2026-06-11
 workType: frontend-qa
-implementationScope: "Instance live/snapshot wide modal, stored Instance Snapshot Trend, retention/source absence final QA, Epic 14 end-to-end visual QA evidence/handoff/status synchronization"
+implementationScope: "Instance live/snapshot single wide modal, trend surface retire guard, retention/source absence final QA, Epic 14 end-to-end visual QA evidence/handoff/status synchronization"
 productionCodeChangeThisContext: false
-plannedProductionCodeChange: true
+plannedProductionCodeChange: false
+implementationStatus: "frontend-only complete; docs aligned to trend-retired single-modal contract"
 sourceOfTruthMode: read-only
-rollbackBoundary: "frontend instance modal/trend surface, frontend guard/fixture/static sentinel, Epic 14 QA evidence, story artifact, and sprint status only"
+rollbackBoundary: "frontend instance modal surface, frontend guard/fixture/static sentinel, Epic 14 QA evidence, story artifact, and sprint status only"
 ---
 
 # Story 14.4 - Instance Wide Modal And End-To-End Visual QA
@@ -25,9 +26,11 @@ review
 
 2026-06-11: 기준은 오직 `planning-artifacts/source-of-truth/source-of-truth-dashboard-mockup.html`이다. `planning-artifacts/source-of-truth/source-of-truth-dashboard-snapshot-picker.png`는 기준으로 삼지 않는다.
 
-2026-06-11: `planning-artifacts/stories/13-ui-dashboard-source-of-truth-surface-realignment.md`는 read-only seed/handoff 자료로만 참고한다. backend code/tests, migration/schema, Source of Truth mockup HTML, completed Epic 13 story body/status, `dbml-error.log`는 수정하지 않는 보호 대상이다.
+2026-06-11: `planning-artifacts/stories/13-ui-dashboard-source-of-truth-surface-realignment.md`는 원래 초기 자료였으나, 2026-06-11 문서 정렬에서 현재 MVP 계약에 맞춰 함께 갱신됐다.
 
-2026-06-11: BMAD dev-story 구현을 완료하고 review로 전환한다. Instance live/snapshot detail wide modal grammar, modal section order, snapshot note, stored trend source separation, 14.4 static sentinel, final visual QA evidence를 업데이트했다. `.private/smoke-auth.env` access token fixture가 없어 full authenticated Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired browser path는 known gap으로 유지한다.
+수정하지 않는 보호 대상은 backend code/tests, migration/schema, Source of Truth mockup HTML, completed Epic 13 story body/status, `dbml-error.log`다.
+
+2026-06-11: BMAD dev-story 구현을 완료하고 review로 전환한다. Instance live/snapshot detail single wide modal grammar, modal section order, snapshot note, trend surface absence guard, 14.4 static sentinel, final visual QA evidence를 업데이트했다. `.private/smoke-auth.env` access token fixture가 없어 full authenticated Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired browser path는 known gap으로 유지한다.
 
 ## Story
 
@@ -58,7 +61,7 @@ frontend 구현자/QA 담당자로서, 실제 Vite Dashboard의 Instance live/sn
 17. `implementation-artifacts/epic-14-dashboard-design-parity-qa/side-by-side-mobile-390x844.md`
 18. `implementation-artifacts/epic-14-dashboard-design-parity-qa/guard-14-3-snapshot-history-detail-and-retention-surface-realignment-20260611-1859.md`
 19. `implementation-artifacts/epic-14-dashboard-design-parity-qa/browser-14-3-snapshot-history-detail-and-retention-surface-realignment-observations.json`
-20. `planning-artifacts/stories/13-ui-dashboard-source-of-truth-surface-realignment.md`가 있으면 read-only seed/handoff 자료로만 참고한다.
+20. `planning-artifacts/stories/13-ui-dashboard-source-of-truth-surface-realignment.md`가 있으면 current single-modal contract companion document로 함께 정렬한다.
 
 `source-of-truth-dashboard-mockup.html`의 UI/UX를 "참고해서 비슷하게" 만드는 것이 아니다. 실제 Vite UI는 mockup HTML의 visible IA, layout hierarchy, modal width/form, compact density, spacing rhythm, neutral panel grammar, badge/chip language, section order, copy intent, responsive behavior를 기준 디자인으로 그대로 구현해야 한다. Pixel-perfect DOM/CSS byte-level clone이나 mockup runtime 복사는 non-goal이지만, UI/UX 판단 기준은 mockup HTML 그 자체다. 임의 재해석, 더 예쁜 redesign, 더 modern/card-heavy/marketing-style 변경은 blocker다.
 
@@ -70,7 +73,7 @@ Story 14.2는 Project rail, Application rail, Main live surface를 code/static/a
 
 Story 14.3은 Snapshot/History picker, selected snapshot summary, Snapshot detail top flags, retention/source absence no-fallback copy, static sentinel, QA evidence를 구현하고 done으로 닫았다. 14.3의 authenticated browser fixture gap은 과장하지 않는다. 14.4에서 authenticated fixture/runbook이 있으면 full path를 닫고, 없으면 known gap으로 남긴다.
 
-현재 구현 후보는 이미 존재한다. `InstancePanels`는 live/snapshot dashboard를 `DialogContent` width `min(1120px, calc(100vw - 2rem))`로 열고, stored trend는 `Sheet`로 분리한다. `InstanceDashboardSurface`는 context note -> Application state reference -> Read semantics -> selected instance metrics -> endpoint evidence -> resource evidence -> starter connection -> normalized endpoint evidence table 순서에 가까운 구조를 갖는다. 14.4는 이 구조를 mockup HTML의 wide modal/detail grammar에 맞춰 끝까지 다듬고, desktop/tablet/mobile visual evidence와 deviation disposition으로 Epic 14를 마감하는 story다.
+현재 구현은 live/snapshot dashboard를 `DialogContent` width `min(1120px, calc(100vw - 2rem))`로 여는 단일 wide modal 구조다. Stored trend/projection trend/`InstanceTrendView`/narrow Sheet 진입점은 MVP에서 retire됐다. `InstanceDashboardSurface`는 context note -> Application state reference -> Read semantics -> selected instance metrics -> endpoint evidence -> resource evidence -> starter connection -> normalized endpoint evidence table 순서를 갖는다. 14.4는 이 구조를 mockup HTML의 wide modal/detail grammar에 맞춰 확인하고, desktop/tablet/mobile visual evidence와 deviation disposition으로 Epic 14를 마감하는 story다.
 
 ## Aligns / Hardens / Visualizes
 
@@ -87,7 +90,7 @@ Story 14.3은 Snapshot/History picker, selected snapshot summary, Snapshot detai
 - Instance live source는 `accepted_metric_buckets` + `recent_30_minutes`다.
 - Instance snapshot mode는 selected Application Snapshot row metadata와 selected instance `accepted_metric_buckets` evidence reconstruction이다.
 - Instance snapshot mode는 stored Application Snapshot state/evidence를 검증하거나 대체하지 않는다.
-- Stored Instance Snapshot Trend는 `dashboard_snapshots.read_model_json.instanceSummary.items[]` projection source로 분리한다.
+- Stored Instance Snapshot Trend/projection trend surface는 MVP에서 retire한다. 과거 instance evidence는 Snapshot/History -> snapshot-mode wide modal로 본다.
 - UI는 Instance health score, root cause, recovery proof, independent instance lifecycle state, current state timeline을 만들지 않는다.
 - Retention/source absence는 live/current accepted bucket/current instance evidence fallback 없이 safe empty/error state로 수렴한다.
 
@@ -104,7 +107,7 @@ Story 14.3은 Snapshot/History picker, selected snapshot summary, Snapshot detai
 - Instance live/snapshot wide modal/detail surface visual conformance.
 - Instance modal internal section order, compact neutral panel grammar, sticky/stable header, modal body scroll, normalized endpoint table overflow.
 - Instance snapshot mode copy: selected Application Snapshot row window, `includesLateAcceptedMetrics`, `mayDifferFromStoredApplicationSnapshot`, no stored Application Snapshot override.
-- Stored Instance Snapshot Trend source separation and copy.
+- Stored trend/projection trend/`InstanceTrendView`/narrow Sheet absence guard.
 - Retention/source absence final QA, including `metric_missing`/`not_observed_in_window` limitation UX.
 - Epic 14 final visual QA evidence, side-by-side note updates, deviation log disposition, handoff/status synchronization.
 
@@ -114,11 +117,12 @@ Story 14.3은 Snapshot/History picker, selected snapshot summary, Snapshot detai
 - migration/schema 변경.
 - Source of Truth mockup HTML 변경.
 - completed Epic 13 story body/status 수정 또는 reopen.
-- `planning-artifacts/stories/13-ui-dashboard-source-of-truth-surface-realignment.md` 수정. 이 파일은 read-only seed/handoff only다.
+- `planning-artifacts/stories/13-ui-dashboard-source-of-truth-surface-realignment.md`를 과거 초기 seed 상태로 되돌리는 변경. 이 파일은 현재 single-modal contract companion document다.
 - `planning-artifacts/source-of-truth/source-of-truth-dashboard-snapshot-picker.png`를 기준으로 삼거나 되살리는 작업.
 - 기존 untracked `dbml-error.log` 수정, 삭제, stage.
 - Instance Dashboard backend endpoint/read model 의미 변경.
 - `dashboard_snapshots.read_model_json.instanceSummary.items[]`를 Instance Dashboard snapshot detail 필수 source로 만드는 변경.
+- Stored trend/projection trend/`InstanceTrendView` UI를 MVP 필수 surface로 되살리는 변경.
 - Instance health score, root cause, recovery proof, independent instance lifecycle state, current state timeline.
 - authenticated full-path smoke fixture 부재를 browser token persistence, URL token parsing, 임시 auth bypass로 우회.
 - raw metric explorer, raw snapshot explorer, endpoint timeseries, arbitrary query UI.
@@ -156,11 +160,11 @@ Snapshot mode note는 최소 아래 의미를 드러낸다.
 - stored Application Snapshot state/evidence를 override, 검증, 대체하지 않는다.
 - `includesLateAcceptedMetrics=true`, `mayDifferFromStoredApplicationSnapshot=true`, `applicationSnapshotRecalculated=false`, `markerIsStateSource=false`가 Read semantics에서 확인 가능하다.
 
-### Stored Instance Snapshot Trend
+### Trend Surface Absence
 
-- Stored trend는 `dashboard_snapshots.read_model_json.instanceSummary.items[]` projection source로 표시한다.
-- Trend는 current state, health score, root cause, recovery proof timeline처럼 보이면 안 된다.
-- Trend point에서 Application Snapshot detail / Instance snapshot dashboard로 이동할 수 있어도, stored trend 자체가 snapshot mode evidence를 재계산한다고 표현하지 않는다.
+- Stored trend/projection trend/`InstanceTrendView`/narrow Sheet는 MVP Instance Summary surface에 추가하지 않는다.
+- Trend read model과 fixtures는 backend/read-model contract로 남을 수 있지만, production Instance detail UI surface로 노출하지 않는다.
+- 과거 instance evidence는 Snapshot/History에서 selected snapshot을 고른 뒤 snapshot-mode wide modal로 확인한다.
 
 ### Retention / source absence
 
@@ -171,7 +175,7 @@ Snapshot mode note는 최소 아래 의미를 드러낸다.
 
 ## Acceptance Criteria
 
-1. Given 14.4 구현자가 작업을 시작할 때, When `git status --short --branch --untracked-files=all`을 실행하면, Then 기존 untracked `dbml-error.log`와 seed `planning-artifacts/stories/13-ui-dashboard-source-of-truth-surface-realignment.md`는 수정, 삭제, stage하지 않는 보호 대상으로 확인된다.
+1. Given 14.4 구현자가 작업을 시작할 때, When `git status --short --branch --untracked-files=all`을 실행하면, Then 기존 untracked `dbml-error.log`, Source of Truth mockup HTML, completed Epic 13 story body/status는 수정, 삭제, stage하지 않는 보호 대상으로 확인된다. `planning-artifacts/stories/13-ui-dashboard-source-of-truth-surface-realignment.md`는 current single-modal contract companion으로만 정렬한다.
 2. Given 기준 디자인을 확인할 때, When source artifact를 선택하면, Then 기준은 오직 `planning-artifacts/source-of-truth/source-of-truth-dashboard-mockup.html`이며 `source-of-truth-dashboard-snapshot-picker.png`는 기준으로 삼지 않는다.
 3. Given Instance summary에서 live/snapshot detail을 열 때, When detail surface가 렌더링되면, Then narrow Sheet가 아니라 mockup의 wide Dialog/modal 또는 동등한 wide detail surface로 구현한다.
 4. Given Instance modal을 desktop/tablet/mobile에서 볼 때, When header/body/table을 확인하면, Then modal width/form은 mockup wide modal grammar에 준하고 header clipping, body clipping, normalized endpoint table page overflow가 없다.
@@ -180,7 +184,7 @@ Snapshot mode note는 최소 아래 의미를 드러낸다.
 7. Given selected Application Snapshot 기준 Instance Dashboard snapshot mode를 볼 때, When snapshot note와 Read semantics를 확인하면, Then selected Application Snapshot row window, late accepted metric 가능성, no stored Application Snapshot override가 명확히 보인다.
 8. Given Instance Dashboard snapshot mode를 볼 때, When semantic flags를 확인하면, Then `includesLateAcceptedMetrics=true`, `mayDifferFromStoredApplicationSnapshot=true`, `applicationSnapshotRecalculated=false`, `instanceEvidenceReconstructedFromMetrics=true`, `markerIsStateSource=false`가 유지된다.
 9. Given Instance Dashboard snapshot mode가 retention gap 또는 missing metric을 만날 때, When error/empty/limitation UX를 확인하면, Then `metric_missing`/`not_observed_in_window`/source absence limitation으로 수렴하고 live/current evidence로 보정하지 않는다.
-10. Given Stored Instance Snapshot Trend를 볼 때, When source/copy와 trend point를 확인하면, Then stored projection source는 `dashboard_snapshots.read_model_json.instanceSummary.items[]`로 분리되고 current state/health score/root cause/recovery proof timeline처럼 보이지 않는다.
+10. Given Instance Summary와 Instance modal을 검토할 때, When 진입점과 static guard를 확인하면, Then Stored trend/projection trend/`InstanceTrendView`/narrow Sheet/`openTrend`/`openLiveDashboard` surface가 없고 과거 instance evidence는 Snapshot/History -> snapshot-mode wide modal 경로로만 열린다.
 11. Given endpoint/resource/starter evidence를 볼 때, When selected instance evidence를 읽으면, Then Application Dashboard 판단을 대체하지 않고 endpoint priority, resource pattern, starter heartbeat 의미를 client에서 재계산하지 않는다.
 12. Given normalized endpoint evidence table을 볼 때, When rows/order/controls를 확인하면, Then server-provided order/source를 보존하고 raw path/query/per-request sample, endpoint timeseries, arbitrary query UI로 확장하지 않는다.
 13. Given Project rail, Application rail, Main live surface, Snapshot/History, Snapshot detail, Instance wide modal, retention/source absence를 검토할 때, Then desktop `1440x1000`, tablet `1024x900`, mobile `390x844`에서 final visual QA evidence를 남긴다.
@@ -189,15 +193,15 @@ Snapshot mode note는 최소 아래 의미를 드러낸다.
 16. Given authenticated fixture가 없으면, When completion notes를 작성하면, Then full path를 닫았다고 쓰지 않고 known gap으로 유지한다.
 17. Given mockup과 다른 layout, density, visual grammar, ordering, modal/surface form, Snapshot/History interaction, retention/source absence copy가 있으면, Then `deviation-log.md`에 allowed category, reviewer decision, follow-up owner가 있어야 하며 없으면 통과하지 못한다.
 18. Given deviation disposition을 마감할 때, Then unresolved non-allowed deviation은 blocker이며 "더 예쁘게", "더 modern", "더 card-heavy", "더 marketing-style" redesign은 승인 사유가 아니다.
-19. Given source semantics guard를 실행할 때, Then `guard:read-model-contract`는 Instance live/snapshot/trend, stored trend source, forbidden health/rootCause/recovery fields, no client reorder/recalculation을 계속 fail-closed로 검증한다.
-20. Given implementation diff를 검토할 때, When `git diff --check`와 final `git status --short --branch --untracked-files=all`을 확인하면, Then backend code/tests, migration/schema, Source of Truth mockup HTML, completed Epic 13 story body/status, `dbml-error.log`, seed `13-ui...` story가 변경되지 않았음이 확인된다.
+19. Given source semantics guard를 실행할 때, Then `guard:read-model-contract`는 Instance live/snapshot modal, trend surface absence, forbidden health/rootCause/recovery fields, no client reorder/recalculation을 계속 fail-closed로 검증한다.
+20. Given implementation diff를 검토할 때, When `git diff --check`와 final `git status --short --branch --untracked-files=all`을 확인하면, Then backend code/tests, migration/schema, Source of Truth mockup HTML, completed Epic 13 story body/status, `dbml-error.log`가 변경되지 않았음이 확인된다.
 
 ## Tasks / Subtasks
 
 - [x] 시작 상태와 보호 대상을 확인한다. (AC: 1, 2, 20)
-  - [x] `git status --short --branch --untracked-files=all`을 실행하고 `dbml-error.log`, seed `13-ui...` story, Source of Truth mockup HTML, completed Epic 13 story body/status를 보호 대상으로 기록한다.
+  - [x] `git status --short --branch --untracked-files=all`을 실행하고 `dbml-error.log`, Source of Truth mockup HTML, completed Epic 13 story body/status를 보호 대상으로 기록한다. `13-ui...` story는 current single-modal companion 문서로만 정렬한다.
   - [x] 기준이 HTML mockup뿐임을 completion notes에 명시하고 snapshot picker PNG를 기준으로 삼지 않는다.
-  - [x] 변경 범위가 frontend instance modal/trend surface, frontend guard/fixture/static sentinel, Epic 14 QA evidence에 머무는지 확인한다.
+  - [x] 변경 범위가 frontend instance modal surface, trend absence guard, frontend guard/fixture/static sentinel, Epic 14 QA evidence에 머무는지 확인한다.
 
 - [x] 14.1~14.3 done handoff gate를 구현 시작 checklist로 연결한다. (AC: 13, 17, 18)
   - [x] `conformance-checklist.md`의 Instance Wide Modal, Retention/Source Absence, Source Semantics Guard 항목을 구현 checklist로 사용한다.
@@ -225,15 +229,15 @@ Snapshot mode note는 최소 아래 의미를 드러낸다.
   - [x] `metric_missing`, `not_observed_in_window`, malformed/source absence 상태는 limitation UX로 표현한다.
   - [x] "현재 dashboard 보기", "현재 accepted bucket으로 복원", "문제 없음", "복구 완료" 같은 보정 copy를 넣지 않는다.
 
-- [x] Stored Instance Snapshot Trend를 source-separated surface로 유지한다. (AC: 10)
-  - [x] `InstanceTrendView`/`TrendReadyView`는 source가 `dashboard_snapshots.read_model_json.instanceSummary.items[]` projection임을 first-pass scanning 정보로 보여준다.
-  - [x] Trend point card가 stored Application state와 instance projection을 보여주더라도 current state, health score, root cause, recovery proof timeline처럼 보이지 않게 한다.
-  - [x] Application Snapshot detail CTA와 Instance snapshot dashboard CTA는 source 차이를 copy로 분리한다.
-  - [x] Stored trend가 Sheet로 남는 경우 live/snapshot detail wide modal과 source separation이 명확한지 QA 판정에 기록한다.
+- [x] Stored trend/projection trend surface를 MVP에서 retire한다. (AC: 10)
+  - [x] `InstanceTrendView`/`TrendReadyView`/`openTrend`/`openLiveDashboard`가 Instance Summary flow에 남지 않게 한다.
+  - [x] Static guard가 `InstanceTrendView`, `Stored trend`, `SheetContent`, `snapshotTrend` 회귀를 잡는다.
+  - [x] 과거 evidence 경로는 Snapshot/History -> snapshot-mode wide modal로 문서화한다.
+  - [x] Trend read model fixture는 backend contract로만 남기고 production UI surface로 요구하지 않는다.
 
 - [x] Guard/fixture/static sentinel을 보강한다. (AC: 6, 8, 10, 11, 12, 19)
   - [x] `guard:read-model-contract`가 `InstanceDashboardSurface`, `InstancePanels`, `SnapshotDetailSurface`의 source/order/recalculation/forbidden field semantics를 계속 확인하는지 실행한다.
-  - [x] 필요하면 14.4 static sentinel을 추가해 `DialogContent` wide width, no narrow Sheet for live/snapshot detail, modal order anchors, stored trend source copy, no `healthScore`/`rootCause`/`recoveryProof`, no `.sort()`/`.toSorted()`/`.reduce()` 회귀를 잡는다.
+  - [x] 필요하면 14.4 static sentinel을 추가해 `DialogContent` wide width, no narrow Sheet/trend surface for live/snapshot detail, modal order anchors, no `healthScore`/`rootCause`/`recoveryProof`, no `.sort()`/`.toSorted()`/`.reduce()` 회귀를 잡는다.
   - [x] Static grep hit는 guard negative fixture/assertion, explanatory comment, production regression으로 분류해 completion notes에 남긴다.
 
 - [x] End-to-end visual QA evidence를 마감한다. (AC: 13, 14, 15, 16, 17, 18)
@@ -246,8 +250,8 @@ Snapshot mode note는 최소 아래 의미를 드러낸다.
 ## Candidate Files
 
 - `frontend/src/app/components/instance-panels.tsx`
-  - 현재 live/snapshot dashboard는 wide `DialogContent`로 열리고 stored trend는 right `Sheet`로 분리된다.
-  - 14.4 primary 후보. Dialog width/header/body scroll, trend Sheet source separation, modal open/close QA를 다룬다.
+  - 현재 live/snapshot dashboard는 wide `DialogContent`로만 열리고 Stored trend/projection trend Sheet는 없다.
+  - 14.4 primary 후보. Dialog width/header/body scroll, trend surface absence, modal open/close QA를 다룬다.
 - `frontend/src/app/components/instance-dashboard-surface.tsx`
   - 현재 Instance Dashboard live/snapshot API를 읽고 context note, Application state reference, Read semantics, metrics, endpoint/resource/starter evidence, normalized endpoint table을 렌더링한다.
   - 14.4 primary 후보. Section order, snapshot note, retention/missing metric limitation, compact neutral panel grammar, table overflow를 mockup 기준으로 다듬는다.
@@ -259,14 +263,12 @@ Snapshot mode note는 최소 아래 의미를 드러낸다.
   - Project rail, Application rail, Main live surface, InstancesPanel entry, SnapshotHistoryPanel order final QA 후보. 14.4에서 shell/main을 재설계하지 않는다.
 - `frontend/src/app/components/ui/dialog.tsx`
   - Dialog focus/ARIA/close behavior 확인 후보. Primitive 자체 수정은 신중히 한다.
-- `frontend/src/app/components/ui/sheet.tsx`
-  - Stored trend Sheet 확인 후보. Live/snapshot Instance detail을 Sheet로 되돌리지 않는다.
 - `frontend/src/app/lib/read-model-adapters.ts`
   - 표시용 copy/date/source label helper 후보. source/order/recalculation 의미를 바꾸지 않는다.
 - `frontend/src/app/lib/read-model-contract-fixtures.ts`
-  - Instance live/snapshot/trend/retention gap fixture와 visual/source sentinel 후보.
+  - Instance live/snapshot/retention gap fixture와 visual/source sentinel 후보. Trend fixture는 backend contract 보존용이다.
 - `frontend/src/app/lib/read-model-contract-guard.ts`
-  - Instance dashboard/trend guard semantics 후보. backend contract 의미를 새로 만들지 않는다.
+  - Instance dashboard guard semantics 후보. Trend guard는 backend contract 보존용이며 UI surface 요구가 아니다.
 - `frontend/scripts/read-model-contract-guard.ts`
   - 14.4 static sentinel 후보.
 - `implementation-artifacts/epic-14-dashboard-design-parity-qa/README.md`
@@ -279,7 +281,7 @@ Snapshot mode note는 최소 아래 의미를 드러낸다.
 - `implementation-artifacts/epic-14-dashboard-design-parity-qa/side-by-side-tablet-1024x900.md`
 - `implementation-artifacts/epic-14-dashboard-design-parity-qa/side-by-side-mobile-390x844.md`
 - `planning-artifacts/source-of-truth/source-of-truth-dashboard-mockup.html` (read-only reference)
-- `planning-artifacts/stories/13-ui-dashboard-source-of-truth-surface-realignment.md` (read-only seed/handoff only)
+- `planning-artifacts/stories/13-ui-dashboard-source-of-truth-surface-realignment.md` (current single-modal contract companion)
 
 ## Verification Commands
 
@@ -292,7 +294,7 @@ cd frontend && npm run build
 
 rg -n "healthScore|rootCause|recoveryProof|instanceState|\\bstateCode\\b|currentState|not_observed.*(정상|문제 없음|복구 완료)|(정상|문제 없음|복구 완료).*not_observed" frontend/src/app frontend/scripts
 rg -n "acceptedAtCutoffApplied|includesLateAcceptedMetrics|mayDifferFromStoredApplicationSnapshot|applicationSnapshotRecalculated|instanceEvidenceReconstructedFromMetrics|markerIsStateSource" frontend/src/app frontend/scripts
-rg -n "dashboard_snapshots\\.read_model_json\\.instanceSummary\\.items\\[\\]|DialogContent|SheetContent|Normalized endpoint evidence table|selected Application Snapshot|late accepted|stored Application Snapshot" frontend/src/app/components frontend/scripts
+rg -n "DialogContent|InstanceTrendView|Stored trend|SheetContent|snapshotTrend|Normalized endpoint evidence table|selected Application Snapshot|late accepted|stored Application Snapshot" frontend/src/app/components frontend/scripts
 rg -n "\\.sort\\(|\\.toSorted\\(|\\.reduce\\(" frontend/src/app/components frontend/src/app/lib frontend/scripts
 
 git diff --check
@@ -316,7 +318,7 @@ Static grep hit는 guard negative fixture, explanatory source semantics comment,
    - Instance summary entry가 wide modal을 여는지.
    - Instance modal width, header, body scroll, modal clipping, normalized endpoint table overflow.
    - Snapshot mode modal note와 Read semantics flags.
-   - Stored trend source copy와 trend point CTA source separation.
+   - Stored trend/projection trend/`InstanceTrendView`/narrow Sheet 진입점 부재.
    - Retention/source absence safe state에 fallback CTA/copy 없음.
 5. Tablet `1024x900`에서 확인한다.
    - Rail/main adaptation이 유지된다.
@@ -345,22 +347,22 @@ Static grep hit는 guard negative fixture, explanatory source semantics comment,
 - Active implementation baseline은 Traditional MVC + Service/Repository Layering이다. 14.4는 frontend surface/QA story이며 backend MVC layer, read model API, persistence, migration을 변경하지 않는다.
 - Frontend root는 `frontend/`이고 React 18.3.1, Vite 6.3.5, TypeScript 5.8.3, Tailwind 4.1.12, Radix/shadcn-style UI, lucide-react를 사용한다. 새 dependency는 기본적으로 추가하지 않는다.
 - Public component, helper, 새 JSDoc/comment를 추가할 때는 AGENTS.md 지침에 따라 한국어 주석을 사용한다.
-- `guard:read-model-contract`는 Application Dashboard, Snapshot history/detail, Instance live/snapshot/trend, same-flow order의 source/order/recalculation/forbidden field semantics를 감시한다. 14.4 구현 후에도 fail-closed여야 한다.
+- `guard:read-model-contract`는 Application Dashboard, Snapshot history/detail, Instance live/snapshot modal, trend surface absence, same-flow order의 source/order/recalculation/forbidden field semantics를 감시한다. 14.4 구현 후에도 fail-closed여야 한다.
 - `InstancePanels` current state:
-  - live/snapshot Instance Dashboard는 `DialogContent` `w-[min(1120px,calc(100vw-2rem))] max-w-none` wide dialog로 열린다.
-  - stored trend는 `SheetContent side="right" sm:max-w-[660px]`로 분리된다.
+  - live/snapshot Instance Dashboard는 `DialogContent` `w-[min(1120px,calc(100vw-2rem))] max-w-none sm:max-w-none` wide dialog로 열린다.
+  - Stored trend/projection trend/`InstanceTrendView`/narrow Sheet surface는 없다.
   - 14.4는 live/snapshot detail을 Sheet로 되돌리지 않는다.
 - `InstanceDashboardSurface` current state:
   - `buildLiveInstanceDashboardPath` / `buildSnapshotInstanceDashboardPath`를 사용하고 `guardInstanceDashboardReadModel`로 contract를 검증한다.
   - Snapshot mode note는 selected Application Snapshot row window, accepted metrics reconstruction, late-arriving metric possibility를 이미 설명한다. 14.4는 mockup copy intent에 맞춰 concise/visible하게 다듬는다.
   - `ApplicationStateReferencePanel`, `ReadSemanticsPanel`, `MetricGrid`, `EndpointEvidencePanel`, `ResourceEvidencePanel`, `StarterConnectionPanel`, `NormalizedEndpointEvidenceTable`이 modal body order 후보로 존재한다.
-- `InstanceTrendView` current state:
-  - Trend source copy는 `dashboard_snapshots.read_model_json.instanceSummary.items[] stored projection`을 표시한다.
-  - 14.4는 이 surface가 current state/health score/root cause/recovery proof timeline처럼 보이지 않음을 QA한다.
+- `InstanceTrendView` MVP status:
+  - MVP Instance Summary flow에서는 retired 상태다.
+  - trend read model fixture/guard는 backend contract 보존용이며 production UI surface 요구가 아니다.
 - `read-model-contract-guard.ts` current state:
   - Instance Dashboard root/deep forbidden fields로 `state`, `stateCode`, `health`, `lifecycleState`, `instanceState`, `currentState`, `healthScore`, `cause`, `rootCauseCandidate`, `recoveryProof`, `rootCause`, `endpointPriority`, `instanceSummary`를 거부한다.
   - Snapshot mode는 `acceptedAtCutoffApplied=false`, `includesLateAcceptedMetrics=true`, `mayDifferFromStoredApplicationSnapshot=true`, `applicationSnapshotRecalculated=false`, `instanceEvidenceReconstructedFromMetrics=true`, `markerIsStateSource=false`를 요구한다.
-  - Instance Snapshot Trend는 `dashboard_snapshots.read_model_json.instanceSummary.items` source와 no forbidden decision fields를 검증한다.
+  - Instance Snapshot Trend read model fixture는 backend contract로 검증하지만, `InstancePanels` static guard는 trend UI surface absence를 별도로 검증한다.
 - HTML mockup responsive behavior는 `@media (max-width: 860px)`에서 `.modal-grid`를 1열로 전환한다. Production도 mobile에서 order를 보존하며 clipping/page overflow를 피해야 한다.
 
 ## References
@@ -382,7 +384,7 @@ Static grep hit는 guard negative fixture, explanatory source semantics comment,
 - `implementation-artifacts/epic-14-dashboard-design-parity-qa/side-by-side-desktop-1440x1000.md`
 - `implementation-artifacts/epic-14-dashboard-design-parity-qa/side-by-side-tablet-1024x900.md`
 - `implementation-artifacts/epic-14-dashboard-design-parity-qa/side-by-side-mobile-390x844.md`
-- `planning-artifacts/stories/13-ui-dashboard-source-of-truth-surface-realignment.md` (read-only seed/handoff only)
+- `planning-artifacts/stories/13-ui-dashboard-source-of-truth-surface-realignment.md` (current single-modal contract companion)
 
 ## Dev Agent Record
 
@@ -392,7 +394,7 @@ GPT-5 Codex
 
 ### Debug Log References
 
-- `git status --short --branch --untracked-files=all` 시작/종료 상태 확인. 기존 `dbml-error.log`와 seed `13-ui...` story는 보호 대상으로 유지했다.
+- `git status --short --branch --untracked-files=all` 시작/종료 상태 확인. 기존 `dbml-error.log`, Source of Truth mockup HTML, completed Epic 13 story body/status는 보호 대상으로 유지했다. `13-ui...` story는 current single-modal companion 문서로만 정렬했다.
 - RED: 14.4 static sentinel 추가 직후 `cd frontend && npm run guard:read-model-contract`가 snapshot no-override copy/order sentinel 부재로 실패함을 확인했다.
 - GREEN: Instance modal body order와 sticky header 구현 후 `cd frontend && npm run guard:read-model-contract` 통과.
 - 최종 검증: `cd frontend && npm run guard:read-model-contract`, `cd frontend && npm run typecheck`, `cd frontend && npm run build`, `git diff --check`, sprint YAML parse 통과.
@@ -401,21 +403,21 @@ GPT-5 Codex
 ### Completion Notes List
 
 - 기준은 오직 `planning-artifacts/source-of-truth/source-of-truth-dashboard-mockup.html`이다. `source-of-truth-dashboard-snapshot-picker.png`는 기준으로 삼지 않았다.
-- 보호 범위 준수: backend code/tests, migration/schema, Source of Truth mockup HTML, completed Epic 13 story body/status, `dbml-error.log`, seed `planning-artifacts/stories/13-ui-dashboard-source-of-truth-surface-realignment.md`는 수정하지 않았다.
-- `InstancePanels` live/snapshot detail은 wide `DialogContent` `w-[min(1120px,calc(100vw-2rem))]`를 유지하고, sticky header와 body scroll containment를 보강했다. Stored trend는 right `Sheet`로 남겨 source separation을 유지했다.
+- 보호 범위 준수: backend code/tests, migration/schema, Source of Truth mockup HTML, completed Epic 13 story body/status, `dbml-error.log`는 수정하지 않았다.
+- `InstancePanels` live/snapshot detail은 wide `DialogContent` `w-[min(1120px,calc(100vw-2rem))]`와 `sm:max-w-none`를 유지하고, sticky header와 body scroll containment를 보강했다. Stored trend/projection trend Sheet는 MVP에서 retired 상태다.
 - `InstanceDashboardSurface` body order를 context note -> Application state reference -> Read semantics -> selected instance metrics -> endpoint evidence -> resource evidence -> starter connection -> normalized endpoint evidence table로 정렬했다. 기존 extra body header panel은 context note로 흡수했다.
 - Snapshot context note는 selected Application Snapshot row window, accepted metric reconstruction, late accepted metric 가능성, stored Application Snapshot state/evidence override/검증/대체 금지를 명시한다.
 - Read semantics는 `mode`, `source`, `window`, snapshot flags를 compact info cells로 보여주고, Application state reference는 lifecycle owner가 application이며 instance top-level state가 없음을 표시한다.
-- Stored Instance Snapshot Trend는 `dashboard_snapshots.read_model_json.instanceSummary.items[]` stored projection copy를 유지하며 current state/health score/root cause/recovery proof timeline처럼 보이게 하지 않았다.
-- 14.4 static sentinel은 wide Dialog, sticky header, modal order anchors, no extra `ContextHeader`, snapshot no-override copy, source/mode/window cells, explicit no instance top-level state, stored trend source copy를 fail-closed로 검증한다.
+- Stored trend/projection trend/`InstanceTrendView`/narrow Sheet 진입점은 MVP에서 제거됐고, 과거 instance evidence는 Snapshot/History -> snapshot-mode wide modal로 본다.
+- 14.4 static sentinel은 wide Dialog, sticky header, modal order anchors, no extra `ContextHeader`, snapshot no-override copy, source/mode/window cells, explicit no instance top-level state, and trend surface absence를 fail-closed로 검증한다.
 - Static grep hit 분류: `healthScore`/`rootCause`/`recoveryProof`/`currentState`/`stateCode` hit는 guard negative fixtures/assertions, stored Snapshot fields, type/source fields이며 production Instance Dashboard regression은 아니다. `.sort()`/`.toSorted()`/`.reduce()` hit는 없다.
-- Handoff gate 판정: Instance wide modal은 code/static `conformant`; modal order는 `conformant`; snapshot mode note는 `conformant`; stored trend source separation은 `conformant`; final viewport evidence는 auth-blocked browser + code/static evidence로 기록했으며 authenticated visual proof는 `coverage gap`; unresolved non-allowed deviation은 없다.
+- Handoff gate 판정: Instance wide modal은 code/static `conformant`; modal order는 `conformant`; snapshot mode note는 `conformant`; trend surface absence는 `conformant`; final viewport evidence는 auth-blocked browser + code/static evidence로 기록했으며 authenticated visual proof는 `coverage gap`; unresolved non-allowed deviation은 없다.
 - 새 deviation 없음. `deviation-log.md`에는 14.4에서 추가 deviation이 없음을 기록했고, authenticated Instance modal/retention path 미검증은 deviation이 아니라 QA coverage gap으로 유지했다.
 - `.private/smoke-auth.env` access token fixture가 없어 full authenticated `Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired` browser path는 실행하지 않았다. Completion evidence에서 이 path를 닫았다고 주장하지 않는다.
 
 ### BMAD Code Review
 
-- 2026-06-11 review outcome: blocking/high/medium/low finding 없음. Instance live/snapshot detail wide Dialog, modal section order, snapshot semantics copy, stored trend source separation, retention no-fallback copy, static sentinel, deviation disposition, story/sprint review status를 Story 14.4 acceptance criteria 기준으로 확인했다.
+- 2026-06-11 review outcome: blocking/high/medium/low finding 없음. Instance live/snapshot detail wide Dialog, modal section order, snapshot semantics copy, trend surface absence, retention no-fallback copy, static sentinel, deviation disposition, story/sprint review status를 Story 14.4 acceptance criteria 기준으로 확인했다.
 - Verification: `git status --short --branch --untracked-files=all`, `cd frontend && npm run guard:read-model-contract`, `cd frontend && npm run typecheck`, `cd frontend && npm run build`, `git diff --check`, sprint YAML parse 통과.
 - Review Follow-ups: authenticated fixture/runbook 부재로 `Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired` browser visual path는 계속 coverage gap이다. 현재 evidence는 auth-blocked viewport + code/static guard proof이며 authenticated modal/retention visual conformance로 과장하지 않는다.
 
@@ -442,5 +444,5 @@ GPT-5 Codex
 
 | Date | Change |
 |---|---|
-| 2026-06-11 | Epic 14 Story 14.4 Instance Wide Modal And End-To-End Visual QA story artifact를 생성하고 ready-for-dev로 전환했다. |
+| 2026-06-11 | Epic 14 Story 14.4 Instance Wide Modal And End-To-End Visual QA story artifact를 생성했다. |
 | 2026-06-11 | Instance wide modal order/sticky header/snapshot note/source sentinel/final visual QA evidence를 구현하고 story와 sprint status를 review로 전환했다. |

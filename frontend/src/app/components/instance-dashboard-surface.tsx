@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Activity, Gauge, History, ListChecks, Radio, RefreshCw, Server } from "lucide-react";
+import { Activity, Gauge, ListChecks, Radio, RefreshCw, Server } from "lucide-react";
 import { ApiRequestError, AuthRequiredError, NO_STORE_REQUEST_OPTIONS, readJsonResource } from "../lib/api";
 import { type AuthFetch } from "../lib/auth";
 import { guardInstanceDashboardReadModel } from "../lib/read-model-contract-guard";
@@ -66,11 +66,9 @@ function SectionLabel({ icon: Icon, children }: { icon: LucideIcon; children: Re
  */
 export function InstanceDashboardSurface({
   mode,
-  onOpenTrend,
   target,
 }: {
   mode: InstanceDashboardMode;
-  onOpenTrend: (snapshotTrendLink: string) => void;
   target: InstanceDashboardTarget | SnapshotInstanceDashboardTarget;
 }) {
   const snapshotId = mode === "snapshot" && "snapshotId" in target ? target.snapshotId : null;
@@ -160,7 +158,7 @@ export function InstanceDashboardSurface({
 
   return (
     <div className="space-y-4 text-[13px] text-neutral-900">
-      <InstanceContextNote dashboard={dashboard} mode={mode} onOpenTrend={onOpenTrend} />
+      <InstanceContextNote dashboard={dashboard} mode={mode} />
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <ApplicationStateReferencePanel dashboard={dashboard} />
         <ReadSemanticsPanel dashboard={dashboard} />
@@ -179,11 +177,9 @@ export function InstanceDashboardSurface({
 function InstanceContextNote({
   dashboard,
   mode,
-  onOpenTrend,
 }: {
   dashboard: InstanceDashboardReadModel;
   mode: InstanceDashboardMode;
-  onOpenTrend: (snapshotTrendLink: string) => void;
 }) {
   const snapshotCopy = "selected Application Snapshot row window 기준 evidence입니다. Application Snapshot 자체는 dashboard_snapshots.read_model_json 저장본이고, selected instance evidence는 selected snapshot row metadata와 accepted_metric_buckets로 재구성합니다. late accepted metric이 포함될 수 있습니다. stored Application Snapshot state/evidence를 override, 검증, 대체하지 않습니다.";
   const liveCopy = "live context evidence입니다. 현재 query 시각 기준 recent_30_minutes accepted_metric_buckets에서 selected instance evidence를 봅니다. Application 판단을 새로 만들지 않고 application-owned state reference만 표시합니다.";
@@ -213,14 +209,6 @@ function InstanceContextNote({
               snapshot <span className="text-neutral-900">{dashboard.snapshot.snapshotId}</span> · {humanizeCaptureReason(dashboard.snapshot.captureReason)}
             </div>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2 border-neutral-300"
-            onClick={() => onOpenTrend(dashboard.links.snapshotTrend)}
-          >
-            <History className="h-3.5 w-3.5" strokeWidth={1.5} /> Stored trend
-          </Button>
         </div>
       </div>
     </section>
@@ -238,6 +226,7 @@ function ApplicationStateReferencePanel({ dashboard }: { dashboard: InstanceDash
         <InfoCell label="lifecycleOwner" value={ref.lifecycleOwner} />
         <InfoCell label="source" value={humanizeSourceCode(ref.source)} />
         <InfoCell label="applicationStateCode" value={ref.applicationStateCode ? humanizeStatusCode(ref.applicationStateCode) : "참조 없음"} />
+        <InfoCell label="contribution" value={dashboard.applicationContribution.level} />
         <InfoCell label="snapshotId" value={ref.snapshotId ?? "live reference"} />
         <InfoCell label="instance top-level state" value="없음" />
       </div>

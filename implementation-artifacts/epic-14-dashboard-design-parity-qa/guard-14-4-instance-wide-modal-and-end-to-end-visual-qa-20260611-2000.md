@@ -19,7 +19,7 @@
 | No extra body header before Application state reference | Sentinel rejects `<ContextHeader` in `InstanceDashboardSurface` |
 | Snapshot mode note | Sentinel verifies selected Application Snapshot copy and no stored Application Snapshot state/evidence override copy |
 | Instance top-level state | Sentinel verifies explicit `instance top-level state=없음` and source/mode/window cells |
-| Stored trend source separation | Sentinel verifies `dashboard_snapshots.read_model_json.instanceSummary.items[] stored projection` copy in `InstancePanels` |
+| Trend surface absence | Sentinel rejects `InstanceTrendView`, `Stored trend`, `SheetContent`, and `snapshotTrend` in `InstancePanels` |
 
 ## Static Grep Classification
 
@@ -27,7 +27,7 @@
 |---|---|
 | `healthScore`, `rootCause`, `recoveryProof`, `instanceState`, `currentState`, `stateCode` | Hits are guard negative fixtures/assertions, stored Snapshot state fields, type definitions, and Snapshot detail read-semantics fields. No new Instance Dashboard health/root cause/recovery UI was added. |
 | Snapshot semantic flags | Expected hits in type definitions, fixtures, guard assertions, `SnapshotDetailSurface`, and `InstanceDashboardSurface` info cells. |
-| Modal/trend/source terms | Expected hits in 14.4 static sentinel and production copy for wide Dialog, stored trend projection source, snapshot note, and normalized endpoint table. |
+| Modal/source terms | Expected hits in 14.4 static sentinel and production copy for wide Dialog, trend surface absence, snapshot note, and normalized endpoint table. |
 | `.sort(`, `.toSorted(`, `.reduce(` | no hits in searched frontend component/lib/script paths |
 
 ## Browser QA Scope

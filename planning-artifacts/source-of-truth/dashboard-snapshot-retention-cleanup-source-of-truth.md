@@ -101,7 +101,7 @@ Instance Dashboard snapshot mode는 선택한 Application Snapshot row의 window
 
 MVP에서는 `dashboard_snapshots`와 `accepted_metric_buckets`를 모두 기본 14일 retention horizon으로 맞춘다.
 
-이 결정은 `accepted_metric_buckets`를 장기 time-series store로 승격하지 않는다. 14일은 snapshot UI와 instance evidence 재구성을 맞추기 위한 bounded operational retention이다. 14일을 넘는 trend, baseline, adaptive threshold, endpoint long-term analytics는 여전히 Post-MVP 범위다.
+이 결정은 `accepted_metric_buckets`를 장기 time-series store로 승격하지 않는다. 14일은 snapshot UI와 instance evidence 재구성을 맞추기 위한 bounded operational retention이다. 14일을 넘는 trend, baseline, adaptive threshold, endpoint long-term analytics는 여전히 Post-MVP 범위다. 2026-06-11 UI MVP 결정에 따라 Instance Snapshot Trend/Stored trend surface도 현재 MVP 화면에서 제외하며, 과거 instance evidence는 Snapshot/History에서 snapshot을 선택한 뒤 snapshot-mode wide modal로 본다.
 
 단, 30분 snapshot slot의 가장 오래된 retained point도 selected instance evidence를 온전히 재구성할 수 있어야 하므로 physical metric cleanup은 `snapshotCutoffUtc - 30 minutes`까지 30분 evidence grace를 둔다. 이 grace는 arbitrary metric explorer나 14일 밖 analytics를 허용하는 정책이 아니다.
 
@@ -129,7 +129,7 @@ delete from dashboard_snapshots
 where current_window_end_utc < :snapshotCutoffUtc
 ```
 
-`generated_at`은 capturedAt/provenance와 deterministic ordering 보조값으로 유지한다. Marker/history/trend 조회도 후속 구현에서는 retention horizon을 `current_window_end_utc` 기준으로 맞춘다.
+`generated_at`은 capturedAt/provenance와 deterministic ordering 보조값으로 유지한다. Marker/history 조회와 보존된 trend read-model 조회가 후속에서 필요하면 retention horizon을 `current_window_end_utc` 기준으로 맞춘다.
 
 ### 7.2 `accepted_metric_buckets`
 
@@ -180,10 +180,10 @@ Bucket이 cleanup으로 삭제됐거나 window 안에 원래 bucket이 없으면
 - Story 13.10에서 `domain.cleanup.service` 아래 `RetentionCleanupProperties`, `RetentionCleanupService`, `RetentionCleanupScheduler`, `RetentionCleanupResult`를 추가했다.
 - `RetentionCleanupScheduler`는 매일 `0 15 1 * * *` / `Asia/Seoul` trigger를 사용하되, physical delete rollout은 `portal.retention.cleanup.enabled=false` 기본값과 dry-run control로 분리한다.
 - `RetentionCleanupProperties`는 `portal.dashboard-snapshots.retention-days:14`를 retention horizon source로 사용하고, `portal.retention.cleanup.enabled`와 `portal.retention.cleanup.dry-run`은 운영 제어로만 둔다.
-- `DashboardSnapshotRepository`의 marker/history/trend 조회는 `current_window_end_utc` horizon과 slot order를 우선 사용한다.
+- `DashboardSnapshotRepository`의 marker/history 조회와 보존된 trend read-model contract는 `current_window_end_utc` horizon과 slot order를 우선 사용한다.
 - `DashboardSnapshotRepository`는 `current_window_end_utc < snapshotCutoffUtc` bulk delete를 제공한다.
 - `MetricBucketRepository`는 `bucket_end_utc < metricEvidenceCutoffUtc` bulk delete를 제공한다.
-- `DashboardSnapshotDetailService`, marker/history/date map source, Instance Snapshot Trend, Instance Dashboard snapshot mode는 retention 밖 row를 live/current fallback 없이 404/empty/source absence 또는 metric data-quality limitation으로 수렴시키는 guard를 갖는다.
+- `DashboardSnapshotDetailService`, marker/history/date map source, 보존된 Instance Snapshot Trend read-model contract, Instance Dashboard snapshot mode는 retention 밖 row를 live/current fallback 없이 404/empty/source absence 또는 metric data-quality limitation으로 수렴시키는 guard를 갖는다.
 
 아직 닫히지 않은 부분은 아래와 같다.
 
@@ -240,7 +240,7 @@ Cleanup failure는 부분 삭제 가능성을 고려해 table별 transaction 경
 
 ### 10.4 Configuration
 
-현재 read side는 `portal.dashboard-snapshots.retention-days=14`를 사용한다. MVP cleanup도 이 값을 retention horizon source로 사용한다. 이 값과 다른 horizon을 쓰면 marker/detail/trend 의미가 갈라진다.
+현재 read side는 `portal.dashboard-snapshots.retention-days=14`를 사용한다. MVP cleanup도 이 값을 retention horizon source로 사용한다. 이 값과 다른 horizon을 쓰면 marker/detail/보존된 trend contract 의미가 갈라진다.
 
 구현 방향은 아래와 같다.
 

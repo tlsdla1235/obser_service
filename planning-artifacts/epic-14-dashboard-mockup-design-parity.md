@@ -41,7 +41,7 @@ Mockup과 실제 구현의 차이는 기본적으로 design choice가 아니라 
 9. `planning-artifacts/stories/13-11-end-to-end-acceptance-and-demo-hardening.md`
 10. `implementation-artifacts/epic-13-retro-2026-06-11.md`
 
-`planning-artifacts/stories/13-ui-dashboard-source-of-truth-surface-realignment.md`가 작업트리에 있으면 Epic 14 seed/handoff 자료로만 참고한다. 이 파일은 Epic 14 source of truth가 아니며, Epic 14는 아래 4개 story split으로 새로 추적한다.
+`planning-artifacts/stories/13-ui-dashboard-source-of-truth-surface-realignment.md`가 작업트리에 있으면 current single-modal contract companion 문서로 함께 확인한다. 이 파일은 Epic 14 source of truth가 아니며, Epic 14는 아래 4개 story split으로 새로 추적한다.
 
 `planning-artifacts/source-of-truth/source-of-truth-dashboard-snapshot-picker.png`는 제거됐거나 제거 대상인 screenshot export이며 Source of Truth 기준으로 삼지 않는다. Epic 14의 기준은 HTML mockup이다.
 
@@ -267,14 +267,14 @@ rg -n "dashboard_snapshots\\.read_model_json|currentWindowEndUtc|markerIsStateSo
 
 ### 목표
 
-Instance live/snapshot/trend surfaces를 mockup의 wide modal/detail grammar로 다듬고, Epic 14 전체 Dashboard mockup conformance를 browser visual QA evidence와 deviation disposition으로 마감한다.
+Instance live/snapshot surface를 mockup의 single wide modal/detail grammar로 다듬고, Epic 14 전체 Dashboard mockup conformance를 browser visual QA evidence와 deviation disposition으로 마감한다.
 
 ### Scope
 
 - Instance live/snapshot Dashboard detail은 좁은 Sheet가 아니라 wide Dialog/modal 또는 동등한 wide detail surface로 표시한다.
 - Modal section order는 context note, Application state reference, Read semantics, selected instance metrics, endpoint evidence, resource evidence, starter connection, normalized endpoint evidence table을 따른다.
 - Snapshot mode note는 selected Application Snapshot row window, late accepted metric 가능성, stored Application Snapshot override 금지를 짧게 드러낸다.
-- Stored Instance Snapshot Trend는 `dashboard_snapshots.read_model_json.instanceSummary.items[]` projection source로 분리해 표시한다.
+- Stored Instance Snapshot Trend / projection trend / Stored trend surface는 MVP 범위 밖으로 이관됐으므로 Instance Summary나 modal 안에 추가하지 않는다. 과거 instance evidence는 Snapshot/History에서 selected snapshot을 고른 뒤 snapshot-mode wide modal로 본다.
 - Dashboard shell, live surface, snapshot/history/detail, instance modal, retention expired/source absence를 desktop/tablet/mobile에서 visual QA한다.
 - 가능하면 authenticated smoke fixture/runbook을 사용해 full path를 검증한다. fixture가 없으면 known gap을 유지하고 과장하지 않는다.
 
@@ -283,6 +283,7 @@ Instance live/snapshot/trend surfaces를 mockup의 wide modal/detail grammar로 
 - Instance Dashboard backend endpoint/read model 변경.
 - Instance health score, root cause, recovery proof, independent instance lifecycle state.
 - `dashboard_snapshots.read_model_json.instanceSummary.items[]`를 Instance Dashboard snapshot detail 필수 source로 만드는 변경.
+- Instance Snapshot Trend / projection trend / Stored trend UI를 MVP 필수 surface로 되살리는 변경.
 - authenticated full-path smoke fixture 부재를 임시 browser token persistence나 URL token parsing으로 우회.
 
 ### Acceptance Criteria
@@ -291,7 +292,7 @@ Instance live/snapshot/trend surfaces를 mockup의 wide modal/detail grammar로 
 2. Given live Instance Dashboard를 볼 때, Then `mode=live`, `source=accepted_metric_buckets`, `recent_30_minutes`, `applicationStateRef.lifecycleOwner=application`이 보이고 instance top-level lifecycle state를 만들지 않는다.
 3. Given selected Application Snapshot 기준 Instance Dashboard snapshot mode를 볼 때, Then selected snapshot row window 기준 evidence, late accepted metric 가능성, no stored Application Snapshot override copy가 보인다.
 4. Given Instance Dashboard snapshot mode가 retention gap 또는 missing metric을 만날 때, Then `metric_missing`/`not_observed_in_window` 계열 limitation UX로 수렴하고 live/current evidence로 보정하지 않는다.
-5. Given Instance Snapshot Trend를 볼 때, Then stored projection source가 보이고 current state/health score/root cause timeline처럼 보이지 않는다.
+5. Given Instance Summary와 Instance modal을 검토할 때, Then Stored trend / projection trend / `InstanceTrendView` / narrow Sheet / `openTrend` / `openLiveDashboard` 진입점이 없고, 과거 instance evidence는 Snapshot/History -> snapshot-mode wide modal 경로로만 열린다.
 6. Given end-to-end visual QA를 수행할 때, Then Project rail, Application rail, live dashboard, Snapshot/History, Snapshot detail, Instance modal, retention expired/source absence가 desktop/tablet/mobile에서 text overlap, clipped badges, modal clipping, horizontal scroll 없이 확인된다.
 7. Given authenticated full-path fixture가 없으면, Then `Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired` path를 하나의 authenticated browser smoke로 닫은 evidence가 없다는 known gap을 completion notes에 유지한다.
 8. Given Epic 14 visual QA를 마감할 때, Then Project rail, Application rail, Main surface, Snapshot picker, Snapshot detail, Instance wide modal, retention expired state별 conformance 판정과 deviation log disposition이 남아야 하며 unresolved non-allowed deviation은 blocker다.
@@ -362,7 +363,7 @@ Epic 14는 아래 조건을 만족할 때 done으로 볼 수 있다.
 
 - 실제 Vite Dashboard 첫 화면이 mockup의 Project rail / Application rail / Main surface composition과 compact neutral visual grammar를 따른다.
 - Snapshot/History picker와 Snapshot detail이 marker-first 30분 point 탐색과 stored dashboard restore surface로 읽힌다.
-- Instance live/snapshot detail이 wide modal/detail surface로 읽히고 stored trend와 source semantics가 분리된다.
+- Instance live/snapshot detail이 single wide modal/detail surface로 읽히고 Stored trend/projection trend surface가 MVP에 다시 등장하지 않는다.
 - Retention expired/404/source absence가 live/current fallback 없이 safe state로 보인다.
 - Project rail, Application rail, Main surface, Snapshot picker, Snapshot detail, Instance wide modal, retention expired state별 conformance checklist가 완료된다.
 - 모든 deviation은 `implementation-artifacts/epic-14-dashboard-design-parity-qa/deviation-log.md` 또는 동등한 artifact에 allowed category, reviewer decision, follow-up owner와 함께 남고, non-allowed deviation은 없다.

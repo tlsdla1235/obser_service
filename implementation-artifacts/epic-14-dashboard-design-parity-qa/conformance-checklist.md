@@ -58,7 +58,7 @@
 - [ ] Modal header는 sticky 또는 동등하게 stable하고, body scroll과 clipping이 없다.
 - [ ] Section order는 context note, Application state reference, Read semantics, selected instance metrics, endpoint evidence, resource evidence, starter connection, normalized endpoint evidence table이다.
 - [ ] Snapshot mode note는 selected Application Snapshot row window, late accepted metric 가능성, no stored Application Snapshot override를 드러낸다.
-- [ ] Stored trend는 `dashboard_snapshots.read_model_json.instanceSummary.items[]` projection surface로 분리한다.
+- [ ] Stored trend/projection trend/`InstanceTrendView`/narrow Sheet 진입점을 추가하지 않는다. 과거 instance evidence는 Snapshot/History -> snapshot-mode wide modal 경로로만 본다.
 
 ## Retention / Source Absence
 
