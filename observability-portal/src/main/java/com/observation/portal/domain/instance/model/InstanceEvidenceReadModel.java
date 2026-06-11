@@ -48,7 +48,8 @@ public record InstanceEvidenceReadModel(
             "selected_instance_endpoint_observed",
             "endpoint_evidence_insufficient",
             "histogram_boundary_mismatch",
-            "application_freshness_not_current");
+            "application_freshness_not_current",
+            "server_projected");
     private static final Set<String> STARTER_PERCENTILE_STATUSES = Set.of(
             "available",
             "missing",
@@ -129,7 +130,7 @@ public record InstanceEvidenceReadModel(
     }
 
     /**
-     * accepted bucket metric data axis의 current 15분 window와 bounded sample summary다.
+     * accepted bucket metric data axis의 recent 30분 window와 bounded sample summary다.
      */
     public record MetricData(
             String statusSource,
@@ -184,7 +185,7 @@ public record InstanceEvidenceReadModel(
     }
 
     /**
-     * evidence API가 노출하는 current 15분 UTC bucket window다.
+     * evidence API가 노출하는 recent 30분 UTC bucket window다.
      */
     public record MetricWindow(
             String name,
@@ -194,12 +195,12 @@ public record InstanceEvidenceReadModel(
     ) {
 
         /**
-         * current 15분 window와 30초 bucket duration 계약을 검증한다.
+         * recent 30분 window와 30초 bucket duration 계약을 검증한다.
          */
         public MetricWindow {
             name = requireText(name, "name");
-            if (!"current_15m".equals(name)) {
-                throw new IllegalArgumentException("name must be current_15m");
+            if (!"recent_30_minutes".equals(name)) {
+                throw new IllegalArgumentException("name must be recent_30_minutes");
             }
             Objects.requireNonNull(startUtc, "startUtc must not be null");
             Objects.requireNonNull(endUtc, "endUtc must not be null");
@@ -256,7 +257,7 @@ public record InstanceEvidenceReadModel(
     }
 
     /**
-     * selected instance current 15분 starter percentile series 계약을 담는다.
+     * selected instance recent 30분 starter percentile series 계약을 담는다.
      */
     public record StarterPercentiles(
             String source,
@@ -280,18 +281,18 @@ public record InstanceEvidenceReadModel(
                 throw new IllegalArgumentException("source must be starter_canonical_percentile");
             }
             scope = requireText(scope, "scope");
-            if (!"instance".equals(scope)) {
-                throw new IllegalArgumentException("scope must be instance");
+            if (!"instance_bucket".equals(scope)) {
+                throw new IllegalArgumentException("scope must be instance_bucket");
             }
             window = requireText(window, "window");
-            if (!"current_15m".equals(window)) {
-                throw new IllegalArgumentException("window must be current_15m");
+            if (!"recent_30_minutes".equals(window)) {
+                throw new IllegalArgumentException("window must be recent_30_minutes");
             }
             if (bucketDurationSeconds != 30) {
                 throw new IllegalArgumentException("bucketDurationSeconds must be 30");
             }
-            if (maxPointCount != 30) {
-                throw new IllegalArgumentException("maxPointCount must be 30");
+            if (maxPointCount != 60) {
+                throw new IllegalArgumentException("maxPointCount must be 60");
             }
             displayPolicy = requireText(displayPolicy, "displayPolicy");
             if (!"source_scoped_series".equals(displayPolicy)) {
@@ -312,15 +313,15 @@ public record InstanceEvidenceReadModel(
         }
 
         /**
-         * current window에 percentile series가 없을 때의 empty block을 만든다.
+         * recent 30분 window에 percentile series가 없을 때의 empty block을 만든다.
          */
         public static StarterPercentiles missing() {
             return new StarterPercentiles(
                     "starter_canonical_percentile",
-                    "instance",
-                    "current_15m",
+                    "instance_bucket",
+                    "recent_30_minutes",
                     30,
-                    30,
+                    60,
                     "source_scoped_series",
                     "no_average_no_max_no_merge_no_histogram_recalculation",
                     "missing",
@@ -376,8 +377,8 @@ public record InstanceEvidenceReadModel(
          */
         public HistogramDistribution {
             source = requireText(source, "source");
-            if (!"histogram_bucket_distribution".equals(source)) {
-                throw new IllegalArgumentException("source must be histogram_bucket_distribution");
+            if (!"accepted_bucket".equals(source)) {
+                throw new IllegalArgumentException("source must be accepted_bucket");
             }
             scope = requireText(scope, "scope");
             status = requireText(status, "status");
@@ -387,12 +388,12 @@ public record InstanceEvidenceReadModel(
         }
 
         /**
-         * current window에 histogram evidence가 없을 때의 empty block을 만든다.
+         * recent 30분 window에 histogram evidence가 없을 때의 empty block을 만든다.
          */
         public static HistogramDistribution missing() {
             return new HistogramDistribution(
-                    "histogram_bucket_distribution",
-                    "selected_instance_current_15m",
+                    "accepted_bucket",
+                    "instance",
                     "missing",
                     "histogram_distribution_not_loaded",
                     0L,
@@ -432,8 +433,8 @@ public record InstanceEvidenceReadModel(
          */
         public ResourceHints {
             source = requireText(source, "source");
-            if (!"accepted_bucket_latest_sample".equals(source)) {
-                throw new IllegalArgumentException("source must be accepted_bucket_latest_sample");
+            if (!"accepted_bucket".equals(source)) {
+                throw new IllegalArgumentException("source must be accepted_bucket");
             }
             status = requireText(status, "status");
             reason = trimNullable(reason);
@@ -447,7 +448,7 @@ public record InstanceEvidenceReadModel(
          */
         public static ResourceHints missing() {
             return new ResourceHints(
-                    "accepted_bucket_latest_sample",
+                    "accepted_bucket",
                     "missing",
                     "resource_hints_not_loaded",
                     null,
@@ -516,18 +517,18 @@ public record InstanceEvidenceReadModel(
                 throw new IllegalArgumentException("source must be accepted_metric_buckets.endpoints_json");
             }
             scope = requireText(scope, "scope");
-            if (!"instance_current_15m".equals(scope)) {
-                throw new IllegalArgumentException("scope must be instance_current_15m");
+            if (!"instance_recent_30_minutes".equals(scope)) {
+                throw new IllegalArgumentException("scope must be instance_recent_30_minutes");
             }
             selectionPolicy = requireText(selectionPolicy, "selectionPolicy");
-            if (!"application_priority_presence_then_triage_then_instance_request_count".equals(selectionPolicy)) {
+            if (!"application_evidence_presence_then_instance_symptom".equals(selectionPolicy)) {
                 throw new IllegalArgumentException(
-                        "selectionPolicy must be application_priority_presence_then_triage_then_instance_request_count");
+                        "selectionPolicy must be application_evidence_presence_then_instance_symptom");
             }
             displayOrderingPolicy = requireText(displayOrderingPolicy, "displayOrderingPolicy");
-            if (!"selected_instance_signal_then_application_priority_reference".equals(displayOrderingPolicy)) {
+            if (!"server_order".equals(displayOrderingPolicy)) {
                 throw new IllegalArgumentException(
-                        "displayOrderingPolicy must be selected_instance_signal_then_application_priority_reference");
+                        "displayOrderingPolicy must be server_order");
             }
             status = requireText(status, "status");
             validateAllowed(status, ENDPOINT_EVIDENCE_STATUSES, "status");
@@ -545,9 +546,9 @@ public record InstanceEvidenceReadModel(
         public static EndpointEvidence missing() {
             return new EndpointEvidence(
                     "accepted_metric_buckets.endpoints_json",
-                    "instance_current_15m",
-                    "application_priority_presence_then_triage_then_instance_request_count",
-                    "selected_instance_signal_then_application_priority_reference",
+                    "instance_recent_30_minutes",
+                    "application_evidence_presence_then_instance_symptom",
+                    "server_order",
                     "missing",
                     null,
                     List.of());
@@ -610,8 +611,8 @@ public record InstanceEvidenceReadModel(
             validateNullableFraction(instanceErrorShare, "instanceErrorShare");
             durationBuckets = List.copyOf(Objects.requireNonNull(durationBuckets, "durationBuckets must not be null"));
             bucketDistributionSource = requireText(bucketDistributionSource, "bucketDistributionSource");
-            if (!"histogram_bucket_distribution".equals(bucketDistributionSource)) {
-                throw new IllegalArgumentException("bucketDistributionSource must be histogram_bucket_distribution");
+            if (!"accepted_bucket".equals(bucketDistributionSource)) {
+                throw new IllegalArgumentException("bucketDistributionSource must be accepted_bucket");
             }
             if (relatedApplicationPriorityRank != null && relatedApplicationPriorityRank < 1) {
                 throw new IllegalArgumentException(

@@ -330,6 +330,86 @@ Epic 12의 기본 consumer는 Spring Boot portal 내부 worker다. Lambda consum
    - Story 12.5의 benchmark harness/guard를 사용해 실제 local/isolated benchmark 수치와 sanitized report artifact를 남긴다.
    - Phase 1 request latency와 Phase 2 DB batch throughput evidence를 같은 결론이나 단일 개선율로 합치지 않는다.
 
+## Epic 13. Dashboard Source of Truth Realignment
+
+목표: 확정된 Dashboard Source of Truth를 Application Dashboard, Snapshot, Instance Dashboard, Retention 흐름에 안전하게 적용하기 위해 새 alignment epic/story 묶음으로 추적한다.
+
+이 epic은 완료된 Epic 4/5/6/10 story를 다시 여는 작업이 아니다. 완료 story는 당시 구현 이력으로 보존하고, 새 alignment story에서 Background / Aligns / Supersedes / Hardens 관계로만 참조한다.
+
+2026-06-11 D3 final planning/status consolidation 기준 `implementation-artifacts/sprint-status.yaml`에서 Epic 13은 done이다. `13-2`부터 `13-11`까지의 implementation/validation story와 `13-doc-0`부터 `13-doc-3`까지의 documentation tracking story는 완료 상태로 정렬한다.
+
+13.11 acceptance evidence는 frontend `guard:read-model-contract`/typecheck/build, focused backend regression bundle, full backend regression, smoke focused bundle 통과로 남겼다. 단, full authenticated browser demo route/fixture가 없어 `Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired` path를 하나의 browser smoke로 닫은 evidence는 없으며, 이 gap은 후속 demo fixture/runbook 보강으로 남긴다.
+
+Guardrails:
+
+- Source of Truth 문서는 read-only 기준으로 참조하고 의미를 재정의하지 않는다.
+- D3 consolidation은 production code, frontend implementation, backend test, migration/schema 변경 범위가 아니다.
+- 완료된 story 파일 본문과 done 상태를 수정하지 않는다.
+- `epics.md`의 이 섹션은 Epic 13 완료 결과와 남은 evidence gap을 요약하는 planning/status rollup이다.
+
+### Documentation Tracking Stories
+
+- `13-doc-0-documentation-alignment-plan`: D0 문서 정렬 phase, 금지 문서, just-in-time/final consolidation 원칙을 고정했다.
+- `13-doc-1-alignment-epic-story-creation`: D1 새 alignment epic/story artifact와 최소 planning 문서 정렬을 수행했다.
+- `13-doc-2-per-slice-documentation-updates`: D2 각 vertical slice 구현 직후 contract/architecture/story 문서를 필요한 범위로만 정렬했다.
+- `13-doc-3-final-planning-status-consolidation`: D3 P10 acceptance 이후 공식 planning/status 문서를 실제 결과 기준으로 정리했다.
+
+### Planning And Production Alignment Stories
+
+1. `13-1-alignment-story-status-planning`
+   - P0 alignment epic key, story split, status 반영 시점, 완료 story 참조 정책을 확정한다.
+2. `13-2-frontend-read-model-contract-guard`
+   - P1 Frontend adapter/type/fixture guard로 server-computed state/order/source semantics를 고정한다.
+3. `13-3-backend-recent-30-minutes-window-alignment`
+   - P2 Application/Instance live 판단 window를 recent_30_minutes로 정렬한다.
+4. `13-4-backend-application-dashboard-read-model-shape-alignment`
+   - P3 Application Dashboard API/read model shape를 Source of Truth contract에 맞춘다.
+5. `13-5-frontend-application-dashboard-ia-realignment`
+   - P4 Application Dashboard live surface를 운영자 질문 순서로 재배치한다.
+6. `13-6-backend-30-minute-scheduled-snapshot-and-slot-horizon-alignment`
+   - P5 30분 scheduled snapshot slot과 current_window_end_utc horizon을 정렬한다.
+7. `13-7-frontend-snapshot-history-detail-realignment`
+   - P6 Snapshot history/detail을 marker-first 30분 point 탐색과 stored read model 복원 surface로 정렬한다.
+8. `13-8-backend-instance-dashboard-live-snapshot-mode-split`
+   - P7 Instance Dashboard live/snapshot mode를 API/service 책임으로 분리한다.
+9. `13-9-frontend-instance-surface-split`
+   - P8 Instance live detail, snapshot mode, snapshot trend UI 책임을 분리한다.
+10. `13-10-retention-cleanup-alignment`
+   - P9 14일 retention UX와 physical cleanup 기준을 current_window_end_utc, bucket_end_utc, 30분 evidence grace로 정렬한다.
+11. `13-11-end-to-end-acceptance-and-demo-hardening`
+   - P10 Application live, snapshot, instance, retention path를 Source of Truth 기준으로 검증했다. Frontend guard/typecheck/build, focused/full backend regression, smoke focused bundle은 통과 evidence로 남겼고, full browser demo route/fixture 부재는 follow-up gap으로 남긴다.
+
+## Epic 14. Dashboard Mockup Design Parity
+
+목표: 실제 Vite Dashboard UI가 `source-of-truth-dashboard-mockup.html`의 IA, first-screen structure, rail density, compact neutral visual grammar, Snapshot/History picker, Instance wide modal, retention expired state를 strict mockup conformance 기준으로 최대한 동일하게 따르도록 정렬한다.
+
+Epic 14는 HTML/CSS/JS byte-level pixel-perfect clone이 아니다. 그러나 이 non-goal은 "대충 비슷하면 됨"을 뜻하지 않는다. IA, layout hierarchy, visual density, spacing rhythm, neutral panel grammar, information ordering, wide modal, Snapshot/History picker, retention expired/source absence state는 strict conformance target이다. Epic 13에서 닫은 read model/backend semantics를 재정의하지 않고, 완료된 Epic 13 story를 reopen하지 않으며, `Aligns / Hardens / Visualizes` 관계로 dashboard mockup conformance만 이어받는다.
+
+상세 planning source는 `planning-artifacts/epic-14-dashboard-mockup-design-parity.md`다.
+
+Guardrails:
+
+- `accepted_metric_buckets`, `dashboard_snapshots.read_model_json`, `recent_30_minutes`, selected snapshot instance semantics, retention expired no-fallback 기준을 유지한다.
+- Source of Truth mockup의 prototype controls, hard-coded JS demo data, temporary runtime을 production UI 요구사항으로 복사하지 않는다.
+- Mockup과 다른 구조, 밀도, 색상 문법, 정보 순서, modal/surface form, Snapshot/History interaction은 design choice가 아니라 deviation으로 기록한다.
+- 허용 deviation은 production data/read model 제약, responsive/mobile 물리 제약, mockup-only runtime/control 제외, 시각 구조를 해치지 않는 accessibility/focus/ARIA 보강으로 제한한다.
+- "더 예쁘게", "더 현대적으로", "더 카드스럽게", "더 마케팅스럽게" 보이도록 임의 변경하는 discretionary redesign은 blocker다.
+- 14.1은 `implementation-artifacts/epic-14-dashboard-design-parity-qa/deviation-log.md` 또는 동등한 deviation log와 conformance checklist를 후속 story gate로 고정한다.
+- Backend/read model 의미 변경, backend tests, migration/schema, completed Epic 13 story 본문/status 수정은 범위 밖이다.
+- `planning-artifacts/source-of-truth/source-of-truth-dashboard-snapshot-picker.png`는 제거됐거나 제거 대상인 screenshot export이며 Source of Truth 기준으로 삼지 않는다. 기준은 HTML mockup이다.
+- Full authenticated browser demo route/fixture가 없어 `Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired` path를 하나의 browser smoke로 닫은 evidence는 아직 없으며, 이 gap은 Epic 14 구현/QA handoff에서 과장 없이 추적한다.
+
+### Stories
+
+1. `14-1-design-parity-baseline-and-visual-guardrails`
+   - 현재 Dashboard UI와 HTML mockup 사이의 conformance gap을 desktop/tablet/mobile baseline으로 잡고 Epic 14 conformance checklist, deviation log, no discretionary redesign guardrail을 고정한다.
+2. `14-2-dashboard-shell-rails-and-live-surface-realignment`
+   - Project rail, Application rail, Application Dashboard live surface를 mockup의 3-column first-screen structure와 compact neutral visual grammar로 정렬한다.
+3. `14-3-snapshot-history-detail-and-retention-surface-realignment`
+   - Snapshot/History picker, stored Snapshot detail, retention expired/source absence surface를 marker-first 30분 point 탐색과 no-fallback visual grammar로 정렬한다.
+4. `14-4-instance-wide-modal-and-end-to-end-visual-qa`
+   - Instance live/snapshot detail을 wide modal/detail surface로 다듬고 Dashboard shell, snapshot, instance, retention 흐름을 browser visual QA evidence로 마감한다.
+
 ## Post-MVP Candidate Backlog
 
 ### Runtime Gauge Aggregate Extension

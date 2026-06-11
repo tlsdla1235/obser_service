@@ -3,8 +3,8 @@ artifactType: architecture
 projectName: Spring Boot 운영 첫 화면 포털
 architectureStyle: Traditional MVC
 sourcePolicy: 기존 Lightweight Hexagonal 산출물의 제품/계약 의미를 Traditional MVC로 재해석
-status: dashboard-alignment-updated
-date: 2026-05-25
+status: dashboard-sot-final-consolidated
+date: 2026-06-11
 ---
 
 # Architecture - Spring Boot 운영 첫 화면 포털 MVC Version
@@ -19,7 +19,7 @@ date: 2026-05-25
 
 사용자 host app과의 호환성을 위해 starter와 portal의 Java baseline은 **17**로 둔다.
 
-Epic 5/6 dashboard UX 기준은 `project -> application -> dashboard -> instance evidence -> instance snapshot trend -> snapshot/history` 흐름이다. Application Dashboard가 primary first-screen이며 Project Entry와 Application List는 scope 선택/스캔 화면, Instance Detail은 application 판단을 대체하지 않는 evidence drill-down이다.
+Epic 13 이후 dashboard UX 기준은 `project -> application -> dashboard -> snapshot / instance` 흐름이다. Application Dashboard가 primary first-screen이며 Project Entry와 Application List는 scope 선택/스캔 화면, Snapshot은 저장된 dashboard read model 복원 surface, Instance Dashboard는 Application 판단을 대체하지 않는 evidence drill-down이다.
 
 ### 선택한 이유
 
@@ -236,11 +236,13 @@ MVP에서는 별도 `OperationalEventRepository`를 만들지 않는다. Operati
 
 1. UI가 Project Entry 또는 Application List read model을 요청해 scope를 고른다.
 2. `ProjectNavigationController` 후보 또는 `DashboardController`가 surface별 path variable을 query DTO로 변환한다.
-3. Application Dashboard 진입 시 `DashboardReadModelService`는 current 15분 window와 baseline 15분 window 기준 accepted bucket을 읽고, 필요하면 저장된 snapshot 후보를 조회하거나 생성한다.
-4. state semantics와 insight rules는 service layer에서 평가된다.
-5. Application Dashboard는 반환된 state, metrics, zero-insight reason, recovery guidance, triage cards, endpoint priority, instance summary, snapshot link를 표시한다.
-6. Instance Detail은 dashboard read model 또는 instance evidence read model에서 내려온 bounded evidence만 좁혀 보여준다. Application state를 새로 판단하지 않는다.
-7. heartbeat telemetry를 표시하더라도 starter connection status와 accepted bucket freshness/application state를 분리한다. 최근 heartbeat와 오래된 accepted bucket 조합은 no recent traffic, waiting for traffic, metric data idle 계열로 표현하고 host application down으로 단정하지 않는다.
+3. Application Dashboard 진입 시 `DashboardReadModelService`는 `accepted_metric_buckets` 기준 `recent_30_minutes` live window를 읽어 canonical `dashboard_read_model.v1` response를 만든다. Baseline 비교는 MVP primary 판단 기준이 아니다.
+4. 30분 scheduled snapshot은 legacy persisted token `hourly_scheduled`를 유지하되 사용자-facing 의미는 30분 정기 저장이며, snapshot read horizon은 `current_window_end_utc` 기준이다.
+5. Snapshot detail은 저장된 `dashboard_snapshots.read_model_json`을 dashboard처럼 복원한다. 만료되었거나 source가 없는 snapshot은 live dashboard/current accepted bucket fallback으로 복원하지 않는다.
+6. state semantics와 insight rules는 service layer에서 평가된다.
+7. Application Dashboard는 반환된 state, metrics, zero-insight reason, recovery guidance, triage cards, endpoint priority, instance summary, snapshot link를 표시한다.
+8. Instance Dashboard live detail은 dashboard read model 또는 instance evidence read model에서 내려온 bounded evidence만 좁혀 보여준다. selected Application Snapshot 기반 snapshot mode는 해당 snapshot window 기준으로 instance metric evidence를 재구성하되 Application Snapshot state/evidence를 대체하지 않는다.
+9. heartbeat telemetry를 표시하더라도 starter connection status와 accepted bucket freshness/application state를 분리한다. 최근 heartbeat와 오래된 accepted bucket 조합은 no recent traffic, waiting for traffic, metric data idle 계열로 표현하고 host application down으로 단정하지 않는다.
 
 ### 6.3 Operational Event History Flow 후보
 

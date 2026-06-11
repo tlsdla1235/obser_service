@@ -18,13 +18,13 @@ import java.util.Objects;
 @ConfigurationProperties(prefix = "portal.dashboard-snapshots")
 public class DashboardSnapshotProperties {
 
-    private static final Duration BASE_FALLBACK_STALENESS = Duration.ofHours(1);
+    private static final Duration BASE_FALLBACK_STALENESS = Duration.ofMinutes(30);
 
     private Duration captureDelay = Duration.ofSeconds(120);
     private Duration fallbackGrace = Duration.ofMinutes(5);
 
     /**
-     * hourly boundary 이후 accepted bucket을 기다릴 capture delay다.
+     * 30분 scheduled slot boundary 이후 accepted bucket을 기다릴 capture delay다.
      */
     public Duration getCaptureDelay() {
         return captureDelay;
@@ -52,7 +52,7 @@ public class DashboardSnapshotProperties {
     }
 
     /**
-     * query fallback이 stale snapshot으로 보는 기준값이다.
+     * query fallback이 30분 scheduled cadence보다 충분히 오래된 snapshot으로 보는 기준값이다.
      */
     public Duration fallbackStalenessThreshold() {
         return BASE_FALLBACK_STALENESS
@@ -61,7 +61,7 @@ public class DashboardSnapshotProperties {
     }
 
     /**
-     * hourly target boundary에 capture delay를 더해 accepted_at cutoff timestamp를 만든다.
+     * 30분 target boundary에 capture delay를 더해 accepted_at cutoff timestamp를 만든다.
      */
     public OffsetDateTime snapshotCutoffAt(OffsetDateTime currentWindowEndUtc) {
         return Objects.requireNonNull(currentWindowEndUtc, "currentWindowEndUtc must not be null")

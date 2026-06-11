@@ -33,7 +33,7 @@ class DashboardSnapshotMarkerClassifierTest {
     void recoveryObservedOutranksCaptureReasonAndUsesObservingCopy() {
         DashboardSnapshotMarkerItem marker = marker(
                 row("unknown", "high_confidence_concern", null),
-                new PreviousState("down", "previous_dashboard_snapshot", UUID.randomUUID(), offset("2026-05-26T07:00:00Z")),
+                new PreviousState("down", "dashboard_snapshots", UUID.randomUUID(), offset("2026-05-26T07:00:00Z")),
                 projection("""
                         {
                           "recovery": {"isRecovering": true, "recommendedAction": "sample 확인"},
@@ -51,7 +51,7 @@ class DashboardSnapshotMarkerClassifierTest {
         RecoveryMarker recoveryMarker = classifier.recoveryMarker(
                 marker,
                 marker.previousState(),
-                new LastHealthyAt(offset("2026-05-26T06:00:00Z"), "previous_active_dashboard_snapshot", UUID.randomUUID()));
+                new LastHealthyAt(offset("2026-05-26T06:00:00Z"), "dashboard_snapshots", UUID.randomUUID()));
         assertThat(recoveryMarker).isNotNull();
         assertThat(recoveryMarker.type()).isEqualTo(DashboardSnapshotMarkerType.RECOVERY_OBSERVED);
     }
@@ -88,7 +88,7 @@ class DashboardSnapshotMarkerClassifierTest {
     void markerTypePriorityUsesPreviousStateHighConfidenceAndLegacyFallback() {
         DashboardSnapshotMarkerItem stateChange = marker(
                 row("degraded", "hourly_scheduled", null),
-                new PreviousState("active", "previous_dashboard_snapshot", UUID.randomUUID(), offset("2026-05-26T07:00:00Z")),
+                new PreviousState("active", "dashboard_snapshots", UUID.randomUUID(), offset("2026-05-26T07:00:00Z")),
                 emptyProjection());
         DashboardSnapshotMarkerItem highConfidence = marker(
                 row("active", null, new BigDecimal("0.820")),
@@ -111,7 +111,7 @@ class DashboardSnapshotMarkerClassifierTest {
                 emptyProjection());
         DashboardSnapshotMarkerItem previousStateChange = marker(
                 row("active", "hourly_scheduled", null),
-                new PreviousState("degraded", "previous_dashboard_snapshot", UUID.randomUUID(), offset("2026-05-26T07:00:00Z")),
+                new PreviousState("degraded", "dashboard_snapshots", UUID.randomUUID(), offset("2026-05-26T07:00:00Z")),
                 emptyProjection());
 
         assertThat(captureReasonStateChange.type()).isEqualTo(DashboardSnapshotMarkerType.STATE_CHANGE);

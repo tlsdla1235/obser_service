@@ -13,10 +13,13 @@ import com.observation.portal.domain.snapshot.model.DashboardSnapshotMarkerItem;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotSourceRow;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotStoredReadModelProjection;
 import com.observation.portal.domain.snapshot.repository.DashboardSnapshotRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Locale;
+import java.time.Clock;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,6 +37,8 @@ public class DashboardSnapshotDetailService {
     private final DashboardSnapshotRepository dashboardSnapshotRepository;
     private final DashboardSnapshotDetailProjectionParser projectionParser;
     private final DashboardSnapshotMarkerClassifier markerClassifier;
+    private final Clock clock;
+    private final int retentionDays;
 
     /**
      * catalog path 정합성 lookup, stored snapshot repository, stored JSON parser/classifier만 주입한다.
@@ -42,7 +47,9 @@ public class DashboardSnapshotDetailService {
             ApplicationRepository applicationRepository,
             DashboardSnapshotRepository dashboardSnapshotRepository,
             DashboardSnapshotDetailProjectionParser projectionParser,
-            DashboardSnapshotMarkerClassifier markerClassifier) {
+            DashboardSnapshotMarkerClassifier markerClassifier,
+            Clock clock,
+            @Value("${portal.dashboard-snapshots.retention-days:14}") int retentionDays) {
         this.applicationRepository = Objects.requireNonNull(
                 applicationRepository,
                 "applicationRepository must not be null");
@@ -51,6 +58,11 @@ public class DashboardSnapshotDetailService {
                 "dashboardSnapshotRepository must not be null");
         this.projectionParser = Objects.requireNonNull(projectionParser, "projectionParser must not be null");
         this.markerClassifier = Objects.requireNonNull(markerClassifier, "markerClassifier must not be null");
+        this.clock = Objects.requireNonNull(clock, "clock must not be null").withZone(ZoneOffset.UTC);
+        if (retentionDays <= 0) {
+            throw new IllegalArgumentException("retentionDays must be positive");
+        }
+        this.retentionDays = retentionDays;
     }
 
     /**
@@ -67,20 +79,34 @@ public class DashboardSnapshotDetailService {
         if (applicationRepository.findByIdAndProjectId(requiredApplicationId, requiredProjectId).isEmpty()) {
             return Optional.empty();
         }
+        OffsetDateTime snapshotCutoffUtc = snapshotCutoffUtc();
         return dashboardSnapshotRepository.findDetailRow(
                         requiredProjectId,
                         requiredApplicationId,
                         requiredSnapshotId)
-                .map(row -> toReadModel(requiredProjectId, requiredApplicationId, row));
+                .filter(row -> snapshotInRetention(row, snapshotCutoffUtc))
+                .map(row -> toReadModel(requiredProjectId, requiredApplicationId, row, snapshotCutoffUtc));
+    }
+
+    private OffsetDateTime snapshotCutoffUtc() {
+        return OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)
+                .minusDays(retentionDays);
+    }
+
+    private static boolean snapshotInRetention(DashboardSnapshotDetailRow row, OffsetDateTime snapshotCutoffUtc) {
+        return !row.currentWindowEndUtc()
+                .withOffsetSameInstant(ZoneOffset.UTC)
+                .isBefore(snapshotCutoffUtc);
     }
 
     private DashboardSnapshotDetailReadModel toReadModel(
             UUID projectId,
             UUID applicationId,
-            DashboardSnapshotDetailRow row) {
+            DashboardSnapshotDetailRow row,
+            OffsetDateTime snapshotCutoffUtc) {
         DashboardSnapshotStoredReadModelProjection projection = projectionParser.project(row.readModelJson());
-        PreviousState previousState = previousState(row);
-        LastHealthyAt lastHealthyAt = lastHealthyAt(row);
+        PreviousState previousState = previousState(row, snapshotCutoffUtc);
+        LastHealthyAt lastHealthyAt = lastHealthyAt(row, snapshotCutoffUtc);
         String snapshotLink = snapshotLink(projectId, applicationId, row.snapshotId());
         DashboardSnapshotMarkerItem marker = markerClassifier.marker(row, previousState, projection, snapshotLink);
         return new DashboardSnapshotDetailReadModel(
@@ -98,28 +124,31 @@ public class DashboardSnapshotDetailService {
                 new SnapshotLinks(snapshotLink, markerListLink(projectId, applicationId)));
     }
 
-    private PreviousState previousState(DashboardSnapshotDetailRow row) {
-        return dashboardSnapshotRepository.findPreviousSnapshot(row.applicationId(), row.currentWindowEndUtc())
+    private PreviousState previousState(DashboardSnapshotDetailRow row, OffsetDateTime snapshotCutoffUtc) {
+        return dashboardSnapshotRepository.findPreviousSnapshot(
+                        row.applicationId(),
+                        row.currentWindowEndUtc(),
+                        snapshotCutoffUtc)
                 .map(DashboardSnapshotDetailService::previousState)
                 .orElseGet(PreviousState::none);
     }
 
     private static PreviousState previousState(DashboardSnapshotSourceRow row) {
-        String source = knownState(row.stateCode())
-                ? "previous_dashboard_snapshot"
-                : "previous_dashboard_snapshot_unknown_state";
         return new PreviousState(
                 row.stateCode(),
-                source,
+                DashboardSnapshotDetailReadModel.SOURCE,
                 row.snapshotId(),
                 row.generatedAt());
     }
 
-    private LastHealthyAt lastHealthyAt(DashboardSnapshotDetailRow row) {
-        return dashboardSnapshotRepository.findPreviousActiveSnapshot(row.applicationId(), row.currentWindowEndUtc())
+    private LastHealthyAt lastHealthyAt(DashboardSnapshotDetailRow row, OffsetDateTime snapshotCutoffUtc) {
+        return dashboardSnapshotRepository.findPreviousActiveSnapshot(
+                        row.applicationId(),
+                        row.currentWindowEndUtc(),
+                        snapshotCutoffUtc)
                 .map(sourceRow -> new LastHealthyAt(
                         sourceRow.generatedAt(),
-                        "previous_active_dashboard_snapshot",
+                        DashboardSnapshotDetailReadModel.SOURCE,
                         sourceRow.snapshotId()))
                 .orElseGet(LastHealthyAt::none);
     }
@@ -157,13 +186,4 @@ public class DashboardSnapshotDetailService {
                 applicationId);
     }
 
-    static boolean knownState(String stateCode) {
-        if (stateCode == null || stateCode.isBlank()) {
-            return false;
-        }
-        return switch (stateCode.trim().toLowerCase(Locale.ROOT)) {
-            case "active", "idle", "waiting_first_data", "degraded", "stale", "down", "unknown" -> true;
-            default -> false;
-        };
-    }
 }

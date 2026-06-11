@@ -22,6 +22,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -41,7 +42,7 @@ class OperationalEventHistoryServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new OperationalEventHistoryService(applicationRepository, snapshotRepository, projector, CLOCK);
+        service = serviceWithRetentionDays(14);
         when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
                 .thenReturn(Optional.of(application()));
     }
@@ -99,6 +100,52 @@ class OperationalEventHistoryServiceTest {
     }
 
     @Test
+    void filtersRepositoryRowsOutsideQueryHorizonBeforeProjection() {
+        DashboardSnapshotDetailRow expired = rowAt("2026-05-26T13:10:34Z");
+        DashboardSnapshotDetailRow retained = rowAt("2026-05-26T13:10:35Z");
+        when(snapshotRepository.findOperationalHistoryRows(
+                PROJECT_ID,
+                APPLICATION_ID,
+                offset("2026-05-26T13:10:35Z"),
+                offset("2026-05-27T13:10:35Z"),
+                336))
+                .thenReturn(List.of(expired, retained));
+        when(projector.project(PROJECT_ID, APPLICATION_ID, List.of(retained))).thenReturn(List.of());
+
+        OperationalEventHistoryReadModel readModel = service.getHistory(PROJECT_ID, APPLICATION_ID, "24h", "50")
+                .orElseThrow();
+
+        assertThat(readModel.events()).isEmpty();
+        verify(projector).project(PROJECT_ID, APPLICATION_ID, List.of(retained));
+        verify(projector, never()).project(PROJECT_ID, APPLICATION_ID, List.of(expired, retained));
+    }
+
+    @Test
+    void clampsHistoryHorizonToConfiguredRetentionDays() {
+        service = serviceWithRetentionDays(7);
+        when(snapshotRepository.findOperationalHistoryRows(
+                PROJECT_ID,
+                APPLICATION_ID,
+                offset("2026-05-20T13:10:35Z"),
+                offset("2026-05-27T13:10:35Z"),
+                336))
+                .thenReturn(List.of());
+        when(projector.project(PROJECT_ID, APPLICATION_ID, List.of())).thenReturn(List.of());
+
+        OperationalEventHistoryReadModel readModel = service.getHistory(PROJECT_ID, APPLICATION_ID, "14d", "50")
+                .orElseThrow();
+
+        assertThat(readModel.horizon().requestedSince()).isEqualTo("14d");
+        assertThat(readModel.horizon().since()).isEqualTo(offset("2026-05-20T13:10:35Z"));
+        verify(snapshotRepository).findOperationalHistoryRows(
+                PROJECT_ID,
+                APPLICATION_ID,
+                offset("2026-05-20T13:10:35Z"),
+                offset("2026-05-27T13:10:35Z"),
+                336);
+    }
+
+    @Test
     void catalogPathMismatchReturnsEmptyWithoutSnapshotLookup() {
         when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID)).thenReturn(Optional.empty());
 
@@ -139,16 +186,30 @@ class OperationalEventHistoryServiceTest {
                 "InstanceEvidenceReadModelService");
     }
 
+    private OperationalEventHistoryService serviceWithRetentionDays(int retentionDays) {
+        return new OperationalEventHistoryService(
+                applicationRepository,
+                snapshotRepository,
+                projector,
+                CLOCK,
+                retentionDays);
+    }
+
     private static DashboardSnapshotDetailRow row() {
+        return rowAt("2026-05-27T12:00:00Z");
+    }
+
+    private static DashboardSnapshotDetailRow rowAt(String currentWindowEndUtc) {
+        OffsetDateTime currentWindowEnd = offset(currentWindowEndUtc);
         return new DashboardSnapshotDetailRow(
                 SNAPSHOT_ID,
                 PROJECT_ID,
                 APPLICATION_ID,
-                offset("2026-05-27T12:00:00Z"),
-                offset("2026-05-27T11:45:00Z"),
-                offset("2026-05-27T12:00:00Z"),
-                offset("2026-05-27T11:30:00Z"),
-                offset("2026-05-27T11:45:00Z"),
+                currentWindowEnd,
+                currentWindowEnd.minusMinutes(15),
+                currentWindowEnd,
+                currentWindowEnd.minusMinutes(30),
+                currentWindowEnd.minusMinutes(15),
                 "degraded",
                 "high_confidence_concern",
                 "endpoint_latency_spike",

@@ -94,6 +94,8 @@ public class DashboardSnapshotReadModelEnricher {
         DashboardSnapshotWriteCommand requiredCommand = Objects.requireNonNull(command, "command must not be null");
         ApplicationDashboardReadModel readModel = requiredCommand.readModel();
         ObjectNode root = objectMapper.valueToTree(readModel);
+        root.put("mode", ApplicationDashboardReadModel.SNAPSHOT_MODE);
+        root.set("readSemantics", objectMapper.valueToTree(ApplicationDashboardReadModel.ReadSemantics.snapshot()));
         List<StoredEndpointEvidence> endpointEvidence = endpointEvidence(readModel);
         root.set(SNAPSHOT_ENDPOINT_EVIDENCE_FIELD, endpointEvidenceBlock(endpointEvidence));
         root.set("instanceSummary", instanceSummary(requiredCommand, endpointEvidence));

@@ -163,6 +163,57 @@ class OperationalEventHistoryProjectorTest {
     }
 
     @Test
+    void usesCurrentWindowSlotOrderWhenGeneratedAtDiffersFromSlot() {
+        DashboardSnapshotDetailRow active = row(
+                60,
+                "2026-05-27T12:40:00Z",
+                "2026-05-27T10:00:00Z",
+                "active",
+                "hourly_scheduled",
+                null,
+                null,
+                null,
+                emptyJson());
+        DashboardSnapshotDetailRow degraded = row(
+                61,
+                "2026-05-27T10:05:00Z",
+                "2026-05-27T10:30:00Z",
+                "degraded",
+                "state_change",
+                "endpoint_latency_spike",
+                "POST /orders",
+                "0.84",
+                evidenceJson("endpoint_latency_spike", "POST", "/orders", "POST /orders", "0.84"));
+        DashboardSnapshotDetailRow resolved = row(
+                62,
+                "2026-05-27T10:07:00Z",
+                "2026-05-27T11:00:00Z",
+                "active",
+                "state_change",
+                null,
+                null,
+                "0.20",
+                emptyJson());
+
+        List<OperationalEventItem> events = projector.project(
+                PROJECT_ID,
+                APPLICATION_ID,
+                List.of(resolved, degraded, active));
+
+        assertThat(events)
+                .extracting(OperationalEventItem::type)
+                .containsExactly(
+                        OperationalEventType.DEGRADED_ENTERED,
+                        OperationalEventType.DEGRADED_RESOLVED);
+        assertThat(only(events, OperationalEventType.DEGRADED_ENTERED).occurredAt())
+                .isEqualTo(offset("2026-05-27T10:30:00Z"));
+        assertThat(only(events, OperationalEventType.DEGRADED_ENTERED).resolvedAt())
+                .isEqualTo(offset("2026-05-27T11:00:00Z"));
+        assertThat(only(events, OperationalEventType.DEGRADED_RESOLVED).occurredAt())
+                .isEqualTo(offset("2026-05-27T11:00:00Z"));
+    }
+
+    @Test
     void failureRecoveryEventCopyUsesStoredObservationLanguageWithoutCompletionClaims() {
         List<OperationalEventItem> events = projector.project(
                 PROJECT_ID,
@@ -464,6 +515,35 @@ class OperationalEventHistoryProjectorTest {
                 at,
                 at.minusMinutes(30),
                 at.minusMinutes(15),
+                stateCode,
+                captureReason,
+                primaryRuleId,
+                primaryEndpointKey,
+                maxConfidence == null ? null : new BigDecimal(maxConfidence),
+                readModelJson);
+    }
+
+    private static DashboardSnapshotDetailRow row(
+            int id,
+            String generatedAt,
+            String currentWindowEndUtc,
+            String stateCode,
+            String captureReason,
+            String primaryRuleId,
+            String primaryEndpointKey,
+            String maxConfidence,
+            String readModelJson) {
+        OffsetDateTime generated = offset(generatedAt);
+        OffsetDateTime currentWindowEnd = offset(currentWindowEndUtc);
+        return new DashboardSnapshotDetailRow(
+                UUID.fromString("00000000-0000-0000-0000-%012d".formatted(id)),
+                PROJECT_ID,
+                APPLICATION_ID,
+                generated,
+                currentWindowEnd.minusMinutes(30),
+                currentWindowEnd,
+                currentWindowEnd.minusMinutes(60),
+                currentWindowEnd.minusMinutes(30),
                 stateCode,
                 captureReason,
                 primaryRuleId,

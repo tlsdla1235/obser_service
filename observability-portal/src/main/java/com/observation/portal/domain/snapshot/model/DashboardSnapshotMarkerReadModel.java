@@ -24,8 +24,8 @@ public record DashboardSnapshotMarkerReadModel(
     public static final String DEFAULT_SINCE = "24h";
     public static final String MAX_SINCE = "14d";
     public static final int DEFAULT_LIMIT = 50;
-    public static final int MAX_LIMIT = 336;
-    public static final String ORDER = "capturedAt_asc";
+    public static final int MAX_LIMIT = 672;
+    public static final String ORDER = "currentWindowEndUtc_asc";
 
     /**
      * marker response의 source, horizon, bounded marker list를 검증한다.
@@ -45,7 +45,7 @@ public record DashboardSnapshotMarkerReadModel(
     }
 
     /**
-     * marker query에 적용된 effective horizon, requested token, retention clamp, limit clamp, 정렬 정책을 담는다.
+     * marker query에 적용된 current window horizon, requested token, retention clamp, limit clamp, 정렬 정책을 담는다.
      */
     public record Horizon(
             OffsetDateTime since,

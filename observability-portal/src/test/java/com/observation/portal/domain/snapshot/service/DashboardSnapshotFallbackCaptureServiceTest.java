@@ -64,7 +64,7 @@ class DashboardSnapshotFallbackCaptureServiceTest {
     void skipsWhenLatestSnapshotIsInsideDelayAwareGraceWindow() {
         givenRecentHeartbeat();
         when(snapshotRepository.findLatestByApplicationId(APPLICATION_ID))
-                .thenReturn(Optional.of(latest("2026-05-27T11:59:00Z")));
+                .thenReturn(Optional.of(latest("2026-05-27T12:29:00Z")));
 
         service.captureIfNeeded(readModel(), QUERY_AT);
 
@@ -77,7 +77,7 @@ class DashboardSnapshotFallbackCaptureServiceTest {
         snapshotProperties.setFallbackGrace(Duration.ofMinutes(5));
         givenRecentHeartbeat();
         when(snapshotRepository.findLatestByApplicationId(APPLICATION_ID))
-                .thenReturn(Optional.of(latest("2026-05-27T11:58:00Z")));
+                .thenReturn(Optional.of(latest("2026-05-27T12:28:00Z")));
 
         service.captureIfNeeded(readModel(), QUERY_AT);
 

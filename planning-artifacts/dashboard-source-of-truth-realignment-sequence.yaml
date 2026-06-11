@@ -1,0 +1,1174 @@
+# Dashboard Source of Truth Realignment 실행 순서와 상태 정렬 문서다.
+# Epic 13 P1-P10/D2/D3 완료 결과와 남은 browser smoke gap을 planning/status 참조와 맞춰 기록한다.
+metadata:
+  generated_date: "2026-06-09"
+  last_aligned_date: "2026-06-11T15:39:29+0900"
+  generated_timezone: "Asia/Seoul"
+  status: final-consolidated-through-p10-and-d3
+  document_role: "Dashboard Source of Truth Realignment 실행 순서 및 최종 planning/status 정렬 상태"
+  project_root: "/Users/tlsdla1235/study/obser_service"
+  source_roadmap_path: "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-roadmap.md"
+  official_sprint_status_path: "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
+  note: "implementation-artifacts/sprint-status.yaml is the official status source; this document mirrors Epic 13 completion through 13-doc-3 and records the P10 browser-smoke evidence gap without redefining Source of Truth meaning."
+  source_documents:
+    - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/current-product-source-of-truth.md"
+    - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/dashboard-snapshot-mvp-source-of-truth.md"
+    - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/application-dashboard-read-model-mvp-source-of-truth.md"
+    - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/instance-dashboard-read-model-mvp-source-of-truth.md"
+    - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/dashboard-snapshot-retention-cleanup-source-of-truth.md"
+    - "/Users/tlsdla1235/study/obser_service/planning-artifacts/contracts/read-model-contract.md"
+
+execution_principles:
+  - id: no_source_of_truth_redefinition
+    principle: "Source of Truth를 재정의하지 않는다."
+    implication: "작업 범위는 확정된 Source of Truth를 구현 순서, dependency, gate, rollback 단위로 옮기는 것이다."
+  - id: preserve_completed_stories
+    principle: "완료 story를 직접 수정하지 않는다."
+    implication: "Epic 4/5/6/10의 done story는 당시 구현 이력으로 보존하고, 새 alignment story에서 Aligns/Supersedes/Hardens로 참조한다."
+  - id: track_as_alignment_epic
+    principle: "새 alignment epic/story로 추적한다."
+    implication: "Epic 13 alignment story는 공식 sprint-status.yaml에서 추적했고, P10/D3까지 완료 상태로 정렬했다."
+  - id: contract_guard_before_production_code
+    principle: "production code 수정 전 contract guard를 먼저 둔다."
+    implication: "UI adapter/type/fixture guard로 server-computed state, order, source semantics 보존을 먼저 고정한다."
+  - id: vertical_slice_execution
+    principle: "backend/frontend를 한 번에 줄세우지 않고 vertical slice별로 진행한다."
+    implication: "Application live, snapshot history/detail, instance live/snapshot, retention을 각각 gate와 rollback 가능한 단위로 나눈다."
+  - id: staged_documentation_alignment
+    principle: "문서 정렬은 별도 phase로 추적하고 just-in-time으로 수행한다."
+    implication: "D2는 완료된 vertical slice 구현 결과와 문서 표현을 맞추는 범위로 제한하고, Source of Truth 의미와 완료 story 구현 이력은 바꾸지 않는다."
+
+recommended_order:
+  - phase_id: D0
+    title: "Documentation alignment plan"
+  - phase_id: P0
+    title: "Alignment story/status planning"
+  - phase_id: D1
+    title: "Alignment epic/story creation"
+  - phase_id: P1
+    title: "Frontend read model contract guard"
+  - phase_id: P2
+    title: "Backend recent 30 minutes window alignment"
+  - phase_id: P3
+    title: "Backend Application Dashboard read model shape alignment"
+  - phase_id: P4
+    title: "Frontend Application Dashboard IA realignment"
+  - phase_id: P5
+    title: "Backend 30 minute scheduled snapshot and slot horizon alignment"
+  - phase_id: P6
+    title: "Frontend snapshot history/detail realignment"
+  - phase_id: P7
+    title: "Backend Instance Dashboard live/snapshot mode split"
+  - phase_id: P8
+    title: "Frontend instance surface split"
+  - phase_id: P9
+    title: "Retention cleanup alignment"
+  - phase_id: D2
+    title: "Per-slice documentation updates"
+  - phase_id: P10
+    title: "End-to-end acceptance and demo hardening"
+  - phase_id: D3
+    title: "Final planning/status consolidation"
+
+documentation_alignment_plan:
+  owner_phase: D0
+  status: done
+  purpose: "D0에서 문서 정렬 범위, 금지 문서, 후속 phase별 수정 시점을 한곳에 고정한다."
+  initial_d0_context:
+    allowed_to_modify:
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-sequence.yaml"
+    do_not_modify:
+      - "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/epics.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-roadmap.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/contracts/read-model-contract.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/<completed-story>.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/*.md"
+    non_goals:
+      - "production code 구현 또는 production code contract 변경"
+      - "Source of Truth 의미, 범위, 우선순위 재정의"
+      - "공식 sprint-status.yaml, epics.md, 완료 story 파일의 선제 정리"
+  phase_scopes:
+    D1:
+      timing: "P0에서 alignment epic/story key와 추적 방식을 검토한 뒤 production code 구현 전에 수행한다."
+      documents_to_modify_after_review:
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/epics.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/<new-alignment-story>.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-roadmap.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-sequence.yaml"
+      guardrail: "완료 story 본문과 Source of Truth 문서는 수정하지 않고 새 story에서 Aligns/Supersedes/Hardens로 참조한다."
+    D2:
+      timing: "각 vertical slice 구현 직후 다음 slice로 넘어가기 전에 just-in-time으로 반복 수행한다."
+      documents_to_modify_by_slice:
+        Application_Dashboard_live:
+          after_phase: P4
+          documents:
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/contracts/read-model-contract.md"
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture-implementation-supplement.md"
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/<application-dashboard-alignment-story>.md"
+        Snapshot_history_detail:
+          after_phase: P6
+          documents:
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/contracts/read-model-contract.md"
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture-implementation-supplement.md"
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/<snapshot-alignment-story>.md"
+        Instance_live_snapshot_trend:
+          after_phase: P8
+          documents:
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/contracts/read-model-contract.md"
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/project-structure.md"
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/<instance-alignment-story>.md"
+        Retention_cleanup:
+          after_phase: P9
+          documents:
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture-implementation-supplement.md"
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/project-structure.md"
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/<retention-alignment-story>.md"
+      guardrail: "문서 수정은 해당 slice에서 실제로 바뀐 contract, architecture, story acceptance 범위로 제한한다."
+    D3:
+      timing: "P10 acceptance evidence가 생긴 뒤 최종 planning/status consolidation으로만 수행한다."
+      documents_to_modify_after_acceptance:
+        - "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/epics.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-roadmap.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-sequence.yaml"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture-implementation-supplement.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/project-structure.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture-rewrite-index.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/index.md"
+      guardrail: "공식 sprint-status.yaml은 실제 완료/리뷰 상태만 반영하고 완료된 과거 story를 되돌리지 않는다."
+  invariants:
+    - "Source of Truth 문서는 read-only 기준으로 사용하며 재정의하지 않는다."
+    - "문서 정렬은 phase별 필요 시점에 수행하고 선제 대규모 정리는 하지 않는다."
+    - "final consolidation은 D2와 P10이 끝난 뒤 D3에서만 수행한다."
+    - "완료 story 파일은 alignment story의 참조 대상으로 보존한다."
+  d2_alignment_context:
+    status: done
+    aligned_at: "2026-06-11T14:13:19+0900"
+    modified_documents:
+      - "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-roadmap.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-sequence.yaml"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/dashboard-snapshot-retention-cleanup-source-of-truth.md"
+    guardrail:
+      - "Source of Truth 의미를 재정의하지 않고 Story 13.10 구현 상태 메모만 정렬한다."
+      - "완료 story 13.2 -> 13.10의 구현 의미와 done 상태를 바꾸지 않는다."
+      - "production code, tests, frontend implementation, migration/schema, dbml-error.log는 수정하지 않는다."
+  d3_final_consolidation_context:
+    status: done
+    aligned_at: "2026-06-11T15:39:29+0900"
+    modified_documents:
+      - "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/epics.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-roadmap.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-sequence.yaml"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture-implementation-supplement.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/project-structure.md"
+    not_modified:
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-2*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-3*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-4*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-5*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-6*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-7*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-8*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-9*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-10*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/13-11*.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture-rewrite-index.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/index.md"
+    evidence_summary:
+      - "Story 13.2 -> 13.11과 13-doc-0 -> 13-doc-3를 done으로 정렬했다."
+      - "13.11 frontend guard/typecheck/build, focused/full backend regression, smoke focused bundle 통과 evidence를 planning/status 문서에 반영했다."
+      - "Full authenticated browser demo route/fixture 부재로 Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired path를 하나의 browser smoke로 닫은 evidence는 follow-up gap으로 남겼다."
+    guardrail:
+      - "Source of Truth 의미를 재정의하지 않는다."
+      - "완료 story 13.2 -> 13.11 본문/status를 되돌리거나 재작성하지 않는다."
+      - "production code, frontend implementation, backend tests, migration/schema, dbml-error.log는 수정하지 않는다."
+
+alignment_story_status_plan:
+  owner_phase: P0
+  status: done
+  purpose: "Source of Truth 재정렬을 Epic 13 alignment story 묶음으로 추적하고, 완료 story 참조 정책을 고정한다."
+  preferred_alignment_epic:
+    key: "epic-13-dashboard-source-of-truth-realignment"
+    title: "Dashboard Source of Truth Realignment"
+    tracking_status: "tracked-in-sprint-status"
+    rationale: "cross-cutting alignment 이력을 Epic 13으로 분리해 완료된 Epic 4/5/6/10 구현 이력은 보존하고 새 story에서 Aligns/Supersedes/Hardens 관계로 추적한다."
+  official_status_policy:
+    current_context: "epic-13-tracked-in-official-sprint-status"
+    review_boundary: "D2는 13-doc-2 상태와 planning/source-of-truth 문서 불일치만 정렬한다."
+    allowed_future_change:
+      - "P10 acceptance evidence 이후 D3 final consolidation에서 실제 완료/리뷰 상태만 반영한다."
+    forbidden_in_p0:
+      - "완료된 Epic 4/5/6/10 story를 done 상태에서 제거"
+      - "완료 story 본문을 alignment 기준으로 덮어쓰기"
+    forbidden_in_d2:
+      - "Source of Truth 의미 재정의"
+      - "완료된 Epic 4/5/6/10 story를 done 상태에서 제거"
+      - "완료 story 본문을 alignment 기준으로 덮어쓰기"
+  story_split:
+    documentation_tracking_candidates:
+      - key: "13-doc-0-documentation-alignment-plan"
+        covers_phases:
+          - D0
+        intent: "문서 정렬 phase, 금지 문서, just-in-time/final consolidation 원칙을 고정한다."
+      - key: "13-doc-1-alignment-epic-story-creation"
+        covers_phases:
+          - D1
+        intent: "새 alignment epic/story artifact와 1차 planning 문서 정렬을 수행한다."
+      - key: "13-doc-2-per-slice-documentation-updates"
+        covers_phases:
+          - D2
+        intent: "각 vertical slice 구현 직후 contract/architecture/story 문서를 필요한 범위로만 정렬한다."
+      - key: "13-doc-3-final-planning-status-consolidation"
+        covers_phases:
+          - D3
+        intent: "P10 acceptance 이후 공식 planning/status 문서를 실제 결과 기준으로 정리한다."
+    planning_story_candidates:
+      - key: "13-1-alignment-story-status-planning"
+        covers_phases:
+          - P0
+        intent: "alignment epic key, story split, status 반영 시점, 완료 story 참조 정책을 확정한다."
+        rollback_source: "P0 phase rollback_unit"
+    production_alignment_story_candidates:
+      - key: "13-2-frontend-read-model-contract-guard"
+        covers_phases:
+          - P1
+        intent: "Frontend adapter/type/fixture guard로 server-computed state/order/source semantics를 고정한다."
+        rollback_source: "P1 phase rollback_unit"
+      - key: "13-3-backend-recent-30-minutes-window-alignment"
+        covers_phases:
+          - P2
+        intent: "Application/Instance live 판단 window를 recent_30_minutes로 정렬한다."
+        rollback_source: "P2 phase rollback_unit"
+      - key: "13-4-backend-application-dashboard-read-model-shape-alignment"
+        covers_phases:
+          - P3
+        intent: "Application Dashboard API/read model shape를 Source of Truth contract에 맞춘다."
+        rollback_source: "P3 phase rollback_unit"
+      - key: "13-5-frontend-application-dashboard-ia-realignment"
+        covers_phases:
+          - P4
+        intent: "Application Dashboard live surface를 운영자 질문 순서로 재배치한다."
+        rollback_source: "P4 phase rollback_unit"
+      - key: "13-6-backend-30-minute-scheduled-snapshot-and-slot-horizon-alignment"
+        covers_phases:
+          - P5
+        intent: "30분 scheduled snapshot slot과 current_window_end_utc horizon을 정렬한다."
+        rollback_source: "P5 phase rollback_unit"
+      - key: "13-7-frontend-snapshot-history-detail-realignment"
+        covers_phases:
+          - P6
+        intent: "Snapshot history/detail을 marker-first 30분 point 탐색과 stored read model 복원 surface로 정렬한다."
+        rollback_source: "P6 phase rollback_unit"
+      - key: "13-8-backend-instance-dashboard-live-snapshot-mode-split"
+        covers_phases:
+          - P7
+        intent: "Instance Dashboard live/snapshot mode를 API/service 책임으로 분리한다."
+        rollback_source: "P7 phase rollback_unit"
+      - key: "13-9-frontend-instance-surface-split"
+        covers_phases:
+          - P8
+        intent: "Instance live detail, snapshot mode, snapshot trend UI 책임을 분리한다."
+        rollback_source: "P8 phase rollback_unit"
+      - key: "13-10-retention-cleanup-alignment"
+        covers_phases:
+          - P9
+        intent: "14일 retention UX와 physical cleanup 기준을 current_window_end_utc, bucket_end_utc, 30분 evidence grace로 정렬한다."
+        rollback_source: "P9 phase rollback_unit"
+      - key: "13-11-end-to-end-acceptance-and-demo-hardening"
+        covers_phases:
+          - P10
+        intent: "Application live, snapshot, instance, retention path를 Source of Truth 기준으로 end-to-end 검증한다."
+        rollback_source: "P10 phase rollback_unit"
+  story_authoring_policy:
+    required_sections:
+      Background: "확정된 Source of Truth, roadmap, sequence YAML을 링크하고 이번 story가 과거 완료 story를 다시 여는 작업이 아님을 밝힌다."
+      Aligns: "완료된 story 중 구현 이력은 유지하지만 새 Source of Truth 적용 순서에 맞춰 함께 정렬되는 항목을 적는다."
+      Supersedes: "15분 current/baseline, hourly 사용자-facing cadence, marker-as-state처럼 새 story가 대체하는 해석만 좁게 적는다."
+      Hardens: "Epic 10 SPA 인수, adapter guard, acceptance gate처럼 기존 결과를 되돌리지 않고 강화하는 항목을 적는다."
+      Rollback: "해당 phase의 rollback_unit을 story에 복사하거나 더 작게 쪼개 기록한다."
+      Out_of_scope: "Source of Truth 재정의, 완료 story 본문 수정, production code 외부 변경을 명시적으로 제외한다."
+    completed_story_policy:
+      do_not_edit_body: true
+      do_not_change_done_status: true
+      reference_only: true
+      note: "완료 story는 당시 구현 이력으로 보존하고 새 alignment story에서 참조한다."
+  reference_policy_by_epic:
+    epic_4:
+      default_relation: "Hardens"
+      guidance: "accepted bucket metric axis와 starter heartbeat control-plane axis 분리 원칙을 유지하고 30분 dashboard window/public naming만 후속 story에서 강화한다."
+    epic_5:
+      default_relation: "Aligns / Supersedes / Hardens"
+      guidance: "server read model, snapshot persistence, marker/detail 이력은 보존하되 15분/baseline/hourly 사용자-facing 해석은 새 alignment story에서 좁게 supersede한다."
+    epic_6:
+      default_relation: "Aligns / Supersedes"
+      guidance: "기존 UI integration 결과는 당시 baseline으로 보존하고 Application Dashboard IA, snapshot history/detail, instance surface split을 새 story에서 정렬한다."
+    epic_10:
+      default_relation: "Hardens"
+      guidance: "실서비스 Vite SPA 인수 결과를 되돌리지 않고 UI-side lifecycle/p95/p99/endpoint priority/snapshot event 계산 금지 guard를 강화한다."
+  independent_rollback_policy:
+    - "각 candidate story는 연결된 phase의 rollback_unit을 기본 rollback 경계로 사용한다."
+    - "backend 공통 window, scheduler cadence, repository horizon, cleanup delete처럼 blast radius가 다른 변경은 같은 story 안에서도 commit 또는 subtask를 분리한다."
+    - "rollback이 완료 story 상태 변경이나 Source of Truth 문서 재정의를 요구하면 story split을 다시 검토한다."
+  d1_readiness_gate:
+    - "preferred alignment epic key가 epic-13으로 제안되어 있다."
+    - "D1에서 생성할 documentation/planning/production/validation story key 후보가 phase 흐름에 맞게 매핑되어 있다."
+    - "Background / Aligns / Supersedes / Hardens 작성 정책이 명시되어 있다."
+    - "공식 sprint-status.yaml 반영은 별도 리뷰 또는 D3 final consolidation으로 분리되어 있다."
+    - "완료 story 본문과 done 상태를 유지하는 정책이 명시되어 있다."
+
+phases:
+  - id: D0
+    title: "Documentation alignment plan"
+    intent: "문서 정렬을 언제, 어떤 범위로 수행할지 먼저 sequence YAML 안에 명시한다."
+    work_type: planning
+    status: done
+    depends_on: []
+    blocks:
+      - P0
+      - D1
+    related_existing_stories:
+      aligns:
+        - epic-4
+        - epic-5
+        - epic-6
+        - epic-10
+      supersedes: []
+      hardens: []
+    expected_outputs:
+      - "D0-D3 문서 정렬 phase 정의"
+      - "지금 수정하지 않을 공식 문서와 후속 phase에서 정렬할 문서 목록"
+      - "Source of Truth 재정의 금지와 just-in-time 문서 정렬 원칙"
+    documents_to_modify:
+      now:
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-sequence.yaml"
+      later_by_phase:
+        D1:
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/epics.md"
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/<new-alignment-story>.md"
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-roadmap.md"
+        D2:
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/contracts/read-model-contract.md"
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture-implementation-supplement.md"
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/project-structure.md"
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/<active-alignment-story>.md"
+        D3:
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/epics.md"
+          - "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture.md"
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture-implementation-supplement.md"
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/project-structure.md"
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture-rewrite-index.md"
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/index.md"
+      do_not_modify_now:
+        - "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/epics.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-roadmap.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/contracts/read-model-contract.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/<completed-story>.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/*.md"
+    completion_gate:
+      - "문서 정렬 phase가 sequence YAML에만 반영되어 있다."
+      - "Source of Truth 문서를 재정의하지 않는다는 원칙이 명시되어 있다."
+      - "공식 sprint-status.yaml, epics.md, 완료 story 파일을 지금 대규모로 수정하지 않는다는 금지가 명시되어 있다."
+    rollback_unit: "sequence YAML의 documentation phase 추가분만 rollback한다."
+    notes:
+      - "D0는 현재 문서화 작업의 범위다."
+      - "planning-artifacts/index.md는 없을 수 있으므로 D3에서 존재 여부를 확인한 뒤 생성 또는 갱신 여부를 결정한다."
+
+  - id: P0
+    title: "Alignment story/status planning"
+    intent: "공식 sprint 상태를 즉시 바꾸지 않고 Source of Truth 재정렬을 새 alignment epic/story 후보로 검토 가능한 단위까지 쪼갠다."
+    work_type: planning
+    status: done
+    depends_on:
+      - D0
+    blocks:
+      - D1
+      - P1
+      - P2
+      - P3
+      - P4
+      - P5
+      - P6
+      - P7
+      - P8
+      - P9
+      - P10
+    related_existing_stories:
+      aligns:
+        - epic-4
+        - epic-5
+        - epic-6
+        - epic-10
+      supersedes: []
+      hardens: []
+    expected_outputs:
+      - "alignment epic/status key 후보"
+      - "각 phase를 story로 옮길 때 사용할 Background / Aligns / Supersedes / Hardens 참조 방식"
+      - "공식 sprint-status.yaml 변경 여부와 변경 시점에 대한 리뷰 결정"
+    planning_outputs:
+      preferred_alignment_epic: "epic-13-dashboard-source-of-truth-realignment"
+      story_split_source: "alignment_story_status_plan.story_split"
+      status_policy_source: "alignment_story_status_plan.official_status_policy"
+      reference_policy_source: "alignment_story_status_plan.reference_policy_by_epic"
+    documents_to_modify:
+      now:
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-sequence.yaml"
+      do_not_modify_now:
+        - "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/epics.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/<completed-story>.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/*.md"
+    completion_gate:
+      - "공식 sprint-status.yaml을 변경하지 않은 상태로 draft sequence YAML이 리뷰 가능하다."
+      - "완료된 Epic 4/5/6/10 story를 되돌리거나 done 상태에서 빼지 않는 원칙이 명시되어 있다."
+      - "각 후속 phase가 독립 rollback 단위를 가진다."
+      - "D1에서 생성할 alignment epic/story key 후보와 참조 정책이 sequence YAML 안에서 확인된다."
+    rollback_unit: "이 draft sequence 문서만 되돌린다."
+    notes:
+      - "이 phase는 production code를 수정하지 않는다."
+      - "sprint-status.yaml 반영은 별도 리뷰 이후의 후속 작업이다."
+
+  - id: D1
+    title: "Alignment epic/story creation"
+    intent: "새 alignment epic/story를 만들 때 1차 planning 문서 정렬을 수행하되, 완료 story 본문과 Source of Truth 문서는 재정의하지 않는다."
+    work_type: planning
+    status: done
+    depends_on:
+      - D0
+      - P0
+    blocks:
+      - P1
+      - P2
+      - P3
+      - P4
+      - P5
+      - P6
+      - P7
+      - P8
+      - P9
+      - P10
+    related_existing_stories:
+      aligns:
+        - epic-4
+        - epic-5
+        - epic-6
+        - epic-10
+      supersedes: []
+      hardens: []
+    expected_outputs:
+      - "새 alignment epic/story artifact"
+      - "각 story의 Background / Aligns / Supersedes / Hardens 참조"
+      - "1차 planning 문서 정렬 범위와 공식 status 반영 여부에 대한 리뷰 기록"
+    documents_to_modify_after_review:
+      primary:
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/epics.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/<new-alignment-story>.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-roadmap.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-sequence.yaml"
+      optional_separate_status_change:
+        - "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
+      explicitly_avoid_bulk_edit:
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/<completed-story>.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/*.md"
+    completion_gate:
+      - "새 alignment epic/story가 확정된 Source of Truth를 참조하며 재정의하지 않는다."
+      - "완료 story 파일은 직접 고치지 않고 새 story에서 Aligns / Supersedes / Hardens로 참조한다."
+      - "sprint-status.yaml 반영이 필요하면 별도 변경으로 분리되어 있다."
+    rollback_unit: "새 alignment epic/story 문서와 1차 planning 문서 정렬 commit 단위로 rollback한다."
+    notes:
+      - "D1은 production code 구현 전 문서 gate다."
+      - "epics.md 수정은 새 epic/story 생성에 필요한 최소 범위로 제한한다."
+
+  - id: P1
+    title: "Frontend read model contract guard"
+    intent: "UI가 lifecycle state, endpoint priority, marker bucket, instance health, resource pattern을 재계산하지 못하도록 adapter/type/fixture guard를 먼저 둔다."
+    work_type: frontend
+    status: done
+    depends_on:
+      - D1
+      - P0
+    blocks:
+      - P4
+      - P6
+      - P8
+      - P10
+    related_existing_stories:
+      aligns:
+        - 6-4-application-dashboard-ui-integration
+        - 6-5-instance-evidence-ui
+        - 6-6-instance-snapshot-trend-ui
+        - 6-7-snapshot-history-marker-ui-and-deep-link
+        - 10-3-wire-types-adapters-navigation-and-dashboard
+        - 10-4-wire-evidence-trend-and-credential-surfaces
+      supersedes: []
+      hardens:
+        - 10-7-run-acceptance-gate
+    expected_outputs:
+      - "ApplicationDashboardReadModel과 snapshot/instance adapter contract guard"
+      - "server-computed order/value 보존 fixture test"
+      - "client-side 재정렬, 재계산, marker-as-state 오용 차단 테스트"
+    completion_gate:
+      - "adapter는 server-computed state, endpoint priority, instance list, marker/trend point order를 보존한다."
+      - "UI 변환은 날짜, badge class, humanized copy, histogram display bucket 변환으로 제한된다."
+      - "snapshot marker/trend point를 client에서 임의 재정렬하지 않는다."
+    rollback_unit: "frontend adapter/type/fixture guard commit 단위로 되돌린다."
+    notes:
+      - "production backend shape 변경 전에 fail-closed guard를 먼저 둔다."
+      - "P1은 이후 UI 재배치 작업의 안전망이다."
+
+  - id: P2
+    title: "Backend recent 30 minutes window alignment"
+    intent: "Application Dashboard live와 Instance Dashboard live가 같은 recent 30 minutes window를 쓰도록 공통 window 계산과 public naming을 정렬한다."
+    work_type: backend
+    status: done
+    depends_on:
+      - P0
+      - P1
+    blocks:
+      - P3
+      - P5
+      - P7
+      - P10
+    related_existing_stories:
+      aligns:
+        - 4-1-time-bucket-contract-implementation
+        - 4-2-lifecycle-state-service
+        - 4-4-state-semantics-tests
+        - 5-2-application-dashboard-read-model-skeleton
+        - 5-6-instance-evidence-read-model
+      supersedes:
+        - "sprint-status workflow note의 15분 current/baseline 판단"
+      hardens:
+        - 12-4-snapshot-delay-and-pipeline-lag-semantics
+    expected_outputs:
+      - "recent_30_minutes 공통 window calculator"
+      - "bucket_end_utc > windowStartUtc and bucket_end_utc <= windowEndUtc boundary test"
+      - "baseline 비교를 MVP primary 판단 path에서 제거하거나 diagnostic으로 격리한 contract guard"
+    completion_gate:
+      - "Application Dashboard live와 Instance Dashboard live가 같은 30분 window를 사용한다."
+      - "public response에서 legacy 15분 current window 또는 primary baseline 판단 naming이 사라진다."
+      - "accepted_metric_buckets가 metric freshness/state/read-model source임이 테스트로 확인된다."
+    rollback_unit: "공통 window calculator와 response naming 변경 단위로 rollback한다. 필요하면 15분/30분 compatibility switch를 한시적으로 둔다."
+    notes:
+      - "P2는 backend 공통 변경이라 blast radius가 가장 크다."
+      - "P1 guard가 먼저 있어야 frontend가 30분 shape를 잘못 해석하지 않는다."
+
+  - id: P3
+    title: "Backend Application Dashboard read model shape alignment"
+    intent: "Application Dashboard API가 Source of Truth shape를 안정적으로 제공해 UI가 재계산 없이 읽을 수 있게 한다."
+    work_type: backend
+    status: done
+    depends_on:
+      - P0
+      - P1
+      - P2
+    blocks:
+      - P4
+      - P6
+      - P10
+    related_existing_stories:
+      aligns:
+        - 5-2-application-dashboard-read-model-skeleton
+        - 5-3-source-scoped-percentile-and-histogram-distribution-read-model
+        - 5-4-triage-summary-and-zero-insight-recovery-mapping
+        - 5-5-endpoint-priority-read-model
+        - 5-8-b-snapshot-marker-detail-recovery-source
+      supersedes:
+        - "UI가 이해를 위해 sourceWindow.current/baseline, triageCards, endpointPriority 중심 shape에 의존하는 계약"
+      hardens:
+        - 10-3-wire-types-adapters-navigation-and-dashboard
+    expected_outputs:
+      - "mode, window, thresholds, operatorSummary, dataQuality, signals, stateReasons shape"
+      - "attentionEvidence, firstLookCandidates, readSemantics shape"
+      - "snapshot 저장 payload와 live response가 공유할 dashboard_read_model.v1 contract"
+    completion_gate:
+      - "live source가 accepted_metric_buckets로 명시된다."
+      - "readSemantics.source, snapshotDetailRecalculates=false, markerIsStateSource=false가 response guard로 확인된다."
+      - "UI가 lifecycle state, endpoint priority, resource pattern을 재계산해야만 이해되는 field가 남지 않는다."
+    rollback_unit: "Application Dashboard response DTO/mapper/service shape alignment 단위로 rollback한다. 기존 field compatibility는 제거 전 별도 gate를 둔다."
+    notes:
+      - "Snapshot detail은 이 shape를 mode=snapshot으로 복원해야 하므로 P6의 전제다."
+      - "baseline field가 persistence에 남아 있어도 MVP read model primary 판단에는 넣지 않는다."
+
+  - id: P4
+    title: "Frontend Application Dashboard IA realignment"
+    intent: "Application Dashboard live surface를 운영자 질문 순서에 맞춰 Context, freshness, state, direct evidence, attention evidence, metric detail, starter, instance entry 순서로 재배치한다."
+    work_type: frontend
+    status: done
+    depends_on:
+      - P0
+      - P1
+      - P2
+      - P3
+    blocks:
+      - P6
+      - P10
+    related_existing_stories:
+      aligns:
+        - 6-4-application-dashboard-ui-integration
+        - 10-3-wire-types-adapters-navigation-and-dashboard
+        - 10-4-wire-evidence-trend-and-credential-surfaces
+      supersedes:
+        - "current tab의 상태, starter, metric visualization, triage 중심 기존 독서 순서"
+      hardens:
+        - 6-8-demo-green-path
+        - 6-9-failure-recovery-path-demo-hardening
+    expected_outputs:
+      - "live mode, recent 30 minutes, accepted metric bucket source를 상단에 고정한 context/read semantics bar"
+      - "data quality/freshness strip과 lifecycle state hero"
+      - "direct state reasons와 attention evidence를 metric visualization보다 먼저 읽히는 UI"
+    completion_gate:
+      - "첫 화면 상단에서 live mode, recent 30 minutes, accepted_metric_buckets source가 드러난다."
+      - "starter connection과 credential lifecycle은 application metric state와 섞이지 않는 보조 surface로 내려간다."
+      - "triage/state reason과 attention evidence가 metric detail보다 먼저 읽힌다."
+    rollback_unit: "Application Dashboard live surface component/layout 단위로 rollback한다."
+    notes:
+      - "이 phase는 P3의 backend shape가 안정된 뒤 진행한다."
+      - "UI copy는 root cause 확정, app down 확정, baseline 비교를 약속하지 않는다."
+
+  - id: P5
+    title: "Backend 30 minute scheduled snapshot and slot horizon alignment"
+    intent: "scheduled snapshot UX를 30분 dashboard slot에 맞추고 marker/history/trend 조회 horizon을 current_window_end_utc 기준으로 정렬한다."
+    work_type: backend
+    status: done
+    depends_on:
+      - P0
+      - P1
+      - P2
+      - P3
+    blocks:
+      - P6
+      - P7
+      - P9
+      - P10
+    related_existing_stories:
+      aligns:
+        - 5-8-dashboard-snapshot-persistence-and-marker-contract
+        - 5-8-a-dashboard-snapshot-writer-and-capture-policy
+        - 5-8-b-snapshot-marker-detail-recovery-source
+        - 5-9-a-operational-event-history-api-skeleton-and-source-boundary
+        - 5-9-b-operational-event-promotion-suppression-and-period-folding
+      supersedes:
+        - "legacy scheduled snapshot token을 사용자-facing hourly cadence로 읽는 해석"
+        - "generatedAt 중심 marker/trend retention horizon"
+      hardens:
+        - 12-4-snapshot-delay-and-pipeline-lag-semantics
+    expected_outputs:
+      - "30분 scheduled snapshot dispatch"
+      - "application_id + current_window_end_utc writer identity 유지"
+      - "marker/history/trend repository query의 current_window_end_utc horizon alignment"
+    completion_gate:
+      - "scheduler가 30분 slot을 dispatch한다."
+      - "persisted capture reason token hourly_scheduled는 rename하지 않는다."
+      - "marker bucket은 lifecycle state source가 아니라 timeline index로 유지된다."
+      - "history/trend 조회 horizon은 current_window_end_utc 기준이다."
+    rollback_unit: "scheduler cadence와 repository horizon query 변경을 분리해 rollback한다. token rename과 writer identity 변경은 하지 않는다."
+    notes:
+      - "P5는 P6 snapshot UI와 P9 cleanup의 기준 timestamp를 제공한다."
+      - "generatedAt은 capturedAt/provenance와 deterministic ordering 보조값으로 유지한다."
+
+  - id: P6
+    title: "Frontend snapshot history/detail realignment"
+    intent: "snapshot history를 marker-first 30분 dashboard point 탐색으로 정리하고, snapshot detail을 stored dashboard read model 복원 surface로 격상한다."
+    work_type: frontend
+    status: done
+    depends_on:
+      - P0
+      - P1
+      - P3
+      - P4
+      - P5
+    blocks:
+      - P8
+      - P10
+    related_existing_stories:
+      aligns:
+        - 6-7-snapshot-history-marker-ui-and-deep-link
+        - 10-3-wire-types-adapters-navigation-and-dashboard
+        - 10-4-wire-evidence-trend-and-credential-surfaces
+      supersedes:
+        - "marker와 operational event를 같은 history surface에서 client 재정렬하는 흐름"
+      hardens:
+        - 6-8-demo-green-path
+        - 6-9-failure-recovery-path-demo-hardening
+        - 10-7-run-acceptance-gate
+    expected_outputs:
+      - "14일 retention 안에서 동작하는 24h/7d/14d 또는 date map/picker"
+      - "markerBucket을 state가 아닌 timeline 탐색 색인으로 표현한 copy"
+      - "mode=snapshot, source=dashboard_snapshots.read_model_json, current state 재계산 금지 guard"
+    completion_gate:
+      - "snapshot detail은 live dashboard fallback처럼 보이지 않는다."
+      - "expired/404 snapshot은 현재 accepted bucket으로 복원되지 않는다."
+      - "hourly_scheduled token은 사용자-facing copy에서 30분 정기 저장 의미로 표현된다."
+    rollback_unit: "snapshot history/detail route, loader, component surface 단위로 rollback한다."
+    notes:
+      - "P6은 P5의 30분 slot/horizon alignment 이후 진행한다."
+      - "P6 완료 후 P8 instance snapshot surface가 같은 selected snapshot window를 참조할 수 있다."
+
+  - id: P7
+    title: "Backend Instance Dashboard live/snapshot mode split"
+    intent: "Instance Dashboard를 Application Dashboard 판단의 하위 evidence detail로 고정하고, live mode와 selected Application Snapshot 기반 snapshot mode를 API/service 책임으로 분리한다."
+    work_type: backend
+    status: done
+    depends_on:
+      - P0
+      - P1
+      - P2
+      - P3
+      - P5
+    blocks:
+      - P8
+      - P9
+      - P10
+    related_existing_stories:
+      aligns:
+        - 5-6-instance-evidence-read-model
+        - 5-7-instance-snapshot-trend-projection
+        - 5-8-b-snapshot-marker-detail-recovery-source
+      supersedes:
+        - "legacy 15분 Instance Evidence naming을 Instance Dashboard 계약으로 재사용하는 흐름"
+        - "instanceSummary.items[]를 Instance Dashboard snapshot detail의 필수 source로 보는 해석"
+      hardens:
+        - 10-4-wire-evidence-trend-and-credential-surfaces
+    expected_outputs:
+      - "live mode: accepted_metric_buckets recent_30_minutes selected instance evidence"
+      - "snapshot mode: dashboard_snapshots row metadata에서 window를 얻고 accepted_metric_buckets를 cutoff 없이 재조회"
+      - "readSemantics에 acceptedAtCutoffApplied=false, includesLateAcceptedMetrics=true, mayDifferFromStoredApplicationSnapshot=true 명시"
+    completion_gate:
+      - "Instance Dashboard response에는 top-level instance lifecycle state가 없다."
+      - "snapshot mode는 Application Snapshot stored state/evidence를 재계산하거나 override하지 않는다."
+      - "metric retention 밖이거나 bucket이 없으면 metric_missing 또는 not_observed_in_window data quality로 수렴한다."
+    rollback_unit: "Instance Dashboard snapshot mode route/service를 live mode와 분리해 비활성화할 수 있게 rollback한다."
+    notes:
+      - "P7은 P8 UI split의 backend 전제다."
+      - "별도 instance snapshot table과 instance marker timeline은 MVP에서 만들지 않는다."
+
+  - id: P8
+    title: "Frontend instance surface split"
+    intent: "Instance live detail, Instance Dashboard snapshot mode, Instance Snapshot Trend를 서로 다른 surface 책임으로 분리한다."
+    work_type: frontend
+    status: done
+    depends_on:
+      - P0
+      - P1
+      - P6
+      - P7
+    blocks:
+      - P10
+    related_existing_stories:
+      aligns:
+        - 6-5-instance-evidence-ui
+        - 6-6-instance-snapshot-trend-ui
+        - 10-4-wire-evidence-trend-and-credential-surfaces
+      supersedes:
+        - "instance trend를 독립 instance health timeline처럼 읽히게 하는 UI 흐름"
+      hardens:
+        - 6-8-demo-green-path
+        - 6-9-failure-recovery-path-demo-hardening
+    expected_outputs:
+      - "live instance detail은 selected instance evidence detail로 표시"
+      - "snapshot mode는 selected Application Snapshot row window 기준임을 상단에 표시"
+      - "trend는 stored instanceSummary.items[] projection이며 health score를 만들지 않는 copy"
+    completion_gate:
+      - "Instance live detail은 Application 판단을 대체하지 않는다."
+      - "Instance snapshot mode는 Application Snapshot window와 late metric 가능성을 드러낸다."
+      - "Instance Snapshot Trend는 current state나 health score를 재계산하지 않는다."
+    rollback_unit: "instance live/detail/snapshot/trend surface route와 component split 단위로 rollback한다."
+    notes:
+      - "P8은 P6 snapshot selection UX와 P7 backend mode split을 모두 전제로 한다."
+
+  - id: P9
+    title: "Retention cleanup alignment"
+    intent: "14일 retention UX와 physical cleanup을 dashboard_snapshots.current_window_end_utc, accepted_metric_buckets.bucket_end_utc, 30분 evidence grace 기준으로 맞춘다."
+    work_type: backend
+    status: done
+    depends_on:
+      - P0
+      - P5
+      - P7
+    blocks:
+      - P10
+    related_existing_stories:
+      aligns:
+        - 5-8-dashboard-snapshot-persistence-and-marker-contract
+        - 5-8-b-snapshot-marker-detail-recovery-source
+        - 6-7-snapshot-history-marker-ui-and-deep-link
+        - 12-4-snapshot-delay-and-pipeline-lag-semantics
+      supersedes:
+        - "cleanup 기준을 capture/provenance timestamp 또는 ingest 수용 timestamp 중심으로 읽는 흐름"
+      hardens:
+        - 10-7-run-acceptance-gate
+    expected_outputs:
+      - "매일 01:15 KST cleanup schedule"
+      - "snapshotCutoffUtc와 metricEvidenceCutoffUtc 계산 guard"
+      - "dashboard_snapshots current_window_end_utc bulk delete와 accepted_metric_buckets bucket_end_utc bulk delete"
+      - "snapshot detail, marker/history/date map, Instance Dashboard snapshot mode retention guard test"
+    completion_gate:
+      - "cleanup job은 disabled-by-default 또는 dry-run/count-first로 시작한다."
+      - "snapshot cleanup 기준은 dashboard_snapshots.current_window_end_utc다."
+      - "metric cleanup 기준은 accepted_metric_buckets.bucket_end_utc이며 30분 evidence grace를 둔다."
+      - "cleanup으로 사라진 snapshot은 live dashboard나 current accepted bucket으로 복원하지 않는다."
+    rollback_unit: "cleanup scheduler/property를 끄고 delete service/repository 변경을 별도 rollback한다."
+    notes:
+      - "P9는 read horizon 정렬 후 마지막 backend cleanup 단계로 둔다."
+      - "production cleanup job을 성급히 켜지 않고 idempotency와 read surface guard를 먼저 확인한다."
+
+  - id: P10
+    title: "End-to-end acceptance and demo hardening"
+    intent: "Application live, snapshot detail/history, instance live/snapshot/trend, retention guard가 Source of Truth 기준으로 연결되는지 end-to-end로 검증한다."
+    work_type: validation
+    status: done
+    depends_on:
+      - D2
+      - P0
+      - P1
+      - P2
+      - P3
+      - P4
+      - P5
+      - P6
+      - P7
+      - P8
+      - P9
+    blocks: []
+    related_existing_stories:
+      aligns:
+        - 6-8-demo-green-path
+        - 6-9-failure-recovery-path-demo-hardening
+        - 7-3-smoke-spring-boot-service-and-portal-communication-verification
+        - 10-7-run-acceptance-gate
+      supersedes: []
+      hardens:
+        - epic-10
+    expected_outputs:
+      - "Source of Truth acceptance checklist"
+      - "30분 live window, 30분 scheduled snapshot, stored snapshot detail, instance snapshot mode, retention expired path demo"
+      - "backend/frontend regression guard 결과"
+    completion_gate:
+      - "live dashboard는 accepted_metric_buckets recent_30_minutes source로 판단한다."
+      - "snapshot detail은 dashboard_snapshots.read_model_json을 dashboard처럼 복원한다."
+      - "instance snapshot mode는 selected Application Snapshot window 기준 selected instance evidence를 재구성하되 Application Snapshot state를 대체하지 않는다."
+      - "retention 밖 snapshot은 marker/history/date map/detail에서 current fallback 없이 만료 처리된다."
+    rollback_unit: "acceptance fixture, demo route, smoke data, verification script 변경 단위로 rollback한다."
+    notes:
+      - "P10은 공식 sprint-status.yaml 반영 전 최종 evidence로 사용할 수 있다."
+      - "13.11 completion evidence 기준 frontend guard/typecheck/build, focused/full backend regression, smoke focused bundle은 통과했다."
+      - "Full authenticated browser demo route/fixture가 없어 Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired path를 하나의 browser smoke로 닫은 evidence는 없다."
+
+  - id: D2
+    title: "Per-slice documentation updates"
+    intent: "production code 구현 후 각 vertical slice별로 관련 문서를 just-in-time으로 정렬한다."
+    work_type: planning
+    status: done
+    depends_on:
+      - D1
+      - P4
+      - P6
+      - P8
+      - P9
+    blocks:
+      - P10
+      - D3
+    related_existing_stories:
+      aligns:
+        - 10-3-wire-types-adapters-navigation-and-dashboard
+        - 10-4-wire-evidence-trend-and-credential-surfaces
+        - 10-7-run-acceptance-gate
+      supersedes: []
+      hardens:
+        - epic-5
+        - epic-6
+    run_strategy:
+      mode: iterative_after_vertical_slice
+      iterations:
+        - after_phase: P4
+          slice: "Application Dashboard live"
+          candidate_documents:
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/contracts/read-model-contract.md"
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture-implementation-supplement.md"
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/<application-dashboard-alignment-story>.md"
+        - after_phase: P6
+          slice: "Snapshot history/detail"
+          candidate_documents:
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/contracts/read-model-contract.md"
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture-implementation-supplement.md"
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/<snapshot-alignment-story>.md"
+        - after_phase: P8
+          slice: "Instance live/snapshot/trend"
+          candidate_documents:
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/contracts/read-model-contract.md"
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/project-structure.md"
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/<instance-alignment-story>.md"
+        - after_phase: P9
+          slice: "Retention cleanup"
+          candidate_documents:
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture-implementation-supplement.md"
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/project-structure.md"
+            - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/<retention-alignment-story>.md"
+      completed_alignment:
+        aligned_at: "2026-06-11T14:13:19+0900"
+        documents:
+          - "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-roadmap.md"
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-sequence.yaml"
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/dashboard-snapshot-retention-cleanup-source-of-truth.md"
+        summary:
+          - "13.2 -> 13.10 완료 상태를 planning sequence/status snapshot과 맞췄다."
+          - "Retention cleanup 구현 상태를 Source of Truth의 현재 코드 정렬 섹션에 반영했다."
+          - "D2 시점에는 P10/D3를 후속 backlog로 남겼고, 이후 D3 final consolidation에서 13.11과 13-doc-3를 done으로 정렬했다."
+    source_of_truth_handling:
+      policy: "Source of Truth 문서는 read-only 기준으로 사용한다."
+      allowed_change: "오탈자, 링크, 명백한 errata만 별도 리뷰 후 최소 수정한다."
+      forbidden_change: "vertical slice 구현 중 Source of Truth 의미를 재정의하거나 scope를 확장하지 않는다."
+    completion_gate:
+      - "각 vertical slice의 구현 결과와 contract/architecture/story 문서가 같은 용어와 source boundary를 사용한다."
+      - "문서 수정은 해당 slice에 필요한 범위로만 제한된다."
+      - "완료 story 파일과 Source of Truth 문서를 대규모로 다시 쓰지 않는다."
+    rollback_unit: "각 vertical slice의 문서 정렬 commit 단위로 rollback한다."
+    notes:
+      - "D2는 한 번에 전체 문서를 고치는 phase가 아니라 slice별 반복 phase다."
+      - "문서 정렬은 구현 완료 직후, 다음 slice로 넘어가기 전에 수행한다."
+
+  - id: D3
+    title: "Final planning/status consolidation"
+    intent: "최종 acceptance 후 epics.md, sprint-status.yaml, architecture/project-structure/index 계열 문서를 실제 결과 기준으로 정리한다."
+    work_type: planning
+    status: done
+    depends_on:
+      - D2
+      - P10
+    blocks: []
+    related_existing_stories:
+      aligns:
+        - epic-4
+        - epic-5
+        - epic-6
+        - epic-10
+      supersedes: []
+      hardens:
+        - epic-13-dashboard-source-of-truth-realignment
+    expected_outputs:
+      - "final epics.md alignment summary"
+      - "final sprint-status.yaml status update"
+      - "architecture/project-structure 계열 문서의 Epic 13 최종 상태 정리"
+      - "완료 story 참조 정책의 최종 기록"
+    documents_to_modify_after_acceptance:
+      official_status:
+        - "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
+      planning_rollup:
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/epics.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-roadmap.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-sequence.yaml"
+      architecture_and_index:
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture-implementation-supplement.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/project-structure.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture-rewrite-index.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/index.md"
+      still_do_not_bulk_edit:
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/<completed-pre-alignment-story>.md"
+        - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/*.md"
+    completion_gate:
+      - "P10 acceptance evidence가 존재한다."
+      - "sprint-status.yaml은 실제 완료/리뷰 상태만 반영한다."
+      - "epics.md는 alignment epic/story 결과를 요약하되 완료된 과거 story를 되돌리지 않는다."
+      - "architecture/project-structure/index 계열 문서는 실제 파일 구조와 구현 boundary를 반영한다."
+    rollback_unit: "final consolidation 문서 변경 commit 단위로 rollback한다."
+    notes:
+      - "D3는 acceptance 후 정리 phase이며 production code 변경 phase가 아니다."
+      - "architecture.md, architecture-implementation-supplement.md, project-structure.md는 Epic 13이 supersede한 15분/baseline, 1시간 scheduled snapshot, Epic 6 UI order 표현을 최종 상태에 맞춰 정리했다."
+      - "architecture-rewrite-index.md와 planning-artifacts/index.md는 구조/링크 신규 변경이 없어 수정하지 않았다. planning-artifacts/index.md는 현재 존재하지 않는다."
+      - "13.11 full browser demo route/fixture gap은 완료 상태를 되돌리지 않고 follow-up handoff로 남긴다."
+
+dependency_graph:
+  edges:
+    - from: D0
+      to: P0
+      reason: "alignment story/status planning 전에 문서 정렬 시점과 금지 범위를 먼저 고정한다."
+    - from: D0
+      to: D1
+      reason: "새 epic/story 생성 전에 어떤 문서를 어느 phase에서 정렬할지 먼저 정의한다."
+    - from: P0
+      to: D1
+      reason: "alignment story/status planning 결과를 바탕으로 새 epic/story artifact를 만든다."
+    - from: D1
+      to: P1
+      reason: "production code 구현 전에 새 alignment epic/story와 1차 planning 문서 정렬이 필요하다."
+    - from: P0
+      to: P2
+      reason: "backend 공통 window 변경은 새 alignment story로 추적되어야 한다."
+    - from: P1
+      to: P4
+      reason: "Application Dashboard UI 재배치 전에 server-computed contract 보존 guard가 필요하다."
+    - from: P1
+      to: P6
+      reason: "snapshot history/detail UI가 marker를 state로 오해하지 않도록 adapter guard가 필요하다."
+    - from: P1
+      to: P8
+      reason: "instance surface split 전에 live/snapshot/trend source semantics guard가 필요하다."
+    - from: P2
+      to: P3
+      reason: "Application Dashboard shape는 recent_30_minutes window를 전제로 한다."
+    - from: P2
+      to: P5
+      reason: "30분 scheduled snapshot slot은 30분 dashboard 판단 window와 맞아야 한다."
+    - from: P2
+      to: P7
+      reason: "Instance Dashboard live/snapshot mode는 Application Dashboard와 같은 30분 window를 따른다."
+    - from: P3
+      to: P4
+      reason: "Application Dashboard IA는 backend read model shape가 안정된 뒤 재배치한다."
+    - from: P3
+      to: P6
+      reason: "snapshot detail은 Application Dashboard read model shape를 mode=snapshot으로 복원한다."
+    - from: P4
+      to: P6
+      reason: "snapshot detail이 live dashboard와 같은 시각 골격을 공유해야 한다."
+    - from: P5
+      to: P6
+      reason: "snapshot history/date picker는 30분 slot과 current_window_end_utc horizon을 전제로 한다."
+    - from: P5
+      to: P7
+      reason: "Instance snapshot mode는 selected Application Snapshot row의 window를 기준으로 한다."
+    - from: P5
+      to: P9
+      reason: "retention cleanup은 read horizon이 current_window_end_utc 기준으로 정렬된 뒤 수행한다."
+    - from: P6
+      to: P8
+      reason: "Instance snapshot UI는 Application Snapshot selection/detail surface 위에서 분리된다."
+    - from: P7
+      to: P8
+      reason: "frontend instance split은 backend live/snapshot mode split이 필요하다."
+    - from: P7
+      to: P9
+      reason: "accepted_metric_buckets retention은 Instance Dashboard snapshot mode 재구성 계약과 맞아야 한다."
+    - from: P4
+      to: D2
+      reason: "Application Dashboard live slice 구현 후 관련 contract/architecture/story 문서를 just-in-time으로 정렬한다."
+    - from: P6
+      to: D2
+      reason: "Snapshot history/detail slice 구현 후 관련 문서를 just-in-time으로 정렬한다."
+    - from: P8
+      to: D2
+      reason: "Instance surface split 구현 후 관련 문서를 just-in-time으로 정렬한다."
+    - from: P9
+      to: D2
+      reason: "Retention cleanup slice 구현 후 관련 문서를 just-in-time으로 정렬한다."
+    - from: D2
+      to: P10
+      reason: "최종 acceptance 전에 slice별 문서 정렬이 완료되어야 한다."
+    - from: P4
+      to: P10
+      reason: "Application Dashboard live IA가 acceptance 대상이다."
+    - from: P6
+      to: P10
+      reason: "snapshot history/detail realignment가 acceptance 대상이다."
+    - from: P8
+      to: P10
+      reason: "instance surface split이 acceptance 대상이다."
+    - from: P9
+      to: P10
+      reason: "retention expired path와 cleanup guard가 acceptance 대상이다."
+    - from: P10
+      to: D3
+      reason: "최종 acceptance evidence를 기준으로 공식 planning/status 문서를 정리한다."
+    - from: D2
+      to: D3
+      reason: "slice별 문서 정렬 결과를 최종 planning/status consolidation에 반영한다."
+
+context_sequence_risk_assessment:
+  question: "이런 식으로 한 컨텍스트에서 작업순서를 정의하는 게 위험한가?"
+  answer: "초기에는 공식 sprint-status.yaml을 바로 바꾸지 않고 draft sequence로 dependency, gate, rollback을 검토하는 방식이 안전했다. 현재는 Epic 13이 공식 sprint-status.yaml에 반영되어 있으므로 이 문서는 완료된 P1-P10/D2/D3 상태와 13.11 browser-smoke evidence gap을 mirror한다."
+  risk_level: "low when mirroring official status and preserving Source of Truth meaning"
+  safe_when:
+    - "공식 sprint-status.yaml의 실제 완료/리뷰 상태만 mirror한다."
+    - "완료 story 상태를 되돌리거나 덮어쓰지 않는다."
+    - "각 phase의 dependency, completion gate, rollback_unit을 명시한다."
+    - "문서 정렬은 D0-D3 phase로 분리하고, Source of Truth 문서는 재정의하지 않는다."
+    - "P10 acceptance 이후 D3에서 final planning/status consolidation을 별도로 수행한다."
+  unsafe_when:
+    - "한 컨텍스트가 완료된 Epic 4/5/6/10 story 상태를 직접 바꾼다."
+    - "Source of Truth 자체를 다시 정의한다."
+    - "backend/frontend/cleanup을 하나의 대형 story로 묶어 rollback 단위를 잃는다."
+
+official_sprint_status_alignment:
+  source: "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
+  aligned_at: "2026-06-11T15:39:29+0900"
+  scope: "13-doc-3 D3 final planning/status consolidation after 13.11 done."
+  status_policy:
+    - "sprint-status.yaml은 공식 sprint 상태 source다."
+    - "이 문서는 13.2 -> 13.11 완료 상태와 13-doc-3 최종 planning/status 정렬 완료 상태를 mirror한다."
+    - "Epic 13은 Source of Truth 의미를 재정의하지 않고 완료 story 본문/status를 되돌리지 않는 조건에서 done으로 닫는다."
+    - "13.11 full browser demo route/fixture gap은 done 상태를 과장하지 않기 위해 follow-up handoff로 따로 남긴다."
+  tracked_alignment_epic:
+    preferred_key: "epic-13-dashboard-source-of-truth-realignment"
+    rationale: "Epic 13은 완료된 Epic 4/5/6/10 구현 이력을 다시 쓰지 않고 Source of Truth alignment를 별도 story 묶음으로 추적한다."
+    development_status_keys:
+      epic-13: done
+      13-1-alignment-story-status-planning: done
+      13-2-frontend-read-model-contract-guard: done
+      13-3-backend-recent-30-minutes-window-alignment: done
+      13-4-backend-application-dashboard-read-model-shape-alignment: done
+      13-5-frontend-application-dashboard-ia-realignment: done
+      13-6-backend-30-minute-scheduled-snapshot-and-slot-horizon-alignment: done
+      13-7-frontend-snapshot-history-detail-realignment: done
+      13-8-backend-instance-dashboard-live-snapshot-mode-split: done
+      13-9-frontend-instance-surface-split: done
+      13-10-retention-cleanup-alignment: done
+      13-11-end-to-end-acceptance-and-demo-hardening: done
+      epic-13-retrospective: optional
+    documentation_status_keys:
+      13-doc-0-documentation-alignment-plan: done
+      13-doc-1-alignment-epic-story-creation: done
+      13-doc-2-per-slice-documentation-updates: done
+      13-doc-3-final-planning-status-consolidation: done
+  completed_story_reference_policy:
+    epic_4:
+      relation: "Hardens"
+      keys:
+        - 4-0-starter-heartbeat-and-instance-level-ingest-contract-reassessment
+        - 4-1-time-bucket-contract-implementation
+        - 4-2-lifecycle-state-service
+        - 4-4-state-semantics-tests
+      guidance: "accepted bucket metric axis와 starter heartbeat control-plane axis 분리 원칙은 유지하고, 30분 dashboard window와 public naming을 후속 alignment story에서 강화한다."
+    epic_5:
+      relation: "Aligns / Supersedes / Hardens"
+      keys:
+        - 5-2-application-dashboard-read-model-skeleton
+        - 5-3-source-scoped-percentile-and-histogram-distribution-read-model
+        - 5-4-triage-summary-and-zero-insight-recovery-mapping
+        - 5-5-endpoint-priority-read-model
+        - 5-6-instance-evidence-read-model
+        - 5-7-instance-snapshot-trend-projection
+        - 5-8-a-dashboard-snapshot-writer-and-capture-policy
+        - 5-8-b-snapshot-marker-detail-recovery-source
+      guidance: "server read model, snapshot persistence, marker/detail 이력은 보존한다. 단, 15분/baseline/hourly 사용자-facing 해석은 recent_30_minutes와 30분 slot 기준으로 새 alignment story가 supersede한다."
+    epic_6:
+      relation: "Aligns / Supersedes"
+      keys:
+        - 6-4-application-dashboard-ui-integration
+        - 6-5-instance-evidence-ui
+        - 6-6-instance-snapshot-trend-ui
+        - 6-7-snapshot-history-marker-ui-and-deep-link
+        - 6-8-demo-green-path
+        - 6-9-failure-recovery-path-demo-hardening
+      guidance: "기존 UI integration 결과는 당시 baseline으로 보존하고, Application Dashboard IA, snapshot history/detail, instance surface split은 Source of Truth 독서 순서로 새 story에서 정렬한다."
+    epic_10:
+      relation: "Hardens"
+      keys:
+        - 10-3-wire-types-adapters-navigation-and-dashboard
+        - 10-4-wire-evidence-trend-and-credential-surfaces
+        - 10-7-run-acceptance-gate
+      guidance: "실서비스 Vite SPA 인수 결과를 되돌리지 않고, 새 backend endpoint 또는 UI-side lifecycle/p95/p99/endpoint priority/snapshot event 계산을 만들지 않는 guard로 강화한다."
+  final_handoff:
+    - "D0-D3 문서 정렬 phase와 문서별 수정 시점은 Epic 13 완료 이력으로 보존한다."
+    - "sprint-status.yaml은 Epic 13과 13-doc-3를 done으로 mirror한다."
+    - "완료 story 13.2 -> 13.11 본문은 수정하지 않고 Aligns / Supersedes / Hardens 참조 정책을 유지한다."
+    - "남은 gap은 full authenticated browser demo route/fixture를 만들어 Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired path를 browser smoke로 검증하는 follow-up이다."

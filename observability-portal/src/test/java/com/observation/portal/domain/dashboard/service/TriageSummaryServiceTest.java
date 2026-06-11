@@ -22,7 +22,7 @@ class TriageSummaryServiceTest {
     private final TriageSummaryService service = new TriageSummaryService(new ObjectMapper());
 
     @Test
-    void exposesGlobalErrorSpikeOnlyWhenAllSeedGuardsPass() {
+    void exposesApplicationErrorRateHighOnlyWhenRecentAbsoluteGuardsPass() {
         TriageSummaryService.TriageSummary summary = service.summarize(input(
                 new WindowBucketAggregate(100L, 8L),
                 new WindowBucketAggregate(100L, 2L),
@@ -31,12 +31,12 @@ class TriageSummaryServiceTest {
 
         assertThat(summary.triageCards())
                 .extracting(ApplicationDashboardReadModel.TriageCard::ruleId)
-                .containsExactly("global_error_spike");
+                .containsExactly("application_error_rate_high");
         ApplicationDashboardReadModel.TriageCard card = summary.triageCards().get(0);
         assertThat(card.confidence()).isGreaterThanOrEqualTo(0.65d);
         assertThat(card.evidence().currentErrorRate()).isEqualByComparingTo("0.08");
-        assertThat(card.evidence().baselineErrorRate()).isEqualByComparingTo("0.02");
-        assertThat(card.evidence().errorRateDelta()).isEqualByComparingTo("0.06");
+        assertThat(card.evidence().baselineErrorRate()).isNull();
+        assertThat(card.evidence().errorRateDelta()).isNull();
     }
 
     @Test
@@ -54,7 +54,7 @@ class TriageSummaryServiceTest {
     }
 
     @Test
-    void exposesSustainedHighErrorRateWithoutBaselineSpike() {
+    void exposesHighErrorRateWithoutBaselineComparison() {
         TriageSummaryService.TriageSummary summary = service.summarize(input(
                 new WindowBucketAggregate(44L, 4L),
                 new WindowBucketAggregate(66L, 6L),
@@ -63,17 +63,17 @@ class TriageSummaryServiceTest {
 
         assertThat(summary.triageCards())
                 .extracting(ApplicationDashboardReadModel.TriageCard::ruleId)
-                .containsExactly("sustained_error_rate_high");
+                .containsExactly("application_error_rate_high");
         ApplicationDashboardReadModel.TriageCard card = summary.triageCards().get(0);
         assertThat(card.title()).contains("오류율 높음");
         assertThat(card.summary()).doesNotContain("증가", "spike");
         assertThat(card.evidence().currentErrorRate()).isEqualByComparingTo("0.090909");
-        assertThat(card.evidence().baselineErrorRate()).isEqualByComparingTo("0.090909");
-        assertThat(card.evidence().errorRateDelta()).isEqualByComparingTo("0");
+        assertThat(card.evidence().baselineErrorRate()).isNull();
+        assertThat(card.evidence().errorRateDelta()).isNull();
     }
 
     @Test
-    void latencySpikeUsesHistogramSlowShareWithoutPercentileScalar() {
+    void latencySlowShareHighUsesCurrentHistogramWithoutPercentileScalar() {
         TriageSummaryService.TriageSummary summary = service.summarize(input(
                 new WindowBucketAggregate(100L, 0L),
                 new WindowBucketAggregate(100L, 0L),
@@ -82,17 +82,17 @@ class TriageSummaryServiceTest {
 
         assertThat(summary.triageCards())
                 .extracting(ApplicationDashboardReadModel.TriageCard::ruleId)
-                .containsExactly("global_latency_spike");
+                .containsExactly("application_slow_share_high");
         ApplicationDashboardReadModel.TriageEvidence evidence = summary.triageCards().get(0).evidence();
         assertThat(evidence.currentSlowShare()).isEqualByComparingTo("0.4");
-        assertThat(evidence.baselineSlowShare()).isEqualByComparingTo("0.1");
+        assertThat(evidence.baselineSlowShare()).isNull();
         assertThat(ApplicationDashboardReadModel.TriageEvidence.class.getRecordComponents())
                 .extracting(java.lang.reflect.RecordComponent::getName)
                 .doesNotContain("p95Ms", "p99Ms", "endpointP95Ms", "histogramPercentile");
     }
 
     @Test
-    void suppressesLatencySpikeWhenBaselineHistogramMissingOrBoundaryDiffers() {
+    void baselineHistogramMissingOrBoundaryDiffersDoesNotSuppressRecentSlowShareHigh() {
         assertThat(service.summarize(input(
                 new WindowBucketAggregate(100L, 0L),
                 new WindowBucketAggregate(100L, 0L),
@@ -104,7 +104,9 @@ class TriageSummaryServiceTest {
                         histogramWindow(60L, 100L),
                         ApplicationDashboardReadModel.HistogramWindow.missing(
                                 "no_histogram_buckets_in_baseline_window")),
-                List.of())).triageCards()).isEmpty();
+                List.of())).triageCards())
+                .extracting(ApplicationDashboardReadModel.TriageCard::ruleId)
+                .containsExactly("application_slow_share_high");
 
         assertThat(service.summarize(input(
                 new WindowBucketAggregate(100L, 0L),
@@ -122,7 +124,9 @@ class TriageSummaryServiceTest {
                                 List.of(
                                         new ApplicationDashboardReadModel.HistogramBucket(250L, 20L),
                                         new ApplicationDashboardReadModel.HistogramBucket(1000L, 100L)))),
-                List.of())).triageCards()).isEmpty();
+                List.of())).triageCards())
+                .extracting(ApplicationDashboardReadModel.TriageCard::ruleId)
+                .containsExactly("application_slow_share_high");
     }
 
     @Test
@@ -131,7 +135,6 @@ class TriageSummaryServiceTest {
 
         assertThat(service.summarize(new TriageSummaryService.TriageSummaryInput(
                 new WindowBucketAggregate(100L, 0L),
-                new WindowBucketAggregate(100L, 0L),
                 histogramAvailable(95L, 100L, 95L, 100L),
                 ApplicationDashboardReadModel.SourceScopedPercentiles.empty(),
                 List.of(),
@@ -139,7 +142,6 @@ class TriageSummaryServiceTest {
                 AcceptedBucketFreshnessStatus.CURRENT)).triageCards()).isEmpty();
 
         TriageSummaryService.TriageSummary withLatency = service.summarize(new TriageSummaryService.TriageSummaryInput(
-                new WindowBucketAggregate(100L, 0L),
                 new WindowBucketAggregate(100L, 0L),
                 histogramAvailable(60L, 100L, 90L, 100L),
                 ApplicationDashboardReadModel.SourceScopedPercentiles.empty(),
@@ -157,7 +159,6 @@ class TriageSummaryServiceTest {
 
         TriageSummaryService.TriageSummary withCpuLatency = service.summarize(new TriageSummaryService.TriageSummaryInput(
                 new WindowBucketAggregate(100L, 0L),
-                new WindowBucketAggregate(100L, 0L),
                 histogramAvailable(60L, 100L, 90L, 100L),
                 ApplicationDashboardReadModel.SourceScopedPercentiles.empty(),
                 List.of(),
@@ -169,7 +170,6 @@ class TriageSummaryServiceTest {
 
         TriageSummaryService.TriageSummary withHeapError = service.summarize(new TriageSummaryService.TriageSummaryInput(
                 new WindowBucketAggregate(100L, 8L),
-                new WindowBucketAggregate(100L, 2L),
                 histogramMissing(),
                 ApplicationDashboardReadModel.SourceScopedPercentiles.empty(),
                 List.of(),
@@ -231,7 +231,7 @@ class TriageSummaryServiceTest {
 
         assertThat(summary.triageCards())
                 .extracting(ApplicationDashboardReadModel.TriageCard::ruleId)
-                .contains("global_error_spike");
+                .contains("application_error_rate_high");
         assertThat(summary.triageCards().get(0).confidence()).isGreaterThanOrEqualTo(0.75d);
         assertThat(summary.degradedInput().badBucketsInRecentFive()).isEqualTo(1);
         assertThat(summary.degradedInput().canEnterDegraded()).isFalse();
@@ -250,7 +250,7 @@ class TriageSummaryServiceTest {
 
         assertThat(summary.triageCards())
                 .extracting(ApplicationDashboardReadModel.TriageCard::ruleId)
-                .contains("global_latency_spike");
+                .contains("application_slow_share_high");
         assertThat(summary.degradedInput().badBucketsInRecentFive()).isEqualTo(1);
         assertThat(summary.degradedInput().canEnterDegraded()).isFalse();
     }
@@ -283,7 +283,7 @@ class TriageSummaryServiceTest {
 
         assertThat(summary.triageCards())
                 .extracting(ApplicationDashboardReadModel.TriageCard::ruleId)
-                .contains("global_latency_spike");
+                .contains("application_slow_share_high");
         assertThat(summary.degradedInput().badBucketsInRecentFive()).isZero();
         assertThat(summary.degradedInput().canEnterDegraded()).isFalse();
     }
@@ -295,7 +295,6 @@ class TriageSummaryServiceTest {
             List<RecentBucketEvidenceRow> recentBuckets) {
         return new TriageSummaryService.TriageSummaryInput(
                 current,
-                baseline,
                 histogramDistribution,
                 ApplicationDashboardReadModel.SourceScopedPercentiles.empty(),
                 recentBuckets,

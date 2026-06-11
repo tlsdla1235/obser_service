@@ -22,7 +22,7 @@ Epic 5/6 dashboard flow 판단에서는 `planning-artifacts/prototypes/epic5-6-d
 
 BMAD 또는 후속 문서 정렬에서 우선순위는 이 문서와 최신 contracts, 위 prototype, 재정렬된 Epic/sprint 문서, 과거 restart/context 문서 순서다.
 
-과거 UX 문서가 application-only first screen, alert-first surface, raw explorer 중심 화면, 또는 instance snapshot trend 부재를 전제하면 이 문서와 prototype이 우선한다.
+과거 UX 문서가 application-only first screen, alert-first surface, raw explorer 중심 화면, 또는 Instance Snapshot Trend를 MVP 필수 화면으로 전제하면 이 문서와 prototype이 우선한다.
 
 ### 1.2 Source of Truth UI Mockup
 
@@ -37,6 +37,7 @@ BMAD 또는 후속 문서 정렬에서 우선순위는 이 문서와 최신 cont
 - `p95/p99`는 instance modal 안에서 source-scoped starter local percentile 참고값으로만 표시한다.
 - Snapshot 화면은 stored dashboard read model 복원을 보여주며 current metric 재계산, baseline diff, 장기 시계열 분석을 약속하지 않는다.
 - Instance 상세는 application state를 대체하지 않고 selected instance evidence만 넓은 modal에서 보여준다.
+- 2026-06-11 결정: Instance Summary/detail MVP 화면은 SoT `openModal`에 대응하는 단일 wide modal뿐이다. Stored trend, projection trend, InstanceTrendView, narrow Sheet, `openTrend`/`openLiveDashboard`, `snapshotTrend` surface는 MVP UI에서 제외한다. 과거 instance evidence는 Snapshot/History에서 snapshot을 선택한 뒤 snapshot-mode wide modal로 본다.
 
 ## 2. 최신 사용자 의도
 
@@ -227,9 +228,11 @@ Instance detail은 application dashboard를 대체하지 않는다.
 - JVM/datasource/CPU resource hint
 - 이 instance가 application triage에 기여했는지 여부
 
-### 5.4.1 Instance Snapshot Trend
+### 5.4.1 Instance Snapshot Trend (Read-Model Contract / Post-MVP)
 
-Instance detail 안에는 문제가 있는 순간의 evidence만이 아니라, 선택된 instance가 최근 며칠 동안 어떻게 관찰됐는지 보는 bounded trend 진입점이 있을 수 있다.
+2026-06-11 UI MVP 결정: 아래 trend 설명은 저장된 projection/read-model 계약과 Post-MVP 후보를 보존하기 위한 설명이다. 현재 MVP UI에는 별도 Stored trend, projection trend, InstanceTrendView, narrow Sheet, `openTrend`/`openLiveDashboard`, `snapshotTrend` surface를 제공하지 않는다. 과거 instance evidence는 Snapshot/History에서 snapshot을 선택한 뒤 snapshot-mode wide modal로 본다.
+
+후속에서 trend UI를 다시 열 경우 Instance detail 안에는 문제가 있는 순간의 evidence만이 아니라, 선택된 instance가 최근 며칠 동안 어떻게 관찰됐는지 보는 bounded trend 진입점이 있을 수 있다.
 
 이 화면은 외부 monitoring service의 host/resource detail처럼 특정 entity의 최근 변화를 보는 관찰 화면이다. 단, 이 제품에서는 raw metric explorer가 아니라 stored dashboard snapshot/read model에서 특정 instance summary만 projection하는 화면으로 제한한다.
 
@@ -357,7 +360,7 @@ Epic 5는 UI가 소비할 server-computed read model을 닫는다.
 4. Triage summary and zero-insight/recovery mapping
 5. Endpoint priority read model
 6. Instance evidence read model
-7. Instance snapshot trend projection
+7. Instance snapshot trend projection contract 보존(Post-MVP UI 후보)
 8. Dashboard snapshot persistence and marker contract
 9. Operational event history API
 
@@ -378,7 +381,7 @@ Epic 6은 사용자가 실제로 밟는 화면과 demo path를 닫는다.
 3. Application list UI
 4. Application dashboard UI integration
 5. Instance evidence UI
-6. Instance snapshot trend UI
+6. Instance snapshot-mode wide modal UI
 7. Snapshot/history marker UI and deep link
 8. Demo green path
 9. Failure/recovery path demo hardening
@@ -407,12 +410,13 @@ Epic 6의 definition of done:
 - histogram bucket으로 p95/p99를 새로 만드는 표현
 - long-window p99를 대표 지표처럼 표시하는 표현
 - raw metric/query explorer를 MVP 핵심처럼 표현하는 문장
+- Stored trend, projection trend, InstanceTrendView, narrow Sheet, `openTrend`/`openLiveDashboard`, `snapshotTrend` surface를 MVP 필수 UI처럼 표현하는 문장
 
 ## 10. 남은 결정 질문
 
 1. Project 생성은 MVP에서 public onboarding API로 열 것인가, local/internal admin seed로 유지할 것인가?
 2. Instance detail read model을 Epic 5에서 어느 깊이까지 닫을 것인가?
-3. Instance snapshot trend를 Epic 6 MVP에 포함할 것인가, demo-only로 둘 것인가?
+3. 결정 완료(2026-06-11): Instance snapshot trend UI는 Epic 6 MVP에서 제외한다. 저장 projection/read-model 계약은 보존하되, 화면은 Snapshot/History -> snapshot-mode wide modal 흐름만 사용한다.
 4. Snapshot/history marker UI를 Epic 6 MVP에 포함할 것인가, demo-only로 둘 것인가?
 5. Alert/Discord surface는 Epic 6 MVP에 넣을 것인가, Post-MVP로 둘 것인가?
 6. Application list에서 state summary를 얼마나 계산해 보여줄 것인가?

@@ -28,9 +28,19 @@ public record OperationalEventHistoryQuery(
      * `since`와 `limit` raw query 값을 Story 5.9-a 정책에 맞는 effective query로 변환한다.
      */
     public static OperationalEventHistoryQuery from(String since, String limit, Clock clock) {
+        return from(since, limit, clock, 14);
+    }
+
+    /**
+     * `since`와 `limit` raw query 값을 snapshot retention horizon 안으로 clamp해 변환한다.
+     */
+    public static OperationalEventHistoryQuery from(String since, String limit, Clock clock, int retentionDays) {
+        if (retentionDays <= 0) {
+            throw new IllegalArgumentException("retentionDays must be positive");
+        }
         Clock utcClock = Objects.requireNonNull(clock, "clock must not be null").withZone(ZoneOffset.UTC);
         String requestedSince = requestedSince(since);
-        Duration effectiveDuration = effectiveSince(requestedSince);
+        Duration effectiveDuration = effectiveSince(requestedSince, retentionDays);
         OffsetDateTime until = OffsetDateTime.ofInstant(utcClock.instant(), ZoneOffset.UTC);
         return new OperationalEventHistoryQuery(
                 requestedSince,
@@ -53,7 +63,7 @@ public record OperationalEventHistoryQuery(
         return normalized;
     }
 
-    private static Duration effectiveSince(String requestedSince) {
+    private static Duration effectiveSince(String requestedSince, int retentionDays) {
         Matcher matcher = SINCE_PATTERN.matcher(requestedSince);
         if (!matcher.matches()) {
             throw new InvalidOperationalEventHistoryQueryException("since must be positive integer plus h or d");
@@ -70,7 +80,9 @@ public record OperationalEventHistoryQuery(
         } catch (ArithmeticException exception) {
             requested = MAX_SINCE.plusSeconds(1);
         }
-        return requested.compareTo(MAX_SINCE) <= 0 ? requested : MAX_SINCE;
+        Duration retentionBound = Duration.ofDays(Math.min(14, retentionDays));
+        Duration upperBound = retentionBound.compareTo(MAX_SINCE) <= 0 ? retentionBound : MAX_SINCE;
+        return requested.compareTo(upperBound) <= 0 ? requested : upperBound;
     }
 
     private static int effectiveLimit(String limit) {

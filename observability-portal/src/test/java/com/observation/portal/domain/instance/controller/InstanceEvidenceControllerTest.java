@@ -58,16 +58,16 @@ class InstanceEvidenceControllerTest {
                 .andExpect(jsonPath("$.instance.instanceId").value(INSTANCE_ID.toString()))
                 .andExpect(jsonPath("$.instance.instanceName").value("pod-a"))
                 .andExpect(jsonPath("$.metricData.statusSource").value("accepted_bucket"))
-                .andExpect(jsonPath("$.metricData.window.name").value("current_15m"))
+                .andExpect(jsonPath("$.metricData.window.name").value("recent_30_minutes"))
                 .andExpect(jsonPath("$.metricData.window.bucketDurationSeconds").value(30))
                 .andExpect(jsonPath("$.metricData.errorRate").value(nullValue()))
                 .andExpect(jsonPath("$.starterConnection.statusSource").value("starter_heartbeat"))
                 .andExpect(jsonPath("$.starterConnection.stateImpact").value("none"))
                 .andExpect(jsonPath("$.starterPercentiles.source").value("starter_canonical_percentile"))
                 .andExpect(jsonPath("$.starterPercentiles.points").isArray())
-                .andExpect(jsonPath("$.histogramDistribution.source").value("histogram_bucket_distribution"))
+                .andExpect(jsonPath("$.histogramDistribution.source").value("accepted_bucket"))
                 .andExpect(jsonPath("$.histogramDistribution.buckets").isArray())
-                .andExpect(jsonPath("$.resourceHints.source").value("accepted_bucket_latest_sample"))
+                .andExpect(jsonPath("$.resourceHints.source").value("accepted_bucket"))
                 .andExpect(jsonPath("$.applicationTriageContribution.relatedRuleIds").isArray())
                 .andExpect(jsonPath("$.endpointEvidence.source").value("accepted_metric_buckets.endpoints_json"))
                 .andExpect(jsonPath("$.endpointEvidence.reason").value(nullValue()))
@@ -161,8 +161,8 @@ class InstanceEvidenceControllerTest {
                         OffsetDateTime.parse("2026-05-26T05:00:05Z"),
                         OffsetDateTime.parse("2026-05-26T06:10:05Z")),
                 InstanceEvidenceReadModel.MetricData.missing(new InstanceEvidenceReadModel.MetricWindow(
-                        "current_15m",
-                        OffsetDateTime.parse("2026-05-26T05:55:30Z"),
+                        "recent_30_minutes",
+                        OffsetDateTime.parse("2026-05-26T05:40:30Z"),
                         OffsetDateTime.parse("2026-05-26T06:10:30Z"),
                         30)),
                 InstanceEvidenceReadModel.StarterConnection.missing(),

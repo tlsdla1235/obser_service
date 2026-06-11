@@ -34,43 +34,88 @@ class EndpointPriorityReadModelShapeTest {
                         "/orders",
                         "POST /orders",
                         ApplicationDashboardReadModel.EndpointPriorityReason.ERROR_AND_LATENCY,
-                        List.of("endpoint_error_spike", "endpoint_latency_spike"),
+                        List.of("endpoint_error_rate_high", "endpoint_slow_share_high"),
                         0.84d,
                         84,
                         new ApplicationDashboardReadModel.EndpointPriorityFreshness(
                                 "current",
                                 OffsetDateTime.parse("2026-05-26T01:10:30Z"),
-                                "current",
+                                "recent_30_minutes",
                                 null),
                         new ApplicationDashboardReadModel.EndpointPriorityEvidence(
                                 120L,
                                 12L,
                                 BigDecimal.valueOf(0.10d),
-                                100L,
-                                1L,
-                                BigDecimal.valueOf(0.01d),
-                                BigDecimal.valueOf(0.09d),
+                                null,
+                                null,
+                                null,
+                                null,
                                 List.of(
                                         new ApplicationDashboardReadModel.HistogramBucket(500L, 70L),
                                         new ApplicationDashboardReadModel.HistogramBucket(1000L, 120L)),
-                                List.of(
-                                        new ApplicationDashboardReadModel.HistogramBucket(500L, 95L),
-                                        new ApplicationDashboardReadModel.HistogramBucket(1000L, 100L)),
+                                null,
                                 BigDecimal.valueOf(0.416667d),
-                                BigDecimal.valueOf(0.05d),
-                                BigDecimal.valueOf(0.366667d),
-                                "histogram_bucket_distribution",
+                                null,
+                                null,
+                                "accepted_bucket",
                                 ApplicationDashboardReadModel.EndpointEvidenceStatus.AVAILABLE,
                                 ApplicationDashboardReadModel.EndpointEvidenceStatus.AVAILABLE),
-                        "이 endpoint의 오류 로그와 외부 의존성 지연 가능성을 먼저 확인해보세요.");
+                        "최근 30분 동안 이 endpoint의 오류와 느린 응답 근거를 함께 확인하세요.");
 
         assertThat(item.rank()).isEqualTo(1);
         assertThat(item.endpointKey()).isEqualTo("POST /orders");
         assertThat(item.reason()).isEqualTo(ApplicationDashboardReadModel.EndpointPriorityReason.ERROR_AND_LATENCY);
         assertThat(item.freshness().status()).isEqualTo("current");
-        assertThat(item.evidence().bucketDistributionSource()).isEqualTo("histogram_bucket_distribution");
+        assertThat(item.evidence().bucketDistributionSource()).isEqualTo("accepted_bucket");
         assertThat(item.evidence().durationBuckets()).hasSize(2);
-        assertThat(item.evidence().baselineDurationBuckets()).hasSize(2);
+        assertThat(item.evidence().baselineDurationBuckets()).isNull();
+    }
+
+    @Test
+    void readSemanticsKeepsAcceptedBucketAsCanonicalDistributionSourceAndDisallowsHistogramPercentiles() {
+        ApplicationDashboardReadModel.ReadSemantics live = ApplicationDashboardReadModel.ReadSemantics.live();
+        ApplicationDashboardReadModel.ReadSemantics snapshot = ApplicationDashboardReadModel.ReadSemantics.snapshot();
+
+        assertThat(live.source()).isEqualTo("accepted_metric_buckets");
+        assertThat(snapshot.source()).isEqualTo("dashboard_snapshots.read_model_json");
+        assertThat(live.bucketDistributionSource()).isEqualTo("accepted_bucket");
+        assertThat(snapshot.bucketDistributionSource()).isEqualTo("accepted_bucket");
+        assertThat(live.histogramBucketsUsedForPercentiles()).isFalse();
+        assertThat(snapshot.histogramBucketsUsedForPercentiles()).isFalse();
+
+        assertThatThrownBy(() -> new ApplicationDashboardReadModel.EndpointPriorityEvidence(
+                10L,
+                1L,
+                BigDecimal.valueOf(0.1d),
+                null,
+                null,
+                null,
+                null,
+                List.of(new ApplicationDashboardReadModel.HistogramBucket(500L, 10L)),
+                null,
+                null,
+                null,
+                null,
+                "histogram_bucket_distribution",
+                ApplicationDashboardReadModel.EndpointEvidenceStatus.AVAILABLE,
+                ApplicationDashboardReadModel.EndpointEvidenceStatus.AVAILABLE))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void degradedDashboardKeepsResourceTriageAsAttentionEvidence() {
+        ApplicationDashboardReadModel readModel = readModelWithTriageCards(List.of(
+                triageCard("application_error_rate_high", ApplicationDashboardReadModel.TriageSeverity.WARNING),
+                triageCard("db_pool_high_with_latency", ApplicationDashboardReadModel.TriageSeverity.INFO)));
+
+        assertThat(readModel.stateReasons())
+                .extracting(ApplicationDashboardReadModel.StateReason::reasonCode)
+                .containsExactly("application_error_rate_high");
+        assertThat(readModel.attentionEvidence())
+                .extracting(ApplicationDashboardReadModel.AttentionEvidence::reasonCode)
+                .contains("db_pool_high_with_latency");
+        assertThat(readModel.attentionEvidence())
+                .allMatch(evidence -> !evidence.affectsLifecycleState());
     }
 
     @Test
@@ -79,23 +124,23 @@ class EndpointPriorityReadModelShapeTest {
                 new ApplicationDashboardReadModel.EndpointPriorityFreshness(
                         "current",
                         OffsetDateTime.parse("2026-05-26T01:10:30Z"),
-                        "current",
+                        "recent_30_minutes",
                         null);
         ApplicationDashboardReadModel.EndpointPriorityEvidence evidence =
                 new ApplicationDashboardReadModel.EndpointPriorityEvidence(
                         30L,
                         2L,
                         BigDecimal.valueOf(0.066667d),
-                        30L,
-                        0L,
-                        BigDecimal.ZERO,
-                        BigDecimal.valueOf(0.066667d),
                         null,
                         null,
                         null,
                         null,
                         null,
-                        "histogram_bucket_distribution",
+                        null,
+                        null,
+                        null,
+                        null,
+                        "accepted_bucket",
                         ApplicationDashboardReadModel.EndpointEvidenceStatus.AVAILABLE,
                         ApplicationDashboardReadModel.EndpointEvidenceStatus.UNAVAILABLE);
 
@@ -177,9 +222,77 @@ class EndpointPriorityReadModelShapeTest {
                 null,
                 null,
                 null,
-                "histogram_bucket_distribution",
+                "accepted_bucket",
                 ApplicationDashboardReadModel.EndpointEvidenceStatus.AVAILABLE,
                 ApplicationDashboardReadModel.EndpointEvidenceStatus.UNAVAILABLE))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private static ApplicationDashboardReadModel readModelWithTriageCards(
+            List<ApplicationDashboardReadModel.TriageCard> triageCards) {
+        OffsetDateTime end = OffsetDateTime.parse("2026-05-26T01:10:30Z");
+        return new ApplicationDashboardReadModel(
+                end,
+                new ApplicationDashboardReadModel.Application(
+                        java.util.UUID.fromString("00000000-0000-0000-0000-000000005201"),
+                        java.util.UUID.fromString("00000000-0000-0000-0000-000000005211"),
+                        "orders-api",
+                        "prod",
+                        end,
+                        null,
+                        new ApplicationDashboardReadModel.SourceWindow(
+                                new ApplicationDashboardReadModel.Window(end.minusMinutes(30), end),
+                                null),
+                        new ApplicationDashboardReadModel.Freshness(end, end.plusSeconds(90), end.plusSeconds(180))),
+                new ApplicationDashboardReadModel.State(
+                        "degraded",
+                        "주의 필요",
+                        "최근 30분 기준 degraded입니다.",
+                        "state reason을 확인하세요.",
+                        "application"),
+                new ApplicationDashboardReadModel.StarterConnection(
+                        "starter_heartbeat",
+                        end.minusSeconds(15),
+                        "received",
+                        "starter_connected",
+                        "none"),
+                null,
+                new ApplicationDashboardReadModel.Recovery(false, null, null, null),
+                new ApplicationDashboardReadModel.Metrics(100L, 8L, BigDecimal.valueOf(0.08d)),
+                ApplicationDashboardReadModel.SourceScopedPercentiles.empty(),
+                ApplicationDashboardReadModel.HistogramDistribution.empty(),
+                triageCards,
+                List.of(),
+                List.of(),
+                null);
+    }
+
+    private static ApplicationDashboardReadModel.TriageCard triageCard(
+            String ruleId,
+            ApplicationDashboardReadModel.TriageSeverity severity) {
+        return new ApplicationDashboardReadModel.TriageCard(
+                ruleId,
+                severity,
+                "확인 필요",
+                ruleId + " summary",
+                ruleId + " recommendation",
+                severity == ApplicationDashboardReadModel.TriageSeverity.INFO ? 0.7d : 0.9d,
+                severity == ApplicationDashboardReadModel.TriageSeverity.INFO ? 65 : 90,
+                null,
+                new ApplicationDashboardReadModel.TriageEvidence(
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "current",
+                        null));
     }
 }

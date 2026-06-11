@@ -25,9 +25,9 @@ public record InstanceSnapshotTrendReadModel(
     public static final String SOURCE = "dashboard_snapshots.read_model_json.instanceSummary.items";
     public static final String DEFAULT_SINCE = "7d";
     public static final String MAX_SINCE = "14d";
-    public static final int DEFAULT_LIMIT = 168;
-    public static final int MAX_LIMIT = 336;
-    public static final String ORDER = "capturedAt_asc";
+    public static final int DEFAULT_LIMIT = 336;
+    public static final int MAX_LIMIT = 672;
+    public static final String ORDER = "currentWindowEndUtc_asc";
 
     /**
      * top-level response가 source, horizon, bounded point list를 항상 포함하도록 검증한다.
@@ -121,7 +121,7 @@ public record InstanceSnapshotTrendReadModel(
     }
 
     /**
-     * trend 조회에 적용된 effective horizon, 요청 token, limit clamp, 정렬 정책을 담는다.
+     * trend 조회에 적용된 current window horizon, 요청 token, limit clamp, 정렬 정책을 담는다.
      */
     public record Horizon(
             OffsetDateTime since,

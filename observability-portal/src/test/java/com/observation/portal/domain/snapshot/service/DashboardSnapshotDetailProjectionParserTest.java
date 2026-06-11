@@ -19,6 +19,24 @@ class DashboardSnapshotDetailProjectionParserTest {
     void projectsEndpointEvidenceAnchorsAndResolvesInstanceSummaryRefsByEndpointKey() {
         DashboardSnapshotStoredReadModelProjection projection = parser.project("""
                 {
+                  "schemaVersion": "dashboard_read_model.v1",
+                  "mode": "snapshot",
+                  "window": {"type": "recent_30_minutes"},
+                  "thresholds": {"minimumRequestCount": 30},
+                  "operatorSummary": {"headline": "저장된 요약"},
+                  "dataQuality": {"limitations": ["baseline_comparison_not_used_for_mvp"]},
+                  "signals": {"red": {"requestCount": 120}},
+                  "stateReasons": [],
+                  "attentionEvidence": [],
+                  "firstLookCandidates": [],
+                  "readSemantics": {
+                    "source": "dashboard_snapshots.read_model_json",
+                    "snapshotDetailRecalculates": false,
+                    "markerIsStateSource": false,
+                    "baselineComparisonUsedForMvpDecision": false,
+                    "histogramBucketsUsedForPercentiles": false,
+                    "bucketDistributionSource": "accepted_bucket"
+                  },
                   "application": {"applicationId": "app-1"},
                   "state": {"code": "degraded"},
                   "recovery": {"isRecovering": false},
@@ -53,6 +71,26 @@ class DashboardSnapshotDetailProjectionParserTest {
                 }
                 """);
 
+        assertThat(projection.readModel().schemaVersion().asText()).isEqualTo("dashboard_read_model.v1");
+        assertThat(projection.readModel().mode().asText()).isEqualTo("snapshot");
+        assertThat(projection.readModel().window().path("type").asText()).isEqualTo("recent_30_minutes");
+        assertThat(projection.readModel().thresholds().path("minimumRequestCount").asLong()).isEqualTo(30L);
+        assertThat(projection.readModel().operatorSummary().path("headline").asText()).isEqualTo("저장된 요약");
+        assertThat(projection.readModel().dataQuality().path("limitations").get(0).asText())
+                .isEqualTo("baseline_comparison_not_used_for_mvp");
+        assertThat(projection.readModel().signals().path("red").path("requestCount").asLong()).isEqualTo(120L);
+        assertThat(projection.readModel().stateReasons()).isEmpty();
+        assertThat(projection.readModel().attentionEvidence()).isEmpty();
+        assertThat(projection.readModel().firstLookCandidates()).isEmpty();
+        assertThat(projection.readModel().readSemantics().path("source").asText())
+                .isEqualTo("dashboard_snapshots.read_model_json");
+        assertThat(projection.snapshotEndpointEvidence().source())
+                .isEqualTo("dashboard_snapshots.read_model_json.endpointPriority");
+        assertThat(projection.snapshotEndpointEvidence().selectionPolicy()).isEqualTo("stored_read_model");
+        assertThat(projection.instanceSummary().schemaVersion()).isEqualTo("dashboard_read_model.v1");
+        assertThat(projection.instanceSummary().source())
+                .isEqualTo("dashboard_snapshots.read_model_json.instanceSummary.items");
+        assertThat(projection.instanceSummary().selectionPolicy()).isEqualTo("stored_read_model");
         assertThat(projection.snapshotEndpointEvidence().items())
                 .extracting("anchorId")
                 .containsExactly("endpoint-evidence-1", "endpoint-evidence-2", "endpoint-evidence-3");
@@ -63,6 +101,67 @@ class DashboardSnapshotDetailProjectionParserTest {
         assertThat(item.endpointEvidenceRefs())
                 .extracting(SnapshotEndpointEvidenceRef::anchorStatus)
                 .containsExactly("resolved", "missing");
+    }
+
+    @Test
+    void legacyStoredReadModelWithoutCanonicalFieldsProjectsSnapshotCanonicalFallbacks() {
+        DashboardSnapshotStoredReadModelProjection projection = parser.project("""
+                {
+                  "application": {
+                    "lastAcceptedBucketAt": "2026-05-25T10:31:30Z",
+                    "sourceWindow": {
+                      "current": {
+                        "startUtc": "2026-05-25T10:02:30Z",
+                        "endUtc": "2026-05-25T10:32:30Z"
+                      }
+                    }
+                  },
+                  "state": {
+                    "code": "degraded",
+                    "rationale": "legacy 저장 상태입니다.",
+                    "recommendedAction": "legacy detail 확인"
+                  },
+                  "zeroInsight": {
+                    "message": "legacy zero insight",
+                    "recommendedAction": "legacy action"
+                  },
+                  "metrics": {
+                    "requestCount": 91,
+                    "errorCount": 7,
+                    "errorRate": 0.076923
+                  },
+                  "triageCards": [
+                    {"ruleId": "application_error_rate_high", "confidence": 0.9}
+                  ],
+                  "readSemantics": {
+                    "source": "accepted_metric_buckets",
+                    "snapshotDetailRecalculates": true
+                  },
+                  "instanceSummary": {
+                    "schemaVersion": "1.0",
+                    "items": []
+                  }
+                }
+                """);
+
+        assertThat(projection.readModel().schemaVersion().asText()).isEqualTo("dashboard_read_model.v1");
+        assertThat(projection.readModel().mode().asText()).isEqualTo("snapshot");
+        assertThat(projection.readModel().window().path("type").asText()).isEqualTo("recent_30_minutes");
+        assertThat(projection.readModel().window().path("startUtc").asText())
+                .isEqualTo("2026-05-25T10:02:30Z");
+        assertThat(projection.readModel().thresholds().path("minimumRequestCount").asLong()).isEqualTo(30L);
+        assertThat(projection.readModel().operatorSummary().path("primaryProblemCode").asText())
+                .isEqualTo("application_error_rate_high");
+        assertThat(projection.readModel().dataQuality().path("limitations").get(0).asText())
+                .isEqualTo("legacy_snapshot_without_canonical_fields");
+        assertThat(projection.readModel().dataQuality().path("limitations").get(1).asText())
+                .isEqualTo("baseline_comparison_not_used_for_mvp");
+        assertThat(projection.readModel().signals().path("red").path("requestCount").asLong()).isEqualTo(91L);
+        assertThat(projection.readModel().readSemantics().path("source").asText())
+                .isEqualTo("dashboard_snapshots.read_model_json");
+        assertThat(projection.readModel().readSemantics().path("snapshotDetailRecalculates").asBoolean())
+                .isFalse();
+        assertThat(projection.instanceSummary().schemaVersion()).isEqualTo("dashboard_read_model.v1");
     }
 
     @Test

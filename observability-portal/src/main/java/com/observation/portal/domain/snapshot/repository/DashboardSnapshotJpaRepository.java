@@ -9,6 +9,7 @@ import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -28,7 +29,8 @@ interface DashboardSnapshotJpaRepository extends JpaRepository<DashboardSnapshot
      * instance trend projection 후보 snapshot을 newest-first로 조회한다.
      *
      * <p>projection은 row metadata와 저장 JSON만 전달하며 lifecycle state, rule, endpoint priority, marker, p95/p99를
-     * 계산하지 않는다. `generatedAtUntil`은 service가 계산한 horizon 상한이며 future-dated snapshot이 limit를 차지하지 않게 한다.</p>
+     * 계산하지 않는다. `currentWindowEndUntil`은 service가 계산한 slot horizon 상한이며 future slot snapshot이 limit를
+     * 차지하지 않게 한다.</p>
      */
     @Query("select new com.observation.portal.domain.snapshot.model.DashboardSnapshotTrendRow("
             + "snapshot.id, "
@@ -40,14 +42,14 @@ interface DashboardSnapshotJpaRepository extends JpaRepository<DashboardSnapshot
             + "from DashboardSnapshotEntity snapshot "
             + "where snapshot.projectId = :projectId "
             + "and snapshot.applicationId = :applicationId "
-            + "and snapshot.generatedAt >= :generatedAtSince "
-            + "and snapshot.generatedAt <= :generatedAtUntil "
-            + "order by snapshot.generatedAt desc, snapshot.id desc")
+            + "and snapshot.currentWindowEndUtc >= :currentWindowEndSince "
+            + "and snapshot.currentWindowEndUtc <= :currentWindowEndUntil "
+            + "order by snapshot.currentWindowEndUtc desc, snapshot.generatedAt desc, snapshot.id asc")
     List<DashboardSnapshotTrendRow> findTrendRowsNewestFirst(
             @Param("projectId") UUID projectId,
             @Param("applicationId") UUID applicationId,
-            @Param("generatedAtSince") OffsetDateTime generatedAtSince,
-            @Param("generatedAtUntil") OffsetDateTime generatedAtUntil,
+            @Param("currentWindowEndSince") OffsetDateTime currentWindowEndSince,
+            @Param("currentWindowEndUntil") OffsetDateTime currentWindowEndUntil,
             Pageable pageable);
 
     /**
@@ -78,7 +80,7 @@ interface DashboardSnapshotJpaRepository extends JpaRepository<DashboardSnapshot
             @Param("snapshotId") UUID snapshotId);
 
     /**
-     * marker horizon 안의 stored snapshot row를 capturedAt ASC, snapshot id ASC 후보 순서로 bounded 조회한다.
+     * marker horizon 안의 stored snapshot row를 slot ASC, capturedAt ASC, snapshot id ASC 후보 순서로 bounded 조회한다.
      */
     @Query("select new com.observation.portal.domain.snapshot.model.DashboardSnapshotDetailRow("
             + "snapshot.id, "
@@ -98,14 +100,14 @@ interface DashboardSnapshotJpaRepository extends JpaRepository<DashboardSnapshot
             + "from DashboardSnapshotEntity snapshot "
             + "where snapshot.projectId = :projectId "
             + "and snapshot.applicationId = :applicationId "
-            + "and snapshot.generatedAt >= :generatedAtSince "
-            + "and snapshot.generatedAt <= :generatedAtUntil "
-            + "order by snapshot.generatedAt asc, snapshot.id asc")
+            + "and snapshot.currentWindowEndUtc >= :currentWindowEndSince "
+            + "and snapshot.currentWindowEndUtc <= :currentWindowEndUntil "
+            + "order by snapshot.currentWindowEndUtc asc, snapshot.generatedAt asc, snapshot.id asc")
     List<DashboardSnapshotDetailRow> findMarkerRows(
             @Param("projectId") UUID projectId,
             @Param("applicationId") UUID applicationId,
-            @Param("generatedAtSince") OffsetDateTime generatedAtSince,
-            @Param("generatedAtUntil") OffsetDateTime generatedAtUntil,
+            @Param("currentWindowEndSince") OffsetDateTime currentWindowEndSince,
+            @Param("currentWindowEndUntil") OffsetDateTime currentWindowEndUntil,
             Pageable pageable);
 
     /**
@@ -132,14 +134,14 @@ interface DashboardSnapshotJpaRepository extends JpaRepository<DashboardSnapshot
             + "from DashboardSnapshotEntity snapshot "
             + "where snapshot.projectId = :projectId "
             + "and snapshot.applicationId = :applicationId "
-            + "and snapshot.generatedAt >= :generatedAtSince "
-            + "and snapshot.generatedAt <= :generatedAtUntil "
-            + "order by snapshot.generatedAt desc, snapshot.id asc")
+            + "and snapshot.currentWindowEndUtc >= :currentWindowEndSince "
+            + "and snapshot.currentWindowEndUtc <= :currentWindowEndUntil "
+            + "order by snapshot.currentWindowEndUtc desc, snapshot.generatedAt desc, snapshot.id asc")
     List<DashboardSnapshotDetailRow> findOperationalHistoryRows(
             @Param("projectId") UUID projectId,
             @Param("applicationId") UUID applicationId,
-            @Param("generatedAtSince") OffsetDateTime generatedAtSince,
-            @Param("generatedAtUntil") OffsetDateTime generatedAtUntil,
+            @Param("currentWindowEndSince") OffsetDateTime currentWindowEndSince,
+            @Param("currentWindowEndUntil") OffsetDateTime currentWindowEndUntil,
             Pageable pageable);
 
     /**
@@ -153,10 +155,12 @@ interface DashboardSnapshotJpaRepository extends JpaRepository<DashboardSnapshot
             + "from DashboardSnapshotEntity snapshot "
             + "where snapshot.applicationId = :applicationId "
             + "and snapshot.currentWindowEndUtc < :currentWindowEndUtc "
+            + "and snapshot.currentWindowEndUtc >= :currentWindowEndSince "
             + "order by snapshot.currentWindowEndUtc desc, snapshot.generatedAt desc, snapshot.id asc")
     List<DashboardSnapshotSourceRow> findPreviousRows(
             @Param("applicationId") UUID applicationId,
             @Param("currentWindowEndUtc") OffsetDateTime currentWindowEndUtc,
+            @Param("currentWindowEndSince") OffsetDateTime currentWindowEndSince,
             Pageable pageable);
 
     /**
@@ -170,12 +174,23 @@ interface DashboardSnapshotJpaRepository extends JpaRepository<DashboardSnapshot
             + "from DashboardSnapshotEntity snapshot "
             + "where snapshot.applicationId = :applicationId "
             + "and snapshot.currentWindowEndUtc < :currentWindowEndUtc "
+            + "and snapshot.currentWindowEndUtc >= :currentWindowEndSince "
             + "and snapshot.stateCode = 'active' "
             + "order by snapshot.currentWindowEndUtc desc, snapshot.generatedAt desc, snapshot.id asc")
     List<DashboardSnapshotSourceRow> findPreviousActiveRows(
             @Param("applicationId") UUID applicationId,
             @Param("currentWindowEndUtc") OffsetDateTime currentWindowEndUtc,
+            @Param("currentWindowEndSince") OffsetDateTime currentWindowEndSince,
             Pageable pageable);
+
+    /**
+     * cleanup cutoff보다 오래된 dashboard snapshot row를 current window end 기준으로 물리 삭제한다.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from DashboardSnapshotEntity snapshot "
+            + "where snapshot.currentWindowEndUtc < :snapshotCutoffUtc")
+    int deleteDashboardSnapshotsWindowEndedBefore(
+            @Param("snapshotCutoffUtc") OffsetDateTime snapshotCutoffUtc);
 
     /**
      * writer upsert identity에 해당하는 row를 transaction 안에서 잠그고 조회한다.

@@ -1,0 +1,42 @@
+[
+  {
+    "viewport": {
+      "name": "desktop",
+      "width": 1440,
+      "height": 1000
+    },
+    "path": "/Users/tlsdla1235/study/obser_service/implementation-artifacts/epic-14-dashboard-design-parity-qa/mock-preview-14-4-instance-modal-desktop-1440x1000.png",
+    "metrics": {
+      "bodyClientWidth": 1440,
+      "bodyScrollWidth": 1440,
+      "hasHorizontalOverflow": false,
+      "modalWidth": 1120,
+      "modalHeight": 944,
+      "modalHeadTop": 29,
+      "tableWrapClientWidth": 1050,
+      "tableWrapScrollWidth": 1050,
+      "hasSnapshotCopy": true,
+      "hasProjectionCopyInDom": true
+    }
+  },
+  {
+    "viewport": {
+      "name": "mobile",
+      "width": 390,
+      "height": 844
+    },
+    "path": "/Users/tlsdla1235/study/obser_service/implementation-artifacts/epic-14-dashboard-design-parity-qa/mock-preview-14-4-instance-modal-mobile-390x844.png",
+    "metrics": {
+      "bodyClientWidth": 390,
+      "bodyScrollWidth": 390,
+      "hasHorizontalOverflow": false,
+      "modalWidth": 366,
+      "modalHeight": 820,
+      "modalHeadTop": 13,
+      "tableWrapClientWidth": 304,
+      "tableWrapScrollWidth": 760,
+      "hasSnapshotCopy": true,
+      "hasProjectionCopyInDom": true
+    }
+  }
+]

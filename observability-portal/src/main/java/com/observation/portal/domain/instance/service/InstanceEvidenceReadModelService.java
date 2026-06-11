@@ -73,10 +73,17 @@ public class InstanceEvidenceReadModelService {
 
     private static final Duration STARTER_HEARTBEAT_RECENT_WINDOW = Duration.ofSeconds(90);
     private static final long MINIMUM_ACTIVE_SAMPLE_REQUEST_COUNT = 30L;
-    private static final int MAX_PERCENTILE_POINTS = 30;
+    private static final int MAX_PERCENTILE_POINTS = 60;
+    private static final String ACCEPTED_BUCKET_SOURCE = "accepted_bucket";
+    private static final String ENDPOINT_EVIDENCE_SOURCE = "accepted_metric_buckets.endpoints_json";
+    private static final String ENDPOINT_EVIDENCE_SCOPE = "instance_recent_30_minutes";
+    private static final String ENDPOINT_EVIDENCE_SELECTION_POLICY =
+            "application_evidence_presence_then_instance_symptom";
+    private static final String SERVER_ORDER_POLICY = "server_order";
     private static final String STARTER_LOCAL_SOURCE = "starter_local";
     private static final String INSTANCE_BUCKET_SCOPE = "instance_bucket";
     private static final String HISTOGRAM_BOUNDARY_MISMATCH_REASON = "histogram_boundary_mismatch";
+    private static final String BASELINE_NOT_USED_REASON = "baseline_comparison_not_used_for_mvp";
 
     private final ApplicationRepository applicationRepository;
     private final ApplicationInstanceRepository applicationInstanceRepository;
@@ -92,7 +99,7 @@ public class InstanceEvidenceReadModelService {
     private final Clock clock;
 
     /**
-     * catalog path 정합성 lookup repository와 current 15분 evidence 계산 component를 주입한다.
+     * catalog path 정합성 lookup repository와 recent 30분 evidence 계산 component를 주입한다.
      */
     public InstanceEvidenceReadModelService(
             ApplicationRepository applicationRepository,
@@ -344,14 +351,14 @@ public class InstanceEvidenceReadModelService {
         if (evidenceRows.isEmpty()) {
             return new InstanceEvidenceReadModel.StarterPercentiles(
                     "starter_canonical_percentile",
-                    "instance",
-                    "current_15m",
+                    INSTANCE_BUCKET_SCOPE,
+                    "recent_30_minutes",
                     30,
-                    30,
+                    MAX_PERCENTILE_POINTS,
                     "source_scoped_series",
                     "no_average_no_max_no_merge_no_histogram_recalculation",
                     "missing",
-                    "no_percentile_points_in_current_window",
+                    "no_percentile_points_in_recent_30_minutes",
                     List.of());
         }
 
@@ -362,14 +369,14 @@ public class InstanceEvidenceReadModelService {
         if (validPoints.isEmpty()) {
             return new InstanceEvidenceReadModel.StarterPercentiles(
                     "starter_canonical_percentile",
-                    "instance",
-                    "current_15m",
+                    INSTANCE_BUCKET_SCOPE,
+                    "recent_30_minutes",
                     30,
-                    30,
+                    MAX_PERCENTILE_POINTS,
                     "source_scoped_series",
                     "no_average_no_max_no_merge_no_histogram_recalculation",
                     "insufficient",
-                    "no_valid_percentile_points_in_current_window",
+                    "no_valid_percentile_points_in_recent_30_minutes",
                     List.of());
         }
 
@@ -379,10 +386,10 @@ public class InstanceEvidenceReadModelService {
                 .toList();
         return new InstanceEvidenceReadModel.StarterPercentiles(
                 "starter_canonical_percentile",
-                "instance",
-                "current_15m",
+                INSTANCE_BUCKET_SCOPE,
+                "recent_30_minutes",
                 30,
-                30,
+                MAX_PERCENTILE_POINTS,
                 "source_scoped_series",
                 "no_average_no_max_no_merge_no_histogram_recalculation",
                 "available",
@@ -416,10 +423,10 @@ public class InstanceEvidenceReadModelService {
         List<HistogramBucketEvidenceRow> evidenceRows = List.copyOf(Objects.requireNonNullElse(rows, List.of()));
         if (evidenceRows.isEmpty()) {
             return new InstanceEvidenceReadModel.HistogramDistribution(
-                    "histogram_bucket_distribution",
-                    "selected_instance_current_15m",
+                    ACCEPTED_BUCKET_SOURCE,
+                    "instance",
                     "missing",
-                    "no_histogram_buckets_in_current_window",
+                    "no_histogram_buckets_in_recent_30_minutes",
                     0L,
                     List.of());
         }
@@ -443,8 +450,8 @@ public class InstanceEvidenceReadModelService {
                 boundarySet.forEach(boundary -> mergedCounts.put(boundary, 0L));
             } else if (!expectedBoundarySet.equals(boundarySet)) {
                 return new InstanceEvidenceReadModel.HistogramDistribution(
-                        "histogram_bucket_distribution",
-                        "selected_instance_current_15m",
+                        ACCEPTED_BUCKET_SOURCE,
+                        "instance",
                         "unavailable",
                         HISTOGRAM_BOUNDARY_MISMATCH_REASON,
                         0L,
@@ -462,8 +469,8 @@ public class InstanceEvidenceReadModelService {
                 .map(entry -> new InstanceEvidenceReadModel.HistogramBucket(entry.getKey(), entry.getValue()))
                 .toList();
         return new InstanceEvidenceReadModel.HistogramDistribution(
-                "histogram_bucket_distribution",
-                "selected_instance_current_15m",
+                ACCEPTED_BUCKET_SOURCE,
+                "instance",
                 "available",
                 null,
                 buckets.get(buckets.size() - 1).count(),
@@ -472,8 +479,8 @@ public class InstanceEvidenceReadModelService {
 
     private static InstanceEvidenceReadModel.HistogramDistribution insufficientHistogram() {
         return new InstanceEvidenceReadModel.HistogramDistribution(
-                "histogram_bucket_distribution",
-                "selected_instance_current_15m",
+                ACCEPTED_BUCKET_SOURCE,
+                "instance",
                 "insufficient",
                 "invalid_histogram_bucket_evidence",
                 0L,
@@ -484,7 +491,7 @@ public class InstanceEvidenceReadModelService {
             Optional<RuntimeRatioEvidenceRow> runtimeRatio) {
         return runtimeRatio
                 .map(row -> new InstanceEvidenceReadModel.ResourceHints(
-                        "accepted_bucket_latest_sample",
+                        ACCEPTED_BUCKET_SOURCE,
                         "available",
                         null,
                         row.bucketEndUtc(),
@@ -492,9 +499,9 @@ public class InstanceEvidenceReadModelService {
                         row.heapUsedRatio(),
                         row.datasourcePoolUsageRatio()))
                 .orElseGet(() -> new InstanceEvidenceReadModel.ResourceHints(
-                        "accepted_bucket_latest_sample",
+                        ACCEPTED_BUCKET_SOURCE,
                         "missing",
-                        "no_runtime_ratio_sample_in_current_window",
+                        "no_runtime_ratio_sample_in_recent_30_minutes",
                         null,
                         null,
                         null,
@@ -514,20 +521,12 @@ public class InstanceEvidenceReadModelService {
                 application.id(),
                 dashboardWindow.current().startUtc(),
                 dashboardWindow.current().endUtc());
-        WindowBucketAggregate baselineAggregate = metricBucketRepository.findWindowAggregateByApplicationId(
-                application.id(),
-                dashboardWindow.baseline().startUtc(),
-                dashboardWindow.baseline().endUtc());
         ApplicationDashboardReadModel.HistogramDistribution applicationHistogram =
                 applicationHistogramDistribution(
                         metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
                                 application.id(),
                                 dashboardWindow.current().startUtc(),
-                                dashboardWindow.current().endUtc()),
-                        metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationId(
-                                application.id(),
-                                dashboardWindow.baseline().startUtc(),
-                                dashboardWindow.baseline().endUtc()));
+                                dashboardWindow.current().endUtc()));
         Optional<RuntimeRatioEvidenceRow> applicationRuntimeRatio =
                 metricBucketRepository.findLatestRuntimeRatioEvidenceRowByApplicationId(
                         application.id(),
@@ -541,14 +540,8 @@ public class InstanceEvidenceReadModelService {
                 application.id(),
                 dashboardWindow.current().startUtc(),
                 dashboardWindow.current().endUtc());
-        List<EndpointEvidenceRow> baselineEndpointRows = metricBucketRepository.findEndpointEvidenceRowsByApplicationId(
-                application.id(),
-                dashboardWindow.baseline().startUtc(),
-                dashboardWindow.baseline().endUtc());
-
         TriageSummary triageSummary = triageSummaryService.summarize(new TriageSummaryInput(
                 currentAggregate,
-                baselineAggregate,
                 applicationHistogram,
                 ApplicationDashboardReadModel.SourceScopedPercentiles.empty(),
                 recentBuckets,
@@ -558,7 +551,6 @@ public class InstanceEvidenceReadModelService {
                 applicationEndpointPriority(
                         applicationFreshness.status(),
                         currentEndpointRows,
-                        baselineEndpointRows,
                         latestApplicationBucketEndUtc);
         WindowEndpointEvidence endpointAggregate = endpointEvidenceAggregationService.mergeWindow(currentEndpointRows);
         return new ApplicationEvidenceContext(
@@ -572,12 +564,11 @@ public class InstanceEvidenceReadModelService {
     private List<ApplicationDashboardReadModel.EndpointPriorityItem> applicationEndpointPriority(
             AcceptedBucketFreshnessStatus applicationFreshnessStatus,
             List<EndpointEvidenceRow> currentEndpointRows,
-            List<EndpointEvidenceRow> baselineEndpointRows,
             Optional<OffsetDateTime> latestApplicationBucketEndUtc) {
         return endpointPriorityService.endpointPriority(new EndpointPriorityService.EndpointPriorityInput(
                 applicationFreshnessStatus,
                 currentEndpointRows,
-                baselineEndpointRows,
+                List.of(),
                 latestApplicationBucketEndUtc));
     }
 
@@ -665,10 +656,10 @@ public class InstanceEvidenceReadModelService {
             UtcTimeInterval currentWindow) {
         if (applicationContext.applicationFreshness().status() != AcceptedBucketFreshnessStatus.CURRENT) {
             return new InstanceEvidenceReadModel.EndpointEvidence(
-                    "accepted_metric_buckets.endpoints_json",
-                    "instance_current_15m",
-                    "application_priority_presence_then_triage_then_instance_request_count",
-                    "selected_instance_signal_then_application_priority_reference",
+                    ENDPOINT_EVIDENCE_SOURCE,
+                    ENDPOINT_EVIDENCE_SCOPE,
+                    ENDPOINT_EVIDENCE_SELECTION_POLICY,
+                    SERVER_ORDER_POLICY,
                     "suppressed",
                     "application_freshness_not_current",
                     List.of());
@@ -681,10 +672,10 @@ public class InstanceEvidenceReadModelService {
         WindowEndpointEvidence selectedEndpointEvidence = endpointEvidenceAggregationService.mergeWindow(selectedRows);
         if (selectedEndpointEvidence.malformedEvidence()) {
             return new InstanceEvidenceReadModel.EndpointEvidence(
-                    "accepted_metric_buckets.endpoints_json",
-                    "instance_current_15m",
-                    "application_priority_presence_then_triage_then_instance_request_count",
-                    "selected_instance_signal_then_application_priority_reference",
+                    ENDPOINT_EVIDENCE_SOURCE,
+                    ENDPOINT_EVIDENCE_SCOPE,
+                    ENDPOINT_EVIDENCE_SELECTION_POLICY,
+                    SERVER_ORDER_POLICY,
                     "insufficient",
                     "endpoint_evidence_insufficient",
                     List.of());
@@ -738,10 +729,10 @@ public class InstanceEvidenceReadModelService {
             items.add(displayDrafts.get(index).toItem(index + 1));
         }
         return new InstanceEvidenceReadModel.EndpointEvidence(
-                "accepted_metric_buckets.endpoints_json",
-                "instance_current_15m",
-                "application_priority_presence_then_triage_then_instance_request_count",
-                "selected_instance_signal_then_application_priority_reference",
+                ENDPOINT_EVIDENCE_SOURCE,
+                ENDPOINT_EVIDENCE_SCOPE,
+                ENDPOINT_EVIDENCE_SELECTION_POLICY,
+                SERVER_ORDER_POLICY,
                 "available",
                 null,
                 items);
@@ -922,11 +913,11 @@ public class InstanceEvidenceReadModelService {
             InstanceEvidenceReadModel.HistogramDistribution instanceHistogram,
             InstanceEvidenceReadModel.ResourceHints resourceHints) {
         return switch (ruleId) {
-            case "global_error_spike" -> RuleBridgeEvaluation.known(
+            case "application_error_rate_high" -> RuleBridgeEvaluation.known(
                     ruleId,
                     instanceAggregate.errorCount() > 0L,
                     false);
-            case "global_latency_spike" -> RuleBridgeEvaluation.known(
+            case "application_slow_share_high" -> RuleBridgeEvaluation.known(
                     ruleId,
                     "available".equals(instanceHistogram.status()) && instanceHistogram.totalCount() > 0L,
                     !"available".equals(instanceHistogram.status()));
@@ -947,15 +938,14 @@ public class InstanceEvidenceReadModelService {
     }
 
     private ApplicationDashboardReadModel.HistogramDistribution applicationHistogramDistribution(
-            List<HistogramBucketEvidenceRow> currentRows,
-            List<HistogramBucketEvidenceRow> baselineRows) {
+            List<HistogramBucketEvidenceRow> currentRows) {
         return new ApplicationDashboardReadModel.HistogramDistribution(
-                "histogram_bucket_distribution",
+                ACCEPTED_BUCKET_SOURCE,
                 "application",
-                "bucket_distribution_evidence",
-                "sum_cumulative_counts_only_when_boundary_set_matches",
-                applicationHistogramWindow(currentRows, "current"),
-                applicationHistogramWindow(baselineRows, "baseline"));
+                "cumulative_bucket_distribution",
+                "display_bucket_only_no_percentile_recalculation",
+                applicationHistogramWindow(currentRows, "recent_30_minutes"),
+                ApplicationDashboardReadModel.HistogramWindow.unavailable(BASELINE_NOT_USED_REASON));
     }
 
     private ApplicationDashboardReadModel.HistogramWindow applicationHistogramWindow(
@@ -1154,7 +1144,7 @@ public class InstanceEvidenceReadModelService {
 
     private static InstanceEvidenceReadModel.MetricWindow metricWindow(UtcTimeInterval currentWindow) {
         return new InstanceEvidenceReadModel.MetricWindow(
-                "current_15m",
+                "recent_30_minutes",
                 toUtcOffsetDateTime(currentWindow.startUtc()),
                 toUtcOffsetDateTime(currentWindow.endUtc()),
                 (int) TimeBucketWindowCalculator.BUCKET_DURATION.toSeconds());
@@ -1266,7 +1256,7 @@ public class InstanceEvidenceReadModelService {
                     instanceRequestShare,
                     instanceErrorShare,
                     durationBuckets,
-                    "histogram_bucket_distribution",
+                    ACCEPTED_BUCKET_SOURCE,
                     relatedApplicationPriorityRank,
                     localDisplayOrder,
                     relatedRuleIds,

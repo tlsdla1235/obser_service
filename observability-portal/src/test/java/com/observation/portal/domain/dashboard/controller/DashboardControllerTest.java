@@ -43,18 +43,51 @@ class DashboardControllerTest {
 
         mockMvc.perform(get("/api/projects/{projectId}/applications/{applicationId}/dashboard",
                         PROJECT_ID,
-                        APPLICATION_ID))
+                APPLICATION_ID))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.schemaVersion").value("dashboard_read_model.v1"))
+                .andExpect(jsonPath("$.mode").value("live"))
                 .andExpect(jsonPath("$.generatedAt").value("2026-05-25T10:32:38.421Z"))
                 .andExpect(jsonPath("$.application.projectId").value(PROJECT_ID.toString()))
                 .andExpect(jsonPath("$.application.applicationId").value(APPLICATION_ID.toString()))
                 .andExpect(jsonPath("$.application.name").value("orders-api"))
                 .andExpect(jsonPath("$.application.environment").value("prod"))
+                .andExpect(jsonPath("$.application.sourceWindow.baseline").value(nullValue()))
+                .andExpect(jsonPath("$.application.sourceWindow.recent_30_minutes.endUtc").value("2026-05-25T10:32:30Z"))
                 .andExpect(jsonPath("$.application.sourceWindow.current.endUtc").value("2026-05-25T10:32:30Z"))
+                .andExpect(jsonPath("$.window.type").value("recent_30_minutes"))
+                .andExpect(jsonPath("$.window.startUtc").value("2026-05-25T10:02:30Z"))
+                .andExpect(jsonPath("$.window.endUtc").value("2026-05-25T10:32:30Z"))
+                .andExpect(jsonPath("$.thresholds.minimumRequestCount").value(30))
+                .andExpect(jsonPath("$.thresholds.errorRate").value(0.05))
+                .andExpect(jsonPath("$.operatorSummary.headline").value("Freshness와 sample이 충분합니다."))
+                .andExpect(jsonPath("$.operatorSummary.primaryProblemCode").value("application_error_rate_high"))
+                .andExpect(jsonPath("$.operatorSummary.firstLookText").isNotEmpty())
+                .andExpect(jsonPath("$.dataQuality.state").value("sufficient"))
+                .andExpect(jsonPath("$.dataQuality.requestCount").value(100))
+                .andExpect(jsonPath("$.dataQuality.limitations[0]").value("baseline_comparison_not_used_for_mvp"))
+                .andExpect(jsonPath("$.dataQuality.limitations[1]").value("sourceWindow.baseline_null_public_read_model"))
                 .andExpect(jsonPath("$.state.code").value("active"))
                 .andExpect(jsonPath("$.starterConnection.statusSource").value("starter_heartbeat"))
                 .andExpect(jsonPath("$.starterConnection.connectionMeaning").value("starter_connected"))
                 .andExpect(jsonPath("$.starterConnection.stateImpact").value("none"))
+                .andExpect(jsonPath("$.signals.red.requestCount").value(100))
+                .andExpect(jsonPath("$.signals.red.errorSemantic").value("server_error_5xx"))
+                .andExpect(jsonPath("$.signals.red.latencyEvidenceStatus").value("unavailable"))
+                .andExpect(jsonPath("$.signals.use.cpuUsage.status").value("missing"))
+                .andExpect(jsonPath("$.stateReasons").isEmpty())
+                .andExpect(jsonPath("$.attentionEvidence[0].scope").value("application"))
+                .andExpect(jsonPath("$.attentionEvidence[0].affectsLifecycleState").value(false))
+                .andExpect(jsonPath("$.firstLookCandidates[0].source").value("endpointPriority"))
+                .andExpect(jsonPath("$.readSemantics.source").value("accepted_metric_buckets"))
+                .andExpect(jsonPath("$.readSemantics.snapshotDetailRecalculates").value(false))
+                .andExpect(jsonPath("$.readSemantics.markerIsStateSource").value(false))
+                .andExpect(jsonPath("$.readSemantics.baselineComparisonUsedForMvpDecision").value(false))
+                .andExpect(jsonPath("$.readSemantics.helperColumnsAreStateSource").value(false))
+                .andExpect(jsonPath("$.readSemantics.histogramBucketsUsedForPercentiles").value(false))
+                .andExpect(jsonPath("$.readSemantics.bucketDistributionSource").value("accepted_bucket"))
+                .andExpect(jsonPath("$.readSemantics.bucketEndBoundary")
+                        .value("bucket_end_utc > window.startUtc and bucket_end_utc <= window.endUtc"))
                 .andExpect(jsonPath("$.zeroInsight").value(nullValue()))
                 .andExpect(jsonPath("$.recovery.isRecovering").value(false))
                 .andExpect(jsonPath("$.metrics.requestCount").value(100))
@@ -66,18 +99,18 @@ class DashboardControllerTest {
                 .andExpect(jsonPath("$.metrics.p99Ms").doesNotExist())
                 .andExpect(jsonPath("$.metrics.avgMs").doesNotExist())
                 .andExpect(jsonPath("$.metrics.maxMs").doesNotExist())
-                .andExpect(jsonPath("$.sourceScopedPercentiles.source").value("starter_local"))
+                .andExpect(jsonPath("$.sourceScopedPercentiles.source").value("starter_canonical_percentile"))
                 .andExpect(jsonPath("$.sourceScopedPercentiles.scope").value("instance_bucket"))
                 .andExpect(jsonPath("$.sourceScopedPercentiles.status").value("available"))
                 .andExpect(jsonPath("$.sourceScopedPercentiles.reason").value(nullValue()))
                 .andExpect(jsonPath("$.sourceScopedPercentiles.applicationScopeFallback").doesNotExist())
-                .andExpect(jsonPath("$.sourceScopedPercentiles.items[0].source").value("starter_local"))
+                .andExpect(jsonPath("$.sourceScopedPercentiles.items[0].source").value("starter_canonical_percentile"))
                 .andExpect(jsonPath("$.sourceScopedPercentiles.items[0].application").value("orders-api"))
                 .andExpect(jsonPath("$.sourceScopedPercentiles.items[0].environment").value("prod"))
                 .andExpect(jsonPath("$.sourceScopedPercentiles.items[0].instance").value("pod-a"))
                 .andExpect(jsonPath("$.sourceScopedPercentiles.items[0].p95Ms").value(480))
                 .andExpect(jsonPath("$.sourceScopedPercentiles.items[0].p99Ms").value(960))
-                .andExpect(jsonPath("$.histogramDistribution.source").value("histogram_bucket_distribution"))
+                .andExpect(jsonPath("$.histogramDistribution.source").value("accepted_bucket"))
                 .andExpect(jsonPath("$.histogramDistribution.scope").value("application"))
                 .andExpect(jsonPath("$.histogramDistribution.current.status").value("available"))
                 .andExpect(jsonPath("$.histogramDistribution.current.totalCount").value(42))
@@ -91,7 +124,7 @@ class DashboardControllerTest {
                 .andExpect(jsonPath("$.histogramDistribution.current.regression").doesNotExist())
                 .andExpect(jsonPath("$.histogramDistribution.current.confidence").doesNotExist())
                 .andExpect(jsonPath("$.histogramDistribution.current.ruleId").doesNotExist())
-                .andExpect(jsonPath("$.triageCards[0].ruleId").value("global_error_spike"))
+                .andExpect(jsonPath("$.triageCards[0].ruleId").value("application_error_rate_high"))
                 .andExpect(jsonPath("$.triageCards[0].severity").value("warning"))
                 .andExpect(jsonPath("$.triageCards[0].confidence").value(0.74))
                 .andExpect(jsonPath("$.triageCards[0].score").value(74))
@@ -107,8 +140,8 @@ class DashboardControllerTest {
                 .andExpect(jsonPath("$.endpointPriority[0].route").value("/orders"))
                 .andExpect(jsonPath("$.endpointPriority[0].endpointKey").value("POST /orders"))
                 .andExpect(jsonPath("$.endpointPriority[0].reason").value("error_and_latency"))
-                .andExpect(jsonPath("$.endpointPriority[0].ruleIds[0]").value("endpoint_error_spike"))
-                .andExpect(jsonPath("$.endpointPriority[0].ruleIds[1]").value("endpoint_latency_spike"))
+                .andExpect(jsonPath("$.endpointPriority[0].ruleIds[0]").value("endpoint_error_rate_high"))
+                .andExpect(jsonPath("$.endpointPriority[0].ruleIds[1]").value("endpoint_slow_share_high"))
                 .andExpect(jsonPath("$.endpointPriority[0].confidence").value(0.84))
                 .andExpect(jsonPath("$.endpointPriority[0].score").value(84))
                 .andExpect(jsonPath("$.endpointPriority[0].freshness.status").value("current"))
@@ -119,10 +152,10 @@ class DashboardControllerTest {
                 .andExpect(jsonPath("$.endpointPriority[0].evidence.requestCount").value(120))
                 .andExpect(jsonPath("$.endpointPriority[0].evidence.errorCount").value(12))
                 .andExpect(jsonPath("$.endpointPriority[0].evidence.errorRate").value(0.1))
-                .andExpect(jsonPath("$.endpointPriority[0].evidence.baselineRequestCount").value(100))
-                .andExpect(jsonPath("$.endpointPriority[0].evidence.baselineErrorCount").value(1))
+                .andExpect(jsonPath("$.endpointPriority[0].evidence.baselineRequestCount").value(nullValue()))
+                .andExpect(jsonPath("$.endpointPriority[0].evidence.baselineErrorCount").value(nullValue()))
                 .andExpect(jsonPath("$.endpointPriority[0].evidence.bucketDistributionSource")
-                        .value("histogram_bucket_distribution"))
+                        .value("accepted_bucket"))
                 .andExpect(jsonPath("$.endpointPriority[0].evidence.errorEvidenceStatus").value("available"))
                 .andExpect(jsonPath("$.endpointPriority[0].evidence.latencyEvidenceStatus").value("available"))
                 .andExpect(jsonPath("$.endpointPriority[0].evidence.durationBuckets[0].leMs").value(500))
@@ -189,11 +222,9 @@ class DashboardControllerTest {
                         null,
                         new ApplicationDashboardReadModel.SourceWindow(
                                 new ApplicationDashboardReadModel.Window(
-                                        OffsetDateTime.parse("2026-05-25T10:17:30Z"),
-                                        CURRENT_END),
-                                new ApplicationDashboardReadModel.Window(
                                         OffsetDateTime.parse("2026-05-25T10:02:30Z"),
-                                        OffsetDateTime.parse("2026-05-25T10:17:30Z"))),
+                                        CURRENT_END),
+                                null),
                         new ApplicationDashboardReadModel.Freshness(
                                 OffsetDateTime.parse("2026-05-25T10:31:30Z"),
                                 OffsetDateTime.parse("2026-05-25T10:33:00Z"),
@@ -214,14 +245,14 @@ class DashboardControllerTest {
                 new ApplicationDashboardReadModel.Recovery(false, null, null, null),
                 new ApplicationDashboardReadModel.Metrics(100L, 3L, java.math.BigDecimal.valueOf(0.03)),
                 new ApplicationDashboardReadModel.SourceScopedPercentiles(
-                        "starter_local",
+                        "starter_canonical_percentile",
                         "instance_bucket",
-                        "latest_starter_point_per_instance_in_current_window",
+                        "source_scoped_points",
                         "no_average_no_max_no_merge_no_histogram_recalculation",
                         "available",
                         null,
                         List.of(new ApplicationDashboardReadModel.PercentileItem(
-                                "starter_local",
+                                "starter_canonical_percentile",
                                 "orders-api",
                                 "prod",
                                 "pod-a",
@@ -231,10 +262,10 @@ class DashboardControllerTest {
                                 480L,
                                 960L))),
                 new ApplicationDashboardReadModel.HistogramDistribution(
-                        "histogram_bucket_distribution",
+                        "accepted_bucket",
                         "application",
-                        "bucket_distribution_evidence",
-                        "sum_cumulative_counts_only_when_boundary_set_matches",
+                        "cumulative_bucket_distribution",
+                        "display_bucket_only_no_percentile_recalculation",
                         new ApplicationDashboardReadModel.HistogramWindow(
                                 "available",
                                 null,
@@ -243,15 +274,15 @@ class DashboardControllerTest {
                                         new ApplicationDashboardReadModel.HistogramBucket(50L, 22L),
                                         new ApplicationDashboardReadModel.HistogramBucket(100L, 42L))),
                         new ApplicationDashboardReadModel.HistogramWindow(
-                                "missing",
-                                "no_histogram_buckets_in_baseline_window",
+                                "unavailable",
+                                "baseline_comparison_not_used_for_mvp",
                                 0L,
                                 List.of())),
                 List.of(new ApplicationDashboardReadModel.TriageCard(
-                        "global_error_spike",
+                        "application_error_rate_high",
                         ApplicationDashboardReadModel.TriageSeverity.WARNING,
-                        "Application 오류율 증가",
-                        "current window의 오류율이 baseline보다 의미 있게 증가했습니다.",
+                        "Application 오류율 높음",
+                        "recent 30 minutes window의 오류율이 절대 기준 이상입니다.",
                         "최근 배포와 외부 의존성 오류 로그를 먼저 확인해보세요.",
                         0.74d,
                         74,
@@ -277,7 +308,7 @@ class DashboardControllerTest {
                         "/orders",
                         "POST /orders",
                         ApplicationDashboardReadModel.EndpointPriorityReason.ERROR_AND_LATENCY,
-                        List.of("endpoint_error_spike", "endpoint_latency_spike"),
+                        List.of("endpoint_error_rate_high", "endpoint_slow_share_high"),
                         0.84d,
                         84,
                         new ApplicationDashboardReadModel.EndpointPriorityFreshness(
@@ -289,23 +320,21 @@ class DashboardControllerTest {
                                 120L,
                                 12L,
                                 BigDecimal.valueOf(0.10d),
-                                100L,
-                                1L,
-                                BigDecimal.valueOf(0.01d),
-                                BigDecimal.valueOf(0.09d),
+                                null,
+                                null,
+                                null,
+                                null,
                                 List.of(
                                         new ApplicationDashboardReadModel.HistogramBucket(500L, 70L),
                                         new ApplicationDashboardReadModel.HistogramBucket(1000L, 120L)),
-                                List.of(
-                                        new ApplicationDashboardReadModel.HistogramBucket(500L, 95L),
-                                        new ApplicationDashboardReadModel.HistogramBucket(1000L, 100L)),
+                                null,
                                 BigDecimal.valueOf(0.416667d),
-                                BigDecimal.valueOf(0.05d),
-                                BigDecimal.valueOf(0.366667d),
-                                "histogram_bucket_distribution",
+                                null,
+                                null,
+                                "accepted_bucket",
                                 ApplicationDashboardReadModel.EndpointEvidenceStatus.AVAILABLE,
                                 ApplicationDashboardReadModel.EndpointEvidenceStatus.AVAILABLE),
-                        "이 endpoint의 오류 로그와 외부 의존성 지연 가능성을 먼저 확인해보세요.")),
+                        "최근 30분 동안 이 endpoint의 오류와 느린 응답 근거를 함께 확인하세요.")),
                 List.of(new ApplicationDashboardReadModel.InstanceEntry(
                         INSTANCE_ID,
                         "pod-a",

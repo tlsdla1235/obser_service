@@ -78,9 +78,12 @@ public class DashboardReadModelService {
     private static final int INSTANCE_ENTRY_LIMIT = 50;
     private static final long MINIMUM_ACTIVE_SAMPLE_REQUEST_COUNT = 30L;
     private static final String APPLICATION_STATE_SCOPE = "application";
+    private static final String ACCEPTED_BUCKET_SOURCE = "accepted_bucket";
+    private static final String STARTER_CANONICAL_PERCENTILE_SOURCE = "starter_canonical_percentile";
     private static final String STARTER_LOCAL_SOURCE = "starter_local";
     private static final String INSTANCE_BUCKET_SCOPE = "instance_bucket";
     private static final String HISTOGRAM_BOUNDARY_MISMATCH_REASON = "histogram_boundary_mismatch";
+    private static final String BASELINE_NOT_USED_REASON = "baseline_comparison_not_used_for_mvp";
 
     private final ApplicationRepository applicationRepository;
     private final ApplicationInstanceRepository applicationInstanceRepository;
@@ -204,7 +207,7 @@ public class DashboardReadModelService {
      * scheduled snapshot capture가 target current window end와 accepted_at cutoff를 고정해 read model을 생성하는 내부 경로다.
      *
      * <p>이 method는 query fallback capture를 호출하지 않아 scheduler/capture/writer recursion을 만들지 않는다. current dashboard
-     * path와 같은 15분 window 계산을 쓰되, bucket repository 조회만 snapshot cutoff 기준으로 제한한다.</p>
+     * path와 같은 recent 30분 window 계산을 쓰되, bucket repository 조회만 snapshot cutoff 기준으로 제한한다.</p>
      */
     @Transactional(readOnly = true)
     public Optional<ApplicationDashboardReadModel> getDashboardForSnapshot(
@@ -246,11 +249,6 @@ public class DashboardReadModelService {
                 dashboardWindow.current().startUtc(),
                 dashboardWindow.current().endUtc(),
                 bucketQueryContext);
-        WindowBucketAggregate baselineAggregate = findWindowAggregateByApplicationId(
-                application.id(),
-                dashboardWindow.baseline().startUtc(),
-                dashboardWindow.baseline().endUtc(),
-                bucketQueryContext);
         List<LocalPercentileEvidenceRow> currentPercentileRows =
                 findLocalPercentileEvidenceRowsByApplicationId(
                         application.id(),
@@ -263,23 +261,11 @@ public class DashboardReadModelService {
                         dashboardWindow.current().startUtc(),
                         dashboardWindow.current().endUtc(),
                         bucketQueryContext);
-        List<HistogramBucketEvidenceRow> baselineHistogramRows =
-                findSummaryDurationBucketEvidenceRowsByApplicationId(
-                        application.id(),
-                        dashboardWindow.baseline().startUtc(),
-                        dashboardWindow.baseline().endUtc(),
-                        bucketQueryContext);
         List<EndpointEvidenceRow> currentEndpointRows =
                 findEndpointEvidenceRowsByApplicationId(
                         application.id(),
                         dashboardWindow.current().startUtc(),
                         dashboardWindow.current().endUtc(),
-                        bucketQueryContext);
-        List<EndpointEvidenceRow> baselineEndpointRows =
-                findEndpointEvidenceRowsByApplicationId(
-                        application.id(),
-                        dashboardWindow.baseline().startUtc(),
-                        dashboardWindow.baseline().endUtc(),
                         bucketQueryContext);
         Optional<AcceptedBucketGapEvidence> bucketGapEvidence =
                 findAcceptedBucketGapEvidenceByApplicationIdAtOrBefore(
@@ -308,10 +294,9 @@ public class DashboardReadModelService {
         ApplicationDashboardReadModel.SourceScopedPercentiles sourceScopedPercentiles =
                 sourceScopedPercentiles(application, currentPercentileRows);
         ApplicationDashboardReadModel.HistogramDistribution histogramDistribution =
-                histogramDistribution(currentHistogramRows, baselineHistogramRows);
+                histogramDistribution(currentHistogramRows);
         TriageSummary triageSummary = triageSummaryService.summarize(new TriageSummaryInput(
                 aggregate,
-                baselineAggregate,
                 histogramDistribution,
                 sourceScopedPercentiles,
                 recentBuckets,
@@ -326,7 +311,7 @@ public class DashboardReadModelService {
                         previousStateCandidate(freshness, bucketGapEvidence)),
                 starterConnectionInput);
         List<ApplicationDashboardReadModel.EndpointPriorityItem> endpointPriority =
-                endpointPriority(freshness.status(), currentEndpointRows, baselineEndpointRows, latestBucketEndUtc);
+                endpointPriority(freshness.status(), currentEndpointRows, latestBucketEndUtc);
 
         return new ApplicationDashboardReadModel(
                 toUtcOffsetDateTime(queryAt),
@@ -348,7 +333,18 @@ public class DashboardReadModelService {
                 triageSummary.triageCards(),
                 endpointPriority,
                 instanceEntries(application),
+                runtimeRatioEvidence(runtimeRatio),
                 null);
+    }
+
+    private static ApplicationDashboardReadModel.RuntimeRatioEvidence runtimeRatioEvidence(
+            Optional<RuntimeRatioEvidenceRow> runtimeRatio) {
+        return runtimeRatio
+                .map(row -> new ApplicationDashboardReadModel.RuntimeRatioEvidence(
+                        row.cpuUsageRatio(),
+                        row.heapUsedRatio(),
+                        row.datasourcePoolUsageRatio()))
+                .orElse(null);
     }
 
     private Optional<OffsetDateTime> findLatestBucketEndUtcByApplicationId(
@@ -529,17 +525,16 @@ public class DashboardReadModelService {
     private List<ApplicationDashboardReadModel.EndpointPriorityItem> endpointPriority(
             AcceptedBucketFreshnessStatus freshnessStatus,
             List<EndpointEvidenceRow> currentEndpointRows,
-            List<EndpointEvidenceRow> baselineEndpointRows,
             Optional<OffsetDateTime> latestBucketEndUtc) {
         return endpointPriorityService.endpointPriority(new EndpointPriorityService.EndpointPriorityInput(
                 freshnessStatus,
                 currentEndpointRows,
-                baselineEndpointRows,
+                List.of(),
                 latestBucketEndUtc));
     }
 
     /**
-     * persisted starter_local percentile point 중 current window의 instance별 latest valid item만 선택한다.
+     * persisted starter_local percentile point 중 recent 30분 window의 instance별 latest valid item만 선택한다.
      */
     private ApplicationDashboardReadModel.SourceScopedPercentiles sourceScopedPercentiles(
             ApplicationEntity application,
@@ -559,7 +554,7 @@ public class DashboardReadModelService {
         }
         if (latestByInstance.isEmpty()) {
             return ApplicationDashboardReadModel.SourceScopedPercentiles.insufficient(
-                    "no_valid_percentile_points_in_current_window");
+                    "no_valid_percentile_points_in_recent_30_minutes");
         }
 
         List<ApplicationDashboardReadModel.PercentileItem> items = latestByInstance.values().stream()
@@ -584,7 +579,7 @@ public class DashboardReadModelService {
                 .filter(percentiles -> percentiles.p99Ms() != null && percentiles.p99Ms() >= percentiles.p95Ms())
                 .filter(percentiles -> matchesBoundary(percentiles, row))
                 .map(percentiles -> new ApplicationDashboardReadModel.PercentileItem(
-                        percentiles.source(),
+                        STARTER_CANONICAL_PERCENTILE_SOURCE,
                         application.name(),
                         application.environment(),
                         row.instanceName(),
@@ -602,22 +597,21 @@ public class DashboardReadModelService {
     }
 
     /**
-     * current/baseline histogram evidence를 독립 window로 조립하고, window 간 비교 판단은 만들지 않는다.
+     * recent 30분 histogram evidence를 display source로 조립하고, baseline 비교 판단은 만들지 않는다.
      */
     private ApplicationDashboardReadModel.HistogramDistribution histogramDistribution(
-            List<HistogramBucketEvidenceRow> currentRows,
-            List<HistogramBucketEvidenceRow> baselineRows) {
+            List<HistogramBucketEvidenceRow> currentRows) {
         return new ApplicationDashboardReadModel.HistogramDistribution(
-                "histogram_bucket_distribution",
+                ACCEPTED_BUCKET_SOURCE,
                 "application",
-                "bucket_distribution_evidence",
-                "sum_cumulative_counts_only_when_boundary_set_matches",
-                histogramWindow(currentRows, "current"),
-                histogramWindow(baselineRows, "baseline"));
+                "cumulative_bucket_distribution",
+                "display_bucket_only_no_percentile_recalculation",
+                histogramWindow(currentRows, "recent_30_minutes"),
+                ApplicationDashboardReadModel.HistogramWindow.unavailable(BASELINE_NOT_USED_REASON));
     }
 
     /**
-     * 하나의 15분 window 안에서 boundary set이 모두 일치할 때만 cumulative count를 boundary별로 합산한다.
+     * 하나의 recent 30분 window 안에서 boundary set이 모두 일치할 때만 cumulative count를 boundary별로 합산한다.
      */
     private ApplicationDashboardReadModel.HistogramWindow histogramWindow(
             List<HistogramBucketEvidenceRow> rows,
@@ -625,7 +619,7 @@ public class DashboardReadModelService {
         List<HistogramBucketEvidenceRow> evidenceRows = List.copyOf(Objects.requireNonNullElse(rows, List.of()));
         if (evidenceRows.isEmpty()) {
             return ApplicationDashboardReadModel.HistogramWindow.missing(
-                    "no_histogram_buckets_in_" + windowName + "_window");
+                    "no_histogram_buckets_in_" + windowName);
         }
 
         List<Long> expectedBoundarySet = null;
@@ -892,7 +886,7 @@ public class DashboardReadModelService {
     private static ApplicationDashboardReadModel.SourceWindow sourceWindow(DashboardTimeWindow dashboardWindow) {
         return new ApplicationDashboardReadModel.SourceWindow(
                 window(dashboardWindow.current()),
-                window(dashboardWindow.baseline()));
+                null);
     }
 
     private static ApplicationDashboardReadModel.Window window(UtcTimeInterval interval) {

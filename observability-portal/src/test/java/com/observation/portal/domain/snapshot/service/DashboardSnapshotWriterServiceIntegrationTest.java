@@ -159,6 +159,32 @@ class DashboardSnapshotWriterServiceIntegrationTest {
 
         JsonNode readModelJson = objectMapper.readTree(findOnlySnapshot().readModelJson());
 
+        assertThat(readModelJson.path("schemaVersion").asText()).isEqualTo("dashboard_read_model.v1");
+        assertThat(readModelJson.path("mode").asText()).isEqualTo("snapshot");
+        assertThat(readModelJson.path("window").path("type").asText()).isEqualTo("recent_30_minutes");
+        assertThat(readModelJson.path("thresholds").path("minimumRequestCount").asLong()).isEqualTo(30L);
+        assertThat(readModelJson.path("operatorSummary").path("headline").asText()).isEqualTo("테스트 상태입니다.");
+        assertThat(readModelJson.path("dataQuality").path("limitations").isArray()).isTrue();
+        assertThat(readModelJson.path("dataQuality").path("limitations").size()).isGreaterThanOrEqualTo(1);
+        assertThat(readModelJson.path("signals").path("red").path("requestCount").asLong()).isEqualTo(100L);
+        assertThat(readModelJson.path("stateReasons").isArray()).isTrue();
+        assertThat(readModelJson.path("attentionEvidence").isArray()).isTrue();
+        assertThat(readModelJson.path("firstLookCandidates").isArray()).isTrue();
+        assertThat(readModelJson.path("readSemantics").path("source").asText())
+                .isEqualTo("dashboard_snapshots.read_model_json");
+        assertThat(readModelJson.path("readSemantics").path("snapshotDetailRecalculates").asBoolean()).isFalse();
+        assertThat(readModelJson.path("readSemantics").path("markerIsStateSource").asBoolean()).isFalse();
+        assertThat(readModelJson.path("readSemantics").path("baselineComparisonUsedForMvpDecision").asBoolean())
+                .isFalse();
+        assertThat(readModelJson.path("readSemantics").path("helperColumnsAreStateSource").asBoolean()).isFalse();
+        assertThat(readModelJson.path("readSemantics").path("histogramBucketsUsedForPercentiles").asBoolean())
+                .isFalse();
+        assertThat(readModelJson.path("readSemantics").path("bucketDistributionSource").asText())
+                .isEqualTo("accepted_bucket");
+        assertThat(readModelJson.path("sourceScopedPercentiles").path("source").asText())
+                .isEqualTo("starter_canonical_percentile");
+        assertThat(readModelJson.path("sourceScopedPercentiles").path("aggregatePolicy").asText())
+                .isEqualTo("no_average_no_max_no_merge_no_histogram_recalculation");
         JsonNode endpointEvidence = readModelJson.path(DashboardSnapshotReadModelEnricher.SNAPSHOT_ENDPOINT_EVIDENCE_FIELD);
         assertThat(endpointEvidence.path("items")).hasSize(10);
         assertThat(endpointEvidence.path("items").get(0).path("rank").asInt()).isEqualTo(1);
@@ -450,7 +476,7 @@ class DashboardSnapshotWriterServiceIntegrationTest {
                         null,
                         null,
                         null,
-                        "histogram_bucket_distribution",
+                        "accepted_bucket",
                         ApplicationDashboardReadModel.EndpointEvidenceStatus.AVAILABLE,
                         ApplicationDashboardReadModel.EndpointEvidenceStatus.AVAILABLE),
                 "이 endpoint를 먼저 확인하세요.");

@@ -65,14 +65,25 @@ class DashboardSnapshotControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.source").value("dashboard_snapshots"))
                 .andExpect(jsonPath("$.readSemantics.mode").value("stored_snapshot_detail"))
+                .andExpect(jsonPath("$.readSemantics.source").value("dashboard_snapshots.read_model_json"))
+                .andExpect(jsonPath("$.readSemantics.snapshotDetailRecalculates").value(false))
                 .andExpect(jsonPath("$.readSemantics.currentStateRecalculated").value(false))
                 .andExpect(jsonPath("$.readSemantics.liveSourcesJoined").isEmpty())
                 .andExpect(jsonPath("$.readSemantics.rawReadModelJsonExposed").value(false))
+                .andExpect(jsonPath("$.readSemantics.markerIsStateSource").value(false))
+                .andExpect(jsonPath("$.readSemantics.baselineComparisonUsedForMvpDecision").value(false))
                 .andExpect(jsonPath("$.snapshot.snapshotId").value(SNAPSHOT_ID.toString()))
                 .andExpect(jsonPath("$.snapshot.captureReason").value("hourly_scheduled"))
                 .andExpect(jsonPath("$.marker.type").value("scheduled_snapshot"))
-                .andExpect(jsonPath("$.previousState.source").value("no_previous_snapshot_in_retention"))
-                .andExpect(jsonPath("$.lastHealthyAt.source").value("no_previous_active_snapshot_in_retention"))
+                .andExpect(jsonPath("$.snapshotEndpointEvidence.source")
+                        .value("dashboard_snapshots.read_model_json.endpointPriority"))
+                .andExpect(jsonPath("$.snapshotEndpointEvidence.selectionPolicy").value("stored_read_model"))
+                .andExpect(jsonPath("$.instanceSummary.schemaVersion").value("dashboard_read_model.v1"))
+                .andExpect(jsonPath("$.instanceSummary.source")
+                        .value("dashboard_snapshots.read_model_json.instanceSummary.items"))
+                .andExpect(jsonPath("$.instanceSummary.selectionPolicy").value("stored_read_model"))
+                .andExpect(jsonPath("$.previousState.source").value("dashboard_snapshots"))
+                .andExpect(jsonPath("$.lastHealthyAt.source").value("dashboard_snapshots"))
                 .andExpect(jsonPath("$.links.self").value("/api/projects/%s/applications/%s/dashboard/snapshots/%s"
                         .formatted(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID)))
                 .andExpect(content().string(not(containsString("rawReadModelJson\":"))))
@@ -185,12 +196,17 @@ class DashboardSnapshotControllerTest {
                 LastHealthyAt.none(),
                 null,
                 new StoredReadModel(null, null, null, null, null, null, null, null, null),
-                new SnapshotEndpointEvidence("bounded_endpoint_evidence", 10, "policy", null, List.of()),
+                new SnapshotEndpointEvidence(
+                        "dashboard_snapshots.read_model_json.endpointPriority",
+                        10,
+                        "stored_read_model",
+                        null,
+                        List.of()),
                 new DashboardSnapshotDetailReadModel.InstanceSummary(
-                        "1.0",
-                        "bounded_instance_summary",
+                        "dashboard_read_model.v1",
+                        "dashboard_snapshots.read_model_json.instanceSummary.items",
                         50,
-                        "policy",
+                        "stored_read_model",
                         null,
                         List.of()),
                 new SnapshotLinks(
@@ -212,8 +228,8 @@ class DashboardSnapshotControllerTest {
                         "24h",
                         "14d",
                         336,
-                        336,
-                        "capturedAt_asc"),
+                        672,
+                        "currentWindowEndUtc_asc"),
                 null,
                 List.of(marker()));
     }

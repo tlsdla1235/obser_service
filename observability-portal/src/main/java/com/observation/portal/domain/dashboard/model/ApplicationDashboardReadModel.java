@@ -6,18 +6,31 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * Application Dashboard current API가 반환하는 read-model-contract skeleton이다.
+ * Application Dashboard current API와 snapshot 저장 payload가 공유하는 dashboard read model이다.
  *
- * <p>Story 5.5에서는 typed endpoint priority를 포함하되, endpoint p95/p99나 raw endpoint detail은 만들지 않는다.</p>
+ * <p>canonical field는 Source of Truth의 `dashboard_read_model.v1` shape를 제공하고, 기존 legacy field는 frontend
+ * migration 동안 같은 server-computed 값을 읽는 compatibility surface로 유지한다.</p>
  */
 public record ApplicationDashboardReadModel(
+        String schemaVersion,
+        String mode,
         OffsetDateTime generatedAt,
         Application application,
-        State state,
+        CanonicalWindow window,
+        Thresholds thresholds,
+        OperatorSummary operatorSummary,
+        DataQuality dataQuality,
         StarterConnection starterConnection,
+        Signals signals,
+        State state,
+        List<StateReason> stateReasons,
+        List<AttentionEvidence> attentionEvidence,
+        List<FirstLookCandidate> firstLookCandidates,
+        ReadSemantics readSemantics,
         ZeroInsight zeroInsight,
         Recovery recovery,
         Metrics metrics,
@@ -28,15 +41,53 @@ public record ApplicationDashboardReadModel(
         List<InstanceEntry> instances,
         Object snapshot
 ) {
+    public static final String SCHEMA_VERSION = "dashboard_read_model.v1";
+    public static final String LIVE_MODE = "live";
+    public static final String SNAPSHOT_MODE = "snapshot";
+    private static final String RECENT_30_MINUTES_WINDOW = "recent_30_minutes";
+    private static final String ACCEPTED_METRIC_BUCKETS_SOURCE = "accepted_metric_buckets";
+    private static final String DASHBOARD_SNAPSHOTS_READ_MODEL_SOURCE = "dashboard_snapshots.read_model_json";
+    private static final String ACCEPTED_BUCKET_DISTRIBUTION_SOURCE = "accepted_bucket";
+    private static final long MINIMUM_REQUEST_COUNT = 30L;
+    private static final BigDecimal ERROR_RATE_THRESHOLD = new BigDecimal("0.05");
+    private static final BigDecimal SLOW_SHARE_OVER_500MS_THRESHOLD = new BigDecimal("0.20");
+    private static final BigDecimal DATASOURCE_POOL_USAGE_THRESHOLD = new BigDecimal("0.85");
+    private static final BigDecimal CPU_USAGE_THRESHOLD = new BigDecimal("0.85");
+    private static final BigDecimal HEAP_USAGE_THRESHOLD = new BigDecimal("0.90");
+    private static final long LATENCY_SLOW_BUCKET_LE_MS = 500L;
 
     /**
-     * top-level dashboard field가 항상 존재하도록 필수 field와 placeholder collection을 검증한다.
+     * canonical dashboard field와 legacy compatibility field가 항상 존재하도록 검증한다.
      */
     public ApplicationDashboardReadModel {
+        schemaVersion = requireText(schemaVersion, "schemaVersion");
+        if (!SCHEMA_VERSION.equals(schemaVersion)) {
+            throw new IllegalArgumentException("schemaVersion must be " + SCHEMA_VERSION);
+        }
+        mode = requireText(mode, "mode");
+        if (!LIVE_MODE.equals(mode) && !SNAPSHOT_MODE.equals(mode)) {
+            throw new IllegalArgumentException("mode must be live or snapshot");
+        }
         Objects.requireNonNull(generatedAt, "generatedAt must not be null");
         Objects.requireNonNull(application, "application must not be null");
-        Objects.requireNonNull(state, "state must not be null");
+        Objects.requireNonNull(window, "window must not be null");
+        Objects.requireNonNull(thresholds, "thresholds must not be null");
+        Objects.requireNonNull(operatorSummary, "operatorSummary must not be null");
+        Objects.requireNonNull(dataQuality, "dataQuality must not be null");
         Objects.requireNonNull(starterConnection, "starterConnection must not be null");
+        Objects.requireNonNull(signals, "signals must not be null");
+        Objects.requireNonNull(state, "state must not be null");
+        stateReasons = List.copyOf(Objects.requireNonNull(stateReasons, "stateReasons must not be null"));
+        attentionEvidence = List.copyOf(Objects.requireNonNull(
+                attentionEvidence,
+                "attentionEvidence must not be null"));
+        firstLookCandidates = List.copyOf(Objects.requireNonNull(
+                firstLookCandidates,
+                "firstLookCandidates must not be null"));
+        if (firstLookCandidates.size() > 3) {
+            throw new IllegalArgumentException("firstLookCandidates must not exceed 3");
+        }
+        Objects.requireNonNull(readSemantics, "readSemantics must not be null");
         Objects.requireNonNull(recovery, "recovery must not be null");
         Objects.requireNonNull(metrics, "metrics must not be null");
         Objects.requireNonNull(sourceScopedPercentiles, "sourceScopedPercentiles must not be null");
@@ -49,6 +100,455 @@ public record ApplicationDashboardReadModel(
         instances = List.copyOf(Objects.requireNonNull(instances, "instances must not be null"));
         if (instances.size() > 50) {
             throw new IllegalArgumentException("instances must not exceed 50");
+        }
+    }
+
+    /**
+     * 기존 service/test가 사용하던 skeleton 생성자다.
+     *
+     * <p>legacy field에서 canonical field를 파생해 live dashboard response와 snapshot writer input이 같은
+     * `dashboard_read_model.v1` shape를 갖도록 한다.</p>
+     */
+    public ApplicationDashboardReadModel(
+            OffsetDateTime generatedAt,
+            Application application,
+            State state,
+            StarterConnection starterConnection,
+            ZeroInsight zeroInsight,
+            Recovery recovery,
+            Metrics metrics,
+            SourceScopedPercentiles sourceScopedPercentiles,
+            HistogramDistribution histogramDistribution,
+            List<TriageCard> triageCards,
+            List<EndpointPriorityItem> endpointPriority,
+            List<InstanceEntry> instances,
+            Object snapshot) {
+        this(
+                generatedAt,
+                application,
+                state,
+                starterConnection,
+                zeroInsight,
+                recovery,
+                metrics,
+                sourceScopedPercentiles,
+                histogramDistribution,
+                triageCards,
+                endpointPriority,
+                instances,
+                null,
+                snapshot);
+    }
+
+    /**
+     * service가 조회한 runtime ratio evidence까지 canonical USE signal에 반영하는 생성자다.
+     */
+    public ApplicationDashboardReadModel(
+            OffsetDateTime generatedAt,
+            Application application,
+            State state,
+            StarterConnection starterConnection,
+            ZeroInsight zeroInsight,
+            Recovery recovery,
+            Metrics metrics,
+            SourceScopedPercentiles sourceScopedPercentiles,
+            HistogramDistribution histogramDistribution,
+            List<TriageCard> triageCards,
+            List<EndpointPriorityItem> endpointPriority,
+            List<InstanceEntry> instances,
+            RuntimeRatioEvidence runtimeRatio,
+            Object snapshot) {
+        this(
+                SCHEMA_VERSION,
+                LIVE_MODE,
+                generatedAt,
+                application,
+                canonicalWindow(application),
+                Thresholds.mvp(),
+                operatorSummary(state, zeroInsight, triageCards, endpointPriority),
+                dataQuality(state, application, metrics, histogramDistribution),
+                starterConnection,
+                signals(metrics, histogramDistribution, runtimeRatio),
+                state,
+                stateReasons(state, triageCards),
+                attentionEvidence(state, triageCards, endpointPriority),
+                firstLookCandidates(state, triageCards, endpointPriority),
+                ReadSemantics.live(),
+                zeroInsight,
+                recovery,
+                metrics,
+                sourceScopedPercentiles,
+                histogramDistribution,
+                triageCards,
+                endpointPriority,
+                instances,
+                snapshot);
+    }
+
+    /**
+     * Source of Truth public naming을 갖는 dashboard 판단 window다.
+     */
+    public record CanonicalWindow(
+            String type,
+            OffsetDateTime startUtc,
+            OffsetDateTime endUtc
+    ) {
+
+        /**
+         * recent 30분 window type과 시간 boundary를 검증한다.
+         */
+        public CanonicalWindow {
+            type = requireText(type, "type");
+            if (!RECENT_30_MINUTES_WINDOW.equals(type)) {
+                throw new IllegalArgumentException("type must be " + RECENT_30_MINUTES_WINDOW);
+            }
+            Objects.requireNonNull(startUtc, "startUtc must not be null");
+            Objects.requireNonNull(endUtc, "endUtc must not be null");
+            if (!endUtc.isAfter(startUtc)) {
+                throw new IllegalArgumentException("endUtc must be after startUtc");
+            }
+        }
+    }
+
+    /**
+     * Snapshot detail이 저장 당시 판단 기준을 재현할 수 있도록 MVP threshold를 명시한다.
+     */
+    public record Thresholds(
+            long minimumRequestCount,
+            BigDecimal errorRate,
+            BigDecimal slowShareOver500ms,
+            BigDecimal datasourcePoolUsage,
+            BigDecimal cpuUsage,
+            BigDecimal heapUsage
+    ) {
+
+        /**
+         * Source of Truth MVP threshold 값을 가진 기본 block을 만든다.
+         */
+        public static Thresholds mvp() {
+            return new Thresholds(
+                    MINIMUM_REQUEST_COUNT,
+                    ERROR_RATE_THRESHOLD,
+                    SLOW_SHARE_OVER_500MS_THRESHOLD,
+                    DATASOURCE_POOL_USAGE_THRESHOLD,
+                    CPU_USAGE_THRESHOLD,
+                    HEAP_USAGE_THRESHOLD);
+        }
+
+        /**
+         * threshold 값이 public contract의 허용 범위를 벗어나지 않도록 검증한다.
+         */
+        public Thresholds {
+            if (minimumRequestCount < 1L) {
+                throw new IllegalArgumentException("minimumRequestCount must be positive");
+            }
+            validateFraction(Objects.requireNonNull(errorRate, "errorRate must not be null"), "errorRate");
+            validateFraction(
+                    Objects.requireNonNull(slowShareOver500ms, "slowShareOver500ms must not be null"),
+                    "slowShareOver500ms");
+            validateFraction(
+                    Objects.requireNonNull(datasourcePoolUsage, "datasourcePoolUsage must not be null"),
+                    "datasourcePoolUsage");
+            validateFraction(Objects.requireNonNull(cpuUsage, "cpuUsage must not be null"), "cpuUsage");
+            validateFraction(Objects.requireNonNull(heapUsage, "heapUsage must not be null"), "heapUsage");
+        }
+    }
+
+    /**
+     * 운영자가 첫 화면에서 읽는 요약과 첫 확인 후보 copy를 server-computed 값으로 제공한다.
+     */
+    public record OperatorSummary(
+            String headline,
+            String primaryProblemCode,
+            String firstLookText
+    ) {
+
+        /**
+         * headline과 first look copy가 비어 있지 않도록 검증한다.
+         */
+        public OperatorSummary {
+            headline = requireText(headline, "headline");
+            primaryProblemCode = trimNullable(primaryProblemCode);
+            firstLookText = requireText(firstLookText, "firstLookText");
+        }
+    }
+
+    /**
+     * metric evidence를 얼마나 믿을 수 있는지 lifecycle state와 분리해 설명한다.
+     */
+    public record DataQuality(
+            String state,
+            long requestCount,
+            long minimumRequestCount,
+            OffsetDateTime lastObservedAt,
+            List<String> limitations
+    ) {
+
+        /**
+         * data quality state와 limitation 목록을 안정적으로 직렬화한다.
+         */
+        public DataQuality {
+            state = requireText(state, "state");
+            if (requestCount < 0L) {
+                throw new IllegalArgumentException("requestCount must not be negative");
+            }
+            if (minimumRequestCount < 1L) {
+                throw new IllegalArgumentException("minimumRequestCount must be positive");
+            }
+            limitations = List.copyOf(Objects.requireNonNull(limitations, "limitations must not be null"));
+            if (limitations.stream().anyMatch(value -> value == null || value.isBlank())) {
+                throw new IllegalArgumentException("limitations must contain non-blank values");
+            }
+        }
+    }
+
+    /**
+     * RED/USE signal을 canonical field로 묶어 UI가 histogram과 resource evidence를 다시 해석하지 않게 한다.
+     */
+    public record Signals(RedSignals red, UseSignals use) {
+
+        /**
+         * RED와 USE block이 항상 존재하도록 검증한다.
+         */
+        public Signals {
+            Objects.requireNonNull(red, "red must not be null");
+            Objects.requireNonNull(use, "use must not be null");
+        }
+    }
+
+    /**
+     * recent 30분 요청량, 5xx 오류, 500ms 초과 요청 비율 evidence다.
+     */
+    public record RedSignals(
+            long requestCount,
+            long errorCount,
+            String errorSemantic,
+            BigDecimal errorRate,
+            Long slowCountOver500ms,
+            BigDecimal slowShareOver500ms,
+            String latencyEvidenceStatus
+    ) {
+
+        /**
+         * RED count/rate와 latency evidence availability를 검증한다.
+         */
+        public RedSignals {
+            validateCount(requestCount, "requestCount");
+            validateCount(errorCount, "errorCount");
+            if (errorCount > requestCount) {
+                throw new IllegalArgumentException("errorCount must not exceed requestCount");
+            }
+            errorSemantic = requireText(errorSemantic, "errorSemantic");
+            validateNullableFraction(errorRate, "errorRate");
+            validateNullableCount(slowCountOver500ms, "slowCountOver500ms");
+            validateNullableFraction(slowShareOver500ms, "slowShareOver500ms");
+            latencyEvidenceStatus = requireText(latencyEvidenceStatus, "latencyEvidenceStatus");
+        }
+    }
+
+    /**
+     * 공유 resource pressure hint를 root cause 확정 없이 표시하기 위한 USE signal block이다.
+     */
+    public record UseSignals(
+            ResourceSignal datasourcePoolUsage,
+            ResourceSignal cpuUsage,
+            ResourceSignal heapUsage
+    ) {
+
+        /**
+         * 세 resource block이 모두 존재하도록 검증한다.
+         */
+        public UseSignals {
+            Objects.requireNonNull(datasourcePoolUsage, "datasourcePoolUsage must not be null");
+            Objects.requireNonNull(cpuUsage, "cpuUsage must not be null");
+            Objects.requireNonNull(heapUsage, "heapUsage must not be null");
+        }
+
+        public static UseSignals missing() {
+            return new UseSignals(
+                    ResourceSignal.missing(DATASOURCE_POOL_USAGE_THRESHOLD),
+                    ResourceSignal.missing(CPU_USAGE_THRESHOLD),
+                    ResourceSignal.missing(HEAP_USAGE_THRESHOLD));
+        }
+    }
+
+    /**
+     * 단일 resource usage signal의 threshold와 상태다.
+     */
+    public record ResourceSignal(
+            BigDecimal max,
+            BigDecimal threshold,
+            String status,
+            OffsetDateTime observedAt
+    ) {
+
+        public static ResourceSignal missing(BigDecimal threshold) {
+            return new ResourceSignal(null, threshold, "missing", null);
+        }
+
+        /**
+         * resource 값이 있으면 ratio 범위 안에 있는지 검증한다.
+         */
+        public ResourceSignal {
+            validateNullableFraction(max, "max");
+            validateFraction(Objects.requireNonNull(threshold, "threshold must not be null"), "threshold");
+            status = requireText(status, "status");
+        }
+    }
+
+    /**
+     * lifecycle state를 만들거나 바꿀 수 있는 직접 근거다.
+     */
+    public record StateReason(
+            String type,
+            String severity,
+            String scope,
+            String target,
+            String reasonCode,
+            String operatorText
+    ) {
+
+        /**
+         * state reason의 bounded type/scope/reason/copy를 검증한다.
+         */
+        public StateReason {
+            type = requireText(type, "type");
+            severity = requireText(severity, "severity");
+            scope = requireText(scope, "scope");
+            target = trimNullable(target);
+            reasonCode = requireText(reasonCode, "reasonCode");
+            operatorText = requireText(operatorText, "operatorText");
+        }
+    }
+
+    /**
+     * state를 바꾸지는 않지만 먼저 확인해야 하는 endpoint/resource/data-quality evidence다.
+     */
+    public record AttentionEvidence(
+            String type,
+            String severity,
+            String scope,
+            String target,
+            String reasonCode,
+            boolean affectsLifecycleState,
+            String operatorText
+    ) {
+
+        /**
+         * attention evidence가 lifecycle state source로 승격되지 않도록 검증한다.
+         */
+        public AttentionEvidence {
+            type = requireText(type, "type");
+            severity = requireText(severity, "severity");
+            scope = requireText(scope, "scope");
+            target = trimNullable(target);
+            reasonCode = requireText(reasonCode, "reasonCode");
+            if (affectsLifecycleState) {
+                throw new IllegalArgumentException("attention evidence must not affect lifecycle state");
+            }
+            operatorText = requireText(operatorText, "operatorText");
+        }
+    }
+
+    /**
+     * 운영자가 먼저 볼 후보를 endpoint/resource/data-quality를 합친 bounded queue로 제공한다.
+     */
+    public record FirstLookCandidate(
+            int rank,
+            String type,
+            String target,
+            String reasonCode,
+            String source,
+            String operatorText
+    ) {
+
+        /**
+         * candidate rank와 reason/source/copy가 public response에서 안정적으로 보이게 한다.
+         */
+        public FirstLookCandidate {
+            if (rank < 1) {
+                throw new IllegalArgumentException("rank must be positive");
+            }
+            type = requireText(type, "type");
+            target = trimNullable(target);
+            reasonCode = requireText(reasonCode, "reasonCode");
+            source = requireText(source, "source");
+            operatorText = requireText(operatorText, "operatorText");
+        }
+    }
+
+    /**
+     * live/snapshot 공통 read semantics와 non-source helper 의미를 명시한다.
+     */
+    public record ReadSemantics(
+            String source,
+            boolean snapshotDetailRecalculates,
+            boolean markerIsStateSource,
+            boolean baselineComparisonUsedForMvpDecision,
+            boolean helperColumnsAreStateSource,
+            boolean histogramBucketsUsedForPercentiles,
+            String bucketDistributionSource,
+            String bucketDistributionMeaning,
+            String bucketEndBoundary
+    ) {
+
+        public static ReadSemantics live() {
+            return new ReadSemantics(
+                    ACCEPTED_METRIC_BUCKETS_SOURCE,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    ACCEPTED_BUCKET_DISTRIBUTION_SOURCE,
+                    "accepted_metric_buckets.duration_buckets_json_distribution_display_only",
+                    "bucket_end_utc > window.startUtc and bucket_end_utc <= window.endUtc");
+        }
+
+        public static ReadSemantics snapshot() {
+            return new ReadSemantics(
+                    DASHBOARD_SNAPSHOTS_READ_MODEL_SOURCE,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    ACCEPTED_BUCKET_DISTRIBUTION_SOURCE,
+                    "stored_read_model.accepted_metric_buckets.duration_buckets_json_distribution_display_only",
+                    "bucket_end_utc > window.startUtc and bucket_end_utc <= window.endUtc");
+        }
+
+        /**
+         * source와 marker/helper/baseline non-source semantics를 response에 고정한다.
+         */
+        public ReadSemantics {
+            source = requireText(source, "source");
+            if (!ACCEPTED_METRIC_BUCKETS_SOURCE.equals(source)
+                    && !DASHBOARD_SNAPSHOTS_READ_MODEL_SOURCE.equals(source)) {
+                throw new IllegalArgumentException(
+                        "source must be accepted_metric_buckets or dashboard_snapshots.read_model_json");
+            }
+            if (snapshotDetailRecalculates) {
+                throw new IllegalArgumentException("snapshotDetailRecalculates must be false");
+            }
+            if (markerIsStateSource) {
+                throw new IllegalArgumentException("markerIsStateSource must be false");
+            }
+            if (baselineComparisonUsedForMvpDecision) {
+                throw new IllegalArgumentException("baselineComparisonUsedForMvpDecision must be false");
+            }
+            if (helperColumnsAreStateSource) {
+                throw new IllegalArgumentException("helperColumnsAreStateSource must be false");
+            }
+            if (histogramBucketsUsedForPercentiles) {
+                throw new IllegalArgumentException("histogramBucketsUsedForPercentiles must be false");
+            }
+            bucketDistributionSource = requireText(bucketDistributionSource, "bucketDistributionSource");
+            if (!ACCEPTED_BUCKET_DISTRIBUTION_SOURCE.equals(bucketDistributionSource)) {
+                throw new IllegalArgumentException("bucketDistributionSource must be accepted_bucket");
+            }
+            bucketDistributionMeaning = requireText(bucketDistributionMeaning, "bucketDistributionMeaning");
+            bucketEndBoundary = requireText(bucketEndBoundary, "bucketEndBoundary");
         }
     }
 
@@ -80,16 +580,23 @@ public record ApplicationDashboardReadModel(
     }
 
     /**
-     * query evaluationAt 기준 current 15분 window와 직전 baseline 15분 window를 담는다.
+     * query evaluationAt 기준 recent 30분 accepted bucket window와 legacy baseline compatibility field를 담는다.
      */
     public record SourceWindow(Window current, Window baseline) {
 
         /**
-         * current와 baseline window가 모두 존재하도록 검증한다.
+         * current는 recent 30분 호환 alias로 유지하고 baseline은 MVP primary 판단에서 쓰지 않으므로 null을 허용한다.
          */
         public SourceWindow {
             Objects.requireNonNull(current, "current must not be null");
-            Objects.requireNonNull(baseline, "baseline must not be null");
+        }
+
+        /**
+         * Source of Truth public naming을 노출하면서 기존 current 소비자와 같은 30분 window를 가리키게 한다.
+         */
+        @JsonProperty("recent_30_minutes")
+        public Window recent30Minutes() {
+            return current;
         }
     }
 
@@ -196,7 +703,7 @@ public record ApplicationDashboardReadModel(
     }
 
     /**
-     * current 15분 window의 request/error scalar만 담는다.
+     * recent 30분 window의 request/error scalar만 담는다.
      */
     public record Metrics(
             long requestCount,
@@ -246,16 +753,16 @@ public record ApplicationDashboardReadModel(
         }
 
         /**
-         * current window에서 starter percentile point를 찾지 못했을 때의 명시적 missing response를 만든다.
+         * recent 30분 window에서 starter canonical percentile point를 찾지 못했을 때의 명시적 missing response를 만든다.
          */
         public static SourceScopedPercentiles empty() {
             return new SourceScopedPercentiles(
-                    "starter_local",
+                    "starter_canonical_percentile",
                     "instance_bucket",
-                    "latest_starter_point_per_instance_in_current_window",
+                    "source_scoped_points",
                     "no_average_no_max_no_merge_no_histogram_recalculation",
                     "missing",
-                    "no_percentile_points_in_current_window",
+                    "no_percentile_points_in_recent_30_minutes",
                     List.of());
         }
 
@@ -264,9 +771,9 @@ public record ApplicationDashboardReadModel(
          */
         public static SourceScopedPercentiles available(List<PercentileItem> items) {
             return new SourceScopedPercentiles(
-                    "starter_local",
+                    "starter_canonical_percentile",
                     "instance_bucket",
-                    "latest_starter_point_per_instance_in_current_window",
+                    "source_scoped_points",
                     "no_average_no_max_no_merge_no_histogram_recalculation",
                     "available",
                     null,
@@ -278,9 +785,9 @@ public record ApplicationDashboardReadModel(
          */
         public static SourceScopedPercentiles insufficient(String reason) {
             return new SourceScopedPercentiles(
-                    "starter_local",
+                    "starter_canonical_percentile",
                     "instance_bucket",
-                    "latest_starter_point_per_instance_in_current_window",
+                    "source_scoped_points",
                     "no_average_no_max_no_merge_no_histogram_recalculation",
                     "insufficient",
                     reason,
@@ -332,7 +839,7 @@ public record ApplicationDashboardReadModel(
     }
 
     /**
-     * application-level summary duration histogram distribution evidence를 current/baseline window별로 담는다.
+     * application-level summary duration histogram distribution evidence를 recent 30분 window 기준으로 담는다.
      *
      * <p>이 block은 bucket distribution 표시 source이며 p95/p99, delta, regression, confidence, rule 판단을 포함하지 않는다.</p>
      */
@@ -358,16 +865,16 @@ public record ApplicationDashboardReadModel(
         }
 
         /**
-         * current/baseline 모두 histogram evidence가 없는 기본 response를 만든다.
+         * recent 30분 histogram evidence가 없는 기본 response와 baseline compatibility limitation을 만든다.
          */
         public static HistogramDistribution empty() {
             return new HistogramDistribution(
-                    "histogram_bucket_distribution",
+                    "accepted_bucket",
                     "application",
-                    "bucket_distribution_evidence",
-                    "sum_cumulative_counts_only_when_boundary_set_matches",
-                    HistogramWindow.missing("no_histogram_buckets_in_current_window"),
-                    HistogramWindow.missing("no_histogram_buckets_in_baseline_window"));
+                    "cumulative_bucket_distribution",
+                    "display_bucket_only_no_percentile_recalculation",
+                    HistogramWindow.missing("no_histogram_buckets_in_recent_30_minutes"),
+                    HistogramWindow.unavailable("baseline_comparison_not_used_for_mvp"));
         }
     }
 
@@ -654,11 +1161,10 @@ public record ApplicationDashboardReadModel(
      * Story 5.5 MVP endpoint priority reason을 닫힌 JSON 문자열로 제한한다.
      */
     public enum EndpointPriorityReason {
-        ERROR_SPIKE("error_spike"),
-        LATENCY_SPIKE("latency_spike"),
+        ERROR_SPIKE("error_rate_high"),
+        LATENCY_SPIKE("latency_slow_share_high"),
         ERROR_AND_LATENCY("error_and_latency"),
-        COMPARATIVE_REGRESSION("comparative_regression"),
-        RECENT_ERROR("recent_error");
+        RECENT_ERROR("recent_server_error");
 
         private final String value;
 
@@ -682,7 +1188,7 @@ public record ApplicationDashboardReadModel(
         AVAILABLE("available"),
         MISSING("missing"),
         INSUFFICIENT("insufficient"),
-        INSUFFICIENT_BASELINE("insufficient_baseline"),
+        INSUFFICIENT_BASELINE("baseline_comparison_not_used"),
         UNAVAILABLE("unavailable");
 
         private final String value;
@@ -803,13 +1309,259 @@ public record ApplicationDashboardReadModel(
             validateNullableFraction(baselineSlowShare, "baselineSlowShare");
             validateNullableDelta(slowShareDelta, "slowShareDelta");
             bucketDistributionSource = requireText(bucketDistributionSource, "bucketDistributionSource");
-            if (!"histogram_bucket_distribution".equals(bucketDistributionSource)) {
+            if (!"accepted_bucket".equals(bucketDistributionSource)) {
                 throw new IllegalArgumentException(
-                        "bucketDistributionSource must be histogram_bucket_distribution");
+                        "bucketDistributionSource must be accepted_bucket");
             }
             Objects.requireNonNull(errorEvidenceStatus, "errorEvidenceStatus must not be null");
             Objects.requireNonNull(latencyEvidenceStatus, "latencyEvidenceStatus must not be null");
         }
+    }
+
+    private static CanonicalWindow canonicalWindow(Application application) {
+        Application requiredApplication = Objects.requireNonNull(application, "application must not be null");
+        Window current = requiredApplication.sourceWindow().current();
+        return new CanonicalWindow(RECENT_30_MINUTES_WINDOW, current.startUtc(), current.endUtc());
+    }
+
+    private static OperatorSummary operatorSummary(
+            State state,
+            ZeroInsight zeroInsight,
+            List<TriageCard> triageCards,
+            List<EndpointPriorityItem> endpointPriority) {
+        State requiredState = Objects.requireNonNull(state, "state must not be null");
+        List<TriageCard> cards = List.copyOf(Objects.requireNonNullElse(triageCards, List.of()));
+        List<EndpointPriorityItem> endpoints = List.copyOf(Objects.requireNonNullElse(endpointPriority, List.of()));
+        String primaryProblemCode = cards.stream()
+                .map(TriageCard::ruleId)
+                .findFirst()
+                .orElseGet(() -> endpoints.stream()
+                        .findFirst()
+                        .map(item -> item.reason().value())
+                        .orElse(null));
+        String firstLookText = endpoints.stream()
+                .findFirst()
+                .map(item -> "먼저 " + item.endpointKey() + " endpoint evidence를 확인하세요.")
+                .orElseGet(() -> zeroInsight == null ? requiredState.recommendedAction() : zeroInsight.message());
+        return new OperatorSummary(requiredState.rationale(), primaryProblemCode, firstLookText);
+    }
+
+    private static DataQuality dataQuality(
+            State state,
+            Application application,
+            Metrics metrics,
+            HistogramDistribution histogramDistribution) {
+        State requiredState = Objects.requireNonNull(state, "state must not be null");
+        Application requiredApplication = Objects.requireNonNull(application, "application must not be null");
+        Metrics requiredMetrics = Objects.requireNonNull(metrics, "metrics must not be null");
+        HistogramDistribution requiredHistogram = Objects.requireNonNull(
+                histogramDistribution,
+                "histogramDistribution must not be null");
+        List<String> limitations = new java.util.ArrayList<>();
+        limitations.add("baseline_comparison_not_used_for_mvp");
+        if (requiredApplication.sourceWindow().baseline() == null) {
+            limitations.add("sourceWindow.baseline_null_public_read_model");
+        }
+        if (!"available".equals(requiredHistogram.current().status())) {
+            limitations.add("histogram_" + requiredHistogram.current().status());
+        }
+        return new DataQuality(
+                dataQualityState(requiredState, requiredMetrics),
+                requiredMetrics.requestCount(),
+                MINIMUM_REQUEST_COUNT,
+                requiredApplication.freshness().lastObservedAt(),
+                limitations);
+    }
+
+    private static String dataQualityState(State state, Metrics metrics) {
+        return switch (state.code()) {
+            case "waiting_first_data" -> "waiting_first_data";
+            case "stale" -> "stale";
+            case "down" -> "down";
+            case "unknown" -> metrics.requestCount() < MINIMUM_REQUEST_COUNT ? "sample_limited" : "partial";
+            case "idle" -> "sample_limited";
+            default -> metrics.requestCount() < MINIMUM_REQUEST_COUNT ? "sample_limited" : "sufficient";
+        };
+    }
+
+    private static Signals signals(
+            Metrics metrics,
+            HistogramDistribution histogramDistribution,
+            RuntimeRatioEvidence runtimeRatio) {
+        Metrics requiredMetrics = Objects.requireNonNull(metrics, "metrics must not be null");
+        HistogramDistribution requiredHistogram = Objects.requireNonNull(
+                histogramDistribution,
+                "histogramDistribution must not be null");
+        SlowEvidence slowEvidence = slowEvidence(requiredHistogram.current());
+        return new Signals(
+                new RedSignals(
+                        requiredMetrics.requestCount(),
+                        requiredMetrics.errorCount(),
+                        "server_error_5xx",
+                        requiredMetrics.errorRate(),
+                        slowEvidence.slowCountOver500ms(),
+                        slowEvidence.slowShareOver500ms(),
+                        slowEvidence.status()),
+                useSignals(runtimeRatio));
+    }
+
+    private static UseSignals useSignals(RuntimeRatioEvidence runtimeRatio) {
+        if (runtimeRatio == null) {
+            return UseSignals.missing();
+        }
+        return new UseSignals(
+                resourceSignal(runtimeRatio.datasourcePoolUsageRatio(), DATASOURCE_POOL_USAGE_THRESHOLD),
+                resourceSignal(runtimeRatio.cpuUsageRatio(), CPU_USAGE_THRESHOLD),
+                resourceSignal(runtimeRatio.heapUsedRatio(), HEAP_USAGE_THRESHOLD));
+    }
+
+    private static ResourceSignal resourceSignal(BigDecimal value, BigDecimal threshold) {
+        if (value == null) {
+            return ResourceSignal.missing(threshold);
+        }
+        String status = value.compareTo(threshold) >= 0 ? "threshold_exceeded" : "normal";
+        return new ResourceSignal(value, threshold, status, null);
+    }
+
+    private static SlowEvidence slowEvidence(HistogramWindow window) {
+        if (!"available".equals(window.status()) || window.totalCount() <= 0L) {
+            return new SlowEvidence(null, null, window.status());
+        }
+        return window.buckets().stream()
+                .filter(bucket -> bucket.leMs() == LATENCY_SLOW_BUCKET_LE_MS)
+                .findFirst()
+                .map(bucket -> {
+                    long slowCount = Math.max(0L, window.totalCount() - bucket.count());
+                    return new SlowEvidence(slowCount, fraction(slowCount, window.totalCount()), "available");
+                })
+                .orElseGet(() -> new SlowEvidence(null, null, "unavailable"));
+    }
+
+    private static List<StateReason> stateReasons(State state, List<TriageCard> triageCards) {
+        State requiredState = Objects.requireNonNull(state, "state must not be null");
+        List<TriageCard> cards = List.copyOf(Objects.requireNonNullElse(triageCards, List.of()));
+        if ("degraded".equals(requiredState.code()) && !cards.isEmpty()) {
+            List<StateReason> reasons = cards.stream()
+                    .filter(ApplicationDashboardReadModel::affectsLifecycleState)
+                    .map(card -> new StateReason(
+                            "metric_rule",
+                            card.severity().value(),
+                            "application",
+                            card.affectedEndpoint(),
+                            card.ruleId(),
+                            card.summary()))
+                    .toList();
+            if (!reasons.isEmpty()) {
+                return reasons;
+            }
+        }
+        if (!"active".equals(requiredState.code())) {
+            return List.of(new StateReason(
+                    "data_quality_guard",
+                    "info",
+                    "application",
+                    null,
+                    requiredState.code(),
+                    requiredState.rationale()));
+        }
+        return List.of();
+    }
+
+    private static List<AttentionEvidence> attentionEvidence(
+            State state,
+            List<TriageCard> triageCards,
+            List<EndpointPriorityItem> endpointPriority) {
+        State requiredState = Objects.requireNonNull(state, "state must not be null");
+        List<AttentionEvidence> items = new java.util.ArrayList<>();
+        List.copyOf(Objects.requireNonNullElse(triageCards, List.of())).stream()
+                .filter(card -> !"degraded".equals(requiredState.code()) || !affectsLifecycleState(card))
+                .map(card -> new AttentionEvidence(
+                        "triage_attention",
+                        card.severity().value(),
+                        "application",
+                        card.affectedEndpoint(),
+                        card.ruleId(),
+                        false,
+                        card.summary()))
+                .forEach(items::add);
+        List.copyOf(Objects.requireNonNullElse(endpointPriority, List.of())).stream()
+                .map(item -> new AttentionEvidence(
+                        "endpoint",
+                        endpointSeverity(item.reason()),
+                        "endpoint",
+                        item.endpointKey(),
+                        item.reason().value(),
+                        false,
+                        item.recommendedAction()))
+                .forEach(items::add);
+        return List.copyOf(items);
+    }
+
+    private static String endpointSeverity(EndpointPriorityReason reason) {
+        return reason == EndpointPriorityReason.RECENT_ERROR ? "attention" : "warning";
+    }
+
+    private static boolean affectsLifecycleState(TriageCard card) {
+        String ruleId = card.ruleId();
+        return "application_error_rate_high".equals(ruleId)
+                || "application_slow_share_high".equals(ruleId);
+    }
+
+    private static List<FirstLookCandidate> firstLookCandidates(
+            State state,
+            List<TriageCard> triageCards,
+            List<EndpointPriorityItem> endpointPriority) {
+        List<FirstLookCandidate> candidates = new java.util.ArrayList<>();
+        State requiredState = Objects.requireNonNull(state, "state must not be null");
+        List<TriageCard> cards = List.copyOf(Objects.requireNonNullElse(triageCards, List.of()));
+        if ("degraded".equals(requiredState.code()) && !cards.isEmpty()) {
+            TriageCard card = cards.get(0);
+            candidates.add(new FirstLookCandidate(
+                    1,
+                    "application",
+                    card.affectedEndpoint(),
+                    card.ruleId(),
+                    "stateReasons",
+                    card.recommendation()));
+        }
+        for (EndpointPriorityItem item : List.copyOf(Objects.requireNonNullElse(endpointPriority, List.of()))) {
+            if (candidates.size() >= 3) {
+                break;
+            }
+            candidates.add(new FirstLookCandidate(
+                    candidates.size() + 1,
+                    "endpoint",
+                    item.endpointKey(),
+                    item.reason().value(),
+                    "endpointPriority",
+                    item.recommendedAction()));
+        }
+        if (candidates.isEmpty() && !"active".equals(requiredState.code())) {
+            candidates.add(new FirstLookCandidate(
+                    1,
+                    "data_quality",
+                    null,
+                    requiredState.code(),
+                    "dataQuality",
+                    requiredState.recommendedAction()));
+        }
+        return List.copyOf(candidates);
+    }
+
+    private static BigDecimal fraction(long numerator, long denominator) {
+        if (denominator <= 0L) {
+            return BigDecimal.ZERO;
+        }
+        return BigDecimal.valueOf(numerator)
+                .divide(BigDecimal.valueOf(denominator), 6, java.math.RoundingMode.HALF_UP)
+                .stripTrailingZeros();
+    }
+
+    private record SlowEvidence(
+            Long slowCountOver500ms,
+            BigDecimal slowShareOver500ms,
+            String status
+    ) {
     }
 
     private static void validateRatio(BigDecimal value, String fieldName) {

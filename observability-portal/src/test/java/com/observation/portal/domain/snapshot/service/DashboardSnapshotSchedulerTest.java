@@ -26,10 +26,10 @@ import static org.mockito.Mockito.when;
 class DashboardSnapshotSchedulerTest {
 
     @Test
-    void dispatchesHourlyScheduledCaptureAtStableUtcHourBoundary() {
+    void dispatchesThirtyMinuteScheduledCaptureAtStableUtcSlotBoundary() {
         ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
         DashboardSnapshotCaptureService captureService = mock(DashboardSnapshotCaptureService.class);
-        Clock clock = Clock.fixed(Instant.parse("2026-05-27T13:05:21Z"), ZoneOffset.UTC);
+        Clock clock = Clock.fixed(Instant.parse("2026-05-27T13:35:21Z"), ZoneOffset.UTC);
         UUID projectId = UUID.fromString("00000000-0000-0000-0000-000000005801");
         UUID applicationId = UUID.fromString("00000000-0000-0000-0000-000000005811");
         ApplicationEntity application = new ApplicationEntity(
@@ -39,14 +39,14 @@ class DashboardSnapshotSchedulerTest {
                 "prod",
                 "active",
                 OffsetDateTime.parse("2026-05-27T12:00:00Z"),
-                OffsetDateTime.parse("2026-05-27T13:00:00Z"),
+                OffsetDateTime.parse("2026-05-27T13:30:00Z"),
                 OffsetDateTime.parse("2026-05-27T12:00:00Z"),
-                OffsetDateTime.parse("2026-05-27T13:00:00Z"));
+                OffsetDateTime.parse("2026-05-27T13:30:00Z"));
         when(applicationRepository.findActiveApplicationsEligibleForScheduledSnapshot(
-                OffsetDateTime.parse("2026-05-13T13:05:21Z"),
-                OffsetDateTime.parse("2026-05-27T13:00:00Z"),
-                OffsetDateTime.parse("2026-05-27T13:02:00Z"),
-                OffsetDateTime.parse("2026-05-27T13:05:21Z")))
+                OffsetDateTime.parse("2026-05-13T13:35:21Z"),
+                OffsetDateTime.parse("2026-05-27T13:30:00Z"),
+                OffsetDateTime.parse("2026-05-27T13:32:00Z"),
+                OffsetDateTime.parse("2026-05-27T13:35:21Z")))
                 .thenReturn(List.of(application));
 
         DashboardSnapshotScheduler scheduler = new DashboardSnapshotScheduler(
@@ -56,7 +56,7 @@ class DashboardSnapshotSchedulerTest {
                 properties(),
                 14);
 
-        scheduler.dispatchHourlyScheduledCaptures();
+        scheduler.dispatchThirtyMinuteScheduledCaptures();
 
         ArgumentCaptor<DashboardSnapshotCaptureRequest> captor =
                 ArgumentCaptor.forClass(DashboardSnapshotCaptureRequest.class);
@@ -65,17 +65,17 @@ class DashboardSnapshotSchedulerTest {
         assertThat(request.projectId()).isEqualTo(projectId);
         assertThat(request.applicationId()).isEqualTo(applicationId);
         assertThat(request.captureReason()).isEqualTo(DashboardSnapshotCaptureReason.HOURLY_SCHEDULED);
-        assertThat(request.currentWindowEndUtc()).isEqualTo(OffsetDateTime.parse("2026-05-27T13:00:00Z"));
-        assertThat(request.snapshotCutoffAt()).isEqualTo(OffsetDateTime.parse("2026-05-27T13:02:00Z"));
-        assertThat(request.requestedAt()).isEqualTo(OffsetDateTime.parse("2026-05-27T13:05:21Z"));
-        assertThat(request.triggerSource()).isEqualTo("utc_hourly_scheduler");
+        assertThat(request.currentWindowEndUtc()).isEqualTo(OffsetDateTime.parse("2026-05-27T13:30:00Z"));
+        assertThat(request.snapshotCutoffAt()).isEqualTo(OffsetDateTime.parse("2026-05-27T13:32:00Z"));
+        assertThat(request.requestedAt()).isEqualTo(OffsetDateTime.parse("2026-05-27T13:35:21Z"));
+        assertThat(request.triggerSource()).isEqualTo("utc_30_minute_scheduler");
     }
 
     @Test
-    void skipsBeforeCutoffAndDispatchesSameHourlyTargetOnlyOnce() {
+    void skipsBeforeCutoffAndDispatchesSameThirtyMinuteTargetOnlyOnce() {
         ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
         DashboardSnapshotCaptureService captureService = mock(DashboardSnapshotCaptureService.class);
-        MutableClock clock = new MutableClock(Instant.parse("2026-05-27T13:01:59Z"));
+        MutableClock clock = new MutableClock(Instant.parse("2026-05-27T13:31:59Z"));
         ApplicationEntity application = new ApplicationEntity(
                 UUID.fromString("00000000-0000-0000-0000-000000005811"),
                 UUID.fromString("00000000-0000-0000-0000-000000005801"),
@@ -83,14 +83,14 @@ class DashboardSnapshotSchedulerTest {
                 "prod",
                 "active",
                 OffsetDateTime.parse("2026-05-27T12:00:00Z"),
-                OffsetDateTime.parse("2026-05-27T13:00:00Z"),
+                OffsetDateTime.parse("2026-05-27T13:30:00Z"),
                 OffsetDateTime.parse("2026-05-27T12:00:00Z"),
-                OffsetDateTime.parse("2026-05-27T13:00:00Z"));
+                OffsetDateTime.parse("2026-05-27T13:30:00Z"));
         when(applicationRepository.findActiveApplicationsEligibleForScheduledSnapshot(
-                OffsetDateTime.parse("2026-05-13T13:02:00Z"),
-                OffsetDateTime.parse("2026-05-27T13:00:00Z"),
-                OffsetDateTime.parse("2026-05-27T13:02:00Z"),
-                OffsetDateTime.parse("2026-05-27T13:02:00Z")))
+                OffsetDateTime.parse("2026-05-13T13:32:00Z"),
+                OffsetDateTime.parse("2026-05-27T13:30:00Z"),
+                OffsetDateTime.parse("2026-05-27T13:32:00Z"),
+                OffsetDateTime.parse("2026-05-27T13:32:00Z")))
                 .thenReturn(List.of(application));
         DashboardSnapshotScheduler scheduler = new DashboardSnapshotScheduler(
                 applicationRepository,
@@ -99,29 +99,29 @@ class DashboardSnapshotSchedulerTest {
                 properties(),
                 14);
 
-        scheduler.dispatchHourlyScheduledCaptures();
+        scheduler.dispatchThirtyMinuteScheduledCaptures();
         verifyNoInteractions(applicationRepository);
         verify(captureService, never()).capture(org.mockito.ArgumentMatchers.any());
 
-        clock.setInstant(Instant.parse("2026-05-27T13:02:00Z"));
-        scheduler.dispatchHourlyScheduledCaptures();
+        clock.setInstant(Instant.parse("2026-05-27T13:32:00Z"));
+        scheduler.dispatchThirtyMinuteScheduledCaptures();
 
-        clock.setInstant(Instant.parse("2026-05-27T13:03:00Z"));
-        scheduler.dispatchHourlyScheduledCaptures();
+        clock.setInstant(Instant.parse("2026-05-27T13:33:00Z"));
+        scheduler.dispatchThirtyMinuteScheduledCaptures();
 
         verify(applicationRepository).findActiveApplicationsEligibleForScheduledSnapshot(
-                OffsetDateTime.parse("2026-05-13T13:02:00Z"),
-                OffsetDateTime.parse("2026-05-27T13:00:00Z"),
-                OffsetDateTime.parse("2026-05-27T13:02:00Z"),
-                OffsetDateTime.parse("2026-05-27T13:02:00Z"));
+                OffsetDateTime.parse("2026-05-13T13:32:00Z"),
+                OffsetDateTime.parse("2026-05-27T13:30:00Z"),
+                OffsetDateTime.parse("2026-05-27T13:32:00Z"),
+                OffsetDateTime.parse("2026-05-27T13:32:00Z"));
         verify(captureService).capture(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
-    void supportsCaptureDelayThatCrossesHourlyBoundary() {
+    void supportsCaptureDelayThatCrossesThirtyMinuteBoundary() {
         ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
         DashboardSnapshotCaptureService captureService = mock(DashboardSnapshotCaptureService.class);
-        Clock clock = Clock.fixed(Instant.parse("2026-05-27T13:30:00Z"), ZoneOffset.UTC);
+        Clock clock = Clock.fixed(Instant.parse("2026-05-27T13:20:00Z"), ZoneOffset.UTC);
         UUID projectId = UUID.fromString("00000000-0000-0000-0000-000000005801");
         UUID applicationId = UUID.fromString("00000000-0000-0000-0000-000000005811");
         ApplicationEntity application = new ApplicationEntity(
@@ -131,30 +131,30 @@ class DashboardSnapshotSchedulerTest {
                 "prod",
                 "active",
                 OffsetDateTime.parse("2026-05-27T12:00:00Z"),
-                OffsetDateTime.parse("2026-05-27T13:00:00Z"),
+                OffsetDateTime.parse("2026-05-27T12:30:00Z"),
                 OffsetDateTime.parse("2026-05-27T12:00:00Z"),
-                OffsetDateTime.parse("2026-05-27T13:00:00Z"));
+                OffsetDateTime.parse("2026-05-27T12:30:00Z"));
         when(applicationRepository.findActiveApplicationsEligibleForScheduledSnapshot(
-                OffsetDateTime.parse("2026-05-13T13:30:00Z"),
-                OffsetDateTime.parse("2026-05-27T12:00:00Z"),
-                OffsetDateTime.parse("2026-05-27T13:30:00Z"),
-                OffsetDateTime.parse("2026-05-27T13:30:00Z")))
+                OffsetDateTime.parse("2026-05-13T13:20:00Z"),
+                OffsetDateTime.parse("2026-05-27T12:30:00Z"),
+                OffsetDateTime.parse("2026-05-27T13:15:00Z"),
+                OffsetDateTime.parse("2026-05-27T13:20:00Z")))
                 .thenReturn(List.of(application));
 
         DashboardSnapshotScheduler scheduler = new DashboardSnapshotScheduler(
                 applicationRepository,
                 captureService,
                 clock,
-                properties(Duration.ofMinutes(90)),
+                properties(Duration.ofMinutes(45)),
                 14);
 
-        scheduler.dispatchHourlyScheduledCaptures();
+        scheduler.dispatchThirtyMinuteScheduledCaptures();
 
         ArgumentCaptor<DashboardSnapshotCaptureRequest> captor =
                 ArgumentCaptor.forClass(DashboardSnapshotCaptureRequest.class);
         verify(captureService).capture(captor.capture());
-        assertThat(captor.getValue().currentWindowEndUtc()).isEqualTo(OffsetDateTime.parse("2026-05-27T12:00:00Z"));
-        assertThat(captor.getValue().snapshotCutoffAt()).isEqualTo(OffsetDateTime.parse("2026-05-27T13:30:00Z"));
+        assertThat(captor.getValue().currentWindowEndUtc()).isEqualTo(OffsetDateTime.parse("2026-05-27T12:30:00Z"));
+        assertThat(captor.getValue().snapshotCutoffAt()).isEqualTo(OffsetDateTime.parse("2026-05-27T13:15:00Z"));
     }
 
     private static DashboardSnapshotProperties properties() {

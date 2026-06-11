@@ -6,10 +6,12 @@ import com.observation.portal.domain.history.model.OperationalEventHistoryReadMo
 import com.observation.portal.domain.history.model.OperationalEventItem;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotDetailRow;
 import com.observation.portal.domain.snapshot.repository.DashboardSnapshotRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Objects;
@@ -33,6 +35,7 @@ public class OperationalEventHistoryService {
     private final DashboardSnapshotRepository dashboardSnapshotRepository;
     private final OperationalEventHistoryProjector projector;
     private final Clock clock;
+    private final int retentionDays;
 
     /**
      * catalog path 정합성 repository, stored snapshot repository, 5.9-b projector extension point, UTC clock을 주입한다.
@@ -41,7 +44,8 @@ public class OperationalEventHistoryService {
             ApplicationRepository applicationRepository,
             DashboardSnapshotRepository dashboardSnapshotRepository,
             OperationalEventHistoryProjector projector,
-            Clock clock) {
+            Clock clock,
+            @Value("${portal.dashboard-snapshots.retention-days:14}") int retentionDays) {
         this.applicationRepository = Objects.requireNonNull(
                 applicationRepository,
                 "applicationRepository must not be null");
@@ -50,6 +54,10 @@ public class OperationalEventHistoryService {
                 "dashboardSnapshotRepository must not be null");
         this.projector = Objects.requireNonNull(projector, "projector must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null").withZone(ZoneOffset.UTC);
+        if (retentionDays <= 0) {
+            throw new IllegalArgumentException("retentionDays must be positive");
+        }
+        this.retentionDays = retentionDays;
     }
 
     /**
@@ -63,7 +71,7 @@ public class OperationalEventHistoryService {
             String limit) {
         UUID requiredProjectId = Objects.requireNonNull(projectId, "projectId must not be null");
         UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
-        OperationalEventHistoryQuery query = OperationalEventHistoryQuery.from(since, limit, clock);
+        OperationalEventHistoryQuery query = OperationalEventHistoryQuery.from(since, limit, clock, retentionDays);
         if (applicationRepository.findByIdAndProjectId(requiredApplicationId, requiredProjectId).isEmpty()) {
             return Optional.empty();
         }
@@ -74,7 +82,13 @@ public class OperationalEventHistoryService {
                     query.since(),
                     query.until(),
                     sourceFetchLimit(query.limit()));
-            List<OperationalEventItem> events = projector.project(requiredProjectId, requiredApplicationId, sourceRows);
+            List<DashboardSnapshotDetailRow> retainedRows = sourceRows.stream()
+                    .filter(row -> rowInHorizon(row, query.since(), query.until()))
+                    .toList();
+            List<OperationalEventItem> events = projector.project(
+                    requiredProjectId,
+                    requiredApplicationId,
+                    retainedRows);
             return Optional.of(new OperationalEventHistoryReadModel(
                     query.until(),
                     requiredApplicationId,
@@ -105,5 +119,14 @@ public class OperationalEventHistoryService {
         return Math.min(
                 MAX_SOURCE_FETCH_LIMIT,
                 Math.max(MIN_SOURCE_FETCH_LIMIT, responseLimit * SOURCE_FETCH_LIMIT_MULTIPLIER));
+    }
+
+    private static boolean rowInHorizon(
+            DashboardSnapshotDetailRow row,
+            OffsetDateTime currentWindowEndSince,
+            OffsetDateTime currentWindowEndUntil) {
+        OffsetDateTime currentWindowEndUtc = row.currentWindowEndUtc().withOffsetSameInstant(ZoneOffset.UTC);
+        return !currentWindowEndUtc.isBefore(currentWindowEndSince)
+                && !currentWindowEndUtc.isAfter(currentWindowEndUntil);
     }
 }

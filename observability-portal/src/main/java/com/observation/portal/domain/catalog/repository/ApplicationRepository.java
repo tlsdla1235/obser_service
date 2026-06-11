@@ -33,7 +33,7 @@ public interface ApplicationRepository extends JpaRepository<ApplicationEntity, 
     List<ApplicationEntity> findByProjectIdOrderByNameAscEnvironmentAsc(UUID projectId);
 
     /**
-     * UTC hourly scheduled snapshot 후보 application을 accepted bucket과 최근 starter heartbeat 조건으로 조회한다.
+     * UTC 30분 scheduled snapshot 후보 application을 accepted bucket과 최근 starter heartbeat 조건으로 조회한다.
      *
      * <p>heartbeat는 snapshot 저장 가능 여부만 제한하며, read model/state 계산이나 metric freshness source로 합성하지 않는다.</p>
      */

@@ -476,6 +476,8 @@ Starter connection은 `dataQuality` 안에 넣지 않고 top-level `starterConne
 
 MVP 첫 화면에서 instance evidence는 summary다. Instance별 독립 state machine을 만들지 않는다.
 
+2026-06-11 UI MVP 결정: Instance Summary 행은 현재 list read model이 제공하는 얇은 summary와 detail link를 표시한다. `status`, `heartbeat`, `requests`, `slow`, `contribution`처럼 현 `InstanceEntry` 목록 read model에 없는 값은 프론트에서 재계산하거나 합성해 행에 직접 표시하지 않는다. SoT mockup의 더 풍부한 행 표현과의 차이는 sanctioned gap으로 추적하며, 현재 화면 진입점은 단일 wide modal의 `Open modal`뿐이다.
+
 첫 화면 field:
 
 - `observedInstanceCount`
@@ -809,6 +811,9 @@ MVP에서는 새 operational event table, endpoint timeseries table, raw explore
 - snapshot detail 재계산
 - raw metric explorer
 - endpoint long-term timeseries projection
+- Instance Snapshot Trend / Stored trend / projection trend UI surface
+- InstanceTrendView, narrow Sheet, `openTrend` / `openLiveDashboard`, `snapshotTrend` surface
+- list read model에 없는 instance row metrics를 프론트에서 재계산하거나 합성해 표시하는 동작
 
 ## 20. Test Guard Candidates
 

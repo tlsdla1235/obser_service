@@ -76,30 +76,30 @@ class EndpointPriorityServiceTest {
                         tuple(2, "GET /error-a", ApplicationDashboardReadModel.EndpointPriorityReason.ERROR_SPIKE),
                         tuple(3, "GET /error-b", ApplicationDashboardReadModel.EndpointPriorityReason.ERROR_SPIKE),
                         tuple(4, "GET /latency", ApplicationDashboardReadModel.EndpointPriorityReason.LATENCY_SPIKE),
-                        tuple(5, "GET /compare-a",
-                                ApplicationDashboardReadModel.EndpointPriorityReason.COMPARATIVE_REGRESSION));
+                        tuple(5, "GET /compare-a", ApplicationDashboardReadModel.EndpointPriorityReason.RECENT_ERROR));
         assertThat(items).allSatisfy(item -> {
             assertThat(item.method()).isNotBlank();
             assertThat(item.route()).isNotBlank();
             assertThat(item.endpointKey()).isEqualTo(item.method() + " " + item.route());
             assertThat(item.freshness().status()).isEqualTo("current");
-            assertThat(item.freshness().sourceWindow()).isEqualTo("current");
+            assertThat(item.freshness().sourceWindow()).isEqualTo("recent_30_minutes");
             assertThat(item.freshness().lastObservedAt()).isEqualTo(offset("2026-05-26T01:10:30Z"));
+            assertThat(item.evidence().baselineRequestCount()).isNull();
+            assertThat(item.evidence().errorRateDelta()).isNull();
         });
     }
 
     @Test
-    void capsComparativeRegressionConfidenceAndDoesNotPromoteItAsSpike() {
+    void baselineOnlyRegressionStillOnlyExposesRecentServerErrorAttention() {
         List<ApplicationDashboardReadModel.EndpointPriorityItem> items = service.endpointPriority(input(
                 List.of(endpoint("GET", "/compare", 100, 3, 90, 100)),
                 List.of(endpoint("GET", "/compare", 100, 0, 95, 100))));
 
         assertThat(items).singleElement().satisfies(item -> {
-            assertThat(item.reason())
-                    .isEqualTo(ApplicationDashboardReadModel.EndpointPriorityReason.COMPARATIVE_REGRESSION);
-            assertThat(item.ruleIds()).containsExactly("endpoint_comparative_regression");
-            assertThat(item.confidence()).isLessThanOrEqualTo(0.64d);
-            assertThat(item.score()).isBetween(0, 100);
+            assertThat(item.reason()).isEqualTo(ApplicationDashboardReadModel.EndpointPriorityReason.RECENT_ERROR);
+            assertThat(item.ruleIds()).containsExactly("endpoint_recent_server_error");
+            assertThat(item.evidence().baselineRequestCount()).isNull();
+            assertThat(item.evidence().errorRateDelta()).isNull();
         });
     }
 
@@ -130,7 +130,7 @@ class EndpointPriorityServiceTest {
         assertThat(items).singleElement().satisfies(item -> {
             assertThat(item.endpointKey()).isEqualTo("POST /too-small");
             assertThat(item.reason()).isEqualTo(ApplicationDashboardReadModel.EndpointPriorityReason.RECENT_ERROR);
-            assertThat(item.ruleIds()).containsExactly("endpoint_recent_error");
+            assertThat(item.ruleIds()).containsExactly("endpoint_recent_server_error");
             assertThat(item.evidence().errorCount()).isEqualTo(10L);
         });
     }
@@ -148,7 +148,7 @@ class EndpointPriorityServiceTest {
         assertThat(items).singleElement().satisfies(item -> {
             assertThat(item.endpointKey()).isEqualTo("GET /health");
             assertThat(item.reason()).isEqualTo(ApplicationDashboardReadModel.EndpointPriorityReason.RECENT_ERROR);
-            assertThat(item.ruleIds()).containsExactly("endpoint_recent_error");
+            assertThat(item.ruleIds()).containsExactly("endpoint_recent_server_error");
             assertThat(item.confidence()).isLessThanOrEqualTo(0.64d);
             assertThat(item.evidence().requestCount()).isEqualTo(1L);
             assertThat(item.evidence().errorCount()).isEqualTo(1L);

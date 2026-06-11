@@ -1,4 +1,4 @@
-import { ApiRequestError } from "./api";
+import { ApiRequestError } from "./api.js";
 import type {
   ApplicationDashboardReadModel,
   ConcernSummary,
@@ -13,37 +13,40 @@ import type {
   ProjectNavigationProjectItem,
   ProjectNavigationReadModel,
   TrendPreset,
-} from "./read-model-types";
+} from "./read-model-types.js";
 
 const PROJECT_APPLICATIONS_PATH = /^\/api\/projects\/([^/]+)\/applications$/;
 const APPLICATION_DASHBOARD_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/dashboard$/;
+const LIVE_INSTANCE_DASHBOARD_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/instances\/([^/]+)\/dashboard$/;
+const SNAPSHOT_INSTANCE_DASHBOARD_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/snapshots\/([^/]+)\/instances\/([^/]+)\/dashboard$/;
 const INSTANCE_EVIDENCE_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/instances\/([^/]+)\/evidence$/;
 const INSTANCE_SNAPSHOT_TREND_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/instances\/([^/]+)\/snapshot-trend$/;
 const SNAPSHOT_DETAIL_PATH = /^\/api\/projects\/([^/]+)\/applications\/([^/]+)\/dashboard\/snapshots\/([^/]+)$/;
 const UNKNOWN_TEXT = "확인할 수 없음";
 const EMPTY_DISPLAY_TEXT = "해당 없음";
+const BASELINE_NOT_USED_TEXT = "MVP 판단에 사용하지 않음";
 const DISPLAY_TIME_ZONE = "Asia/Seoul";
 const DISPLAY_TIME_ZONE_LABEL = "KST";
 
 export const TREND_PRESET_QUERY = {
-  "7d": { limit: 168, since: "7d" },
-  "14d": { limit: 336, since: "14d" },
+  "7d": { limit: 336, since: "7d" },
+  "14d": { limit: 672, since: "14d" },
 } as const satisfies Record<TrendPreset, { limit: number; since: TrendPreset }>;
 
 export const HISTORY_PRESET_QUERY = {
   "24h": {
     eventLimit: 50,
-    markerLimit: 50,
+    markerLimit: 48,
     since: "24h",
   },
   "7d": {
     eventLimit: 100,
-    markerLimit: 168,
+    markerLimit: 336,
     since: "7d",
   },
   "14d": {
     eventLimit: 100,
-    markerLimit: 336,
+    markerLimit: 672,
     since: "14d",
   },
 } as const satisfies Record<HistoryPreset, { eventLimit: number; markerLimit: number; since: HistoryPreset }>;
@@ -71,12 +74,18 @@ export type ApplicationPresentationItem = ProjectApplicationNavigationApplicatio
 };
 
 export type DashboardPresentation = ApplicationDashboardReadModel & {
+  baselineDecisionDisplay: string;
   baselineWindowDisplay: string;
+  bucketEndBoundaryDisplay: string;
+  canonicalWindowDisplay: string;
+  dataQualityLastObservedDisplay: string;
   currentWindowDisplay: string;
   generatedAtDisplay: string;
   lastAcceptedBucketDisplay: string;
   lastHealthyDisplay: string;
   metricStateClassName: string;
+  readSemanticsBucketSourceDisplay: string;
+  readSemanticsSourceDisplay: string;
   sourceScopedReasonDisplay: string;
   starterLastHeartbeatDisplay: string;
 };
@@ -115,16 +124,22 @@ export function toApplicationPresentationItems(
 }
 
 export function toDashboardPresentation(model: ApplicationDashboardReadModel): DashboardPresentation {
-  const { application, generatedAt, sourceScopedPercentiles, starterConnection } = model;
+  const { application, dataQuality, generatedAt, readSemantics, sourceScopedPercentiles, starterConnection, window } = model;
   const { code } = model.state;
   return {
     ...model,
-    baselineWindowDisplay: formatWindow(application.sourceWindow.baseline),
+    baselineDecisionDisplay: readSemantics.baselineComparisonUsedForMvpDecision ? formatOptionalWindow(application.sourceWindow.baseline) : BASELINE_NOT_USED_TEXT,
+    baselineWindowDisplay: readSemantics.baselineComparisonUsedForMvpDecision ? formatOptionalWindow(application.sourceWindow.baseline) : BASELINE_NOT_USED_TEXT,
+    bucketEndBoundaryDisplay: readSemantics.bucketEndBoundary,
+    canonicalWindowDisplay: formatWindow(window),
+    dataQualityLastObservedDisplay: formatOptionalDateTime(dataQuality.lastObservedAt),
     currentWindowDisplay: formatWindow(application.sourceWindow.current),
     generatedAtDisplay: formatOptionalDateTime(generatedAt),
     lastAcceptedBucketDisplay: formatOptionalDateTime(application.lastAcceptedBucketAt),
     lastHealthyDisplay: formatOptionalDateTime(application.lastHealthyAt),
     metricStateClassName: metricStateClassName(code),
+    readSemanticsBucketSourceDisplay: humanizeSourceCode(readSemantics.bucketDistributionSource),
+    readSemanticsSourceDisplay: humanizeSourceCode(readSemantics.source),
     sourceScopedReasonDisplay: humanizeCode(sourceScopedPercentiles.reason ?? UNKNOWN_TEXT),
     starterLastHeartbeatDisplay: formatOptionalDateTime(starterConnection.lastHeartbeatAt),
   };
@@ -163,6 +178,46 @@ export function validateInstanceEvidencePath(
     match[3] !== expectedInstanceId
   ) {
     throw new ApiRequestError("instance_evidence_link_invalid");
+  }
+  return path;
+}
+
+export function validateLiveInstanceDashboardPath(
+  link: string,
+  expectedProjectId: string,
+  expectedApplicationId: string,
+  expectedInstanceId: string,
+): string {
+  const path = internalApiPath(link, "live_instance_dashboard_link_invalid");
+  const match = LIVE_INSTANCE_DASHBOARD_PATH.exec(path);
+  if (
+    !match ||
+    match[1] !== expectedProjectId ||
+    match[2] !== expectedApplicationId ||
+    match[3] !== expectedInstanceId
+  ) {
+    throw new ApiRequestError("live_instance_dashboard_link_invalid");
+  }
+  return path;
+}
+
+export function validateSnapshotInstanceDashboardPath(
+  link: string,
+  expectedProjectId: string,
+  expectedApplicationId: string,
+  expectedSnapshotId: string,
+  expectedInstanceId: string,
+): string {
+  const path = internalApiPath(link, "snapshot_instance_dashboard_link_invalid");
+  const match = SNAPSHOT_INSTANCE_DASHBOARD_PATH.exec(path);
+  if (
+    !match ||
+    match[1] !== expectedProjectId ||
+    match[2] !== expectedApplicationId ||
+    match[3] !== expectedSnapshotId ||
+    match[4] !== expectedInstanceId
+  ) {
+    throw new ApiRequestError("snapshot_instance_dashboard_link_invalid");
   }
   return path;
 }
@@ -214,6 +269,31 @@ export function snapshotIdFromDetailPath(path: string): string {
 }
 
 /**
+ * Live Instance Dashboard는 dashboard read model에서 받은 legacy evidence link에 의존하지 않고
+ * selected Project/Application/Instance context로 새 13.8 endpoint를 구성한다.
+ */
+export function buildLiveInstanceDashboardPath(
+  projectId: string,
+  applicationId: string,
+  instanceId: string,
+): string {
+  return `/api/projects/${safePathComponent(projectId)}/applications/${safePathComponent(applicationId)}/instances/${safePathComponent(instanceId)}/dashboard`;
+}
+
+/**
+ * Snapshot Instance Dashboard는 selected Application Snapshot id를 path에 고정해
+ * live/current evidence fallback으로 흐르지 않게 한다.
+ */
+export function buildSnapshotInstanceDashboardPath(
+  projectId: string,
+  applicationId: string,
+  snapshotId: string,
+  instanceId: string,
+): string {
+  return `/api/projects/${safePathComponent(projectId)}/applications/${safePathComponent(applicationId)}/snapshots/${safePathComponent(snapshotId)}/instances/${safePathComponent(instanceId)}/dashboard`;
+}
+
+/**
  * Trend 직접 진입은 evidence response link가 없을 때만 쓰는 문서화된 fallback이다.
  * caller가 넘긴 selected context를 path component로만 인코딩하고 임의 URL input은 받지 않는다.
  */
@@ -238,6 +318,93 @@ export function buildSnapshotHistoryPaths(projectId: string, applicationId: stri
     events: `/api/projects/${projectPath}/applications/${applicationPath}/operational-events?since=${query.since}&limit=${query.eventLimit}`,
     markers: `/api/projects/${projectPath}/applications/${applicationPath}/dashboard/snapshot-markers?since=${query.since}&limit=${query.markerLimit}`,
   };
+}
+
+/**
+ * Snapshot date map은 currentWindowEndUtc end-boundary를 기준으로 날짜를 나눈다.
+ * 정확한 00:00Z boundary는 새 날짜 00:00이 아니라 전날 24:00 slot으로 표시한다.
+ */
+export function snapshotSlotDayKey(value: string): string {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return "invalid-date";
+  }
+  const date = new Date(parsed);
+  if (date.getUTCHours() === 0 && date.getUTCMinutes() === 0 && date.getUTCSeconds() === 0 && date.getUTCMilliseconds() === 0) {
+    return snapshotUtcDateKey(new Date(date.getTime() - 24 * 60 * 60 * 1000));
+  }
+  return snapshotUtcDayKey(value);
+}
+
+/**
+ * 14일 retention date map의 day key를 최신 slot day부터 과거 방향으로 만든다.
+ * horizon.until이 00:00Z이면 slot day 기준 전날을 최신 날짜로 삼아 marker bucketing과 맞춘다.
+ */
+export function snapshotRetentionDayKeys(until: string, days: number): string[] {
+  const endKey = snapshotSlotDayKey(until);
+  if (endKey === "invalid-date") {
+    return [];
+  }
+  const end = snapshotUtcDayStart(`${endKey}T00:00:00Z`);
+  if (!end) {
+    return [];
+  }
+  const keys: string[] = [];
+  for (let offset = 0; offset < days; offset += 1) {
+    const cursor = new Date(end.getTime() - offset * 24 * 60 * 60 * 1000);
+    keys.push(snapshotUtcDateKey(cursor));
+  }
+  return keys;
+}
+
+/**
+ * currentWindowEndUtc end-boundary를 0~47 slot index로 변환한다.
+ * API guard가 30분 boundary만 통과시키므로 이 함수는 표시용 index 계산만 담당한다.
+ */
+export function snapshotSlotIndexFromWindowEndUtc(value: string): number {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return -1;
+  }
+  const date = new Date(parsed);
+  const endMinutes = date.getUTCHours() * 60 + date.getUTCMinutes();
+  const normalizedEndMinutes = endMinutes === 0 ? 24 * 60 : endMinutes;
+  return Math.floor(normalizedEndMinutes / 30) - 1;
+}
+
+/**
+ * slot index를 end-boundary label로 표시한다.
+ * 첫 slot은 00:30Z, 마지막 slot은 다음 날짜 00:00Z가 아니라 24:00Z로 표시한다.
+ */
+export function snapshotSlotTimeLabel(slotIndex: number): string {
+  const totalMinutes = (slotIndex + 1) * 30;
+  if (totalMinutes === 24 * 60) {
+    return "24:00Z";
+  }
+  const hour = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
+  const minute = String(totalMinutes % 60).padStart(2, "0");
+  return `${hour}:${minute}Z`;
+}
+
+function snapshotUtcDayStart(value: string): Date | null {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  const date = new Date(parsed);
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+function snapshotUtcDayKey(value: string): string {
+  const start = snapshotUtcDayStart(value);
+  return start ? snapshotUtcDateKey(start) : "invalid-date";
+}
+
+function snapshotUtcDateKey(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 export function buildSnapshotDetailPath(projectId: string, applicationId: string, snapshotId: string): string {
@@ -291,6 +458,10 @@ export function formatNullableRatio(value: number | null | undefined): string {
 
 export function formatWindow(window: DashboardWindow): string {
   return formatDateRange(window.startUtc, window.endUtc);
+}
+
+export function formatOptionalWindow(window: DashboardWindow | null | undefined): string {
+  return window ? formatWindow(window) : EMPTY_DISPLAY_TEXT;
 }
 
 /**
@@ -370,6 +541,8 @@ export function metricStateClassName(code: LifecycleStateCode | (string & {})): 
 
 export function statusBadgeClassName(status: string): string {
   switch (status) {
+    case "snapshot":
+      return "border-amber-300 bg-amber-50 text-amber-800";
     case "critical":
       return "border-red-300 bg-red-50 text-red-700";
     case "warning":
@@ -379,8 +552,10 @@ export function statusBadgeClassName(status: string): string {
     case "active":
     case "available":
     case "current":
+    case "live":
     case "received":
     case "recent":
+    case "within_threshold":
       return "border-emerald-500 bg-emerald-50 text-emerald-900";
     case "down_candidate":
     case "failed":
@@ -390,8 +565,17 @@ export function statusBadgeClassName(status: string): string {
       return "border-rose-500 bg-rose-50 text-rose-900";
     case "insufficient":
     case "insufficient_baseline":
+    case "insufficient_evidence":
+    case "malformed_evidence":
+    case "metric_missing":
     case "missing":
+    case "not_observed":
+    case "not_observed_in_window":
+    case "sample_limited":
     case "stale_candidate":
+    case "threshold_hit":
+    case "threshold_exceeded":
+    case "waiting_first_data":
       return "border-amber-500 bg-amber-50 text-amber-900";
     default:
       return "border-neutral-400 bg-white text-neutral-800";
@@ -402,6 +586,7 @@ export function severityBadgeClassName(severity: string | null | undefined): str
   switch ((severity ?? "").toLowerCase()) {
     case "critical":
       return "border-red-300 bg-red-50 text-red-700";
+    case "attention":
     case "warning":
       return "border-amber-300 bg-amber-50 text-amber-700";
     case "info":
@@ -429,14 +614,36 @@ export function severityDisplayText(severity: string | null | undefined): string
 export function humanizeSourceCode(value: string | null | undefined): string {
   const normalized = (value ?? "").trim();
   switch (normalized) {
+    case "accepted_metric_buckets":
+      return "최근 30분 accepted metric bucket";
     case "accepted_bucket":
-      return "최근 수집 데이터";
+      return "accepted bucket 분포";
+    case "accepted_metric_buckets.endpoints_json":
+      return "accepted bucket endpoint evidence";
+    case "application_dashboard_live":
+      return "live Application Dashboard";
+    case "live_recent_30_minutes":
+      return "live recent 30 minutes";
+    case "selected_application_snapshot":
+      return "selected Application Snapshot";
     case "starter_heartbeat":
       return "앱 연결 신호";
     case "dashboard_snapshots":
       return "저장된 상태 기록";
+    case "dashboard_snapshots.read_model_json":
+      return "저장된 dashboard read model";
+    case "dashboard_snapshots.read_model_json.endpointPriority":
+      return "저장된 dashboard endpoint priority";
+    case "dashboard_snapshots.read_model_json.instanceSummary.items":
+      return "저장된 dashboard instance summary";
     case "starter_canonical_percentile":
-      return "앱이 보낸 최근 응답시간";
+      return "Starter canonical p95/p99";
+    case "endpointPriority":
+      return "server endpoint priority";
+    case "attentionEvidence":
+      return "server attention evidence";
+    case "stateReasons":
+      return "server state reasons";
     case "stored read model":
     case "stored_read_model":
     case "stored_snapshot_detail":
@@ -461,6 +668,7 @@ export function humanizeStatusCode(value: string | null | undefined): string {
     case "available":
       return "측정됨";
     case "capturedAt_asc":
+    case "currentWindowEndUtc_asc":
       return "오래된 기록 먼저";
     case "capturedAt_desc":
     case "occurredAt_desc":
@@ -469,6 +677,8 @@ export function humanizeStatusCode(value: string | null | undefined): string {
       return "최신";
     case "current_window":
       return "현재 구간";
+    case "does_not_change_metric_state":
+      return "metric state에 영향 없음";
     case "degraded":
       return "주의 필요";
     case "down":
@@ -481,12 +691,59 @@ export function humanizeStatusCode(value: string | null | undefined): string {
       return "참고";
     case "insufficient":
       return "표본 부족";
+    case "insufficient_evidence":
+      return "evidence 부족";
     case "insufficient_baseline":
       return "비교 기준 부족";
+    case "recent_30_minutes":
+      return "최근 30분";
+    case "instance_bucket":
+      return "instance bucket";
+    case "application_latency":
+      return "application latency";
+    case "application_error":
+      return "application error";
+    case "resource_pressure":
+      return "resource pressure";
+    case "endpoint":
+      return "endpoint";
+    case "data_quality":
+      return "data quality";
+    case "baseline_comparison_not_used_for_mvp":
+      return "baseline 비교는 MVP 판단에 사용하지 않음";
+    case "sourceWindow.baseline_null_public_read_model":
+      return "sourceWindow.baseline=null public read model";
+    case "sample_limited":
+      return "표본 제한";
+    case "source_scoped_points":
+      return "source-scoped point 표시";
+    case "no_average_no_max_no_merge_no_histogram_recalculation":
+      return "평균·최댓값·병합·histogram 재계산 없음";
+    case "cumulative_bucket_distribution":
+      return "누적 bucket 분포";
+    case "display_bucket_only_no_percentile_recalculation":
+      return "분포 표시 전용";
+    case "threshold_hit":
+    case "threshold_exceeded":
+      return "기준 이상";
+    case "within_threshold":
+      return "기준 이하";
+    case "normal":
+      return "정상 범위";
+    case "control_plane_only":
+      return "control-plane 참고";
     case "missing":
       return "아직 없음";
+    case "metric_missing":
+      return "metric evidence 없음";
+    case "malformed_evidence":
+      return "해석할 수 없는 evidence";
     case "none":
       return "영향 없음";
+    case "not_observed":
+      return "selected instance에서 관찰되지 않음";
+    case "not_observed_in_window":
+      return "window 안에서 관찰되지 않음";
     case "received":
       return "수신됨";
     case "recent":
@@ -509,6 +766,8 @@ export function humanizeStatusCode(value: string | null | undefined): string {
       return "첫 데이터 대기";
     case "warning":
       return "주의";
+    case "server_order":
+      return "server 제공 순서";
     case "":
       return EMPTY_DISPLAY_TEXT;
     default:
@@ -520,7 +779,7 @@ export function humanizeCaptureReason(value: string | null | undefined): string 
   const normalized = (value ?? "").trim();
   switch (normalized) {
     case "hourly_scheduled":
-      return "정기 저장";
+      return "30분 정기 저장";
     case "query_fallback":
       return "정기 확인 기록";
     case "state_change":
@@ -536,7 +795,9 @@ export function humanizeOrderCode(value: string | null | undefined): string {
   const normalized = (value ?? "").trim();
   switch (normalized) {
     case "capturedAt_asc":
-      return "최신 기록 먼저";
+      return "오래된 기록 먼저";
+    case "currentWindowEndUtc_asc":
+      return "30분 slot 오래된 순";
     case "capturedAt_desc":
     case "occurredAt_desc":
       return "최신 기록 먼저";

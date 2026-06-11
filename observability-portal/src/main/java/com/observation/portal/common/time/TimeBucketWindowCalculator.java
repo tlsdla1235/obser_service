@@ -11,14 +11,14 @@ import java.util.Objects;
 /**
  * 잠긴 time-buckets contract의 UTC bucket/window 계산을 제공하는 공유 component다.
  *
- * <p>repository, controller, UI가 current/baseline 의미를 다시 만들지 않도록 service/model 계층에서
+ * <p>repository, controller, UI가 최근 30분 metric 판단 window 의미를 다시 만들지 않도록 service/model 계층에서
  * 주입받아 사용한다.</p>
  */
 @Component
 public class TimeBucketWindowCalculator {
 
     public static final Duration BUCKET_DURATION = Duration.ofSeconds(30);
-    public static final Duration DASHBOARD_WINDOW_DURATION = Duration.ofMinutes(15);
+    public static final Duration DASHBOARD_WINDOW_DURATION = Duration.ofMinutes(30);
 
     private final Clock clock;
 
@@ -30,23 +30,22 @@ public class TimeBucketWindowCalculator {
     }
 
     /**
-     * 주입된 clock의 현재 시각을 기준으로 dashboard current/baseline window를 계산한다.
+     * 주입된 clock의 현재 시각을 기준으로 dashboard recent 30 minutes window를 계산한다.
      */
     public DashboardTimeWindow dashboardWindowAtCurrentTime() {
         return dashboardWindowEndingAt(clock.instant());
     }
 
     /**
-     * query 시각 기준 최근 15분 current와 그 직전 15분 baseline을 반환한다.
+     * query 시각 기준 최근 30분 accepted bucket 판단 window를 반환한다.
      */
     public DashboardTimeWindow dashboardWindowEndingAt(Instant queryAtUtc) {
         Instant requiredQueryAtUtc = Objects.requireNonNull(queryAtUtc, "queryAtUtc must not be null");
         Instant currentStartUtc = requiredQueryAtUtc.minus(DASHBOARD_WINDOW_DURATION);
-        Instant baselineStartUtc = currentStartUtc.minus(DASHBOARD_WINDOW_DURATION);
         return new DashboardTimeWindow(
                 requiredQueryAtUtc,
                 new UtcTimeInterval(currentStartUtc, requiredQueryAtUtc),
-                new UtcTimeInterval(baselineStartUtc, currentStartUtc),
+                null,
                 BUCKET_DURATION);
     }
 

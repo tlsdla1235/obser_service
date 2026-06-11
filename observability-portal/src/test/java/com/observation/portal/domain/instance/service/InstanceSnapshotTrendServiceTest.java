@@ -65,7 +65,7 @@ class InstanceSnapshotTrendServiceTest {
                 APPLICATION_ID,
                 OffsetDateTime.parse("2026-05-19T08:10:35Z"),
                 OffsetDateTime.parse("2026-05-26T08:10:35Z"),
-                168))
+                336))
                 .thenReturn(List.of());
 
         InstanceSnapshotTrendReadModel trend = service.getTrend(
@@ -89,7 +89,7 @@ class InstanceSnapshotTrendServiceTest {
         assertThat(trend.horizon().requestedSince()).isEqualTo("7d");
         assertThat(trend.horizon().since()).isEqualTo(OffsetDateTime.parse("2026-05-19T08:10:35Z"));
         assertThat(trend.horizon().until()).isEqualTo(OffsetDateTime.parse("2026-05-26T08:10:35Z"));
-        assertThat(trend.horizon().limit()).isEqualTo(168);
+        assertThat(trend.horizon().limit()).isEqualTo(336);
         assertThat(trend.points()).isEmpty();
     }
 
@@ -107,7 +107,7 @@ class InstanceSnapshotTrendServiceTest {
                 APPLICATION_ID,
                 OffsetDateTime.parse("2026-05-16T08:10:35Z"),
                 OffsetDateTime.parse("2026-05-26T08:10:35Z"),
-                336))
+                672))
                 .thenReturn(List.of());
 
         InstanceSnapshotTrendReadModel trend = service.getTrend(
@@ -120,13 +120,13 @@ class InstanceSnapshotTrendServiceTest {
 
         assertThat(trend.horizon().requestedSince()).isEqualTo("14d");
         assertThat(trend.horizon().since()).isEqualTo(OffsetDateTime.parse("2026-05-16T08:10:35Z"));
-        assertThat(trend.horizon().limit()).isEqualTo(336);
+        assertThat(trend.horizon().limit()).isEqualTo(672);
         verify(dashboardSnapshotRepository).findTrendRowsNewestFirst(
                 PROJECT_ID,
                 APPLICATION_ID,
                 OffsetDateTime.parse("2026-05-16T08:10:35Z"),
                 OffsetDateTime.parse("2026-05-26T08:10:35Z"),
-                336);
+                672);
     }
 
     @Test
@@ -182,11 +182,11 @@ class InstanceSnapshotTrendServiceTest {
                 APPLICATION_ID,
                 OffsetDateTime.parse("2026-05-19T08:10:35Z"),
                 OffsetDateTime.parse("2026-05-26T08:10:35Z"),
-                168);
+                336);
     }
 
     @Test
-    void projectsSnapshotRowsAndReturnsCapturedAtAscendingWithSnapshotIdTieBreaker() {
+    void projectsSnapshotRowsAndReturnsCurrentWindowAscendingWithGeneratedAtTieBreaker() {
         UUID earlierSnapshotId = UUID.fromString("00000000-0000-0000-0000-000000005731");
         UUID tiedLowerSnapshotId = UUID.fromString("00000000-0000-0000-0000-000000005732");
         UUID tiedHigherSnapshotId = UUID.fromString("00000000-0000-0000-0000-000000005733");
@@ -197,9 +197,9 @@ class InstanceSnapshotTrendServiceTest {
                 OffsetDateTime.parse("2026-05-26T08:10:35Z"),
                 168))
                 .thenReturn(List.of(
-                        row(tiedHigherSnapshotId, "2026-05-26T08:00:00Z", "opaque_future_reason"),
-                        row(tiedLowerSnapshotId, "2026-05-26T08:00:00Z", null),
-                        row(earlierSnapshotId, "2026-05-26T07:00:00Z", "  hourly_scheduled  "),
+                        row(tiedHigherSnapshotId, "2026-05-26T08:40:00Z", "2026-05-26T08:00:00Z", "opaque_future_reason"),
+                        row(tiedLowerSnapshotId, "2026-05-26T08:30:00Z", "2026-05-26T08:00:00Z", (String) null),
+                        row(earlierSnapshotId, "2026-05-26T09:00:00Z", "2026-05-26T07:30:00Z", "  hourly_scheduled  "),
                         row(UUID.fromString("00000000-0000-0000-0000-000000005734"),
                                 "2026-05-26T06:00:00Z",
                                 "missing_item",
@@ -217,11 +217,44 @@ class InstanceSnapshotTrendServiceTest {
                 .extracting(InstanceSnapshotTrendReadModel.Point::snapshotId)
                 .containsExactly(earlierSnapshotId, tiedLowerSnapshotId, tiedHigherSnapshotId);
         assertThat(trend.points())
+                .extracting(InstanceSnapshotTrendReadModel.Point::currentWindowEndUtc)
+                .containsExactly(
+                        offset("2026-05-26T07:30:00Z"),
+                        offset("2026-05-26T08:00:00Z"),
+                        offset("2026-05-26T08:00:00Z"));
+        assertThat(trend.points())
                 .extracting(InstanceSnapshotTrendReadModel.Point::captureReason)
                 .containsExactly("  hourly_scheduled  ", null, "opaque_future_reason");
         assertThat(trend.points().get(0).storedApplicationStateCode()).isEqualTo("active");
         assertThat(trend.points().get(0).metricData().statusSource()).isEqualTo("accepted_bucket");
         assertThat(trend.points().get(0).starterConnection().statusSource()).isEqualTo("starter_heartbeat");
+    }
+
+    @Test
+    void filtersRepositoryRowsOutsideEffectiveRetentionHorizonBeforeTrendProjection() {
+        UUID expiredSnapshotId = UUID.fromString("00000000-0000-0000-0000-000000005741");
+        UUID retainedSnapshotId = UUID.fromString("00000000-0000-0000-0000-000000005742");
+        when(dashboardSnapshotRepository.findTrendRowsNewestFirst(
+                PROJECT_ID,
+                APPLICATION_ID,
+                OffsetDateTime.parse("2026-05-19T08:10:35Z"),
+                OffsetDateTime.parse("2026-05-26T08:10:35Z"),
+                336))
+                .thenReturn(List.of(
+                        row(expiredSnapshotId, "2026-05-19T08:20:00Z", "2026-05-19T08:10:34Z", "hourly_scheduled"),
+                        row(retainedSnapshotId, "2026-05-19T08:20:01Z", "2026-05-19T08:10:35Z", "hourly_scheduled")));
+
+        InstanceSnapshotTrendReadModel trend = service.getTrend(
+                        PROJECT_ID,
+                        APPLICATION_ID,
+                        INSTANCE_ID,
+                        "7d",
+                        null)
+                .orElseThrow();
+
+        assertThat(trend.points())
+                .extracting(InstanceSnapshotTrendReadModel.Point::snapshotId)
+                .containsExactly(retainedSnapshotId);
     }
 
     @Test
@@ -275,7 +308,15 @@ class InstanceSnapshotTrendServiceTest {
     }
 
     private static DashboardSnapshotTrendRow row(UUID snapshotId, String generatedAt, String captureReason) {
-        return row(snapshotId, generatedAt, captureReason, INSTANCE_ID);
+        return row(snapshotId, generatedAt, generatedAt, captureReason, INSTANCE_ID);
+    }
+
+    private static DashboardSnapshotTrendRow row(
+            UUID snapshotId,
+            String generatedAt,
+            String currentWindowEndUtc,
+            String captureReason) {
+        return row(snapshotId, generatedAt, currentWindowEndUtc, captureReason, INSTANCE_ID);
     }
 
     private static DashboardSnapshotTrendRow row(
@@ -283,10 +324,19 @@ class InstanceSnapshotTrendServiceTest {
             String generatedAt,
             String captureReason,
             UUID storedInstanceId) {
+        return row(snapshotId, generatedAt, generatedAt, captureReason, storedInstanceId);
+    }
+
+    private static DashboardSnapshotTrendRow row(
+            UUID snapshotId,
+            String generatedAt,
+            String currentWindowEndUtc,
+            String captureReason,
+            UUID storedInstanceId) {
         return new DashboardSnapshotTrendRow(
                 snapshotId,
                 offset(generatedAt),
-                offset(generatedAt),
+                offset(currentWindowEndUtc),
                 "active",
                 captureReason,
                 """
