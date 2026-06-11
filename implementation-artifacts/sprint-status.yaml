@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-06-11T15:39:29+0900
+# last_updated: 2026-06-11T15:53:30+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -68,7 +68,7 @@
 # - 2026-06-11 D3 final consolidation: Story 13.11은 frontend guard/typecheck/build, focused/full backend regression, smoke focused bundle evidence 기준으로 done이다. Full authenticated browser demo route/fixture가 없어 Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired path를 하나의 browser smoke로 닫은 evidence는 follow-up gap으로 남긴다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-06-11T15:39:29+0900
+last_updated: 2026-06-11T15:53:30+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -183,4 +183,4 @@ development_status:
   13-doc-2-per-slice-documentation-updates: done
   13-11-end-to-end-acceptance-and-demo-hardening: done
   13-doc-3-final-planning-status-consolidation: done
-  epic-13-retrospective: optional
+  epic-13-retrospective: done
