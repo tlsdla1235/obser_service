@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-06-11T14:27:49+0900
+# last_updated: 2026-06-11T15:17:08+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -67,7 +67,7 @@
 # - 2026-06-11 D2 documentation alignment: Story 13.2 -> 13.10 완료 구현 결과를 planning/source-of-truth 문서의 상태/용어/참조와 맞췄다. Source of Truth 의미는 재정의하지 않는다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-06-11T14:27:49+0900
+last_updated: 2026-06-11T15:17:08+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -180,6 +180,6 @@ development_status:
   13-9-frontend-instance-surface-split: done
   13-10-retention-cleanup-alignment: done
   13-doc-2-per-slice-documentation-updates: done
-  13-11-end-to-end-acceptance-and-demo-hardening: ready-for-dev
+  13-11-end-to-end-acceptance-and-demo-hardening: review
   13-doc-3-final-planning-status-consolidation: backlog
   epic-13-retrospective: optional

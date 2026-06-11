@@ -5,7 +5,7 @@ storyKey: "13-11-end-to-end-acceptance-and-demo-hardening"
 epic: "Epic 13. Dashboard Source of Truth Realignment"
 title: "End-to-end Acceptance and Demo Hardening"
 architectureStyle: Traditional MVC
-status: ready-for-dev
+status: review
 date: 2026-06-11
 phase: P10
 workType: validation
@@ -44,9 +44,11 @@ rollbackBoundary: "acceptance fixture, demo route, smoke data, verification scri
 
 ## Status
 
-ready-for-dev
+review
 
 2026-06-11: P10 acceptance/demo hardening story artifact를 생성하고 sprint-status를 `ready-for-dev`로 정렬했다. 이번 create-story 컨텍스트에서는 production code, tests, frontend implementation, migration/schema, Source of Truth 문서, 완료 story 13.2~13.10 본문/status, `dbml-error.log`를 수정하지 않는다.
+2026-06-11: BMAD dev-story 검증으로 P10 acceptance/demo/smoke/guard evidence를 남기고 status를 `review`로 전환했다. Production code, migration/schema, Source of Truth 문서, 완료 story 13.2~13.10 본문/status, 기존 untracked `dbml-error.log`는 수정하지 않았다.
+2026-06-11: BMAD review finding을 반영해 demo/smoke evidence 과장을 낮추고 누락된 실행 증거를 보강했다. Full browser demo route/fixture는 아직 없어 P10 final 판정은 `Needs Follow-up`으로 분류한다.
 
 ## Story
 
@@ -180,39 +182,39 @@ Project -> Application -> live Application Dashboard
 
 ## Tasks / Subtasks
 
-- [ ] P10 시작 전 status와 보호 대상을 확인한다. (AC: 10)
-  - [ ] `git status --short`로 기존 untracked `dbml-error.log`와 작업 범위를 확인한다.
-  - [ ] `implementation-artifacts/sprint-status.yaml`에서 Story 13.2~13.10 `done`, 13.11 실행 상태, 13-doc-3 backlog 상태를 확인한다.
-  - [ ] Source of Truth 문서와 완료 story 13.2~13.10은 read-only 기준으로만 읽는다.
+- [x] P10 시작 전 status와 보호 대상을 확인한다. (AC: 10)
+  - [x] `git status --short`로 기존 untracked `dbml-error.log`와 작업 범위를 확인한다.
+  - [x] `implementation-artifacts/sprint-status.yaml`에서 Story 13.2~13.10 `done`, 13.11 실행 상태, 13-doc-3 backlog 상태를 확인한다.
+  - [x] Source of Truth 문서와 완료 story 13.2~13.10은 read-only 기준으로만 읽는다.
 
-- [ ] Source of Truth acceptance checklist를 작성하고 end-to-end flow에 매핑한다. (AC: 1~10)
-  - [ ] Application live: `accepted_metric_buckets`, `recent_30_minutes`, server-computed state/order/priority 표시만 검증한다.
-  - [ ] Snapshot: 30분 slot, 14일/672 point horizon, `current_window_end_utc`, stored detail 복원, `hourly_scheduled` copy를 검증한다.
-  - [ ] Instance: live/snapshot/trend surface 분리, selected snapshot window reconstruction, late metric semantics, no Application Snapshot override를 검증한다.
-  - [ ] Retention: expired/source absence, cleanup schedule/cutoff/grace, disabled/dry-run rollout control을 검증한다.
+- [x] Source of Truth acceptance checklist를 작성하고 end-to-end flow에 매핑한다. (AC: 1~10)
+  - [x] Application live: `accepted_metric_buckets`, `recent_30_minutes`, server-computed state/order/priority 표시만 검증한다.
+  - [x] Snapshot: 30분 slot, 14일/672 point horizon, `current_window_end_utc`, stored detail 복원, `hourly_scheduled` copy를 검증한다.
+  - [x] Instance: live/snapshot/trend surface 분리, selected snapshot window reconstruction, late metric semantics, no Application Snapshot override를 검증한다.
+  - [x] Retention: expired/source absence, cleanup schedule/cutoff/grace, disabled/dry-run rollout control을 검증한다.
 
-- [ ] Frontend guard와 demo smoke를 실행한다. (AC: 1~7, 10)
-  - [ ] `cd frontend && npm run guard:read-model-contract`를 실행하고 guard 결과를 completion notes에 남긴다.
-  - [ ] `cd frontend && npm run typecheck`를 실행하고 결과를 completion notes에 남긴다.
-  - [ ] `cd frontend && npm run build`를 실행하고 결과를 completion notes에 남긴다.
-  - [ ] 필요하면 local browser smoke로 Project -> Application -> Dashboard -> Snapshot -> Instance 흐름의 copy/source semantics를 확인하고, 인증/fixture 제약이 있으면 그 제약을 기록한다.
+- [x] Frontend guard와 demo smoke를 실행한다. (AC: 1~7, 10)
+  - [x] `cd frontend && npm run guard:read-model-contract`를 실행하고 guard 결과를 completion notes에 남긴다.
+  - [x] `cd frontend && npm run typecheck`를 실행하고 결과를 completion notes에 남긴다.
+  - [x] `cd frontend && npm run build`를 실행하고 결과를 completion notes에 남긴다.
+  - [x] 필요하면 local browser smoke로 Project -> Application -> Dashboard -> Snapshot -> Instance 흐름의 copy/source semantics를 확인하고, 인증/fixture 제약이 있으면 그 제약을 기록한다.
 
-- [ ] Backend focused regression과 필요 시 full regression을 실행한다. (AC: 1~9, 10)
-  - [ ] Story 13.3~13.10에서 도입된 dashboard/snapshot/instance/cleanup focused tests를 우선 실행한다.
-  - [ ] 필요하면 `./gradlew :observability-portal:test` 전체 regression을 실행한다.
-  - [ ] 실패가 있으면 P10 completion notes에 failing test, Source of Truth 영향, fix/follow-up 분류를 남긴다.
+- [x] Backend focused regression과 필요 시 full regression을 실행한다. (AC: 1~9, 10)
+  - [x] Story 13.3~13.10에서 도입된 dashboard/snapshot/instance/cleanup focused tests를 우선 실행한다.
+  - [x] 필요하면 `./gradlew :observability-portal:test` 전체 regression을 실행한다.
+  - [x] 실패가 있으면 P10 completion notes에 failing test, Source of Truth 영향, fix/follow-up 분류를 남긴다.
 
-- [ ] Static grep으로 과거 해석 회귀를 확인한다. (AC: 1~9)
-  - [ ] `current_15m`이 Instance Dashboard/Application Dashboard P10 user-facing contract로 재승격되지 않았는지 확인한다.
-  - [ ] `hourly scheduled` 사용자-facing copy가 30분 정기 저장 의미와 충돌하지 않는지 확인한다.
-  - [ ] `generated_at <`, `created_at <`, `accepted_at <`가 cleanup cutoff predicate로 재도입되지 않았는지 확인한다.
-  - [ ] `live/current fallback`, `marker.*state`, `healthScore`, `rootCause`가 금지된 surface 의미로 재도입되지 않았는지 확인한다.
+- [x] Static grep으로 과거 해석 회귀를 확인한다. (AC: 1~9)
+  - [x] `current_15m`이 Instance Dashboard/Application Dashboard P10 user-facing contract로 재승격되지 않았는지 확인한다.
+  - [x] `hourly scheduled` 사용자-facing copy가 30분 정기 저장 의미와 충돌하지 않는지 확인한다.
+  - [x] `generated_at <`, `created_at <`, `accepted_at <`가 cleanup cutoff predicate로 재도입되지 않았는지 확인한다.
+  - [x] `live/current fallback`, `marker.*state`, `healthScore`, `rootCause`가 금지된 surface 의미로 재도입되지 않았는지 확인한다.
 
-- [ ] P10 completion evidence를 story에 남기고 D3 handoff를 준비한다. (AC: 10)
-  - [ ] Dev Agent Record의 Debug Log References에 실행 명령과 결과를 남긴다.
-  - [ ] Completion Notes List에 Application live, Snapshot, Instance, Retention 각각의 acceptance 결과를 남긴다.
-  - [ ] 남은 follow-up이 있으면 P10 완료 판정을 `Done`, `Needs Follow-up`, `Blocked` 중 하나로 분류할 수 있게 근거를 남긴다.
-  - [ ] 13-doc-3 final planning/status consolidation에서 사용할 문서/status 정리 후보를 기록하되, P10 구현 중 Source of Truth 의미를 바꾸지 않는다.
+- [x] P10 completion evidence를 story에 남기고 D3 handoff를 준비한다. (AC: 10)
+  - [x] Dev Agent Record의 Debug Log References에 실행 명령과 결과를 남긴다.
+  - [x] Completion Notes List에 Application live, Snapshot, Instance, Retention 각각의 acceptance 결과를 남긴다.
+  - [x] 남은 follow-up이 있으면 P10 완료 판정을 `Done`, `Needs Follow-up`, `Blocked` 중 하나로 분류할 수 있게 근거를 남긴다.
+  - [x] 13-doc-3 final planning/status consolidation에서 사용할 문서/status 정리 후보를 기록하되, P10 구현 중 Source of Truth 의미를 바꾸지 않는다.
 
 ## Dev Notes
 
@@ -283,15 +285,33 @@ rg -n "current_15m|hourly scheduled|generated_at <|created_at <|accepted_at <|li
 
 ### Agent Model Used
 
-TBD by dev-story agent.
+GPT-5 Codex (BMAD dev-story)
 
 ### Debug Log References
 
-- Pending P10 implementation/verification.
+- 2026-06-11T14:54:51+0900 `git status --short`: 기존 untracked `dbml-error.log`만 확인. 보호 대상 파일은 수정/삭제/stage하지 않음.
+- 2026-06-11T14:54:51+0900 `implementation-artifacts/sprint-status.yaml`: 13.2~13.10 `done`, 13.11 `ready-for-dev`에서 `in-progress`로 전환, 13-doc-3 `backlog` 확인.
+- 2026-06-11T14:55+0900 Source of Truth/roadmap/sequence/completed story grep: P10 기준이 `accepted_metric_buckets`, `recent_30_minutes`, 30분 slot, `current_window_end_utc`, stored `dashboard_snapshots.read_model_json`, no `accepted_at` cutoff, retention cleanup `bucket_end_utc`/30분 grace/disabled rollout과 일치함을 확인.
+- 2026-06-11T15:13+0900 `git diff --check`: 통과. 출력 없음.
+- 2026-06-11T15:13+0900 `git status --short`: `implementation-artifacts/sprint-status.yaml`, 이 story 파일만 modified이고 기존 untracked `dbml-error.log`만 남아 있음을 확인.
+- 2026-06-11T15:13+0900 `cd frontend && npm run guard:read-model-contract`: 통과. `read-model contract guard fixtures passed`.
+- 2026-06-11T15:13+0900 `cd frontend && npm run typecheck`: 통과.
+- 2026-06-11T15:13+0900 `cd frontend && npm run build`: 통과. Vite production build `built in 1.08s`.
+- 2026-06-11T15:14+0900 focused Gradle bundle: `./gradlew :observability-portal:test --tests 'com.observation.portal.common.time.TimeBucketWindowCalculatorTest' --tests 'com.observation.portal.domain.dashboard.service.DashboardReadModelServiceTest' --tests 'com.observation.portal.domain.dashboard.service.TriageSummaryServiceTest' --tests 'com.observation.portal.domain.dashboard.service.EndpointPriorityServiceTest' --tests 'com.observation.portal.domain.snapshot.service.DashboardSnapshotSchedulerTest' --tests 'com.observation.portal.domain.snapshot.service.DashboardSnapshotMarkerServiceTest' --tests 'com.observation.portal.domain.snapshot.service.DashboardSnapshotDetailServiceTest' --tests 'com.observation.portal.domain.instance.service.InstanceDashboardReadModelServiceTest' --tests 'com.observation.portal.domain.instance.service.InstanceSnapshotTrendServiceTest' --tests 'com.observation.portal.domain.cleanup.service.RetentionCleanupServiceTest' --tests 'com.observation.portal.domain.cleanup.service.RetentionCleanupSchedulerTest' --tests 'com.observation.portal.domain.cleanup.service.RetentionCleanupPropertiesTest'`: 통과. `BUILD SUCCESSFUL in 1s`.
+- 2026-06-11T15:15+0900 `./gradlew :observability-portal:test`: 통과. Full backend regression `BUILD SUCCESSFUL in 1m 9s`.
+- 2026-06-11T15:16+0900 smoke focused bundle: `./gradlew :observability-portal:test --tests 'com.observation.portal.PortalModuleSmokeTest' --tests 'com.observation.portal.domain.catalog.controller.ProjectNavigationResourceAuthorizationTest' --tests 'com.observation.portal.domain.admin.service.SmokeProjectSeedServiceTest'`: 통과. `BUILD SUCCESSFUL in 2s`.
+- 2026-06-11T15:16+0900 static grep: 요청된 `rg -n "current_15m|hourly scheduled|generated_at <|created_at <|accepted_at <|live/current fallback|marker.*state|healthScore|rootCause" frontend observability-portal planning-artifacts`는 hit이 있으며, build 이후 `frontend/dist` generated bundle까지 포함하면 출력이 커진다. `-g '!dist/**' -g '!node_modules/**'` source-only 재확인에서는 문서화된 legacy/superseded 해석, guard negative fixture/assertion, excluded capability, snapshot capture cutoff 문맥으로 분류했다. Cleanup cutoff predicate는 `current_window_end_utc < snapshotCutoffUtc`, `bucket_end_utc < metricEvidenceCutoffUtc` 기준 유지 확인.
 
 ### Completion Notes List
 
-- Pending P10 implementation/verification. Completion notes must include demo/smoke/guard evidence for Application live, Snapshot history/detail, Instance live/snapshot/trend, Retention expired/cleanup rollout guard, plus any follow-up.
+- Application live acceptance: `DashboardReadModelServiceTest`, `DashboardControllerTest`, frontend guard fixture가 `readSemantics.source=accepted_metric_buckets`, `window.type=recent_30_minutes`, bucket boundary 표시를 검증한다. Frontend guard/typecheck/build가 통과했고 UI-side state/order/priority 재계산 회귀는 static guard와 source grep에서 발견되지 않았다.
+- Snapshot acceptance: Snapshot history/detail guard와 focused tests가 30분 slot, 14일/672 horizon, `current_window_end_utc` 탐색/order, stored `dashboard_snapshots.read_model_json` detail 복원 의미를 유지한다. `hourly_scheduled` persisted token은 그대로 두고 frontend user-facing label은 `30분 정기 저장`으로 확인했다.
+- Instance acceptance: live Instance Dashboard, selected Application Snapshot 기반 snapshot mode, stored Instance Snapshot Trend가 서로 다른 surface로 유지된다. Backend/frontend guard는 snapshot mode `acceptedAtCutoffApplied=false`, `includesLateAcceptedMetrics=true`, `mayDifferFromStoredApplicationSnapshot=true`, `applicationSnapshotRecalculated=false`, trend source `dashboard_snapshots.read_model_json.instanceSummary.items[]`를 검증한다.
+- Retention/cleanup acceptance: retention 밖 snapshot/detail/history/date map/instance evidence는 live/current fallback 없이 404/source absence 또는 `metric_missing`/`not_observed_in_window` 계열로 수렴한다. Cleanup scheduler/service/properties는 `0 15 1 * * *` / `Asia/Seoul`, 14일 horizon, snapshot `current_window_end_utc`, metric `bucket_end_utc` + 30분 evidence grace, default `portal.retention.cleanup.enabled=false`, dry-run no physical delete 의미를 유지한다.
+- Static grep 판정: `current_15m`, `hourly scheduled`, `generated_at <`, `created_at <`, `accepted_at <`, `live/current fallback`, `marker.*state`, `healthScore`, `rootCause`는 production user-facing/cleanup predicate 회귀로 발견되지 않았다. `accepted_at <= :snapshotCutoffAt` hit은 scheduled snapshot 후보 선정 경로이며 retention cleanup cutoff가 아니다. `healthScore`/`rootCause` hit은 guard negative field 또는 test absence assertion 문맥이다.
+- Demo/smoke evidence: local browser smoke는 별도 authenticated live fixture/demo route가 없어 실행하지 않았다. 기존 smoke bundle 중 `ProjectNavigationResourceAuthorizationTest`는 Project -> Application -> live Dashboard -> Instance Evidence auth/navigation path와 accepted bucket/starter heartbeat axis 분리를 검증하지만, Snapshot detail, selected Application Snapshot 기반 Instance Dashboard snapshot mode, retention expired path의 full browser demo를 검증하지는 않는다. 해당 Snapshot/Instance/Retention 의미는 focused backend tests와 frontend contract guard/build로 검증했다.
+- Scope guard: production code, frontend implementation, backend tests, migration/schema, Source of Truth 문서, 완료 story 13.2~13.10 본문/status, 기존 untracked `dbml-error.log`는 수정하지 않았다.
+- Final 판정: Needs Follow-up. 남은 production code blocker는 없지만 full authenticated browser demo route/fixture가 없어 Project -> Application -> Dashboard -> Snapshot -> Instance -> retention expired path를 하나의 browser smoke로 닫은 evidence는 없다. 다음 handoff는 `13-doc-3-final-planning-status-consolidation`에서 이 evidence와 demo gap을 과장 없이 반영해 planning/status 문서를 최종 정리하는 것이다.
 
 ### File List
 
@@ -303,3 +323,5 @@ TBD by dev-story agent.
 | Date | Change |
 |---|---|
 | 2026-06-11 | P10 end-to-end acceptance/demo hardening story artifact를 생성하고 sprint-status를 `ready-for-dev`로 정렬했다. |
+| 2026-06-11 | P10 acceptance/demo/smoke/guard 검증을 완료하고 story/sprint-status를 `review`로 전환했다. |
+| 2026-06-11 | BMAD review finding에 맞춰 demo/smoke evidence 범위를 정정하고 누락된 verification evidence를 보강했다. |
