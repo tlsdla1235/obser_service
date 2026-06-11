@@ -1,5 +1,5 @@
 # generated: 2026-05-09T16:28:16+0900
-# last_updated: 2026-06-11T14:00:34+0900
+# last_updated: 2026-06-11T14:13:19+0900
 # project: Spring Boot 운영 첫 화면 포털
 # project_key: NOKEY
 # tracking_system: file-system
@@ -64,9 +64,10 @@
 # - Story 12.6은 12.5가 만든 benchmark harness/guard를 사용해 실제 local/isolated benchmark 수치와 sanitized report artifact를 남긴다. Phase 1 request latency와 Phase 2 DB batch throughput evidence는 같은 결론으로 합치지 않는다.
 # - Epic 13은 Dashboard Source of Truth Realignment tracking epic이다. 완료된 Epic 4/5/6/10 story는 당시 구현 이력으로 보존하고, 새 alignment story에서 Aligns/Supersedes/Hardens 관계로만 참조한다.
 # - Epic 13은 Source of Truth 문서를 재정의하지 않고 Application Dashboard, Snapshot, Instance Dashboard, Retention 흐름을 phase별 rollback 가능한 story로 정렬한다.
+# - 2026-06-11 D2 documentation alignment: Story 13.2 -> 13.10 완료 구현 결과를 planning/source-of-truth 문서의 상태/용어/참조와 맞췄다. Source of Truth 의미는 재정의하지 않는다.
 
 generated: 2026-05-09T16:28:16+0900
-last_updated: 2026-06-11T14:00:34+0900
+last_updated: 2026-06-11T14:13:19+0900
 project: Spring Boot 운영 첫 화면 포털
 project_key: NOKEY
 tracking_system: file-system
@@ -178,7 +179,7 @@ development_status:
   13-8-backend-instance-dashboard-live-snapshot-mode-split: done
   13-9-frontend-instance-surface-split: done
   13-10-retention-cleanup-alignment: done
-  13-doc-2-per-slice-documentation-updates: backlog
+  13-doc-2-per-slice-documentation-updates: done
   13-11-end-to-end-acceptance-and-demo-hardening: backlog
   13-doc-3-final-planning-status-consolidation: backlog
   epic-13-retrospective: optional

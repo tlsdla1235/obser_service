@@ -17,11 +17,11 @@ dependsOn:
 
 이 문서는 Observation Portal MVP에서 dashboard snapshot과 metric bucket retention cleanup 정책을 고정한다.
 
-목표는 production cleanup job을 바로 구현하는 것이 아니다. 먼저 retention horizon, source boundary, 삭제 기준 timestamp, 조회 동작, 구현 방향, 테스트 기대값을 닫아 후속 story가 같은 정책을 기준으로 움직이게 한다.
+목표는 retention horizon, source boundary, 삭제 기준 timestamp, 조회 동작, 구현 방향, 테스트 기대값을 한곳에 고정하는 것이다. Story 13.10 구현 이후에도 이 문서는 정책 기준으로 유지하며, 구현 상태 메모는 정책 의미를 바꾸지 않는다.
 
 ## 2. 한 줄 결정
 
-MVP retention cleanup은 "14일마다 cleanup"이 아니라, 매일 `Asia/Seoul` 기준 01:15에 cleanup job을 실행하고 실행 기준 시각에서 14일보다 오래된 snapshot/metric 기록을 UTC timestamp 비교로 삭제하는 정책이다.
+MVP retention cleanup은 14일 주기로 실행하는 작업이 아니라, 매일 `Asia/Seoul` 기준 01:15에 cleanup job을 실행하고 실행 기준 시각에서 14일보다 오래된 snapshot/metric 기록을 UTC timestamp 비교로 삭제하는 정책이다.
 
 ## 3. Hard Contract
 
@@ -36,7 +36,7 @@ MVP retention cleanup은 "14일마다 cleanup"이 아니라, 매일 `Asia/Seoul`
 7. Retention 밖 snapshot은 marker/history/date map에 표시하지 않는다.
 8. Cleanup으로 사라진 snapshot은 live dashboard 또는 current accepted bucket으로 대체 복원하지 않는다.
 9. Cleanup job은 idempotent해야 하며, 실패해도 다음 실행에서 같은 cutoff 정책으로 재시도 가능해야 한다.
-10. Production cleanup job 구현은 이 문서의 후속 story에서 수행한다.
+10. Production cleanup job 구현은 Story 13.10에서 수행됐으며, rollout enablement/dry-run은 cleanup schedule, cutoff 계산식, 삭제 기준 컬럼의 의미를 바꾸지 않는다.
 
 ## 4. Schedule and Cutoff
 
@@ -164,7 +164,7 @@ MVP 기본 API 동작은 404다. UI에서 더 친절한 안내가 필요하면 "
 
 Marker, history, date map은 retention 밖 snapshot을 표시하지 않는다.
 
-후속 구현에서는 marker/history/date map의 retention horizon도 `current_window_end_utc >= snapshotCutoffUtc` 기준으로 맞춘다. Cleanup 구현 이후에도 marker/history service는 retention 밖 row가 남아 있더라도 표시하지 않는 guard를 유지해야 한다.
+Marker/history/date map의 retention horizon은 `current_window_end_utc >= snapshotCutoffUtc` 기준이다. Cleanup 구현 이후에도 marker/history service는 retention 밖 row가 남아 있더라도 표시하지 않는 guard를 유지해야 한다.
 
 ### 8.3 Instance Dashboard Snapshot Mode
 
@@ -177,26 +177,29 @@ Bucket이 cleanup으로 삭제됐거나 window 안에 원래 bucket이 없으면
 현재 코드 기준으로 이미 정렬된 부분은 아래와 같다.
 
 - `PortalApplication`은 `@EnableScheduling`을 켜고 있다.
-- `domain.cleanup`과 `domain.cleanup.service` package marker가 예약되어 있다.
-- `DashboardSnapshotMarkerService`와 `InstanceSnapshotTrendService`는 `portal.dashboard-snapshots.retention-days:14`로 14일 horizon clamp를 적용한다.
-- `DashboardSnapshotRepository`의 marker/trend 조회는 현재 `generated_at` 범위를 사용하지만, UX slot retention 기준은 후속 구현에서 `current_window_end_utc`로 정렬해야 한다.
-- `DashboardSnapshotDetailService`는 missing/retention/detail miss를 empty로 수렴시켜 controller가 404로 매핑하는 방향의 주석을 갖고 있다.
+- Story 13.10에서 `domain.cleanup.service` 아래 `RetentionCleanupProperties`, `RetentionCleanupService`, `RetentionCleanupScheduler`, `RetentionCleanupResult`를 추가했다.
+- `RetentionCleanupScheduler`는 매일 `0 15 1 * * *` / `Asia/Seoul` trigger를 사용하되, physical delete rollout은 `portal.retention.cleanup.enabled=false` 기본값과 dry-run control로 분리한다.
+- `RetentionCleanupProperties`는 `portal.dashboard-snapshots.retention-days:14`를 retention horizon source로 사용하고, `portal.retention.cleanup.enabled`와 `portal.retention.cleanup.dry-run`은 운영 제어로만 둔다.
+- `DashboardSnapshotRepository`의 marker/history/trend 조회는 `current_window_end_utc` horizon과 slot order를 우선 사용한다.
+- `DashboardSnapshotRepository`는 `current_window_end_utc < snapshotCutoffUtc` bulk delete를 제공한다.
+- `MetricBucketRepository`는 `bucket_end_utc < metricEvidenceCutoffUtc` bulk delete를 제공한다.
+- `DashboardSnapshotDetailService`, marker/history/date map source, Instance Snapshot Trend, Instance Dashboard snapshot mode는 retention 밖 row를 live/current fallback 없이 404/empty/source absence 또는 metric data-quality limitation으로 수렴시키는 guard를 갖는다.
 
 아직 닫히지 않은 부분은 아래와 같다.
 
-- `dashboard_snapshots`와 `accepted_metric_buckets`를 물리 삭제하는 production cleanup scheduler/service는 없다.
-- `accepted_metric_buckets` retention-days 설정은 별도 이름으로 드러나 있지 않다.
-- Snapshot detail이 `current_window_end_utc` 기준 retention 밖 row를 row 존재 여부와 무관하게 막는 guard는 후속 구현에서 확인해야 한다.
+- Production 환경에서 physical delete를 실제로 켜는 운영 rollout decision은 별도다. 기본값은 disabled다.
+- Cleanup predicate 전용 index 필요성은 row 규모와 query plan evidence가 생기면 별도 story에서 검토한다.
+- P10 end-to-end acceptance에서 live dashboard, snapshot detail/history, instance snapshot mode, retention expired path를 한 흐름으로 재검증해야 한다.
 
 ## 10. 구현 방향
 
-이 섹션은 후속 구현 story의 방향만 적는다. 이 문서 작성 단계에서는 production code를 변경하지 않는다.
+이 섹션은 Story 13.10에서 구현된 방향을 기록한다. 정책 기준은 위 Hard Contract와 삭제 기준 컬럼을 따른다.
 
 ### 10.1 Package and Service
 
 Cleanup orchestration은 `com.observation.portal.domain.cleanup.service` 아래에 둔다.
 
-후보 class:
+구현 class:
 
 - `RetentionCleanupScheduler`
 - `RetentionCleanupService`
@@ -206,19 +209,19 @@ Scheduler는 cron trigger만 담당하고, cutoff 계산과 repository 호출은
 
 ### 10.2 Scheduler
 
-후보 annotation:
+Scheduler annotation:
 
 ```java
 @Scheduled(cron = "0 15 1 * * *", zone = "Asia/Seoul")
 ```
 
-Scheduler method는 중복 실행되어도 같은 cutoff 기준에서 안전해야 한다. 단일 JVM MVP에서는 synchronized guard 정도로 충분할 수 있으나, 다중 instance 배포에서는 DB lock 또는 distributed lock이 후속 검토 대상이다.
+Scheduler method는 cron trigger와 enablement/dry-run orchestration만 담당하고, cutoff 계산과 repository 호출은 service에 위임한다. Physical delete는 기본 disabled로 시작한다. 다중 instance 배포에서는 DB lock 또는 distributed lock이 후속 검토 대상이다.
 
 ### 10.3 Repository Delete Method
 
 Repository delete는 bulk delete/count 반환 형태로 둔다.
 
-후보 method:
+구현 method:
 
 ```java
 long deleteDashboardSnapshotsWindowEndedBefore(OffsetDateTime snapshotCutoffUtc);
@@ -237,18 +240,19 @@ Cleanup failure는 부분 삭제 가능성을 고려해 table별 transaction 경
 
 ### 10.4 Configuration
 
-현재 read side는 `portal.dashboard-snapshots.retention-days=14`를 사용한다. MVP cleanup도 이 값과 다른 horizon을 쓰면 marker/detail/trend 의미가 갈라진다.
+현재 read side는 `portal.dashboard-snapshots.retention-days=14`를 사용한다. MVP cleanup도 이 값을 retention horizon source로 사용한다. 이 값과 다른 horizon을 쓰면 marker/detail/trend 의미가 갈라진다.
 
-권장 방향은 아래 중 하나다.
+구현 방향은 아래와 같다.
 
-1. 단기 구현: `portal.dashboard-snapshots.retention-days=14`를 snapshot UI clamp와 cleanup retention의 단일 horizon으로 재사용한다.
-2. 정리 구현: `portal.retention.cleanup.retention-days=14`를 새 canonical property로 만들고, 기존 `portal.dashboard-snapshots.retention-days`는 같은 값으로 매핑하거나 backward-compatible alias로 둔다.
+1. `portal.dashboard-snapshots.retention-days=14`를 snapshot UI clamp와 cleanup retention의 단일 horizon으로 재사용한다.
+2. `portal.retention.cleanup.enabled=false`를 기본값으로 둬 physical delete rollout은 명시적으로 켠 경우에만 실행한다.
+3. `portal.retention.cleanup.dry-run=false`는 enabled 상태에서 delete 호출 여부를 제어하는 운영 옵션이다.
 
 어느 쪽이든 MVP에서는 `dashboard_snapshots`와 `accepted_metric_buckets`의 기본 retention-days가 서로 달라지면 안 된다.
 
 ## 11. 테스트 기대값
 
-후속 구현은 최소 아래 테스트를 만족해야 한다.
+구현/후속 검증은 최소 아래 테스트를 만족해야 한다.
 
 ### 11.1 Cleanup Service
 
@@ -264,6 +268,8 @@ Cleanup failure는 부분 삭제 가능성을 고려해 table별 transaction 경
 
 - Scheduler는 `0 15 1 * * *` cron과 `Asia/Seoul` zone으로 등록된다.
 - Scheduler는 `Clock` 기준 현재 시각을 UTC로 정규화해 cutoff를 계산한다.
+- Scheduler disabled 기본값에서는 physical delete를 호출하지 않는다.
+- Dry-run은 cutoff 의미를 유지하되 physical delete를 호출하지 않는다.
 - Retention-days가 0 이하이면 설정 오류로 빠르게 실패한다.
 
 ### 11.3 Read Surface Guard
@@ -277,7 +283,7 @@ Cleanup failure는 부분 삭제 가능성을 고려해 table별 transaction 경
 
 이 문서는 아래를 약속하지 않는다.
 
-- production cleanup scheduler/service 구현
+- physical delete를 기본 enabled로 배포하는 rollout decision
 - 장기 time-series analytics 저장소
 - endpoint long-term projection table
 - snapshot-derived helper table
@@ -286,9 +292,8 @@ Cleanup failure는 부분 삭제 가능성을 고려해 table별 transaction 경
 - catalog/archive 정책
 - 14일 밖 snapshot을 current dashboard로 재생성하는 fallback
 
-## 13. 후속 Story 후보
+## 13. 후속 확인 항목
 
-1. `domain.cleanup.service`에 retention cleanup scheduler/service/properties를 추가한다.
-2. `dashboard_snapshots.current_window_end_utc < snapshotCutoffUtc` bulk delete repository method를 추가한다.
-3. `accepted_metric_buckets.bucket_end_utc < metricEvidenceCutoffUtc` bulk delete repository method를 추가한다.
-4. Snapshot detail/marker/history/Instance snapshot mode retention guard 테스트를 보강한다.
+1. P10에서 retention expired path를 live dashboard, snapshot detail/history/date map, Instance Dashboard snapshot mode 흐름으로 end-to-end 검증한다.
+2. Production rollout 전에 `portal.retention.cleanup.enabled` enablement와 dry-run 운영 절차를 별도 runbook 또는 acceptance note로 확인한다.
+3. Cleanup predicate 전용 index가 필요한지는 실제 row 규모와 query plan evidence가 생긴 뒤 판단한다.

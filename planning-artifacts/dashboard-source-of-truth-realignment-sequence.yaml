@@ -1,14 +1,15 @@
-# Dashboard Source of Truth Realignment 실행 순서 초안이다.
-# 공식 sprint-status.yaml을 변경하기 전 dependency, gate, rollback 단위를 검토하기 위해 사용한다.
+# Dashboard Source of Truth Realignment 실행 순서와 상태 정렬 문서다.
+# Epic 13 P1-P9 완료 결과와 13-doc-2 문서 정렬 결과를 planning/source-of-truth 참조와 맞춰 기록한다.
 metadata:
   generated_date: "2026-06-09"
+  last_aligned_date: "2026-06-11"
   generated_timezone: "Asia/Seoul"
-  status: draft
-  document_role: "Dashboard Source of Truth Realignment 실행 순서 초안"
+  status: aligned-through-p9-and-d2
+  document_role: "Dashboard Source of Truth Realignment 실행 순서 및 D2 문서 정렬 상태"
   project_root: "/Users/tlsdla1235/study/obser_service"
   source_roadmap_path: "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-roadmap.md"
   official_sprint_status_path: "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
-  note: "official sprint-status.yaml is not modified by this draft."
+  note: "implementation-artifacts/sprint-status.yaml is the official status source; this document mirrors Epic 13 completion through 13.10 and 13-doc-2 without redefining Source of Truth meaning."
   source_documents:
     - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/current-product-source-of-truth.md"
     - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/dashboard-snapshot-mvp-source-of-truth.md"
@@ -26,7 +27,7 @@ execution_principles:
     implication: "Epic 4/5/6/10의 done story는 당시 구현 이력으로 보존하고, 새 alignment story에서 Aligns/Supersedes/Hardens로 참조한다."
   - id: track_as_alignment_epic
     principle: "새 alignment epic/story로 추적한다."
-    implication: "공식 sprint-status.yaml 반영은 별도 리뷰 이후 수행한다."
+    implication: "Epic 13 alignment story는 공식 sprint-status.yaml에서 추적하며, P10/D3는 남은 후속 단계로 둔다."
   - id: contract_guard_before_production_code
     principle: "production code 수정 전 contract guard를 먼저 둔다."
     implication: "UI adapter/type/fixture guard로 server-computed state, order, source semantics 보존을 먼저 고정한다."
@@ -35,7 +36,7 @@ execution_principles:
     implication: "Application live, snapshot history/detail, instance live/snapshot, retention을 각각 gate와 rollback 가능한 단위로 나눈다."
   - id: staged_documentation_alignment
     principle: "문서 정렬은 별도 phase로 추적하고 just-in-time으로 수행한다."
-    implication: "지금은 sequence YAML에 문서 정렬 시점만 명시하고, 공식 sprint-status.yaml, epics.md, 완료 story 파일을 대규모로 수정하지 않는다."
+    implication: "D2는 완료된 vertical slice 구현 결과와 문서 표현을 맞추는 범위로 제한하고, Source of Truth 의미와 완료 story 구현 이력은 바꾸지 않는다."
 
 recommended_order:
   - phase_id: D0
@@ -71,9 +72,9 @@ recommended_order:
 
 documentation_alignment_plan:
   owner_phase: D0
-  status: proposed
+  status: done
   purpose: "D0에서 문서 정렬 범위, 금지 문서, 후속 phase별 수정 시점을 한곳에 고정한다."
-  current_context:
+  initial_d0_context:
     allowed_to_modify:
       - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-sequence.yaml"
     do_not_modify:
@@ -142,24 +143,38 @@ documentation_alignment_plan:
     - "문서 정렬은 phase별 필요 시점에 수행하고 선제 대규모 정리는 하지 않는다."
     - "final consolidation은 D2와 P10이 끝난 뒤 D3에서만 수행한다."
     - "완료 story 파일은 alignment story의 참조 대상으로 보존한다."
+  d2_alignment_context:
+    status: done
+    aligned_at: "2026-06-11T14:13:19+0900"
+    modified_documents:
+      - "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-roadmap.md"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-sequence.yaml"
+      - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/dashboard-snapshot-retention-cleanup-source-of-truth.md"
+    guardrail:
+      - "Source of Truth 의미를 재정의하지 않고 Story 13.10 구현 상태 메모만 정렬한다."
+      - "완료 story 13.2 -> 13.10의 구현 의미와 done 상태를 바꾸지 않는다."
+      - "production code, tests, frontend implementation, migration/schema, dbml-error.log는 수정하지 않는다."
 
 alignment_story_status_plan:
   owner_phase: P0
-  status: proposed
-  purpose: "Source of Truth 재정렬을 공식 상태 파일에 바로 쓰지 않고, D1에서 생성할 alignment epic/story 후보와 참조 정책으로 먼저 고정한다."
+  status: done
+  purpose: "Source of Truth 재정렬을 Epic 13 alignment story 묶음으로 추적하고, 완료 story 참조 정책을 고정한다."
   preferred_alignment_epic:
     key: "epic-13-dashboard-source-of-truth-realignment"
     title: "Dashboard Source of Truth Realignment"
-    tracking_status: "candidate-only-until-reviewed"
-    rationale: "현재 공식 sprint-status.yaml에는 epic-11과 epic-12가 있으므로, 충돌을 피하고 cross-cutting alignment 이력을 보존하려면 epic-13 후보로 분리하는 방식이 가장 명확하다."
+    tracking_status: "tracked-in-sprint-status"
+    rationale: "cross-cutting alignment 이력을 Epic 13으로 분리해 완료된 Epic 4/5/6/10 구현 이력은 보존하고 새 story에서 Aligns/Supersedes/Hardens 관계로 추적한다."
   official_status_policy:
-    current_context: "do_not_modify_official_sprint_status_yaml"
-    review_boundary: "P0는 공식 sprint-status.yaml에 쓸 후보 key와 순서만 정한다."
+    current_context: "epic-13-tracked-in-official-sprint-status"
+    review_boundary: "D2는 13-doc-2 상태와 planning/source-of-truth 문서 불일치만 정렬한다."
     allowed_future_change:
-      - "D1 이후 별도 리뷰 변경으로 alignment epic/status key를 추가한다."
-      - "또는 P10 acceptance evidence 이후 D3 final consolidation에서 실제 완료/리뷰 상태만 반영한다."
+      - "P10 acceptance evidence 이후 D3 final consolidation에서 실제 완료/리뷰 상태만 반영한다."
     forbidden_in_p0:
-      - "implementation-artifacts/sprint-status.yaml 직접 수정"
+      - "완료된 Epic 4/5/6/10 story를 done 상태에서 제거"
+      - "완료 story 본문을 alignment 기준으로 덮어쓰기"
+    forbidden_in_d2:
+      - "Source of Truth 의미 재정의"
       - "완료된 Epic 4/5/6/10 story를 done 상태에서 제거"
       - "완료 story 본문을 alignment 기준으로 덮어쓰기"
   story_split:
@@ -279,7 +294,7 @@ phases:
     title: "Documentation alignment plan"
     intent: "문서 정렬을 언제, 어떤 범위로 수행할지 먼저 sequence YAML 안에 명시한다."
     work_type: planning
-    status: proposed
+    status: done
     depends_on: []
     blocks:
       - P0
@@ -337,7 +352,7 @@ phases:
     title: "Alignment story/status planning"
     intent: "공식 sprint 상태를 즉시 바꾸지 않고 Source of Truth 재정렬을 새 alignment epic/story 후보로 검토 가능한 단위까지 쪼갠다."
     work_type: planning
-    status: proposed
+    status: done
     depends_on:
       - D0
     blocks:
@@ -391,7 +406,7 @@ phases:
     title: "Alignment epic/story creation"
     intent: "새 alignment epic/story를 만들 때 1차 planning 문서 정렬을 수행하되, 완료 story 본문과 Source of Truth 문서는 재정의하지 않는다."
     work_type: planning
-    status: proposed
+    status: done
     depends_on:
       - D0
       - P0
@@ -442,7 +457,7 @@ phases:
     title: "Frontend read model contract guard"
     intent: "UI가 lifecycle state, endpoint priority, marker bucket, instance health, resource pattern을 재계산하지 못하도록 adapter/type/fixture guard를 먼저 둔다."
     work_type: frontend
-    status: proposed
+    status: done
     depends_on:
       - D1
       - P0
@@ -479,7 +494,7 @@ phases:
     title: "Backend recent 30 minutes window alignment"
     intent: "Application Dashboard live와 Instance Dashboard live가 같은 recent 30 minutes window를 쓰도록 공통 window 계산과 public naming을 정렬한다."
     work_type: backend
-    status: proposed
+    status: done
     depends_on:
       - P0
       - P1
@@ -505,7 +520,7 @@ phases:
       - "baseline 비교를 MVP primary 판단 path에서 제거하거나 diagnostic으로 격리한 contract guard"
     completion_gate:
       - "Application Dashboard live와 Instance Dashboard live가 같은 30분 window를 사용한다."
-      - "public response에서 current_15m 또는 primary baseline 판단 naming이 사라진다."
+      - "public response에서 legacy 15분 current window 또는 primary baseline 판단 naming이 사라진다."
       - "accepted_metric_buckets가 metric freshness/state/read-model source임이 테스트로 확인된다."
     rollback_unit: "공통 window calculator와 response naming 변경 단위로 rollback한다. 필요하면 15분/30분 compatibility switch를 한시적으로 둔다."
     notes:
@@ -516,7 +531,7 @@ phases:
     title: "Backend Application Dashboard read model shape alignment"
     intent: "Application Dashboard API가 Source of Truth shape를 안정적으로 제공해 UI가 재계산 없이 읽을 수 있게 한다."
     work_type: backend
-    status: proposed
+    status: done
     depends_on:
       - P0
       - P1
@@ -553,7 +568,7 @@ phases:
     title: "Frontend Application Dashboard IA realignment"
     intent: "Application Dashboard live surface를 운영자 질문 순서에 맞춰 Context, freshness, state, direct evidence, attention evidence, metric detail, starter, instance entry 순서로 재배치한다."
     work_type: frontend
-    status: proposed
+    status: done
     depends_on:
       - P0
       - P1
@@ -589,7 +604,7 @@ phases:
     title: "Backend 30 minute scheduled snapshot and slot horizon alignment"
     intent: "scheduled snapshot UX를 30분 dashboard slot에 맞추고 marker/history/trend 조회 horizon을 current_window_end_utc 기준으로 정렬한다."
     work_type: backend
-    status: proposed
+    status: done
     depends_on:
       - P0
       - P1
@@ -608,7 +623,7 @@ phases:
         - 5-9-a-operational-event-history-api-skeleton-and-source-boundary
         - 5-9-b-operational-event-promotion-suppression-and-period-folding
       supersedes:
-        - "hourly scheduled snapshot을 사용자-facing cadence로 읽는 해석"
+        - "legacy scheduled snapshot token을 사용자-facing hourly cadence로 읽는 해석"
         - "generatedAt 중심 marker/trend retention horizon"
       hardens:
         - 12-4-snapshot-delay-and-pipeline-lag-semantics
@@ -630,7 +645,7 @@ phases:
     title: "Frontend snapshot history/detail realignment"
     intent: "snapshot history를 marker-first 30분 dashboard point 탐색으로 정리하고, snapshot detail을 stored dashboard read model 복원 surface로 격상한다."
     work_type: frontend
-    status: proposed
+    status: done
     depends_on:
       - P0
       - P1
@@ -668,7 +683,7 @@ phases:
     title: "Backend Instance Dashboard live/snapshot mode split"
     intent: "Instance Dashboard를 Application Dashboard 판단의 하위 evidence detail로 고정하고, live mode와 selected Application Snapshot 기반 snapshot mode를 API/service 책임으로 분리한다."
     work_type: backend
-    status: proposed
+    status: done
     depends_on:
       - P0
       - P1
@@ -685,7 +700,7 @@ phases:
         - 5-7-instance-snapshot-trend-projection
         - 5-8-b-snapshot-marker-detail-recovery-source
       supersedes:
-        - "current_15m naming을 Instance Dashboard 계약으로 재사용하는 흐름"
+        - "legacy 15분 Instance Evidence naming을 Instance Dashboard 계약으로 재사용하는 흐름"
         - "instanceSummary.items[]를 Instance Dashboard snapshot detail의 필수 source로 보는 해석"
       hardens:
         - 10-4-wire-evidence-trend-and-credential-surfaces
@@ -706,7 +721,7 @@ phases:
     title: "Frontend instance surface split"
     intent: "Instance live detail, Instance Dashboard snapshot mode, Instance Snapshot Trend를 서로 다른 surface 책임으로 분리한다."
     work_type: frontend
-    status: proposed
+    status: done
     depends_on:
       - P0
       - P1
@@ -740,7 +755,7 @@ phases:
     title: "Retention cleanup alignment"
     intent: "14일 retention UX와 physical cleanup을 dashboard_snapshots.current_window_end_utc, accepted_metric_buckets.bucket_end_utc, 30분 evidence grace 기준으로 맞춘다."
     work_type: backend
-    status: proposed
+    status: done
     depends_on:
       - P0
       - P5
@@ -754,11 +769,11 @@ phases:
         - 6-7-snapshot-history-marker-ui-and-deep-link
         - 12-4-snapshot-delay-and-pipeline-lag-semantics
       supersedes:
-        - "cleanup 기준을 generated_at 또는 accepted_at 중심으로 읽는 흐름"
+        - "cleanup 기준을 capture/provenance timestamp 또는 ingest 수용 timestamp 중심으로 읽는 흐름"
       hardens:
         - 10-7-run-acceptance-gate
     expected_outputs:
-      - "매일 01:15 KST cleanup schedule 후보"
+      - "매일 01:15 KST cleanup schedule"
       - "snapshotCutoffUtc와 metricEvidenceCutoffUtc 계산 guard"
       - "dashboard_snapshots current_window_end_utc bulk delete와 accepted_metric_buckets bucket_end_utc bulk delete"
       - "snapshot detail, marker/history/date map, Instance Dashboard snapshot mode retention guard test"
@@ -816,7 +831,7 @@ phases:
     title: "Per-slice documentation updates"
     intent: "production code 구현 후 각 vertical slice별로 관련 문서를 just-in-time으로 정렬한다."
     work_type: planning
-    status: proposed
+    status: done
     depends_on:
       - D1
       - P4
@@ -862,6 +877,17 @@ phases:
             - "/Users/tlsdla1235/study/obser_service/planning-artifacts/architecture-implementation-supplement.md"
             - "/Users/tlsdla1235/study/obser_service/planning-artifacts/project-structure.md"
             - "/Users/tlsdla1235/study/obser_service/planning-artifacts/stories/<retention-alignment-story>.md"
+      completed_alignment:
+        aligned_at: "2026-06-11T14:13:19+0900"
+        documents:
+          - "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-roadmap.md"
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/dashboard-source-of-truth-realignment-sequence.yaml"
+          - "/Users/tlsdla1235/study/obser_service/planning-artifacts/source-of-truth/dashboard-snapshot-retention-cleanup-source-of-truth.md"
+        summary:
+          - "13.2 -> 13.10 완료 상태를 planning sequence/status snapshot과 맞췄다."
+          - "Retention cleanup 구현 상태를 Source of Truth의 현재 코드 정렬 섹션에 반영했다."
+          - "P10/D3는 후속 backlog로 남겼다."
     source_of_truth_handling:
       policy: "Source of Truth 문서는 read-only 기준으로 사용한다."
       allowed_change: "오탈자, 링크, 명백한 errata만 별도 리뷰 후 최소 수정한다."
@@ -1022,46 +1048,48 @@ dependency_graph:
 
 context_sequence_risk_assessment:
   question: "이런 식으로 한 컨텍스트에서 작업순서를 정의하는 게 위험한가?"
-  answer: "공식 sprint-status.yaml을 바로 바꾸면 위험하다. 하지만 별도 draft sequence YAML로 dependency, gate, rollback을 명시하는 것은 안전하다. 이후 별도 리뷰를 거쳐 sprint-status.yaml에 반영하는 2단계 방식이 권장된다."
-  risk_level: "low for draft, high for direct official status mutation"
+  answer: "초기에는 공식 sprint-status.yaml을 바로 바꾸지 않고 draft sequence로 dependency, gate, rollback을 검토하는 방식이 안전했다. 현재는 Epic 13이 공식 sprint-status.yaml에 반영되어 있으므로 이 문서는 완료된 P1-P9/D2 상태를 mirror하고, P10/D3만 후속 단계로 남긴다."
+  risk_level: "low when mirroring official status and preserving Source of Truth meaning"
   safe_when:
-    - "공식 sprint-status.yaml을 수정하지 않는다."
+    - "공식 sprint-status.yaml의 실제 완료/리뷰 상태만 mirror한다."
     - "완료 story 상태를 되돌리거나 덮어쓰지 않는다."
     - "각 phase의 dependency, completion gate, rollback_unit을 명시한다."
     - "문서 정렬은 D0-D3 phase로 분리하고, Source of Truth 문서는 재정의하지 않는다."
-    - "후속 리뷰에서 official sprint status 반영 여부를 따로 결정한다."
+    - "P10 acceptance 이후 D3에서 final planning/status consolidation을 별도로 수행한다."
   unsafe_when:
     - "한 컨텍스트가 완료된 Epic 4/5/6/10 story 상태를 직접 바꾼다."
     - "Source of Truth 자체를 다시 정의한다."
     - "backend/frontend/cleanup을 하나의 대형 story로 묶어 rollback 단위를 잃는다."
 
-official_sprint_status_recommendation:
-  do_not_modify_now:
-    reason:
-      - "sprint-status.yaml은 공식 sprint 상태 source이고, 이번 문서는 실행 순서 초안이다."
-      - "Source of Truth 재정렬은 Epic 4/5/6/10의 완료 이력을 참조하는 cross-cutting 작업이라 별도 리뷰 없이 한 컨텍스트가 공식 상태를 바꾸면 추적성이 흐려진다."
-      - "먼저 dependency, gate, rollback 단위를 draft로 검토한 뒤 공식 sprint status에 반영하는 2단계 방식이 안전하다."
-  candidate_alignment_epic:
+official_sprint_status_alignment:
+  source: "/Users/tlsdla1235/study/obser_service/implementation-artifacts/sprint-status.yaml"
+  aligned_at: "2026-06-11T14:13:19+0900"
+  scope: "13-doc-2 D2 documentation alignment; P10/D3 remain future work."
+  status_policy:
+    - "sprint-status.yaml은 공식 sprint 상태 source다."
+    - "이 문서는 13.2 -> 13.10 완료 상태와 13-doc-2 문서 정렬 완료 상태를 mirror한다."
+    - "P10 acceptance와 D3 final consolidation 전에는 Epic 13 전체를 done으로 닫지 않는다."
+  tracked_alignment_epic:
     preferred_key: "epic-13-dashboard-source-of-truth-realignment"
-    rationale: "현재 sprint-status.yaml에 epic-11과 epic-12가 있으므로, 충돌을 피하려면 새 숫자 epic으로 별도 alignment 묶음을 두는 방식이 자연스럽다."
-    candidate_development_status_keys:
-      epic-13: backlog
-      13-1-alignment-story-status-planning: backlog
-      13-2-frontend-read-model-contract-guard: backlog
-      13-3-backend-recent-30-minutes-window-alignment: backlog
-      13-4-backend-application-dashboard-read-model-shape-alignment: backlog
-      13-5-frontend-application-dashboard-ia-realignment: backlog
-      13-6-backend-30-minute-scheduled-snapshot-and-slot-horizon-alignment: backlog
-      13-7-frontend-snapshot-history-detail-realignment: backlog
-      13-8-backend-instance-dashboard-live-snapshot-mode-split: backlog
-      13-9-frontend-instance-surface-split: backlog
-      13-10-retention-cleanup-alignment: backlog
+    rationale: "Epic 13은 완료된 Epic 4/5/6/10 구현 이력을 다시 쓰지 않고 Source of Truth alignment를 별도 story 묶음으로 추적한다."
+    development_status_keys:
+      epic-13: in-progress
+      13-1-alignment-story-status-planning: done
+      13-2-frontend-read-model-contract-guard: done
+      13-3-backend-recent-30-minutes-window-alignment: done
+      13-4-backend-application-dashboard-read-model-shape-alignment: done
+      13-5-frontend-application-dashboard-ia-realignment: done
+      13-6-backend-30-minute-scheduled-snapshot-and-slot-horizon-alignment: done
+      13-7-frontend-snapshot-history-detail-realignment: done
+      13-8-backend-instance-dashboard-live-snapshot-mode-split: done
+      13-9-frontend-instance-surface-split: done
+      13-10-retention-cleanup-alignment: done
       13-11-end-to-end-acceptance-and-demo-hardening: backlog
       epic-13-retrospective: optional
-    candidate_documentation_status_keys:
-      13-doc-0-documentation-alignment-plan: backlog
-      13-doc-1-alignment-epic-story-creation: backlog
-      13-doc-2-per-slice-documentation-updates: backlog
+    documentation_status_keys:
+      13-doc-0-documentation-alignment-plan: done
+      13-doc-1-alignment-epic-story-creation: done
+      13-doc-2-per-slice-documentation-updates: done
       13-doc-3-final-planning-status-consolidation: backlog
   completed_story_reference_policy:
     epic_4:
