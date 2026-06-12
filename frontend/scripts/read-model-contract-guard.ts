@@ -732,6 +732,18 @@ for (const anchor of dashboardFlowAnchors) {
   assert.ok(currentDashboardAnchor > previousDashboardAnchor, `DashboardMain order regression at ${anchor}`);
   previousDashboardAnchor = currentDashboardAnchor;
 }
+assert.match(dashboardSource, /<SnapshotModeSurface[\s\S]*onOpenSnapshotDashboard=\{onOpenSnapshotDashboard\}/);
+assert.equal(
+  /<SnapshotModeSurface[\s\S]*onOpenEvidence=\{onOpenEvidence\}/.test(dashboardSource),
+  false,
+  "Restored snapshot surface must not open live instance evidence",
+);
+assert.match(dashboardSource, /function snapshotInstanceOpenAction/);
+assert.match(dashboardSource, /snapshotIdFromDetailPath\(snapshotDetailLink\)/);
+assert.match(dashboardSource, /validateSnapshotDetailPath\(snapshotDetailLink/);
+assert.match(dashboardSource, /openAction\.mode === "snapshot"/);
+assert.match(dashboardSource, /snapshotDetailLink: openAction\.snapshotDetailLink/);
+assert.match(dashboardSource, /snapshotId: openAction\.snapshotId/);
 
 const instanceDashboardSurfaceSource = readFileSync("src/app/components/instance-dashboard-surface.tsx", "utf8");
 assert.match(instanceDashboardSurfaceSource, /buildLiveInstanceDashboardPath/);

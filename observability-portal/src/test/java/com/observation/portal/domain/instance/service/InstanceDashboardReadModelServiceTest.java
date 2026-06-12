@@ -237,6 +237,46 @@ class InstanceDashboardReadModelServiceTest {
     }
 
     @Test
+    @DisplayName("snapshot Instance Dashboard는 UNKNOWN route의 selected endpoint error evidence를 표시한다")
+    void snapshotDashboardKeepsUnknownRouteEndpointErrorEvidence() {
+        when(snapshotRepository.findDetailRow(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID))
+                .thenReturn(Optional.of(snapshotRow("""
+                        {"instanceSummary":{"items":[]}}
+                        """)));
+        stubWindowMetricEvidence(
+                SNAPSHOT_WINDOW_START.toInstant(),
+                SNAPSHOT_WINDOW_END.toInstant(),
+                65L,
+                12L);
+        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationInstanceId(
+                INSTANCE_ID,
+                SNAPSHOT_WINDOW_START.toInstant(),
+                SNAPSHOT_WINDOW_END.toInstant()))
+                .thenReturn(List.of(endpointRow(
+                        SNAPSHOT_WINDOW_END.toInstant().minusSeconds(30),
+                        "GET",
+                        "UNKNOWN",
+                        65L,
+                        12L)));
+
+        InstanceDashboardReadModel dashboard = service.getSnapshotDashboard(
+                        PROJECT_ID,
+                        APPLICATION_ID,
+                        SNAPSHOT_ID,
+                        INSTANCE_ID)
+                .orElseThrow();
+
+        assertThat(dashboard.endpointEvidence().status()).isEqualTo("available");
+        assertThat(dashboard.endpointEvidence().items()).singleElement().satisfies(item -> {
+            assertThat(item.endpointKey()).isEqualTo("GET UNKNOWN");
+            assertThat(item.presenceOnSelectedInstance()).isEqualTo("observed");
+            assertThat(item.requestCount()).isEqualTo(65L);
+            assertThat(item.errorCount()).isEqualTo(12L);
+            assertThat(item.relatedApplicationEndpointEvidenceRef()).isNull();
+        });
+    }
+
+    @Test
     @DisplayName("snapshot Instance Dashboard는 snapshot row window와 non-cutoff bucket query만 사용한다")
     void snapshotDashboardUsesSelectedSnapshotWindowAndNonCutoffMetricQueries() {
         when(snapshotRepository.findDetailRow(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID))

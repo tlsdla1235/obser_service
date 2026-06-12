@@ -849,12 +849,9 @@ public class InstanceDashboardReadModelService {
                 String route = textValue(item, "route");
                 Long requestCount = longValue(item, "requestCount");
                 Long errorCount = longValue(item, "errorCount");
-                if (method == null || route == null || requestCount == null || errorCount == null
+                if (method == null || route == null || !safeEndpointRoute(route) || requestCount == null || errorCount == null
                         || requestCount < 0L || errorCount < 0L || errorCount > requestCount) {
                     return Optional.empty();
-                }
-                if ("UNKNOWN".equalsIgnoreCase(route.trim())) {
-                    continue;
                 }
                 items.add(new EndpointItem(
                         method.trim().toUpperCase(Locale.ROOT),
@@ -866,6 +863,37 @@ public class InstanceDashboardReadModelService {
         } catch (JsonProcessingException exception) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * Instance Dashboard는 normalized route만 표시한다.
+     * UNKNOWN은 route normalization의 bounded fallback이므로 raw path/query 노출 없이 endpoint evidence로 사용할 수 있다.
+     */
+    private static boolean safeEndpointRoute(String route) {
+        if (route == null || route.isBlank()) {
+            return false;
+        }
+        String trimmed = route.trim();
+        if (trimmed.length() != route.length() || containsControlCharacter(trimmed)) {
+            return false;
+        }
+        if ("UNKNOWN".equalsIgnoreCase(trimmed)) {
+            return true;
+        }
+        String lowerCaseRoute = trimmed.toLowerCase(Locale.ROOT);
+        if (trimmed.contains("?") || lowerCaseRoute.startsWith("http://") || lowerCaseRoute.startsWith("https://")) {
+            return false;
+        }
+        return trimmed.startsWith("/") && !trimmed.startsWith("//") && !trimmed.contains("//");
+    }
+
+    private static boolean containsControlCharacter(String value) {
+        for (int index = 0; index < value.length(); index++) {
+            if (Character.isISOControl(value.charAt(index))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Long longValue(JsonNode root, String fieldName) {

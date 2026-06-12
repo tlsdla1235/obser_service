@@ -29,6 +29,7 @@ import { type AuthFetch, useAuth } from "../lib/auth";
 import { guardApplicationDashboardReadModel } from "../lib/read-model-contract-guard";
 import { useApiResource } from "../lib/use-api-resource";
 import {
+  buildSnapshotDetailPath,
   buildStarterCredentialMetadataPath,
   buildStarterCredentialRevocationPath,
   buildStarterCredentialRotationPath,
@@ -41,12 +42,14 @@ import {
   humanizeStatusCode,
   severityBadgeClassName,
   severityDisplayText,
+  snapshotIdFromDetailPath,
   statusBadgeClassName,
   toApplicationPresentationItems,
   toDashboardPresentation,
   toProjectPresentationItems,
   validateDashboardPath,
   validateProjectApplicationsPath,
+  validateSnapshotDetailPath,
   type ApplicationPresentationItem,
   type DashboardPresentation,
   type ProjectPresentationItem,
@@ -70,10 +73,23 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { InstancePanels, useInstanceView } from "./instance-panels";
+import type { InstanceDashboardTarget, SnapshotInstanceDashboardTarget } from "./instance-dashboard-surface";
 import { SnapshotHistoryPanel } from "./snapshot-history-panel";
 import { type SnapshotDetailTarget } from "./snapshot-detail-surface";
 
 type ResourceScope = "applications" | "dashboard" | "projects";
+
+type InstanceSummaryOpenAction =
+  | {
+      mode: "live";
+      open: (target: InstanceDashboardTarget) => void;
+    }
+  | {
+      mode: "snapshot";
+      open: (target: SnapshotInstanceDashboardTarget) => void;
+      snapshotDetailLink: string;
+      snapshotId: string;
+    };
 
 function StatusBadge({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
@@ -562,13 +578,13 @@ function ApplicationRail({
  */
 function DashboardPanels({
   dashboard,
+  instanceOpenAction,
   mode = "live",
-  onOpenEvidence,
   selectedProject,
 }: {
   dashboard: DashboardPresentation;
+  instanceOpenAction: InstanceSummaryOpenAction;
   mode?: "live" | "snapshot";
-  onOpenEvidence: ReturnType<typeof useInstanceView>["openEvidence"];
   selectedProject: ProjectPresentationItem;
 }) {
   return (
@@ -581,7 +597,7 @@ function DashboardPanels({
       <FirstLookCandidatesPanel candidates={dashboard.firstLookCandidates} />
       <EndpointPriorityPanel items={dashboard.endpointPriority} />
       <ResourceSignalsPanel dashboard={dashboard} />
-      <InstancesPanel dashboard={dashboard} onOpenEvidence={onOpenEvidence} />
+      <InstancesPanel dashboard={dashboard} openAction={instanceOpenAction} />
     </>
   );
 }
@@ -631,13 +647,17 @@ function DashboardMain({
       {snapshotTarget ? (
         <SnapshotModeSurface
           onBackToLive={() => setSnapshotTarget(null)}
-          onOpenEvidence={onOpenEvidence}
+          onOpenSnapshotDashboard={onOpenSnapshotDashboard}
           selectedApplication={selectedApplication}
           selectedProject={selectedProject}
           target={snapshotTarget}
         />
       ) : (
-        <DashboardPanels dashboard={dashboard} onOpenEvidence={onOpenEvidence} selectedProject={selectedProject} />
+        <DashboardPanels
+          dashboard={dashboard}
+          instanceOpenAction={{ mode: "live", open: onOpenEvidence }}
+          selectedProject={selectedProject}
+        />
       )}
       <SnapshotHistoryPanel
         onRestoreSnapshotDashboard={setSnapshotTarget}
@@ -664,13 +684,13 @@ function DashboardMain({
  */
 function SnapshotModeSurface({
   onBackToLive,
-  onOpenEvidence,
+  onOpenSnapshotDashboard,
   selectedApplication,
   selectedProject,
   target,
 }: {
   onBackToLive: () => void;
-  onOpenEvidence: ReturnType<typeof useInstanceView>["openEvidence"];
+  onOpenSnapshotDashboard: ReturnType<typeof useInstanceView>["openSnapshotDashboard"];
   selectedApplication: ApplicationPresentationItem;
   selectedProject: ProjectPresentationItem;
   target: SnapshotDetailTarget;
@@ -678,6 +698,10 @@ function SnapshotModeSurface({
   const topRef = useRef<HTMLDivElement | null>(null);
   const readModelPath = snapshotReadModelPath(target, selectedProject, selectedApplication);
   const resourceKey = `snapshot-read-model:${readModelPath}`;
+  const instanceOpenAction = useMemo(
+    () => snapshotInstanceOpenAction(target, selectedProject, selectedApplication, onOpenSnapshotDashboard),
+    [onOpenSnapshotDashboard, selectedApplication, selectedProject, target],
+  );
 
   const requestSnapshotReadModel = useCallback(
     async ({ authFetch, signal }: { authFetch: AuthFetch; signal: AbortSignal }) => {
@@ -713,10 +737,38 @@ function SnapshotModeSurface({
       {loading && <MainMessage title="Snapshot 복원 중" body="저장된 read model을 live surface로 불러오는 중입니다." />}
       {error && <ResourceErrorMessage scope="dashboard" error={error} onReload={resource.reload} roomy />}
       {!loading && !error && presentation && (
-        <DashboardPanels dashboard={presentation} mode="snapshot" onOpenEvidence={onOpenEvidence} selectedProject={selectedProject} />
+        <DashboardPanels
+          dashboard={presentation}
+          instanceOpenAction={instanceOpenAction}
+          mode="snapshot"
+          selectedProject={selectedProject}
+        />
       )}
     </div>
   );
+}
+
+/**
+ * snapshot mode의 Instance summary action은 selected snapshot id를 target에 고정한다.
+ * snapshotId가 없는 legacy 진입은 snapshot detail link에서 id를 파싱해 live/current evidence로 흐르지 않게 한다.
+ */
+function snapshotInstanceOpenAction(
+  target: SnapshotDetailTarget,
+  selectedProject: ProjectPresentationItem,
+  selectedApplication: ApplicationPresentationItem,
+  open: ReturnType<typeof useInstanceView>["openSnapshotDashboard"],
+): InstanceSummaryOpenAction {
+  const snapshotDetailLink = target.snapshotLink
+    ? validateSnapshotDetailPath(target.snapshotLink, selectedProject.projectId, selectedApplication.applicationId, target.snapshotId)
+    : buildSnapshotDetailPath(selectedProject.projectId, selectedApplication.applicationId, target.snapshotId ?? "");
+  const snapshotId = target.snapshotId ?? snapshotIdFromDetailPath(snapshotDetailLink);
+  validateSnapshotDetailPath(snapshotDetailLink, selectedProject.projectId, selectedApplication.applicationId, snapshotId);
+  return {
+    mode: "snapshot",
+    open,
+    snapshotDetailLink,
+    snapshotId,
+  };
 }
 
 /**
@@ -1629,10 +1681,10 @@ function credentialErrorCopy(error: Error): string {
 
 function InstancesPanel({
   dashboard,
-  onOpenEvidence,
+  openAction,
 }: {
   dashboard: DashboardPresentation;
-  onOpenEvidence: ReturnType<typeof useInstanceView>["openEvidence"];
+  openAction: InstanceSummaryOpenAction;
 }) {
   return (
     <div className="border border-neutral-200 bg-white">
@@ -1655,6 +1707,17 @@ function InstancesPanel({
               instanceId: instance.instanceId,
               instanceName: instance.instanceName,
               projectId: dashboard.application.projectId,
+            };
+            const openInstanceDashboard = () => {
+              if (openAction.mode === "snapshot") {
+                openAction.open({
+                  ...target,
+                  snapshotDetailLink: openAction.snapshotDetailLink,
+                  snapshotId: openAction.snapshotId,
+                });
+                return;
+              }
+              openAction.open(target);
             };
             return (
               <li key={instance.instanceId} className="grid gap-3 border border-neutral-200 p-3 md:grid-cols-[minmax(180px,1fr)_minmax(220px,0.85fr)_auto] md:items-center">
@@ -1682,7 +1745,7 @@ function InstancesPanel({
                       {humanizeStatusCode(summary.applicationContribution.level)}
                     </StatusBadge>
                   )}
-                  <Button variant="outline" size="sm" className="h-8 border-neutral-300" onClick={() => onOpenEvidence(target)}>
+                  <Button variant="outline" size="sm" className="h-8 border-neutral-300" onClick={openInstanceDashboard}>
                     Open modal
                   </Button>
                 </div>
