@@ -4,6 +4,8 @@ import com.observation.starter.client.PortalMetricBucketClient;
 import com.observation.starter.client.http.JdkPortalMetricBucketClient;
 import com.observation.starter.model.metric.ClosedMetricBucket;
 import com.observation.starter.service.MetricBucketRollupService;
+import com.observation.starter.service.StarterResourceMetricSampler;
+import com.observation.starter.spring.StarterResourceMetricSamplerScheduler;
 import com.observation.starter.spring.observation.MicrometerHttpServerObservationBinder;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
@@ -24,6 +26,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import javax.sql.DataSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -47,6 +50,9 @@ class EccEndpointSmokeApplicationTest {
     @Autowired
     private MetricBucketRollupService rollupService;
 
+    @Autowired
+    private StarterResourceMetricSampler resourceMetricSampler;
+
     @LocalServerPort
     private int localServerPort;
 
@@ -67,6 +73,8 @@ class EccEndpointSmokeApplicationTest {
                 .filteredOn(handler -> handler instanceof MicrometerHttpServerObservationBinder)
                 .hasSize(1)
                 .allSatisfy(handler -> assertThat(handler.supportsContext(httpServerContext())).isTrue());
+        assertThat(applicationContext.getBean(StarterResourceMetricSamplerScheduler.class)).isNotNull();
+        assertThat(applicationContext.getBeansOfType(DataSource.class)).isEmpty();
     }
 
     @Test
@@ -91,6 +99,30 @@ class EccEndpointSmokeApplicationTest {
                 .sum())
                 .as("endpoint rollup should not double-count the single request")
                 .isEqualTo(1L);
+    }
+
+    @Test
+    void realMvcEccRequestAndResourceSamplerRecordJvmEvidenceWithoutDatasource() throws Exception {
+        HttpResponse<String> response = sendGet("/api/auth/signup/check-id?studentId=20201234");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        resourceMetricSampler.sampleAndRecord();
+
+        List<ClosedMetricBucket> closedBuckets = rollupService.drainClosedBuckets(Instant.now().plusSeconds(90));
+
+        assertThat(closedBuckets)
+                .as("ECC smoke should produce closed buckets after a request and a resource sampler tick")
+                .isNotEmpty();
+        assertThat(closedBuckets.stream()
+                .filter(bucket -> bucket.appSummary().jvm().isPresent())
+                .toList())
+                .as("datasource-less ECC smoke still needs CPU/heap evidence in starter closed buckets")
+                .isNotEmpty();
+        assertThat(closedBuckets.stream()
+                .filter(bucket -> bucket.appSummary().datasource().isPresent())
+                .toList())
+                .as("ECC smoke has no DataSource, so datasource pool evidence should stay absent")
+                .isEmpty();
     }
 
     @Test
