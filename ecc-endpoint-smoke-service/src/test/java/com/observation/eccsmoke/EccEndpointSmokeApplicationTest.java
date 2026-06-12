@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.ApplicationContext;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.web.filter.ServerHttpObservationFilter;
 
 import java.net.URI;
@@ -31,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "OBSERVATION_PORTAL_BASE_URL=http://127.0.0.1:1",
         "ECC_ENDPOINT_SMOKE_PROJECT_KEY=ecc-smoke-test-key.fixture"
 })
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class EccEndpointSmokeApplicationTest {
 
     @Autowired
@@ -69,12 +71,7 @@ class EccEndpointSmokeApplicationTest {
 
     @Test
     void realMvcEccRequestIsRecordedByStarterCollectorPath() throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(
-                        URI.create("http://127.0.0.1:" + localServerPort + "/api/auth/signup/check-id?studentId=20201234"))
-                .timeout(Duration.ofSeconds(5))
-                .GET()
-                .build();
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = sendGet("/api/auth/signup/check-id?studentId=20201234");
 
         assertThat(response.statusCode()).isEqualTo(200);
         List<ClosedMetricBucket> closedBuckets = rollupService.drainClosedBuckets(Instant.now().plusSeconds(90));
@@ -94,6 +91,35 @@ class EccEndpointSmokeApplicationTest {
                 .sum())
                 .as("endpoint rollup should not double-count the single request")
                 .isEqualTo(1L);
+    }
+
+    @Test
+    void realMvcEccRequestsKeepMatchedRoutePatternsInEndpointRollups() throws Exception {
+        assertThat(sendGet("/api/auth/signup/check-id?studentId=20201234").statusCode()).isEqualTo(200);
+        assertThat(sendGet("/api/admin/users/1").statusCode()).isEqualTo(200);
+        assertThat(sendGet("/api/ecc-smoke/error-500").statusCode()).isEqualTo(500);
+
+        List<String> endpointKeys = rollupService.drainClosedBuckets(Instant.now().plusSeconds(90)).stream()
+                .flatMap(bucket -> bucket.endpointRollups().stream())
+                .map(endpoint -> endpoint.endpointKey().value())
+                .toList();
+
+        assertThat(endpointKeys)
+                .as("Spring MVC matched route patterns should survive starter normalization before ingest")
+                .contains(
+                        "GET /api/auth/signup/check-id",
+                        "GET /api/admin/users/{uuid}",
+                        "GET /api/ecc-smoke/error-500")
+                .doesNotContain("GET UNKNOWN");
+    }
+
+    private HttpResponse<String> sendGet(String path) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + localServerPort + path))
+                .timeout(Duration.ofSeconds(5))
+                .GET()
+                .build();
+        return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
     private static Observation.Context httpServerContext() {
