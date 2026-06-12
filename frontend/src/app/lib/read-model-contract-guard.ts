@@ -14,6 +14,8 @@ import type {
 type ApplicationContext = {
   applicationId: string;
   projectId: string;
+  // snapshot mode는 live dashboard와 동일한 read model을 mode=snapshot + snapshot readSemantics source로만 다르게 저장한다.
+  expectedMode?: "live" | "snapshot";
 };
 
 type InstanceContext = ApplicationContext & {
@@ -49,6 +51,7 @@ const INSTANCE_EVIDENCE_CONTRACT_ERROR = "instance_evidence_contract_mismatch";
 const INSTANCE_TREND_CONTRACT_ERROR = "instance_snapshot_trend_contract_mismatch";
 const DASHBOARD_SCHEMA_VERSION = "dashboard_read_model.v1";
 const DASHBOARD_LIVE_MODE = "live";
+const DASHBOARD_SNAPSHOT_MODE = "snapshot";
 const DASHBOARD_WINDOW_TYPE = "recent_30_minutes";
 const DASHBOARD_READ_SOURCE = "accepted_metric_buckets";
 const INSTANCE_DASHBOARD_SCHEMA_VERSION = "instance_dashboard_read_model.v1";
@@ -91,6 +94,7 @@ export function guardApplicationDashboardReadModel(
   model: ApplicationDashboardReadModel,
   context?: ApplicationContext,
 ): ApplicationDashboardReadModel {
+  const expectedMode = context?.expectedMode ?? "live";
   const root = asRecord(model, DASHBOARD_CONTRACT_ERROR);
   const application = asRecord(root.application, DASHBOARD_CONTRACT_ERROR);
   const sourceWindow = asRecord(application.sourceWindow, DASHBOARD_CONTRACT_ERROR);
@@ -114,7 +118,7 @@ export function guardApplicationDashboardReadModel(
   assertNonEmptyString(state.code, DASHBOARD_CONTRACT_ERROR);
   assertNonEmptyString(state.label, DASHBOARD_CONTRACT_ERROR);
   assertNonEmptyString(state.scope, DASHBOARD_CONTRACT_ERROR);
-  assertDashboardCanonicalHeader(root, window, readSemantics);
+  assertDashboardCanonicalHeader(root, window, readSemantics, expectedMode);
   assertDashboardThresholds(thresholds);
   assertNonEmptyString(operatorSummary.headline, DASHBOARD_CONTRACT_ERROR);
   assertNonEmptyString(operatorSummary.firstLookText, DASHBOARD_CONTRACT_ERROR);
@@ -197,7 +201,9 @@ export function guardApplicationDashboardReadModel(
   }
 
   assertArray(root.triageCards, DASHBOARD_CONTRACT_ERROR);
-  assertArray(root.instances, DASHBOARD_CONTRACT_ERROR);
+  for (const item of assertArray(root.instances, DASHBOARD_CONTRACT_ERROR)) {
+    assertDashboardInstanceEntry(item, expectedMode);
+  }
   return model;
 }
 
@@ -205,12 +211,16 @@ function assertDashboardCanonicalHeader(
   root: Record<string, unknown>,
   window: Record<string, unknown>,
   readSemantics: Record<string, unknown>,
+  expectedMode: "live" | "snapshot",
 ) {
+  // snapshot mode는 enricher가 동일 read model에 mode=snapshot, readSemantics.source=snapshot source만 덮어쓴 형태다.
+  const expectedRootMode = expectedMode === "snapshot" ? DASHBOARD_SNAPSHOT_MODE : DASHBOARD_LIVE_MODE;
+  const expectedReadSource = expectedMode === "snapshot" ? SNAPSHOT_READ_MODEL_SOURCE : DASHBOARD_READ_SOURCE;
   if (
     root.schemaVersion !== DASHBOARD_SCHEMA_VERSION ||
-    root.mode !== DASHBOARD_LIVE_MODE ||
+    root.mode !== expectedRootMode ||
     window.type !== DASHBOARD_WINDOW_TYPE ||
-    readSemantics.source !== DASHBOARD_READ_SOURCE ||
+    readSemantics.source !== expectedReadSource ||
     readSemantics.snapshotDetailRecalculates !== false ||
     readSemantics.markerIsStateSource !== false ||
     readSemantics.baselineComparisonUsedForMvpDecision !== false ||
@@ -256,6 +266,40 @@ function assertDashboardResourceSignal(value: unknown) {
   assertFiniteNumber(signal.threshold, DASHBOARD_CONTRACT_ERROR);
   assertNonEmptyString(signal.status, DASHBOARD_CONTRACT_ERROR);
   assertOptionalString(signal.observedAt, DASHBOARD_CONTRACT_ERROR);
+}
+
+function assertDashboardInstanceEntry(value: unknown, expectedMode: "live" | "snapshot" = "live") {
+  const entry = asRecord(value, DASHBOARD_CONTRACT_ERROR);
+  const links = asRecord(entry.links, DASHBOARD_CONTRACT_ERROR);
+
+  assertNonEmptyString(entry.instanceId, DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(entry.instanceName, DASHBOARD_CONTRACT_ERROR);
+  assertOptionalString(entry.lastSeenAt, DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(links.evidence, DASHBOARD_CONTRACT_ERROR);
+
+  // 과거 snapshot은 InstanceEntry.summary(D5에서 추가) 이전 스키마라 summary가 없을 수 있다.
+  // snapshot mode에서 summary가 없으면 core fields만 검증하고 display는 defensive하게 렌더한다.
+  if (expectedMode === "snapshot" && entry.summary == null) {
+    return;
+  }
+
+  const summary = asRecord(entry.summary, DASHBOARD_CONTRACT_ERROR);
+  const observationStatus = asRecord(summary.observationStatus, DASHBOARD_CONTRACT_ERROR);
+  const starterConnection = asRecord(summary.starterConnection, DASHBOARD_CONTRACT_ERROR);
+  const red = asRecord(summary.red, DASHBOARD_CONTRACT_ERROR);
+  const applicationContribution = asRecord(summary.applicationContribution, DASHBOARD_CONTRACT_ERROR);
+
+  assertNonEmptyString(observationStatus.code, DASHBOARD_CONTRACT_ERROR);
+  assertOptionalString(observationStatus.reason, DASHBOARD_CONTRACT_ERROR);
+  assertOptionalString(observationStatus.lastObservedBucketEndUtc, DASHBOARD_CONTRACT_ERROR);
+  assertOptionalString(starterConnection.lastHeartbeatAt, DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(starterConnection.lastHeartbeatStatus, DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(starterConnection.freshnessLabel, DASHBOARD_CONTRACT_ERROR);
+  assertFiniteNumber(red.requestCount, DASHBOARD_CONTRACT_ERROR);
+  assertNullableFiniteNumber(red.slowCountOver500ms, DASHBOARD_CONTRACT_ERROR);
+  assertNullableFiniteNumber(red.slowShareOver500ms, DASHBOARD_CONTRACT_ERROR);
+  assertNonEmptyString(applicationContribution.level, DASHBOARD_CONTRACT_ERROR);
+  assertOptionalString(applicationContribution.reason, DASHBOARD_CONTRACT_ERROR);
 }
 
 function assertDashboardStateReason(value: unknown): Record<string, unknown> {

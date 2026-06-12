@@ -333,6 +333,27 @@ export const dashboardContractFixture: ApplicationDashboardReadModel = {
       instanceId: CONTRACT_INSTANCE_ID,
       instanceName: "orders-api-contract-a",
       lastSeenAt: "2026-06-09T00:04:30Z",
+      summary: {
+        observationStatus: {
+          code: "observed",
+          reason: "selected_instance_metric_bucket_observed",
+          lastObservedBucketEndUtc: "2026-06-09T00:04:30Z",
+        },
+        starterConnection: {
+          lastHeartbeatAt: "2026-06-09T00:04:40Z",
+          lastHeartbeatStatus: "received",
+          freshnessLabel: "observed",
+        },
+        red: {
+          requestCount: 40,
+          slowCountOver500ms: 8,
+          slowShareOver500ms: 0.2,
+        },
+        applicationContribution: {
+          level: "attention",
+          reason: "request_symptom_observed_without_root_cause_claim",
+        },
+      },
       links: {
         evidence: `/api/projects/${CONTRACT_PROJECT_ID}/applications/${CONTRACT_APPLICATION_ID}/instances/${CONTRACT_INSTANCE_ID}/evidence`,
       },

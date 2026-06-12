@@ -417,8 +417,31 @@ export type InstanceEntry = {
   instanceId: UuidString;
   instanceName: string;
   lastSeenAt: IsoDateTimeString | null;
+  summary: InstanceEntrySummary;
   links: {
     evidence: string;
+  };
+};
+
+export type InstanceEntrySummary = {
+  observationStatus: {
+    code: "observed" | "not_observed_in_window" | "metric_missing" | (string & {});
+    reason: string | null;
+    lastObservedBucketEndUtc: IsoDateTimeString | null;
+  };
+  starterConnection: {
+    lastHeartbeatAt: IsoDateTimeString | null;
+    lastHeartbeatStatus: string;
+    freshnessLabel: string;
+  };
+  red: {
+    requestCount: number;
+    slowCountOver500ms: number | null;
+    slowShareOver500ms: number | null;
+  };
+  applicationContribution: {
+    level: "none" | "supporting" | "attention" | "contributing" | "insufficient" | (string & {});
+    reason: string | null;
   };
 };
 

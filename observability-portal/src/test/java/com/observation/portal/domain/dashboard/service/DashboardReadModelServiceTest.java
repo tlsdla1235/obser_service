@@ -35,6 +35,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -655,6 +657,36 @@ class DashboardReadModelServiceTest {
                 APPLICATION_ID,
                 PageRequest.of(0, 50)))
                 .thenReturn(instanceRows(51));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationInstanceIdAtOrBefore(
+                any(UUID.class),
+                eq(EVALUATION_AT)))
+                .thenReturn(Optional.empty());
+        when(metricBucketRepository.findWindowAggregateByApplicationInstanceId(
+                any(UUID.class),
+                eq(CURRENT_START),
+                eq(EVALUATION_AT)))
+                .thenReturn(WindowBucketAggregate.zero());
+        when(metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationInstanceId(
+                any(UUID.class),
+                eq(CURRENT_START),
+                eq(EVALUATION_AT)))
+                .thenReturn(List.of());
+        when(heartbeatRepository.findByIdentity(PROJECT_ID, "orders-api", "prod", "pod-a"))
+                .thenReturn(Optional.of(heartbeat("2026-05-25T10:32:20Z")));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationInstanceIdAtOrBefore(
+                INSTANCE_ID,
+                EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-25T10:32:00Z")));
+        when(metricBucketRepository.findWindowAggregateByApplicationInstanceId(
+                INSTANCE_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(40L, 0L));
+        when(metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationInstanceId(
+                INSTANCE_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(List.of(histogramRow("2026-05-25T10:31:30Z", 500L, 32L, 1000L, 40L)));
 
         ApplicationDashboardReadModel dashboard = service.getDashboard(PROJECT_ID, APPLICATION_ID).orElseThrow();
 
@@ -663,6 +695,16 @@ class DashboardReadModelServiceTest {
             assertThat(entry.instanceId()).isEqualTo(INSTANCE_ID);
             assertThat(entry.instanceName()).isEqualTo("pod-a");
             assertThat(entry.lastSeenAt()).isEqualTo(offset("2026-05-25T10:31:30Z"));
+            assertThat(entry.summary().observationStatus().code()).isEqualTo("observed");
+            assertThat(entry.summary().observationStatus().lastObservedBucketEndUtc())
+                    .isEqualTo(offset("2026-05-25T10:32:00Z"));
+            assertThat(entry.summary().starterConnection().lastHeartbeatStatus()).isEqualTo("received");
+            assertThat(entry.summary().starterConnection().lastHeartbeatAt())
+                    .isEqualTo(offset("2026-05-25T10:32:20Z"));
+            assertThat(entry.summary().red().requestCount()).isEqualTo(40L);
+            assertThat(entry.summary().red().slowCountOver500ms()).isEqualTo(8L);
+            assertThat(entry.summary().red().slowShareOver500ms()).isEqualByComparingTo("0.2");
+            assertThat(entry.summary().applicationContribution().level()).isEqualTo("attention");
             assertThat(entry.links().evidence())
                     .isEqualTo("/api/projects/%s/applications/%s/instances/%s/evidence"
                             .formatted(PROJECT_ID, APPLICATION_ID, INSTANCE_ID));

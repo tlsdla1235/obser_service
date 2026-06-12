@@ -1209,14 +1209,33 @@ public record ApplicationDashboardReadModel(
     /**
      * Application Dashboard에서 Instance Detail로 진입할 때 사용하는 bounded instance entry다.
      *
-     * <p>instance health/state/priority를 계산하지 않고 catalog UUID, 표시 이름, latest seen 시각, evidence link만 담는다.</p>
+     * <p>catalog UUID, 표시 이름, latest seen 시각, evidence link는 기존 navigation 계약으로 유지한다. `summary`는 SoT
+     * Instance Summary row가 frontend 계산 없이 표시할 수 있는 server-computed scalar만 담으며, instance 독립 lifecycle
+     * state나 root cause claim은 만들지 않는다.</p>
      */
     public record InstanceEntry(
             UUID instanceId,
             String instanceName,
             OffsetDateTime lastSeenAt,
+            InstanceEntrySummary summary,
             InstanceEntryLinks links
     ) {
+
+        /**
+         * 기존 테스트/소비자가 쓰던 navigation-only 생성자를 보존한다.
+         */
+        public InstanceEntry(
+                UUID instanceId,
+                String instanceName,
+                OffsetDateTime lastSeenAt,
+                InstanceEntryLinks links) {
+            this(
+                    instanceId,
+                    instanceName,
+                    lastSeenAt,
+                    InstanceEntrySummary.unavailable(),
+                    links);
+        }
 
         /**
          * instance UUID path identity와 evidence navigation link가 비어 있지 않도록 검증한다.
@@ -1224,7 +1243,134 @@ public record ApplicationDashboardReadModel(
         public InstanceEntry {
             Objects.requireNonNull(instanceId, "instanceId must not be null");
             instanceName = requireText(instanceName, "instanceName");
+            Objects.requireNonNull(summary, "summary must not be null");
             Objects.requireNonNull(links, "links must not be null");
+        }
+    }
+
+    /**
+     * SoT Instance Summary row에 필요한 instance-scoped summary 묶음이다.
+     *
+     * <p>각 하위 block은 Instance Dashboard detail과 같은 source 의미를 쓰되, row 표시용으로 request/slow/heartbeat/
+     * contribution scalar만 담는다.</p>
+     */
+    public record InstanceEntrySummary(
+            InstanceEntryObservationStatus observationStatus,
+            InstanceEntryStarterConnection starterConnection,
+            InstanceEntryRedSignals red,
+            InstanceEntryApplicationContribution applicationContribution
+    ) {
+
+        /**
+         * frontend가 unavailable 상태를 명시적으로 표시할 수 있는 fallback summary다.
+         */
+        public static InstanceEntrySummary unavailable() {
+            return new InstanceEntrySummary(
+                    new InstanceEntryObservationStatus("metric_missing", "summary_not_available", null),
+                    InstanceEntryStarterConnection.missing(),
+                    new InstanceEntryRedSignals(0L, null, null),
+                    new InstanceEntryApplicationContribution("insufficient", "summary_not_available"));
+        }
+
+        /**
+         * row summary의 모든 표시 block이 존재하도록 검증한다.
+         */
+        public InstanceEntrySummary {
+            Objects.requireNonNull(observationStatus, "observationStatus must not be null");
+            Objects.requireNonNull(starterConnection, "starterConnection must not be null");
+            Objects.requireNonNull(red, "red must not be null");
+            Objects.requireNonNull(applicationContribution, "applicationContribution must not be null");
+        }
+    }
+
+    /**
+     * selected instance metric evidence가 current dashboard window에서 관측됐는지 설명한다.
+     */
+    public record InstanceEntryObservationStatus(
+            String code,
+            String reason,
+            OffsetDateTime lastObservedBucketEndUtc
+    ) {
+
+        /**
+         * observation code가 lifecycle state로 오해될 수 있는 값을 받지 않도록 제한한다.
+         */
+        public InstanceEntryObservationStatus {
+            code = requireText(code, "code");
+            if (!"observed".equals(code)
+                    && !"not_observed_in_window".equals(code)
+                    && !"metric_missing".equals(code)) {
+                throw new IllegalArgumentException("code must be observed/not_observed_in_window/metric_missing");
+            }
+            reason = trimNullable(reason);
+        }
+    }
+
+    /**
+     * selected instance의 starter heartbeat control-plane 상태다.
+     */
+    public record InstanceEntryStarterConnection(
+            OffsetDateTime lastHeartbeatAt,
+            String lastHeartbeatStatus,
+            String freshnessLabel
+    ) {
+
+        /**
+         * heartbeat row가 없을 때 row가 명시적 missing 상태를 표시하게 한다.
+         */
+        public static InstanceEntryStarterConnection missing() {
+            return new InstanceEntryStarterConnection(null, "missing", "missing");
+        }
+
+        /**
+         * heartbeat code는 표시용 문자열로만 유지하고 metric state를 변경하지 않는다.
+         */
+        public InstanceEntryStarterConnection {
+            lastHeartbeatStatus = requireText(lastHeartbeatStatus, "lastHeartbeatStatus");
+            freshnessLabel = requireText(freshnessLabel, "freshnessLabel");
+        }
+    }
+
+    /**
+     * selected instance의 request count와 500ms 초과 지연 비율이다.
+     */
+    public record InstanceEntryRedSignals(
+            long requestCount,
+            Long slowCountOver500ms,
+            BigDecimal slowShareOver500ms
+    ) {
+
+        /**
+         * row metric scalar가 bounded count/rate 범위 안에 있는지 검증한다.
+         */
+        public InstanceEntryRedSignals {
+            validateCount(requestCount, "requestCount");
+            validateNullableCount(slowCountOver500ms, "slowCountOver500ms");
+            validateNullableFraction(slowShareOver500ms, "slowShareOver500ms");
+        }
+    }
+
+    /**
+     * selected instance evidence가 application 판단을 설명하는 정도를 row badge용으로 담는다.
+     */
+    public record InstanceEntryApplicationContribution(
+            String level,
+            String reason
+    ) {
+
+        /**
+         * contribution은 root cause가 아니라 표시 badge 수준의 bounded code로만 제한한다.
+         */
+        public InstanceEntryApplicationContribution {
+            level = requireText(level, "level");
+            if (!"none".equals(level)
+                    && !"supporting".equals(level)
+                    && !"attention".equals(level)
+                    && !"contributing".equals(level)
+                    && !"insufficient".equals(level)) {
+                throw new IllegalArgumentException("level must be none/supporting/attention/contributing/insufficient");
+            }
+            reason = trimNullable(reason);
         }
     }
 

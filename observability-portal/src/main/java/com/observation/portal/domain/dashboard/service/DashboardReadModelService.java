@@ -84,6 +84,7 @@ public class DashboardReadModelService {
     private static final String INSTANCE_BUCKET_SCOPE = "instance_bucket";
     private static final String HISTOGRAM_BOUNDARY_MISMATCH_REASON = "histogram_boundary_mismatch";
     private static final String BASELINE_NOT_USED_REASON = "baseline_comparison_not_used_for_mvp";
+    private static final long LATENCY_SLOW_BUCKET_LE_MS = 500L;
 
     private final ApplicationRepository applicationRepository;
     private final ApplicationInstanceRepository applicationInstanceRepository;
@@ -332,7 +333,7 @@ public class DashboardReadModelService {
                 histogramDistribution,
                 triageSummary.triageCards(),
                 endpointPriority,
-                instanceEntries(application),
+                instanceEntries(application, queryAt, dashboardWindow, bucketQueryContext),
                 runtimeRatioEvidence(runtimeRatio),
                 null);
     }
@@ -496,10 +497,14 @@ public class DashboardReadModelService {
     /**
      * Application Dashboard에서 selected instance evidence API로 이동할 수 있는 최대 50개 entry를 만든다.
      *
-     * <p>이 block은 navigation hint만 제공하며 instance state, health, endpoint evidence, percentile summary를 계산하지
-     * 않는다.</p>
+     * <p>row summary는 SoT Instance Summary가 frontend 재계산 없이 표시할 수 있는 request/slow/heartbeat/contribution
+     * scalar만 포함한다. instance lifecycle state, health score, endpoint priority, percentile summary는 만들지 않는다.</p>
      */
-    private List<ApplicationDashboardReadModel.InstanceEntry> instanceEntries(ApplicationEntity application) {
+    private List<ApplicationDashboardReadModel.InstanceEntry> instanceEntries(
+            ApplicationEntity application,
+            Instant queryAt,
+            DashboardTimeWindow dashboardWindow,
+            BucketQueryContext bucketQueryContext) {
         List<ApplicationInstanceEntity> instances = Objects.requireNonNullElse(
                 applicationInstanceRepository.findByApplicationIdOrderByLastSeenAtDescInstanceNameAsc(
                         application.id(),
@@ -511,12 +516,211 @@ public class DashboardReadModelService {
                         instance.id(),
                         instance.instanceName(),
                         instance.lastSeenAt(),
+                        instanceEntrySummary(
+                                application,
+                                instance,
+                                queryAt,
+                                dashboardWindow,
+                                bucketQueryContext),
                         new ApplicationDashboardReadModel.InstanceEntryLinks(
                                 InstanceEvidenceReadModelService.evidenceLink(
                                         application.projectId(),
                                         application.id(),
                                         instance.id()))))
                 .toList();
+    }
+
+    /**
+     * Instance Summary row가 필요한 서버 산출 값을 current dashboard window 기준으로 축약한다.
+     */
+    private ApplicationDashboardReadModel.InstanceEntrySummary instanceEntrySummary(
+            ApplicationEntity application,
+            ApplicationInstanceEntity instance,
+            Instant queryAt,
+            DashboardTimeWindow dashboardWindow,
+            BucketQueryContext bucketQueryContext) {
+        UtcTimeInterval currentWindow = dashboardWindow.current();
+        Optional<OffsetDateTime> latestBucketEnd = findLatestBucketEndUtcByApplicationInstanceIdAtOrBefore(
+                instance.id(),
+                currentWindow.endUtc(),
+                bucketQueryContext);
+        WindowBucketAggregate aggregate = findWindowAggregateByApplicationInstanceId(
+                instance.id(),
+                currentWindow.startUtc(),
+                currentWindow.endUtc(),
+                bucketQueryContext);
+        InstanceEntrySlowEvidence slowEvidence = instanceEntrySlowEvidence(
+                findSummaryDurationBucketEvidenceRowsByApplicationInstanceId(
+                        instance.id(),
+                        currentWindow.startUtc(),
+                        currentWindow.endUtc(),
+                        bucketQueryContext));
+        Optional<StarterHeartbeatTelemetryRecord> heartbeat = findLatestHeartbeat(
+                application,
+                instance,
+                queryAt,
+                bucketQueryContext);
+        ApplicationDashboardReadModel.InstanceEntryObservationStatus observationStatus = instanceEntryObservationStatus(
+                latestBucketEnd,
+                toUtcOffsetDateTime(currentWindow.startUtc()),
+                toUtcOffsetDateTime(currentWindow.endUtc()),
+                bucketQueryContext);
+        ApplicationDashboardReadModel.InstanceEntryRedSignals redSignals =
+                new ApplicationDashboardReadModel.InstanceEntryRedSignals(
+                        aggregate.requestCount(),
+                        slowEvidence.slowCountOver500ms(),
+                        slowEvidence.slowShareOver500ms());
+        return new ApplicationDashboardReadModel.InstanceEntrySummary(
+                observationStatus,
+                instanceEntryStarterConnection(heartbeat),
+                redSignals,
+                instanceEntryContribution(observationStatus, aggregate, slowEvidence));
+    }
+
+    private Optional<OffsetDateTime> findLatestBucketEndUtcByApplicationInstanceIdAtOrBefore(
+            UUID applicationInstanceId,
+            Instant evaluationAt,
+            BucketQueryContext bucketQueryContext) {
+        return bucketQueryContext.acceptedAtCutoffUtc()
+                .map(cutoff -> metricBucketRepository.findLatestBucketEndUtcByApplicationInstanceIdAtOrBeforeAcceptedAt(
+                        applicationInstanceId,
+                        evaluationAt,
+                        cutoff))
+                .orElseGet(() -> metricBucketRepository.findLatestBucketEndUtcByApplicationInstanceIdAtOrBefore(
+                        applicationInstanceId,
+                        evaluationAt));
+    }
+
+    private WindowBucketAggregate findWindowAggregateByApplicationInstanceId(
+            UUID applicationInstanceId,
+            Instant windowStartUtc,
+            Instant windowEndUtc,
+            BucketQueryContext bucketQueryContext) {
+        return bucketQueryContext.acceptedAtCutoffUtc()
+                .map(cutoff -> metricBucketRepository.findWindowAggregateByApplicationInstanceIdAcceptedAtOrBefore(
+                        applicationInstanceId,
+                        windowStartUtc,
+                        windowEndUtc,
+                        cutoff))
+                .orElseGet(() -> metricBucketRepository.findWindowAggregateByApplicationInstanceId(
+                        applicationInstanceId,
+                        windowStartUtc,
+                        windowEndUtc));
+    }
+
+    private List<HistogramBucketEvidenceRow> findSummaryDurationBucketEvidenceRowsByApplicationInstanceId(
+            UUID applicationInstanceId,
+            Instant windowStartUtc,
+            Instant windowEndUtc,
+            BucketQueryContext bucketQueryContext) {
+        return bucketQueryContext.acceptedAtCutoffUtc()
+                .map(cutoff -> metricBucketRepository
+                        .findSummaryDurationBucketEvidenceRowsByApplicationInstanceIdAcceptedAtOrBefore(
+                                applicationInstanceId,
+                                windowStartUtc,
+                                windowEndUtc,
+                                cutoff))
+                .orElseGet(() -> metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationInstanceId(
+                        applicationInstanceId,
+                        windowStartUtc,
+                        windowEndUtc));
+    }
+
+    private Optional<StarterHeartbeatTelemetryRecord> findLatestHeartbeat(
+            ApplicationEntity application,
+            ApplicationInstanceEntity instance,
+            Instant queryAt,
+            BucketQueryContext bucketQueryContext) {
+        return bucketQueryContext.acceptedAtCutoffUtc()
+                .map(ignored -> heartbeatTelemetryRepository.findByIdentityAtOrBeforeReceivedAt(
+                        application.projectId(),
+                        application.name(),
+                        application.environment(),
+                        instance.instanceName(),
+                        toUtcOffsetDateTime(queryAt)))
+                .orElseGet(() -> heartbeatTelemetryRepository.findByIdentity(
+                        application.projectId(),
+                        application.name(),
+                        application.environment(),
+                        instance.instanceName()));
+    }
+
+    private ApplicationDashboardReadModel.InstanceEntryObservationStatus instanceEntryObservationStatus(
+            Optional<OffsetDateTime> latestBucketEnd,
+            OffsetDateTime windowStart,
+            OffsetDateTime windowEnd,
+            BucketQueryContext bucketQueryContext) {
+        String windowSource = bucketQueryContext.acceptedAtCutoffUtc().isPresent()
+                ? "selected_application_snapshot"
+                : "live_recent_30_minutes";
+        if (latestBucketEnd.isEmpty()) {
+            return new ApplicationDashboardReadModel.InstanceEntryObservationStatus(
+                    "metric_missing",
+                    "selected_application_snapshot".equals(windowSource)
+                            ? "no_metric_bucket_for_selected_snapshot_window"
+                            : "no_metric_bucket_for_live_window",
+                    null);
+        }
+        OffsetDateTime lastObserved = latestBucketEnd.orElseThrow();
+        boolean observedInWindow = lastObserved.isAfter(windowStart) && !lastObserved.isAfter(windowEnd);
+        if (!observedInWindow) {
+            return new ApplicationDashboardReadModel.InstanceEntryObservationStatus(
+                    "not_observed_in_window",
+                    "latest_metric_bucket_outside_selected_window",
+                    lastObserved);
+        }
+        return new ApplicationDashboardReadModel.InstanceEntryObservationStatus(
+                "observed",
+                "selected_instance_metric_bucket_observed",
+                lastObserved);
+    }
+
+    private static ApplicationDashboardReadModel.InstanceEntryStarterConnection instanceEntryStarterConnection(
+            Optional<StarterHeartbeatTelemetryRecord> heartbeat) {
+        if (heartbeat.isEmpty()) {
+            return ApplicationDashboardReadModel.InstanceEntryStarterConnection.missing();
+        }
+        StarterHeartbeatTelemetryRecord record = heartbeat.orElseThrow();
+        return new ApplicationDashboardReadModel.InstanceEntryStarterConnection(
+                record.lastReceivedAtUtc(),
+                normalize(record.heartbeatStatus(), "unknown"),
+                "observed");
+    }
+
+    private static ApplicationDashboardReadModel.InstanceEntryApplicationContribution instanceEntryContribution(
+            ApplicationDashboardReadModel.InstanceEntryObservationStatus observationStatus,
+            WindowBucketAggregate aggregate,
+            InstanceEntrySlowEvidence slowEvidence) {
+        if (!"observed".equals(observationStatus.code())) {
+            return new ApplicationDashboardReadModel.InstanceEntryApplicationContribution(
+                    "insufficient",
+                    "selected_instance_evidence_not_observed");
+        }
+        boolean errorSymptom = aggregate.errorCount() > 0L;
+        boolean slowSymptom = slowEvidence.slowCountOver500ms() != null && slowEvidence.slowCountOver500ms() > 0L;
+        if (errorSymptom || slowSymptom) {
+            return new ApplicationDashboardReadModel.InstanceEntryApplicationContribution(
+                    "attention",
+                    "request_symptom_observed_without_root_cause_claim");
+        }
+        return new ApplicationDashboardReadModel.InstanceEntryApplicationContribution(
+                "supporting",
+                "observed_without_request_symptom");
+    }
+
+    private InstanceEntrySlowEvidence instanceEntrySlowEvidence(List<HistogramBucketEvidenceRow> rows) {
+        ApplicationDashboardReadModel.HistogramWindow window = histogramWindow(rows, "instance_summary");
+        if (!"available".equals(window.status()) || window.totalCount() <= 0L) {
+            return new InstanceEntrySlowEvidence(null, null);
+        }
+        return window.buckets().stream()
+                .filter(bucket -> bucket.leMs() == LATENCY_SLOW_BUCKET_LE_MS)
+                .findFirst()
+                .map(bucket -> {
+                    long slowCount = Math.max(0L, window.totalCount() - bucket.count());
+                    return new InstanceEntrySlowEvidence(slowCount, errorRate(slowCount, window.totalCount()));
+                })
+                .orElseGet(() -> new InstanceEntrySlowEvidence(null, null));
     }
 
     /**
@@ -850,6 +1054,13 @@ public class DashboardReadModelService {
         };
     }
 
+    private static String normalize(String value, String fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        return value.trim().toLowerCase(Locale.ROOT);
+    }
+
     /**
      * current window 요청 수로 sample 부족과 idle traffic을 분리해 lifecycle input을 만든다.
      */
@@ -1065,6 +1276,12 @@ public class DashboardReadModelService {
     }
 
     private record ParsedHistogramBucket(long leMs, long count) {
+    }
+
+    private record InstanceEntrySlowEvidence(
+            Long slowCountOver500ms,
+            BigDecimal slowShareOver500ms
+    ) {
     }
 
     private static OffsetDateTime toUtcOffsetDateTime(Instant instant) {

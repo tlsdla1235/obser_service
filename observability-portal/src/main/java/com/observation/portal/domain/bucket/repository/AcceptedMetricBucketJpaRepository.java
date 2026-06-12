@@ -355,6 +355,27 @@ interface AcceptedMetricBucketJpaRepository extends JpaRepository<AcceptedMetric
             @Param("windowEndUtc") OffsetDateTime windowEndUtc);
 
     /**
+     * snapshot instance summary row의 duration bucket evidence를 accepted_at cutoff 이전 persisted row로 제한해 조회한다.
+     */
+    @Query("select new com.observation.portal.domain.bucket.model.HistogramBucketEvidenceRow("
+            + "bucket.applicationId, "
+            + "bucket.bucketStartUtc, "
+            + "bucket.bucketEndUtc, "
+            + "bucket.durationBucketsJson) "
+            + "from AcceptedMetricBucketEntity bucket "
+            + "where bucket.applicationInstanceId = :applicationInstanceId "
+            + "and bucket.bucketEndUtc > :windowStartUtc "
+            + "and bucket.bucketEndUtc <= :windowEndUtc "
+            + "and bucket.acceptedAt <= :acceptedAtCutoffUtc "
+            + "and bucket.durationBucketsJson is not null "
+            + "order by bucket.bucketEndUtc asc")
+    List<HistogramBucketEvidenceRow> findSummaryDurationBucketEvidenceRowsByApplicationInstanceIdAcceptedAtOrBefore(
+            @Param("applicationInstanceId") UUID applicationInstanceId,
+            @Param("windowStartUtc") OffsetDateTime windowStartUtc,
+            @Param("windowEndUtc") OffsetDateTime windowEndUtc,
+            @Param("acceptedAtCutoffUtc") OffsetDateTime acceptedAtCutoffUtc);
+
+    /**
      * endpoint priority read model을 위한 accepted bucket endpoints_json row를 조회한다.
      *
      * <p>projection은 bucket boundary와 raw JSON source만 전달하며, rule/rank/confidence/recommended action은

@@ -11,6 +11,7 @@ import {
   formatDateRange,
   formatNullableRatio,
   formatOptionalDateTime,
+  formatRatio,
   humanizeAnchorStatus,
   humanizeCaptureReason,
   humanizeSourceCode,
@@ -18,8 +19,9 @@ import {
   severityBadgeClassName,
   severityDisplayText,
   snapshotIdFromDetailPath,
-  statusBadgeClassName,
   validateSnapshotDetailPath,
+  type ApplicationPresentationItem,
+  type ProjectPresentationItem,
 } from "../lib/read-model-adapters";
 import type { DashboardSnapshotDetailReadModel, JsonValue } from "../lib/read-model-types";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
@@ -30,6 +32,9 @@ export type SnapshotDetailTarget = {
   activeAnchor?: string | null;
   snapshotId?: string;
   snapshotLink?: string;
+  // snapshot mode banner provenance. read model에 없는 captureReason과, slot 위치 표시는 marker에서 전달한다.
+  captureReason?: string;
+  currentWindowEndUtc?: string;
 };
 
 function StatusBadge({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -56,14 +61,20 @@ function SectionLabel({ icon: Icon, children }: { icon: LucideIcon; children: Re
 export function SnapshotDetailSurface({
   applicationId,
   compact = false,
+  onBackToLive,
   onOpenSnapshotInstanceDashboard,
   projectId,
+  selectedApplication,
+  selectedProject,
   target,
 }: {
   applicationId: string;
   compact?: boolean;
+  onBackToLive?: () => void;
   onOpenSnapshotInstanceDashboard?: (target: SnapshotInstanceDashboardTarget) => void;
   projectId: string;
+  selectedApplication?: ApplicationPresentationItem;
+  selectedProject?: ProjectPresentationItem;
   target: SnapshotDetailTarget | null;
 }) {
   const detailResourceKey = useMemo(() => {
@@ -121,7 +132,7 @@ export function SnapshotDetailSurface({
     return <SnapshotDetailMessage title="스냅샷 상세 로딩 중" body="저장된 상태 기록의 상세 근거를 불러오는 중입니다." compact={compact} />;
   }
   if (error) {
-    return <SnapshotDetailError error={error} onReload={resource.reload} compact={compact} />;
+    return <SnapshotDetailError error={error} onBackToLive={onBackToLive} onReload={resource.reload} compact={compact} />;
   }
   if (!detail) {
     return <SnapshotDetailMessage title="스냅샷 상세 선택 대기" body="선택한 스냅샷 상세를 아직 불러오지 않았습니다." compact={compact} />;
@@ -132,72 +143,125 @@ export function SnapshotDetailSurface({
     ? detail.snapshotEndpointEvidence.items.some((item) => item.anchorId === activeAnchor)
     : false;
   const storedDashboard = toStoredDashboardView(detail);
+  const applicationTitle = storedDashboard.applicationName !== "저장본에 application 이름 없음"
+    ? storedDashboard.applicationName
+    : selectedApplication?.name ?? "Application";
+  const projectApplicationText = `${selectedProject?.name ?? storedDashboard.projectId} / ${applicationTitle}`;
 
   return (
-    <div className={`border border-neutral-200 bg-white ${compact ? "text-[12px]" : "text-[13px]"}`}>
-      <div className="border-b border-neutral-200 p-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
+    <div className={`space-y-6 ${compact ? "text-[12px]" : "text-[13px]"}`}>
+      <section className="border border-neutral-900 bg-white">
+        <div className="flex flex-wrap items-start justify-between gap-6 border-b border-neutral-200 p-6">
+          <div className="min-w-0 max-w-4xl">
             <SectionLabel icon={FileSearch}>Application Dashboard / Snapshot</SectionLabel>
-            <h2 className="mt-1 text-base font-semibold text-neutral-950">Stored Application Snapshot Dashboard</h2>
-            <p className="mt-1 text-[12px] text-neutral-500">
-              dashboard_snapshots.read_model_json에 저장된 과거 dashboard surface를 복원합니다. 현재 metric으로 state/evidence를 보정하지 않습니다.
+            <h1 className="mt-3 text-[32px] font-semibold leading-tight text-neutral-950 md:text-[38px]">
+              {applicationTitle} · Application Snapshot Dashboard
+            </h1>
+            <p className="mt-4 max-w-3xl text-[18px] leading-7 text-neutral-600">
+              dashboard_snapshots.read_model_json에 저장된 과거 dashboard surface를 같은 surface로 복원합니다.
+              현재 metric으로 state/evidence/resource를 재계산하지 않습니다.
             </p>
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            <StatusBadge className={statusBadgeClassName(storedDashboard.mode)}>{`mode=${storedDashboard.mode}`}</StatusBadge>
-            <StatusBadge>{`source=${detail.readSemantics.source}`}</StatusBadge>
+          <div className="flex max-w-full flex-wrap items-start justify-end gap-3">
+            <StatusBadge className="border-amber-400 bg-white px-3 py-2 text-[16px] text-amber-700">MODE: SNAPSHOT</StatusBadge>
+            <StatusBadge className="border-blue-200 bg-blue-50 px-3 py-2 text-[16px] text-blue-700">RECENT 30 MINUTES</StatusBadge>
+            <StatusBadge className="border-neutral-300 bg-neutral-50 px-3 py-2 text-[16px] text-neutral-700">BASELINE NOT USED</StatusBadge>
+            {onBackToLive && (
+              <Button className="h-14 bg-emerald-700 px-6 text-[18px] font-semibold text-white hover:bg-emerald-800" onClick={onBackToLive}>
+                Live Dashboard로 돌아가기
+              </Button>
+            )}
           </div>
         </div>
-      </div>
-      <div className="border-b border-neutral-100 bg-neutral-50 px-3 py-2 text-[12px] text-neutral-600">
-        capturedAt={formatOptionalDateTime(detail.snapshot.capturedAt)} · window={formatDateRange(detail.snapshot.currentWindow.startUtc, detail.snapshot.currentWindow.endUtc)} · markerBucket={humanizeStatusCode(detail.marker.type)}은 탐색 색인입니다.
-      </div>
-      <div className="grid grid-cols-1 gap-2 border-b border-neutral-100 p-3 text-[11px] sm:grid-cols-2 lg:grid-cols-4">
-        <InfoCell label="mode" value={storedDashboard.mode} />
-        <InfoCell label="source" value={detail.readSemantics.source} />
-        <InfoCell label="snapshotId" value={detail.snapshot.snapshotId} />
-        <InfoCell label="capturedAt" value={formatOptionalDateTime(detail.snapshot.capturedAt)} />
-        <InfoCell label="generatedAt" value={formatOptionalDateTime(detail.snapshot.generatedAt)} />
-        <InfoCell label="currentWindowStartUtc" value={formatOptionalDateTime(detail.snapshot.currentWindow.startUtc)} />
-        <InfoCell label="currentWindowEndUtc" value={formatOptionalDateTime(detail.snapshot.currentWindow.endUtc)} />
-        <InfoCell label="window" value={formatDateRange(detail.snapshot.currentWindow.startUtc, detail.snapshot.currentWindow.endUtc)} />
-        <InfoCell label="captureReason" value={humanizeCaptureReason(detail.snapshot.captureReason)} />
-        <InfoCell label="snapshotDetailRecalculates" value={String(detail.readSemantics.snapshotDetailRecalculates)} />
-        <InfoCell label="currentStateRecalculated" value={String(detail.readSemantics.currentStateRecalculated)} />
-        <InfoCell label="markerIsStateSource" value={String(detail.readSemantics.markerIsStateSource)} />
-      </div>
-      <div className="grid gap-3 border-b border-neutral-100 p-3 lg:grid-cols-3">
-        <section className="border border-neutral-200 bg-white p-3">
-          <div className="flex items-center justify-between gap-2">
+        <div className="border-b border-violet-200 bg-violet-50 px-6 py-5 text-[18px] leading-8 text-violet-900">
+          이 화면은 {formatOptionalDateTime(detail.snapshot.capturedAt)}에 저장된 Application Snapshot Dashboard입니다.
+          현재 accepted metric으로 state, endpoint priority, resource evidence를 재계산하지 않습니다.
+          markerBucket={detail.marker.type}은 탐색 색인일 뿐 state source가 아닙니다.
+        </div>
+        <div className="grid grid-cols-1 gap-3 p-6 text-[14px] md:grid-cols-2 xl:grid-cols-4">
+          <InfoCell label="mode" value={storedDashboard.mode} />
+          <InfoCell label="window" value={storedDashboard.windowLabel} />
+          <InfoCell label="source" value={detail.readSemantics.source} />
+          <InfoCell label="capturedAt" value={formatOptionalDateTime(detail.snapshot.capturedAt)} />
+          <InfoCell label="captureReason" value={humanizeCaptureReason(detail.snapshot.captureReason)} />
+          <InfoCell label="snapshotDetailRecalculates" value={String(detail.readSemantics.snapshotDetailRecalculates)} />
+          <InfoCell label="markerIsStateSource" value={String(detail.readSemantics.markerIsStateSource)} />
+          <InfoCell label="project / application" value={projectApplicationText} />
+          <InfoCell label="currentWindowStartUtc" value={formatOptionalDateTime(detail.snapshot.currentWindow.startUtc)} />
+          <InfoCell label="currentWindowEndUtc" value={formatOptionalDateTime(detail.snapshot.currentWindow.endUtc)} />
+          <InfoCell label="snapshotId" value={detail.snapshot.snapshotId} />
+          <InfoCell label="generatedAt" value={formatOptionalDateTime(detail.snapshot.generatedAt)} />
+        </div>
+      </section>
+
+      <section className={`grid gap-6 border border-neutral-900 border-l-4 ${snapshotStateAccentClassName(storedDashboard.stateCode)} bg-white p-6 md:grid-cols-[minmax(220px,0.55fr)_minmax(0,1.35fr)_minmax(260px,0.8fr)] md:items-center`}>
+        <div>
+          <StatusBadge className={`${snapshotStateBadgeClassName(storedDashboard.stateCode)} px-3 py-2 text-[16px]`}>
+            {snapshotStateDisplayText(storedDashboard.stateCode)}
+          </StatusBadge>
+          <h2 className="mt-4 text-[24px] font-semibold leading-tight text-neutral-950">
+            {storedDashboard.stateLabel}
+          </h2>
+        </div>
+        <div className="text-[20px] leading-8 text-neutral-950">{storedDashboard.stateRationale}</div>
+        <div className="text-[17px] leading-8 text-neutral-600">
+          해당 30분 slot의 저장된 dashboard read model을 복원합니다. 현재 metric으로 재계산하지 않습니다.
+        </div>
+      </section>
+
+      <section className="grid gap-6 border border-neutral-900 border-l-4 border-l-emerald-700 bg-white p-6 md:grid-cols-[minmax(220px,0.55fr)_minmax(0,1.35fr)_minmax(260px,0.8fr)] md:items-center">
+        <div>
+          <StatusBadge className="border-blue-200 bg-blue-50 px-3 py-2 text-[16px] text-blue-700">STARTERCONNECTION</StatusBadge>
+          <h2 className="mt-4 text-[24px] font-semibold leading-tight text-neutral-950">Control-plane only</h2>
+        </div>
+        <div className="text-[20px] leading-8 text-neutral-950">
+          heartbeat {storedDashboard.starterLastHeartbeatAt}, metric state 변경 없음
+        </div>
+        <div className="text-[17px] leading-8 text-neutral-600">
+          heartbeat는 accepted bucket freshness나 application lifecycle state를 직접 만들지 않습니다.
+          <p className="mt-2 text-[14px] text-neutral-500">
+            {humanizeStatusCode(storedDashboard.starterConnectionMeaning)} · {snapshotStateImpactText(storedDashboard.starterStateImpact)}
+          </p>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-0 border border-neutral-200 bg-white md:grid-cols-4" aria-label="snapshot golden signals">
+        <SnapshotMetricCell label="RED Rate" note="최근 30분 요청량" value={storedDashboard.redRequestCount} />
+        <SnapshotMetricCell label="RED Errors" note={storedDashboard.redErrorSemantic} value={storedDashboard.redErrorRate} />
+        <SnapshotMetricCell label="RED Duration" note="500ms 초과 요청 비율" value={storedDashboard.redSlowShareOver500ms} />
+        <SnapshotMetricCell label="USE Hint" note="window 내 observed maxUsage hint" value={storedDashboard.datasourcePoolMax} last />
+      </section>
+
+      <details className="border border-neutral-200 bg-white">
+        <summary className="cursor-pointer border-b border-neutral-100 px-6 py-4 text-[16px] font-medium uppercase text-neutral-600">
+          저장 read model 세부 정보
+        </summary>
+        <div className="grid gap-3 border-b border-neutral-100 p-3 lg:grid-cols-3">
+          <section className="border border-neutral-200 bg-white p-3">
             <SectionLabel icon={Activity}>Stored state</SectionLabel>
-            <StatusBadge className={statusBadgeClassName(storedDashboard.stateCode)}>
-              {storedDashboard.stateLabel}
-            </StatusBadge>
-          </div>
-          <p className="mt-2 text-neutral-900">{storedDashboard.stateRationale}</p>
-          <p className="mt-1 text-[12px] text-neutral-500">{storedDashboard.recommendedAction}</p>
-        </section>
-        <section className="border border-neutral-200 bg-white p-3">
-          <SectionLabel icon={ListChecks}>Operator summary</SectionLabel>
-          <p className="mt-2 text-neutral-900">{storedDashboard.headline}</p>
-          <p className="mt-1 text-[12px] text-neutral-500">{storedDashboard.firstLookText}</p>
-        </section>
-        <section className="border border-neutral-200 bg-white p-3">
-          <SectionLabel icon={Server}>Stored data quality</SectionLabel>
-          <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500">
-            <InfoCell label="quality state" value={storedDashboard.dataQualityState} />
-            <InfoCell label="requestCount" value={storedDashboard.requestCount} />
-            <InfoCell label="minimum" value={storedDashboard.minimumRequestCount} />
-            <InfoCell label="lastObservedAt" value={storedDashboard.lastObservedAt} />
-          </div>
-        </section>
-      </div>
-      <div className="grid gap-3 border-b border-neutral-100 p-3 lg:grid-cols-3">
-        <StoredDashboardList title="State reasons" items={storedDashboard.stateReasons} emptyText="저장된 stateReason이 없습니다." />
-        <StoredDashboardList title="Attention evidence" items={storedDashboard.attentionEvidence} emptyText="저장된 attention evidence가 없습니다." />
-        <StoredDashboardList title="First look candidates" items={storedDashboard.firstLookCandidates} emptyText="저장된 first look 후보가 없습니다." />
-      </div>
+            <p className="mt-2 text-neutral-900">{storedDashboard.recommendedAction}</p>
+            <p className="mt-1 text-[12px] text-neutral-500">{storedDashboard.headline}</p>
+          </section>
+          <section className="border border-neutral-200 bg-white p-3">
+            <SectionLabel icon={ListChecks}>Operator summary</SectionLabel>
+            <p className="mt-2 text-neutral-900">{storedDashboard.headline}</p>
+            <p className="mt-1 text-[12px] text-neutral-500">{storedDashboard.firstLookText}</p>
+          </section>
+          <section className="border border-neutral-200 bg-white p-3">
+            <SectionLabel icon={Server}>Stored data quality</SectionLabel>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500">
+              <InfoCell label="quality state" value={storedDashboard.dataQualityState} />
+              <InfoCell label="requestCount" value={storedDashboard.requestCount} />
+              <InfoCell label="minimum" value={storedDashboard.minimumRequestCount} />
+              <InfoCell label="lastObservedAt" value={storedDashboard.lastObservedAt} />
+            </div>
+          </section>
+        </div>
+        <div className="grid gap-3 border-b border-neutral-100 p-3 lg:grid-cols-3">
+          <StoredDashboardList title="State reasons" items={storedDashboard.stateReasons} emptyText="저장된 stateReason이 없습니다." />
+          <StoredDashboardList title="Attention evidence" items={storedDashboard.attentionEvidence} emptyText="저장된 attention evidence가 없습니다." />
+          <StoredDashboardList title="First look candidates" items={storedDashboard.firstLookCandidates} emptyText="저장된 first look 후보가 없습니다." />
+        </div>
       {detail.recoveryMarker && (
         <Alert className="m-3 border-amber-300">
           <AlertCircle className="h-4 w-4" strokeWidth={1.5} />
@@ -280,6 +344,7 @@ export function SnapshotDetailSurface({
           <InfoCell label="인스턴스 요약 근거" value={humanizeSourceCode(detail.instanceSummary.source)} />
         </div>
       </details>
+      </details>
     </div>
   );
 }
@@ -292,14 +357,21 @@ type StoredDashboardItem = {
 };
 
 type StoredDashboardView = {
+  applicationName: string;
   attentionEvidence: StoredDashboardItem[];
   dataQualityState: string;
+  datasourcePoolMax: string;
   firstLookCandidates: StoredDashboardItem[];
   firstLookText: string;
   headline: string;
   lastObservedAt: string;
   minimumRequestCount: string;
   mode: string;
+  projectId: string;
+  redErrorRate: string;
+  redErrorSemantic: string;
+  redRequestCount: string;
+  redSlowShareOver500ms: string;
   recommendedAction: string;
   requestCount: string;
   source: string;
@@ -307,6 +379,10 @@ type StoredDashboardView = {
   stateLabel: string;
   stateRationale: string;
   stateReasons: StoredDashboardItem[];
+  starterConnectionMeaning: string;
+  starterLastHeartbeatAt: string;
+  starterStateImpact: string;
+  windowLabel: string;
 };
 
 /**
@@ -315,22 +391,36 @@ type StoredDashboardView = {
  */
 function toStoredDashboardView(detail: DashboardSnapshotDetailReadModel): StoredDashboardView {
   const readModel = detail.readModel;
+  const application = jsonRecord(readModel.application);
   const state = jsonRecord(readModel.state);
   const operatorSummary = jsonRecord(readModel.operatorSummary);
   const dataQuality = jsonRecord(readModel.dataQuality);
   const readSemantics = jsonRecord(readModel.readSemantics);
+  const signals = jsonRecord(readModel.signals);
+  const redSignals = jsonRecord(signals?.red);
+  const useSignals = jsonRecord(signals?.use);
+  const datasourcePoolUsage = jsonRecord(useSignals?.datasourcePoolUsage);
+  const starterConnection = jsonRecord(readModel.starterConnection);
+  const window = jsonRecord(readModel.window);
 
   const stateCode = stringField(state, "code", "저장본에 state code 없음");
   const stateLabel = stringField(state, "label", humanizeStatusCode(stateCode));
   return {
+    applicationName: stringField(application, "name", "저장본에 application 이름 없음"),
     attentionEvidence: storedReasonItems(readModel.attentionEvidence, "attention"),
     dataQualityState: stringField(dataQuality, "state", "저장본에 dataQuality state 없음"),
+    datasourcePoolMax: formatNullableRatio(nullableNumberField(datasourcePoolUsage, "max")),
     firstLookCandidates: firstLookItems(readModel.firstLookCandidates),
     firstLookText: stringField(operatorSummary, "firstLookText", "저장된 first look 안내가 없습니다."),
     headline: stringField(operatorSummary, "headline", "저장된 operator summary가 없습니다."),
     lastObservedAt: formatOptionalDateTime(nullableStringField(dataQuality, "lastObservedAt")),
     minimumRequestCount: numberField(dataQuality, "minimumRequestCount"),
     mode: stringJsonValue(readModel.mode, "snapshot"),
+    projectId: stringField(application, "projectId", detail.snapshot.snapshotId),
+    redErrorRate: formatRatio(nullableNumberField(redSignals, "errorRate")),
+    redErrorSemantic: humanizeStatusCode(stringField(redSignals, "errorSemantic", "5xx / server_error semantic")),
+    redRequestCount: numberField(redSignals, "requestCount"),
+    redSlowShareOver500ms: formatNullableRatio(nullableNumberField(redSignals, "slowShareOver500ms")),
     recommendedAction: stringField(state, "recommendedAction", "저장된 권장 조치가 없습니다."),
     requestCount: numberField(dataQuality, "requestCount"),
     source: stringField(readSemantics, "source", detail.readSemantics.source),
@@ -338,7 +428,20 @@ function toStoredDashboardView(detail: DashboardSnapshotDetailReadModel): Stored
     stateLabel,
     stateRationale: stringField(state, "rationale", "저장된 state rationale이 없습니다."),
     stateReasons: storedReasonItems(readModel.stateReasons, "state-reason"),
+    starterConnectionMeaning: stringField(starterConnection, "connectionMeaning", "저장된 starter 연결 의미 없음"),
+    starterLastHeartbeatAt: formatOptionalDateTime(nullableStringField(starterConnection, "lastHeartbeatAt")),
+    starterStateImpact: stringField(starterConnection, "stateImpact", "저장된 starter 영향 없음"),
+    windowLabel: storedWindowLabel(window, detail),
   };
+}
+
+function storedWindowLabel(
+  window: Record<string, JsonValue> | null,
+  detail: DashboardSnapshotDetailReadModel,
+): string {
+  const startUtc = nullableStringField(window, "startUtc") ?? detail.snapshot.currentWindow.startUtc;
+  const endUtc = nullableStringField(window, "endUtc") ?? detail.snapshot.currentWindow.endUtc;
+  return formatDateRange(startUtc, endUtc);
 }
 
 function StoredDashboardList({ emptyText, items, title }: { emptyText: string; items: StoredDashboardItem[]; title: string }) {
@@ -442,6 +545,103 @@ function numberField(record: Record<string, JsonValue> | null, key: string): str
   return typeof value === "number" && Number.isFinite(value) ? formatCount(value) : "저장값 없음";
 }
 
+function nullableNumberField(record: Record<string, JsonValue> | null, key: string): number | null {
+  if (!record) {
+    return null;
+  }
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function booleanField(record: Record<string, JsonValue> | null, key: string): boolean | null {
+  if (!record) {
+    return null;
+  }
+  const value = record[key];
+  return typeof value === "boolean" ? value : null;
+}
+
+function SnapshotMetricCell({
+  label,
+  last = false,
+  note,
+  value,
+}: {
+  label: string;
+  last?: boolean;
+  note: string;
+  value: string;
+}) {
+  return (
+    <div className={`min-h-[190px] p-7 ${last ? "" : "border-b border-neutral-200 md:border-b-0 md:border-r"}`}>
+      <div className="text-[16px] uppercase text-neutral-500">{label}</div>
+      <div className="mt-5 break-words text-[40px] font-semibold leading-tight text-neutral-950">{value}</div>
+      <div className="mt-4 text-[17px] leading-6 text-neutral-600">{note}</div>
+    </div>
+  );
+}
+
+function snapshotStateAccentClassName(stateCode: string): string {
+  switch (stateCode.toLowerCase()) {
+    case "active":
+    case "normal":
+      return "border-l-emerald-700";
+    case "degraded":
+    case "attention":
+    case "warning":
+      return "border-l-amber-700";
+    case "down":
+    case "critical":
+      return "border-l-red-700";
+    default:
+      return "border-l-neutral-700";
+  }
+}
+
+function snapshotStateBadgeClassName(stateCode: string): string {
+  switch (stateCode.toLowerCase()) {
+    case "active":
+    case "normal":
+      return "border-emerald-300 bg-emerald-50 text-emerald-700";
+    case "degraded":
+    case "attention":
+    case "warning":
+      return "border-amber-300 bg-amber-50 text-amber-700";
+    case "down":
+    case "critical":
+      return "border-red-300 bg-red-50 text-red-700";
+    default:
+      return "border-neutral-300 bg-neutral-50 text-neutral-700";
+  }
+}
+
+function snapshotStateDisplayText(stateCode: string): string {
+  switch (stateCode.toLowerCase()) {
+    case "active":
+    case "normal":
+      return "ACTIVE";
+    case "degraded":
+    case "attention":
+    case "warning":
+      return "ATTENTION";
+    case "down":
+    case "critical":
+      return "CRITICAL";
+    default:
+      return humanizeStatusCode(stateCode).toUpperCase();
+  }
+}
+
+function snapshotStateImpactText(stateImpact: string): string {
+  if (stateImpact === "none" || stateImpact === "does_not_change_metric_state") {
+    return "metric state와 분리";
+  }
+  if (stateImpact === "control_plane_only") {
+    return "control-plane 참고";
+  }
+  return humanizeStatusCode(stateImpact);
+}
+
 function SnapshotInstanceDrillDownList({
   applicationId,
   detail,
@@ -463,33 +663,56 @@ function SnapshotInstanceDrillDownList({
 
   return (
     <ul className="mt-3 space-y-2">
-      {detail.instanceSummary.items.map((item) => (
-        <li key={item.instanceId} className="flex flex-wrap items-center justify-between gap-2 border border-neutral-200 bg-white p-2">
-          <div className="min-w-0">
-            <div className="truncate text-[12px] text-neutral-900">{item.instanceName}</div>
-            <div className="mt-0.5 truncate text-[11px] text-neutral-500">
-              {item.instanceId} · stored observation {humanizeStatusCode(item.observationStatus)}
+      {detail.instanceSummary.items.map((item) => {
+        const metricData = jsonRecord(item.metricData);
+        const starterConnection = jsonRecord(item.starterConnection);
+        const resourceHints = jsonRecord(item.resourceHints);
+        const contribution = jsonRecord(item.applicationTriageContribution);
+        const contributed = booleanField(contribution, "contributed");
+        const relatedRuleCount = jsonArray(contribution?.relatedRuleIds).length;
+        return (
+          <li key={item.instanceId} className="border border-neutral-200 bg-white p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-[14px] font-medium text-neutral-950">{item.instanceName}</div>
+                <div className="mt-0.5 truncate text-[11px] text-neutral-500">
+                  {item.instanceId} · stored observation {humanizeStatusCode(item.observationStatus)}
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 border-neutral-300"
+                onClick={() =>
+                  onOpenSnapshotInstanceDashboard({
+                    applicationId,
+                    instanceId: item.instanceId,
+                    instanceName: item.instanceName,
+                    projectId,
+                    snapshotDetailLink: detail.links.self,
+                    snapshotId: detail.snapshot.snapshotId,
+                  })
+                }
+              >
+                <Server className="h-3.5 w-3.5" strokeWidth={1.5} /> Instance snapshot dashboard
+              </Button>
             </div>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2 border-neutral-300"
-            onClick={() =>
-              onOpenSnapshotInstanceDashboard({
-                applicationId,
-                instanceId: item.instanceId,
-                instanceName: item.instanceName,
-                projectId,
-                snapshotDetailLink: detail.links.self,
-                snapshotId: detail.snapshot.snapshotId,
-              })
-            }
-          >
-            <Server className="h-3.5 w-3.5" strokeWidth={1.5} /> Instance snapshot dashboard
-          </Button>
-        </li>
-      ))}
+            <div className="mt-3 grid grid-cols-1 gap-2 text-[11px] text-neutral-500 md:grid-cols-4">
+              <InfoCell label="metric freshness" value={humanizeStatusCode(stringField(metricData, "freshnessLabel", "저장값 없음"))} />
+              <InfoCell label="last accepted" value={formatOptionalDateTime(nullableStringField(metricData, "lastAcceptedBucketAt"))} />
+              <InfoCell label="heartbeat" value={`${humanizeStatusCode(stringField(starterConnection, "lastHeartbeatStatus", "저장값 없음"))} ${formatOptionalDateTime(nullableStringField(starterConnection, "lastHeartbeatAt"))}`} />
+              <InfoCell label="connection" value={humanizeStatusCode(stringField(starterConnection, "connectionMeaning", "저장값 없음"))} />
+              <InfoCell label="DB pool hint" value={formatNullableRatio(nullableNumberField(resourceHints, "datasourcePoolUsageRatio"))} />
+              <InfoCell label="CPU hint" value={formatNullableRatio(nullableNumberField(resourceHints, "cpuUsageRatio"))} />
+              <InfoCell label="heap hint" value={formatNullableRatio(nullableNumberField(resourceHints, "heapUsedRatio"))} />
+              <InfoCell
+                label="triage"
+                value={`${contributed === null ? "저장값 없음" : contributed ? "contributed" : "not contributed"} · rules ${formatCount(relatedRuleCount)}`}
+              />
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -503,15 +726,32 @@ function SnapshotDetailMessage({ body, compact, title }: { body: string; compact
   );
 }
 
-function SnapshotDetailError({ compact, error, onReload }: { compact: boolean; error: Error; onReload: () => void }) {
+function SnapshotDetailError({
+  compact,
+  error,
+  onBackToLive,
+  onReload,
+}: {
+  compact: boolean;
+  error: Error;
+  onBackToLive?: () => void;
+  onReload: () => void;
+}) {
   const copy = snapshotDetailErrorCopy(error);
   return (
     <div className={`border border-neutral-200 bg-white p-3 ${compact ? "text-[12px]" : "text-[13px]"}`}>
       <div className="text-neutral-900">{copy.title}</div>
       <div className="mt-1 text-neutral-500">{copy.body}</div>
-      <Button variant="outline" size="sm" className="mt-3 gap-2 border-neutral-300" onClick={onReload}>
-        <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.5} /> 다시 시도
-      </Button>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" className="gap-2 border-neutral-300" onClick={onReload}>
+          <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.5} /> 다시 시도
+        </Button>
+        {onBackToLive && (
+          <Button size="sm" className="bg-emerald-700 text-white hover:bg-emerald-800" onClick={onBackToLive}>
+            Live Dashboard로 돌아가기
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -543,9 +783,9 @@ function snapshotDetailErrorCopy(error: Error): { title: string; body: string } 
 
 function InfoCell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0">
-      <div className="text-neutral-500">{label}</div>
-      <div className="break-words text-neutral-900">{value}</div>
+    <div className="min-w-0 border border-neutral-200 bg-white p-4" title={`${label}: ${value}`}>
+      <div className="text-[16px] text-neutral-500">{label}</div>
+      <div className="mt-3 break-words text-[19px] font-medium leading-7 text-neutral-950">{value}</div>
     </div>
   );
 }

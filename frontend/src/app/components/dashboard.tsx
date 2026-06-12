@@ -33,11 +33,10 @@ import {
   buildStarterCredentialRevocationPath,
   buildStarterCredentialRotationPath,
   formatCount,
-  formatDateRange,
   formatNullableRatio,
   formatOptionalDateTime,
   formatRatio,
-  histogramRangeBarWidth,
+  humanizeCaptureReason,
   humanizeSourceCode,
   humanizeStatusCode,
   severityBadgeClassName,
@@ -45,7 +44,6 @@ import {
   statusBadgeClassName,
   toApplicationPresentationItems,
   toDashboardPresentation,
-  toDisplayLatencyBuckets,
   toProjectPresentationItems,
   validateDashboardPath,
   validateProjectApplicationsPath,
@@ -60,7 +58,6 @@ import type {
   DashboardResourceSignal,
   DashboardStateReason,
   EndpointPriorityItem,
-  HistogramWindow,
   OneTimeStarterCredential,
   ProjectRegistrationResponse,
   ProjectApplicationNavigationReadModel,
@@ -74,6 +71,7 @@ import { Input } from "./ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { InstancePanels, useInstanceView } from "./instance-panels";
 import { SnapshotHistoryPanel } from "./snapshot-history-panel";
+import { type SnapshotDetailTarget } from "./snapshot-detail-surface";
 
 type ResourceScope = "applications" | "dashboard" | "projects";
 
@@ -558,6 +556,36 @@ function ApplicationRail({
   );
 }
 
+/**
+ * live와 snapshot이 동일하게 쓰는 dashboard panel tree다.
+ * snapshot mode는 같은 컴포넌트에 mode=snapshot presentation만 주입한다.
+ */
+function DashboardPanels({
+  dashboard,
+  mode = "live",
+  onOpenEvidence,
+  selectedProject,
+}: {
+  dashboard: DashboardPresentation;
+  mode?: "live" | "snapshot";
+  onOpenEvidence: ReturnType<typeof useInstanceView>["openEvidence"];
+  selectedProject: ProjectPresentationItem;
+}) {
+  return (
+    <>
+      <DashboardContext dashboard={dashboard} mode={mode} selectedProject={selectedProject} />
+      <LifecycleStateHero dashboard={dashboard} />
+      <StarterConnectionStrip dashboard={dashboard} />
+      <DataQualityFreshnessStrip dashboard={dashboard} />
+      <GoldenSignalsGrid dashboard={dashboard} />
+      <FirstLookCandidatesPanel candidates={dashboard.firstLookCandidates} />
+      <EndpointPriorityPanel items={dashboard.endpointPriority} />
+      <ResourceSignalsPanel dashboard={dashboard} />
+      <InstancesPanel dashboard={dashboard} onOpenEvidence={onOpenEvidence} />
+    </>
+  );
+}
+
 function DashboardMain({
   dashboard,
   error,
@@ -577,6 +605,12 @@ function DashboardMain({
   selectedApplication: ApplicationPresentationItem | null;
   selectedProject: ProjectPresentationItem | null;
 }) {
+  const [snapshotTarget, setSnapshotTarget] = useState<SnapshotDetailTarget | null>(null);
+
+  useEffect(() => {
+    setSnapshotTarget(null);
+  }, [selectedApplication?.applicationId, selectedProject?.projectId]);
+
   if (!selectedProject) {
     return <MainMessage title="Project를 선택하세요" body="Project 목록이 로드된 뒤 application 목록을 불러옵니다." />;
   }
@@ -594,48 +628,173 @@ function DashboardMain({
   }
   return (
     <div className="grid gap-4 p-3 md:p-5">
-      <DashboardContext selectedProject={selectedProject} dashboard={dashboard} />
-      <LifecycleStateHero dashboard={dashboard} />
-      <StarterConnectionStrip dashboard={dashboard} />
-      <DataQualityFreshnessStrip dashboard={dashboard} />
-      <GoldenSignalsGrid dashboard={dashboard} />
-      <FirstLookCandidatesPanel candidates={dashboard.firstLookCandidates} />
-      <EndpointPriorityPanel items={dashboard.endpointPriority} />
-      <ResourceSignalsPanel dashboard={dashboard} />
-      <InstancesPanel dashboard={dashboard} onOpenEvidence={onOpenEvidence} />
+      {snapshotTarget ? (
+        <SnapshotModeSurface
+          onBackToLive={() => setSnapshotTarget(null)}
+          onOpenEvidence={onOpenEvidence}
+          selectedApplication={selectedApplication}
+          selectedProject={selectedProject}
+          target={snapshotTarget}
+        />
+      ) : (
+        <DashboardPanels dashboard={dashboard} onOpenEvidence={onOpenEvidence} selectedProject={selectedProject} />
+      )}
       <SnapshotHistoryPanel
-        dashboard={dashboard}
-        onOpenSnapshotInstanceDashboard={onOpenSnapshotDashboard}
+        onRestoreSnapshotDashboard={setSnapshotTarget}
         selectedApplication={selectedApplication}
         selectedProject={selectedProject}
       />
-      <MetricDetailSection dashboard={dashboard} />
-      <details className="border border-neutral-200 bg-white">
-        <summary className="cursor-pointer px-3 py-2.5 text-[11px] uppercase text-neutral-500">
-          Starter credential lifecycle
-        </summary>
-        <div className="border-t border-neutral-100 p-3">
-          <CredentialLifecyclePanel selectedProject={selectedProject} />
-        </div>
-      </details>
+      {!snapshotTarget && (
+        <details className="border border-neutral-200 bg-white">
+          <summary className="cursor-pointer px-3 py-2.5 text-[11px] uppercase text-neutral-500">
+            Starter credential lifecycle
+          </summary>
+          <div className="border-t border-neutral-100 p-3">
+            <CredentialLifecyclePanel selectedProject={selectedProject} />
+          </div>
+        </details>
+      )}
     </div>
   );
 }
 
-function DashboardContext({ dashboard, selectedProject }: { dashboard: DashboardPresentation; selectedProject: ProjectPresentationItem }) {
+/**
+ * snapshot slot 클릭 시 저장된 read model을 live와 동일한 컴포넌트로 복원하는 surface다.
+ * 별도 detail 화면으로 redirect하지 않고 같은 자리에서 mode=snapshot으로 전환한 뒤 상단으로 scroll한다.
+ */
+function SnapshotModeSurface({
+  onBackToLive,
+  onOpenEvidence,
+  selectedApplication,
+  selectedProject,
+  target,
+}: {
+  onBackToLive: () => void;
+  onOpenEvidence: ReturnType<typeof useInstanceView>["openEvidence"];
+  selectedApplication: ApplicationPresentationItem;
+  selectedProject: ProjectPresentationItem;
+  target: SnapshotDetailTarget;
+}) {
+  const topRef = useRef<HTMLDivElement | null>(null);
+  const readModelPath = snapshotReadModelPath(target, selectedProject, selectedApplication);
+  const resourceKey = `snapshot-read-model:${readModelPath}`;
+
+  const requestSnapshotReadModel = useCallback(
+    async ({ authFetch, signal }: { authFetch: AuthFetch; signal: AbortSignal }) => {
+      const response = await authFetch(readModelPath, { ...NO_STORE_REQUEST_OPTIONS, signal });
+      return guardApplicationDashboardReadModel(await readJsonResource<ApplicationDashboardReadModel>(response), {
+        applicationId: selectedApplication.applicationId,
+        expectedMode: "snapshot",
+        projectId: selectedProject.projectId,
+      });
+    },
+    [readModelPath, selectedApplication.applicationId, selectedProject.projectId],
+  );
+
+  const resource = useApiResource<ApplicationDashboardReadModel>({
+    dependencies: [resourceKey],
+    request: requestSnapshotReadModel,
+    resourceKey,
+  });
+
+  const current = resource.resourceKey === resourceKey;
+  const loading = !current || resource.loading;
+  const error = current ? resource.error : null;
+  const model = current ? resource.data : null;
+  const presentation = useMemo(() => (model ? toDashboardPresentation(model) : null), [model]);
+
+  useEffect(() => {
+    topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [target]);
+
+  return (
+    <div ref={topRef} className="grid gap-4 scroll-mt-4">
+      <SnapshotModeBanner onBackToLive={onBackToLive} presentation={presentation} target={target} />
+      {loading && <MainMessage title="Snapshot 복원 중" body="저장된 read model을 live surface로 불러오는 중입니다." />}
+      {error && <ResourceErrorMessage scope="dashboard" error={error} onReload={resource.reload} roomy />}
+      {!loading && !error && presentation && (
+        <DashboardPanels dashboard={presentation} mode="snapshot" onOpenEvidence={onOpenEvidence} selectedProject={selectedProject} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * snapshot mode 진입 안내와 live 복귀 버튼, 저장 시점 provenance를 보여주는 상단 banner다.
+ */
+function SnapshotModeBanner({
+  onBackToLive,
+  presentation,
+  target,
+}: {
+  onBackToLive: () => void;
+  presentation: DashboardPresentation | null;
+  target: SnapshotDetailTarget;
+}) {
+  const captureReason = target.captureReason ? humanizeCaptureReason(target.captureReason) : null;
+  return (
+    <section className="flex flex-wrap items-start justify-between gap-3 border border-amber-300 bg-amber-50 p-3">
+      <div className="min-w-0">
+        <SectionLabel icon={Radio}>Snapshot mode</SectionLabel>
+        <div className="mt-1 text-[13px] font-medium text-neutral-900">
+          저장된 시점을 live와 동일한 dashboard로 복원했습니다.
+        </div>
+        <div className="mt-1 text-[11px] text-neutral-600">
+          {presentation
+            ? `생성 ${presentation.generatedAtDisplay} · window ${presentation.canonicalWindowDisplay}${captureReason ? ` · ${captureReason}` : ""}`
+            : captureReason ?? "저장된 read model을 불러오는 중입니다."}
+        </div>
+      </div>
+      <Button
+        variant="outline"
+        className="h-9 gap-1.5 border-neutral-300 bg-white px-3 text-[12px] font-medium text-neutral-900 hover:border-neutral-500 hover:bg-neutral-50"
+        onClick={onBackToLive}
+      >
+        <Radio className="h-3.5 w-3.5" strokeWidth={1.5} /> 라이브로 돌아가기
+      </Button>
+    </section>
+  );
+}
+
+/**
+ * snapshot read model API path를 만든다. marker가 준 self link 뒤에 `/read-model`을 붙이고, 없으면 id로 직접 만든다.
+ */
+function snapshotReadModelPath(
+  target: SnapshotDetailTarget,
+  selectedProject: ProjectPresentationItem,
+  selectedApplication: ApplicationPresentationItem,
+): string {
+  const base =
+    target.snapshotLink ??
+    `/api/projects/${selectedProject.projectId}/applications/${selectedApplication.applicationId}/dashboard/snapshots/${target.snapshotId ?? ""}`;
+  return `${base.replace(/\/+$/, "")}/read-model`;
+}
+
+function DashboardContext({
+  dashboard,
+  mode = "live",
+  selectedProject,
+}: {
+  dashboard: DashboardPresentation;
+  mode?: "live" | "snapshot";
+  selectedProject: ProjectPresentationItem;
+}) {
+  const snapshotMode = mode === "snapshot";
   const baselineSignal = dashboard.readSemantics.baselineComparisonUsedForMvpDecision ? "baseline used" : "baseline not used";
   return (
     <section className="border border-neutral-900 bg-white">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-neutral-200 p-3">
         <div className="min-w-0">
-          <SectionLabel icon={Activity}>Application Dashboard / Live</SectionLabel>
+          <SectionLabel icon={Activity}>Application Dashboard / {snapshotMode ? "Snapshot" : "Live"}</SectionLabel>
           <h1 className="mt-1 text-[22px] font-medium leading-tight text-neutral-950">{dashboard.application.name}</h1>
           <p className="mt-1 text-[12px] text-neutral-600">
-            Server read model을 표시합니다. UI는 lifecycle state, endpoint priority, resource pattern을 재계산하지 않습니다.
+            {snapshotMode
+              ? "저장된 read model을 live와 동일한 surface로 복원합니다. 현재 metric으로 재계산하지 않습니다."
+              : "Server read model을 표시합니다. UI는 lifecycle state, endpoint priority, resource pattern을 재계산하지 않습니다."}
           </p>
         </div>
         <div className="flex max-w-full flex-wrap gap-1.5">
-          <StatusBadge className={statusBadgeClassName("live")}>mode={dashboard.mode}</StatusBadge>
+          <StatusBadge className={statusBadgeClassName(snapshotMode ? "attention" : "live")}>mode={dashboard.mode}</StatusBadge>
           <StatusBadge className={statusBadgeClassName("info")}>{dashboard.window.type}</StatusBadge>
           <StatusBadge>{dashboard.readSemantics.source}</StatusBadge>
           <StatusBadge>{baselineSignal}</StatusBadge>
@@ -931,20 +1090,6 @@ function ResourceSignalCard({ label, signal }: { label: string; signal: Dashboar
   );
 }
 
-function MetricDetailSection({ dashboard }: { dashboard: DashboardPresentation }) {
-  return (
-    <details className="border border-neutral-200 bg-white">
-      <summary className="cursor-pointer px-3 py-2.5 text-[11px] uppercase text-neutral-500">
-        Metric provenance
-      </summary>
-      <div className="grid gap-3 border-t border-neutral-100 p-3">
-        <SourceScopedPercentilesPanel dashboard={dashboard} />
-        <HistogramPanel dashboard={dashboard} />
-      </div>
-    </details>
-  );
-}
-
 function GoldenSignalsGrid({ dashboard }: { dashboard: DashboardPresentation }) {
   return (
     <section className="grid grid-cols-1 gap-0 border border-neutral-200 bg-white md:grid-cols-4" aria-label="golden signals">
@@ -958,118 +1103,6 @@ function GoldenSignalsGrid({ dashboard }: { dashboard: DashboardPresentation }) 
         last
       />
     </section>
-  );
-}
-
-function SourceScopedPercentilesPanel({ dashboard }: { dashboard: DashboardPresentation }) {
-  const source = dashboard.sourceScopedPercentiles;
-  return (
-    <div className="border border-neutral-200 bg-white">
-      <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <SectionLabel icon={Gauge}>Source-scoped p95 / p99</SectionLabel>
-          <InlineHelp label="응답 시간 지표 설명">
-            <div className="space-y-1">
-              <div>Starter canonical percentile source와 instance bucket scope만 표시합니다.</div>
-              <div>여러 instance 값을 평균, 최댓값, 병합하거나 histogram bucket에서 다시 계산하지 않습니다.</div>
-            </div>
-          </InlineHelp>
-        </div>
-        <StatusBadge className={statusBadgeClassName(source.status)}>{statusDisplayText(source.status)}</StatusBadge>
-      </div>
-      <div className="grid grid-cols-1 gap-2 border-b border-neutral-100 px-4 py-3 text-[11px] text-neutral-500 md:grid-cols-3">
-        <InfoCell label="source" value={humanizeSourceCode(source.source)} />
-        <InfoCell label="scope" value={humanizeStatusCode(source.scope)} />
-        <InfoCell label="policy" value={humanizeStatusCode(source.aggregatePolicy)} />
-      </div>
-      {source.items.length === 0 ? (
-        <div className="p-4 text-[12px] text-neutral-600">
-          {sourceScopedEmptyText(source.status, source.reason ? humanizeStatusCode(source.reason) : dashboard.sourceScopedReasonDisplay)}
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-[720px] w-full text-[12px]">
-            <thead>
-              <tr className="text-left text-neutral-500">
-                <th className="px-4 py-2">인스턴스</th>
-                <th className="px-4 py-2">요청 수</th>
-                <th className="px-4 py-2">
-                  <span className="inline-flex items-center gap-1">
-                    p95 응답시간
-                    <InlineHelp label="p95 응답시간 설명">요청 100개 중 95개가 이 시간 안에 끝났다는 뜻입니다.</InlineHelp>
-                  </span>
-                </th>
-                <th className="px-4 py-2">
-                  <span className="inline-flex items-center gap-1">
-                    p99 응답시간
-                    <InlineHelp label="p99 응답시간 설명">매우 느린 일부 요청까지 포함해 tail latency를 보는 기준입니다.</InlineHelp>
-                  </span>
-                </th>
-                <th className="px-4 py-2">측정 구간</th>
-              </tr>
-            </thead>
-            <tbody>
-              {source.items.map((item) => (
-                <tr key={`${item.instance}-${item.bucketEndUtc}`} className="border-t border-neutral-100">
-                  <td className="px-4 py-2 text-neutral-700">{item.instance}</td>
-                  <td className="px-4 py-2 text-neutral-700">{formatCount(item.requestCount)}</td>
-                  <td className="px-4 py-2 text-neutral-900">{item.p95Ms} ms</td>
-                  <td className="px-4 py-2 text-neutral-900">{item.p99Ms} ms</td>
-                  <td className="px-4 py-2 text-neutral-500">{formatDateRange(item.bucketStartUtc, item.bucketEndUtc)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function HistogramPanel({ dashboard }: { dashboard: DashboardPresentation }) {
-  return (
-    <div className="border border-neutral-200 bg-white">
-      <div className="px-4 py-3 border-b border-neutral-200 flex items-center gap-2">
-        <SectionLabel icon={Activity}>Bucket distribution</SectionLabel>
-        <InlineHelp label="응답 시간 구간 설명">
-          accepted bucket 분포를 표시 전용으로 변환합니다. p95/p99나 평균/최댓값 latency를 만들지 않습니다.
-        </InlineHelp>
-      </div>
-      <div className="grid grid-cols-1 gap-2 border-b border-neutral-100 px-4 py-3 text-[11px] text-neutral-500 md:grid-cols-3">
-        <InfoCell label="source" value={humanizeSourceCode(dashboard.histogramDistribution.source)} />
-        <InfoCell label="display policy" value={humanizeStatusCode(dashboard.histogramDistribution.displayPolicy)} />
-        <InfoCell label="percentile source" value={dashboard.readSemantics.histogramBucketsUsedForPercentiles ? "사용" : "사용 안 함"} />
-      </div>
-      <HistogramWindowCard label="최근 30분 분포" window={dashboard.histogramDistribution.current} />
-    </div>
-  );
-}
-
-function HistogramWindowCard({ label, window }: { label: string; window: HistogramWindow }) {
-  const buckets = toDisplayLatencyBuckets(window.buckets);
-  return (
-    <div className="p-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-[11px] uppercase text-neutral-500">{label}</div>
-        <StatusBadge className={statusBadgeClassName(window.status)}>{statusDisplayText(window.status)}</StatusBadge>
-      </div>
-      <div className="mt-1 text-[11px] text-neutral-500">총 요청 수 {formatCount(window.totalCount)}</div>
-      {buckets.length === 0 ? (
-        <div className="mt-3 text-[12px] text-neutral-500">응답 시간 구간 데이터가 아직 없습니다.</div>
-      ) : (
-        <div className="mt-3 space-y-1.5">
-          {buckets.map((bucket) => (
-            <div key={bucket.key} className="flex items-center gap-2 text-[11px]">
-              <span className="w-44 text-neutral-500 tabular-nums">{bucket.label}</span>
-              <div className="h-3 flex-1 border border-neutral-200 bg-neutral-100">
-                <div className="h-full bg-neutral-800" style={{ width: histogramRangeBarWidth(bucket.count, buckets) }} />
-              </div>
-              <span className="w-16 text-right text-neutral-700 tabular-nums">{formatCount(bucket.count)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -1614,6 +1647,8 @@ function InstancesPanel({
       ) : (
         <ul className="grid gap-2 p-3">
           {dashboard.instances.map((instance) => {
+            // 과거 snapshot은 InstanceEntry.summary(D5에서 추가) 이전 스키마일 수 있어 summary가 없을 수 있다.
+            const summary = instance.summary as typeof instance.summary | undefined;
             const target = {
               applicationId: dashboard.application.applicationId,
               evidenceLink: instance.links.evidence,
@@ -1622,15 +1657,31 @@ function InstancesPanel({
               projectId: dashboard.application.projectId,
             };
             return (
-              <li key={instance.instanceId} className="grid gap-3 border border-neutral-200 p-3 md:grid-cols-[minmax(180px,1fr)_minmax(180px,1fr)_auto] md:items-center">
+              <li key={instance.instanceId} className="grid gap-3 border border-neutral-200 p-3 md:grid-cols-[minmax(180px,1fr)_minmax(220px,0.85fr)_auto] md:items-center">
                 <div>
                   <div className="text-[13px] text-neutral-900">{instance.instanceName}</div>
-                  <div className="mt-0.5 text-[11px] text-neutral-500">마지막 관측 {formatOptionalDateTime(instance.lastSeenAt)}</div>
+                  <div className="mt-0.5 text-[11px] text-neutral-500">
+                    {summary
+                      ? `${instanceObservationText(summary.observationStatus)} · heartbeat ${instanceHeartbeatText(summary.starterConnection)}`
+                      : `마지막 관찰 ${formatOptionalDateTime(instance.lastSeenAt)}`}
+                  </div>
                 </div>
-                <div className="text-[12px] text-neutral-600">
-                  같은 live window의 selected instance evidence만 확인합니다.
+                <div className="grid grid-cols-2 gap-1.5 text-[11px] text-neutral-500">
+                  {summary ? (
+                    <>
+                      <InfoCell label="requests" value={formatCount(summary.red.requestCount)} />
+                      <InfoCell label="slow >500ms" value={formatNullableRatio(summary.red.slowShareOver500ms)} />
+                    </>
+                  ) : (
+                    <div className="col-span-2 text-[11px] text-neutral-400">이 시점 snapshot에는 instance summary가 저장되지 않았습니다.</div>
+                  )}
                 </div>
-                <div className="flex flex-wrap gap-2 text-[11px] text-neutral-700">
+                <div className="flex flex-wrap items-center justify-start gap-2 text-[11px] text-neutral-700 md:justify-end">
+                  {summary && (
+                    <StatusBadge className={instanceContributionBadgeClassName(summary.applicationContribution.level)}>
+                      {humanizeStatusCode(summary.applicationContribution.level)}
+                    </StatusBadge>
+                  )}
                   <Button variant="outline" size="sm" className="h-8 border-neutral-300" onClick={() => onOpenEvidence(target)}>
                     Open modal
                   </Button>
@@ -1642,6 +1693,41 @@ function InstancesPanel({
       )}
     </div>
   );
+}
+
+function instanceObservationText(
+  observationStatus: DashboardPresentation["instances"][number]["summary"]["observationStatus"],
+): string {
+  const observedAt = formatOptionalDateTime(observationStatus.lastObservedBucketEndUtc);
+  if (observationStatus.code === "observed") {
+    return `observed ${observedAt}`;
+  }
+  return `${humanizeStatusCode(observationStatus.code)} ${observedAt}`;
+}
+
+function instanceHeartbeatText(
+  starterConnection: DashboardPresentation["instances"][number]["summary"]["starterConnection"],
+): string {
+  if (!starterConnection.lastHeartbeatAt) {
+    return humanizeStatusCode(starterConnection.lastHeartbeatStatus);
+  }
+  return `${humanizeStatusCode(starterConnection.lastHeartbeatStatus)} ${formatOptionalDateTime(starterConnection.lastHeartbeatAt)}`;
+}
+
+function instanceContributionBadgeClassName(level: string): string {
+  switch (level) {
+    case "contributing":
+    case "attention":
+      return "border-amber-500 bg-amber-50 text-amber-900";
+    case "supporting":
+      return "border-sky-400 bg-sky-50 text-sky-800";
+    case "none":
+      return "border-neutral-300 bg-white text-neutral-700";
+    case "insufficient":
+      return "border-neutral-400 bg-neutral-50 text-neutral-700";
+    default:
+      return statusBadgeClassName(level);
+  }
 }
 
 function isRegistrationRequestCurrent(
@@ -1743,26 +1829,6 @@ function starterStateImpactText(stateImpact: string): string {
     return "control-plane 참고 정보: metric state와 분리해 표시합니다.";
   }
   return `상태 판단 영향: ${humanizeStatusCode(stateImpact)}`;
-}
-
-function sourceScopedEmptyText(status: string, reason: string | null): string {
-  if (status === "missing") {
-    return "인스턴스별 응답 시간 데이터가 아직 없습니다.";
-  }
-  if (status === "insufficient") {
-    return "인스턴스별 응답 시간 표본이 아직 충분하지 않습니다.";
-  }
-  return reason && reason !== "확인할 수 없음" ? reason : "인스턴스별 응답 시간 데이터를 확인할 수 없습니다.";
-}
-
-function formatLatencyThreshold(leMs: number): string {
-  if (!Number.isFinite(leMs)) {
-    return "응답 시간 기준 없음";
-  }
-  if (leMs >= 1000 && leMs % 1000 === 0) {
-    return `${leMs / 1000}초 이하`;
-  }
-  return `${leMs}ms 이하`;
 }
 
 function MetricCell({

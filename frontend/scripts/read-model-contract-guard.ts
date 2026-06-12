@@ -724,7 +724,6 @@ const dashboardFlowAnchors = [
   "<ResourceSignalsPanel",
   "<InstancesPanel",
   "<SnapshotHistoryPanel",
-  "<MetricDetailSection",
 ];
 let previousDashboardAnchor = -1;
 for (const anchor of dashboardFlowAnchors) {
