@@ -169,7 +169,6 @@ export function InstanceDashboardSurface({
         <ResourceEvidencePanel dashboard={dashboard} />
         <StarterConnectionPanel dashboard={dashboard} />
       </div>
-      <NormalizedEndpointEvidenceTable items={dashboard.endpointEvidence.items} />
     </div>
   );
 }
@@ -275,12 +274,16 @@ function MetricGrid({ dashboard }: { dashboard: InstanceDashboardReadModel }) {
 
 function EndpointEvidencePanel({ dashboard }: { dashboard: InstanceDashboardReadModel }) {
   const evidence = dashboard.endpointEvidence;
+  const maxRequestCount = Math.max(0, ...evidence.items.map((item) => item.requestCount));
+  const maxErrorRate = Math.max(0, ...evidence.items.map((item) => item.errorRate ?? 0));
   return (
     <section className="border border-neutral-200 bg-white">
       <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-3 py-2.5">
         <div>
           <SectionLabel icon={Server}>Endpoint evidence on selected instance</SectionLabel>
-          <p className="mt-1 text-[12px] text-neutral-500">Application endpoint evidence와 selected instance 관측 여부를 연결합니다.</p>
+          <p className="mt-1 text-[12px] text-neutral-500">
+            server order를 보존하고 selected instance 관측 여부만 표시합니다. endpoint별 slow/bucket 값은 read model이 제공하지 않으면 만들지 않습니다.
+          </p>
         </div>
         <StatusBadge className={statusBadgeClassName(evidence.status)}>{humanizeStatusCode(evidence.status)}</StatusBadge>
       </div>
@@ -291,13 +294,18 @@ function EndpointEvidencePanel({ dashboard }: { dashboard: InstanceDashboardRead
         <InfoCell label="display order" value={humanizeStatusCode(evidence.displayOrderingPolicy)} />
       </div>
       {evidence.items.length === 0 ? (
-        <div className="p-3 text-[12px] text-neutral-500">
-          {evidence.reason ? humanizeStatusCode(evidence.reason) : "selected instance에서 표시할 endpoint evidence가 없습니다."}
+        <div className="p-3 text-[12px] leading-5 text-neutral-500">
+          {instanceEndpointEvidenceEmptyCopy(dashboard)}
         </div>
       ) : (
-        <ul>
+        <ul className="divide-y divide-neutral-100">
           {evidence.items.map((item) => (
-            <EndpointEvidenceRow item={item} key={`${item.localDisplayOrder}-${item.endpointKey}`} />
+            <EndpointEvidenceRow
+              item={item}
+              key={`${item.localDisplayOrder}-${item.endpointKey}`}
+              maxErrorRate={maxErrorRate}
+              maxRequestCount={maxRequestCount}
+            />
           ))}
         </ul>
       )}
@@ -305,23 +313,52 @@ function EndpointEvidencePanel({ dashboard }: { dashboard: InstanceDashboardRead
   );
 }
 
-function EndpointEvidenceRow({ item }: { item: InstanceDashboardEndpointEvidenceItem }) {
+function EndpointEvidenceRow({
+  item,
+  maxErrorRate,
+  maxRequestCount,
+}: {
+  item: InstanceDashboardEndpointEvidenceItem;
+  maxErrorRate: number;
+  maxRequestCount: number;
+}) {
   return (
-    <li className="border-b border-neutral-100 p-3 last:border-b-0">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <li className="p-3">
+      <div className="grid gap-3 md:grid-cols-[32px_minmax(0,1fr)_minmax(220px,0.9fr)] md:items-start">
+        <span className="grid h-8 w-8 place-items-center border border-neutral-900 bg-neutral-900 text-[12px] text-white tabular-nums">
+          {item.localDisplayOrder}
+        </span>
         <div className="min-w-0">
-          <div className="truncate text-neutral-900">{item.endpointKey}</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="truncate font-medium text-neutral-950">{item.endpointKey}</div>
+            <StatusBadge className={instanceEndpointBadgeClassName(item)}>{instanceEndpointBadgeText(item)}</StatusBadge>
+          </div>
           <div className="mt-0.5 text-[11px] text-neutral-500">
-            표시 순서 {item.localDisplayOrder} · 앱 근거 {item.relatedApplicationEndpointEvidenceRef ?? "연결 없음"}
+            {endpointPresenceText(item.presenceOnSelectedInstance)} · 앱 근거 {item.relatedApplicationEndpointEvidenceRef ?? "연결 없음"}
+            {item.reason ? ` · ${humanizeStatusCode(item.reason)}` : ""}
           </div>
         </div>
-        <StatusBadge className={statusBadgeClassName(item.status)}>{endpointPresenceText(item.presenceOnSelectedInstance)}</StatusBadge>
+        <div className="grid gap-1.5 text-[11px] text-neutral-500">
+          <EndpointMetricBar
+            label="request"
+            tone="neutral"
+            value={formatCount(item.requestCount)}
+            width={ratioWidth(item.requestCount, maxRequestCount)}
+          />
+          <EndpointMetricBar
+            label="error"
+            tone="danger"
+            value={`${formatCount(item.errorCount)} · ${formatNullableRatio(item.errorRate)}`}
+            width={ratioWidth(item.errorRate ?? 0, maxErrorRate)}
+          />
+          <EndpointMetricBar label="slow >500ms" tone="hot" unavailable value="미제공" width={0} />
+        </div>
       </div>
-      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500 md:grid-cols-4">
-        <InfoCell label="요청 수" value={formatCount(item.requestCount)} />
-        <InfoCell label="오류 수" value={formatCount(item.errorCount)} />
-        <InfoCell label="오류율" value={formatNullableRatio(item.errorRate)} />
-        <InfoCell label="제한" value={item.reason ? humanizeStatusCode(item.reason) : "추가 제한 없음"} />
+      <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-neutral-500 md:grid-cols-4">
+        <InfoCell label="duration buckets" value="미제공" />
+        <InfoCell label="slowShare" value="미제공" />
+        <InfoCell label="display order" value="server order 유지" />
+        <InfoCell label="status" value={humanizeStatusCode(item.status)} />
       </div>
     </li>
   );
@@ -368,6 +405,68 @@ function ResourceEvidenceRow({ item }: { item: InstanceDashboardResourceEvidence
   );
 }
 
+function EndpointMetricBar({
+  label,
+  tone,
+  unavailable = false,
+  value,
+  width,
+}: {
+  label: string;
+  tone: "danger" | "hot" | "neutral";
+  unavailable?: boolean;
+  value: string;
+  width: number;
+}) {
+  const fillClassName = tone === "danger" ? "bg-red-500" : tone === "hot" ? "bg-amber-700" : "bg-neutral-500";
+  return (
+    <div className="grid grid-cols-[68px_minmax(72px,1fr)_72px] items-center gap-2">
+      <span className="truncate uppercase">{label}</span>
+      <span className={`h-1.5 bg-neutral-100 ${unavailable ? "border border-dashed border-neutral-300 bg-white" : ""}`}>
+        <span className={`block h-full ${fillClassName}`} style={{ width: `${unavailable ? 0 : width}%` }} />
+      </span>
+      <span className="truncate text-right text-neutral-700">{unavailable ? "미제공" : value}</span>
+    </div>
+  );
+}
+
+function instanceEndpointBadgeText(item: InstanceDashboardEndpointEvidenceItem): string {
+  if (item.localDisplayOrder === 1) {
+    return "FIRST LOOK";
+  }
+  return "ATTENTION";
+}
+
+function instanceEndpointBadgeClassName(item: InstanceDashboardEndpointEvidenceItem): string {
+  if (item.localDisplayOrder === 1) {
+    return "border-neutral-900 bg-neutral-900 text-white";
+  }
+  if (item.errorCount > 0 || (item.errorRate ?? 0) > 0) {
+    return "border-red-200 bg-red-50 text-red-700";
+  }
+  return "border-neutral-300 bg-neutral-50 text-neutral-700";
+}
+
+function instanceEndpointEvidenceEmptyCopy(dashboard: InstanceDashboardReadModel): string {
+  const evidence = dashboard.endpointEvidence;
+  const red = dashboard.signals.red;
+  const hasRedSignal = red.errorCount > 0 || (red.errorRate ?? 0) > 0 || (red.slowShareOver500ms ?? 0) > 0;
+  if (evidence.reason) {
+    return `${humanizeStatusCode(evidence.reason)} · endpoint evidence 부재를 selected instance 정상으로 해석하지 않습니다.`;
+  }
+  if (hasRedSignal) {
+    return "selected instance RED signal은 관찰됐지만 endpointEvidence.items가 비어 있습니다. endpoint breakdown 미수집 또는 read model evidence 제한으로 표시합니다.";
+  }
+  return "selected instance에서 표시할 endpoint evidence가 없습니다. raw path/query나 endpoint priority를 client에서 만들지 않습니다.";
+}
+
+function ratioWidth(value: number, max: number): number {
+  if (!Number.isFinite(value) || !Number.isFinite(max) || value <= 0 || max <= 0) {
+    return 0;
+  }
+  return Math.min(100, Math.max(6, (value / max) * 100));
+}
+
 function StarterConnectionPanel({ dashboard }: { dashboard: InstanceDashboardReadModel }) {
   const starter = dashboard.starterConnection;
   return (
@@ -385,58 +484,6 @@ function StarterConnectionPanel({ dashboard }: { dashboard: InstanceDashboardRea
       <p className="border-t border-neutral-100 p-3 text-[12px] text-neutral-500">
         heartbeat는 metric state, observationStatus, applicationState를 직접 바꾸지 않는 control-plane 정보입니다.
       </p>
-    </section>
-  );
-}
-
-function NormalizedEndpointEvidenceTable({ items }: { items: InstanceDashboardEndpointEvidenceItem[] }) {
-  return (
-    <section className="border border-neutral-200 bg-white">
-      <div className="border-b border-neutral-100 px-3 py-2.5">
-        <SectionLabel icon={ListChecks}>Normalized endpoint evidence table</SectionLabel>
-        <p className="mt-1 text-[12px] text-neutral-500">
-          server-provided order를 그대로 표시합니다. client에서 endpoint priority를 다시 계산하지 않습니다.
-        </p>
-      </div>
-      <div className="p-3">
-        <div className="border border-neutral-200 bg-neutral-50 p-2 text-[11px] text-neutral-600">
-          source=accepted_metric_buckets.endpoints_json · max 5 · raw path/query/per-request sample 없음
-        </div>
-        <div className="mt-3 overflow-auto">
-          <table className="w-full min-w-[720px] text-left text-[12px]">
-            <thead className="text-neutral-500">
-              <tr>
-                <th className="px-2 py-2">endpointKey</th>
-                <th className="px-2 py-2">presence</th>
-                <th className="px-2 py-2">requestCount</th>
-                <th className="px-2 py-2">errorCount</th>
-                <th className="px-2 py-2">errorRate</th>
-                <th className="px-2 py-2">displayOrder</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 ? (
-                <tr>
-                  <td className="border-t border-neutral-100 px-2 py-3 text-neutral-500" colSpan={6}>
-                    selected instance endpoint evidence가 없습니다.
-                  </td>
-                </tr>
-              ) : (
-                items.map((item) => (
-                  <tr className="border-t border-neutral-100" key={`table-${item.localDisplayOrder}-${item.endpointKey}`}>
-                    <td className="px-2 py-2 text-neutral-900">{item.endpointKey}</td>
-                    <td className="px-2 py-2 text-neutral-600">{endpointPresenceText(item.presenceOnSelectedInstance)}</td>
-                    <td className="px-2 py-2 text-neutral-600">{formatCount(item.requestCount)}</td>
-                    <td className="px-2 py-2 text-neutral-600">{formatCount(item.errorCount)}</td>
-                    <td className="px-2 py-2 text-neutral-600">{formatNullableRatio(item.errorRate)}</td>
-                    <td className="px-2 py-2 text-neutral-600">{item.localDisplayOrder}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </section>
   );
 }

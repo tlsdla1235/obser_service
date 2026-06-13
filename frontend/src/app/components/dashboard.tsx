@@ -61,6 +61,7 @@ import type {
   DashboardResourceSignal,
   DashboardStateReason,
   EndpointPriorityItem,
+  HistogramBucket,
   OneTimeStarterCredential,
   ProjectRegistrationResponse,
   ProjectApplicationNavigationReadModel,
@@ -595,7 +596,7 @@ function DashboardPanels({
       <DataQualityFreshnessStrip dashboard={dashboard} />
       <GoldenSignalsGrid dashboard={dashboard} />
       <FirstLookCandidatesPanel candidates={dashboard.firstLookCandidates} />
-      <EndpointPriorityPanel items={dashboard.endpointPriority} />
+      <EndpointPriorityPanel dashboard={dashboard} />
       <ResourceSignalsPanel dashboard={dashboard} />
       <InstancesPanel dashboard={dashboard} openAction={instanceOpenAction} />
     </>
@@ -1097,7 +1098,7 @@ function StarterConnectionStrip({ dashboard }: { dashboard: DashboardPresentatio
 function EndpointResourceEvidencePanel({ dashboard }: { dashboard: DashboardPresentation }) {
   return (
     <div className="space-y-4">
-      <EndpointPriorityPanel items={dashboard.endpointPriority} />
+      <EndpointPriorityPanel dashboard={dashboard} />
       <ResourceSignalsPanel dashboard={dashboard} />
     </div>
   );
@@ -1215,22 +1216,79 @@ function TriageCardItem({ card }: { card: TriageCard }) {
   );
 }
 
-function EndpointPriorityPanel({ items }: { items: EndpointPriorityItem[] }) {
+type EndpointPrioritySortKey = "server" | "request" | "error" | "slow";
+
+function EndpointPriorityPanel({ dashboard }: { dashboard: DashboardPresentation }) {
+  const items = dashboard.endpointPriority;
+  const [sortKey, setSortKey] = useState<EndpointPrioritySortKey>("server");
+  const [limit, setLimit] = useState(5);
+  const slowSortAvailable = items.some((item) => item.evidence.slowShare !== null);
+  const effectiveSortKey = sortKey === "slow" && !slowSortAvailable ? "server" : sortKey;
+  const sortedItems = useMemo(
+    () => sortEndpointPriorityItems(items, effectiveSortKey),
+    [effectiveSortKey, items],
+  );
+  const limitOptions = endpointLimitOptions(items.length);
+  const effectiveLimit = Math.min(limit, items.length || limit);
+  const visibleItems = sortedItems.slice(0, effectiveLimit);
+  const maxRequestCount = Math.max(0, ...visibleItems.map((item) => item.evidence.requestCount));
+  const maxErrorRate = Math.max(0, ...visibleItems.map((item) => item.evidence.errorRate));
+  const maxSlowShare = Math.max(0, ...visibleItems.map((item) => item.evidence.slowShare ?? 0));
+
   return (
     <div className="border border-neutral-200 bg-white">
-      <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2.5">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-neutral-200 px-3 py-2.5">
         <div>
           <SectionLabel icon={ListChecks}>Endpoint evidence</SectionLabel>
-          <p className="mt-1 text-[12px] text-neutral-500">server-provided order와 rank를 그대로 표시합니다.</p>
+          <p className="mt-1 text-[12px] text-neutral-500">
+            server가 보낸 endpointPriority 안에서만 정렬하고, p95/p99나 raw path를 만들지 않습니다.
+          </p>
         </div>
-        <span className="text-[11px] text-neutral-500">server order</span>
+        {items.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
+            <select
+              aria-label="endpoint evidence sort"
+              className="h-8 border border-neutral-300 bg-white px-2 text-[11px] text-neutral-800"
+              onChange={(event) => setSortKey(event.target.value as EndpointPrioritySortKey)}
+              value={sortKey}
+            >
+              <option value="server">server rank</option>
+              <option value="request">requestCount desc</option>
+              <option value="error">errorRate desc</option>
+              <option disabled={!slowSortAvailable} value="slow">
+                {slowSortAvailable ? "slowShare desc" : "slowShare 미제공"}
+              </option>
+            </select>
+            {limitOptions.length > 1 && (
+              <select
+                aria-label="endpoint evidence limit"
+                className="h-8 border border-neutral-300 bg-white px-2 text-[11px] text-neutral-800"
+                onChange={(event) => setLimit(Number(event.target.value))}
+                value={String(effectiveLimit)}
+              >
+                {limitOptions.map((option) => (
+                  <option key={option} value={option}>
+                    max {option}
+                  </option>
+                ))}
+              </select>
+            )}
+            <span>received {items.length}</span>
+          </div>
+        )}
       </div>
       {items.length === 0 ? (
-        <div className="p-3 text-[12px] text-neutral-500">서버가 제공한 endpoint evidence 후보가 없습니다.</div>
+        <div className="p-3 text-[12px] leading-5 text-neutral-500">{endpointPriorityEmptyCopy(dashboard)}</div>
       ) : (
-        <ol className="grid gap-2 p-3">
-          {items.map((item) => (
-            <EndpointPriorityRow item={item} key={`${item.rank}-${item.endpointKey}`} />
+        <ol className="divide-y divide-neutral-100">
+          {visibleItems.map((item) => (
+            <EndpointPriorityRow
+              item={item}
+              key={`${item.rank}-${item.endpointKey}`}
+              maxErrorRate={maxErrorRate}
+              maxRequestCount={maxRequestCount}
+              maxSlowShare={maxSlowShare}
+            />
           ))}
         </ol>
       )}
@@ -1238,32 +1296,173 @@ function EndpointPriorityPanel({ items }: { items: EndpointPriorityItem[] }) {
   );
 }
 
-function EndpointPriorityRow({ item }: { item: EndpointPriorityItem }) {
+function EndpointPriorityRow({
+  item,
+  maxErrorRate,
+  maxRequestCount,
+  maxSlowShare,
+}: {
+  item: EndpointPriorityItem;
+  maxErrorRate: number;
+  maxRequestCount: number;
+  maxSlowShare: number;
+}) {
   return (
-    <li className="border border-neutral-200 p-3">
-      <div className="flex items-start justify-between gap-3">
+    <li className="p-3">
+      <div className="grid gap-3 md:grid-cols-[32px_minmax(0,1fr)_minmax(220px,0.9fr)] md:items-start">
+        <span className="grid h-8 w-8 place-items-center border border-neutral-900 bg-neutral-900 text-[12px] text-white tabular-nums">
+          {item.rank}
+        </span>
         <div className="min-w-0">
-          <div className="flex items-center gap-3">
-            <span className="grid h-6 w-6 place-items-center bg-neutral-900 text-[11px] text-white tabular-nums">{item.rank}</span>
-            <span className="truncate text-[13px] text-neutral-900">{item.endpointKey}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="truncate text-[13px] font-medium text-neutral-950">{item.endpointKey}</span>
+            <StatusBadge className={endpointPriorityBadgeClassName(item)}>{endpointPriorityBadgeText(item)}</StatusBadge>
           </div>
           <div className="mt-1 text-[12px] text-neutral-700">{item.recommendedAction}</div>
-          <div className="mt-1 text-[11px] text-neutral-500">{item.reason} · {item.ruleIds.join(", ")}</div>
+          <div className="mt-1 text-[11px] text-neutral-500">
+            {humanizeStatusCode(item.reason)} · {item.ruleIds.length > 0 ? item.ruleIds.join(", ") : "rule 없음"} · server rank {item.rank}
+          </div>
         </div>
-        <StatusBadge className={statusBadgeClassName(item.freshness.status)}>{humanizeStatusCode(item.freshness.status)}</StatusBadge>
+        <div className="grid gap-1.5 text-[11px] text-neutral-500">
+          <EndpointMetricBar
+            label="request"
+            tone="neutral"
+            value={formatCount(item.evidence.requestCount)}
+            width={ratioWidth(item.evidence.requestCount, maxRequestCount)}
+          />
+          <EndpointMetricBar
+            label="error"
+            tone="danger"
+            value={`${formatCount(item.evidence.errorCount)} · ${formatRatio(item.evidence.errorRate)}`}
+            width={ratioWidth(item.evidence.errorRate, maxErrorRate)}
+          />
+          <EndpointMetricBar
+            label="slow >500ms"
+            tone="hot"
+            unavailable={item.evidence.slowShare === null}
+            value={formatNullableRatio(item.evidence.slowShare)}
+            width={ratioWidth(item.evidence.slowShare ?? 0, maxSlowShare)}
+          />
+        </div>
       </div>
-      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500 md:grid-cols-4">
-        <InfoCell label="요청 수" value={formatCount(item.evidence.requestCount)} />
-        <InfoCell label="오류 수" value={formatCount(item.evidence.errorCount)} />
-        <InfoCell label="오류율" value={formatRatio(item.evidence.errorRate)} />
-        <InfoCell label="분포 기준" value={humanizeSourceCode(item.evidence.bucketDistributionSource)} />
-        <InfoCell label="마지막 관측" value={formatOptionalDateTime(item.freshness.lastObservedAt)} />
-        <InfoCell label="관측 구간" value={humanizeStatusCode(item.freshness.sourceWindow)} />
-        <InfoCell label="오류 근거" value={humanizeStatusCode(item.evidence.errorEvidenceStatus)} />
-        <InfoCell label="응답시간 근거" value={humanizeStatusCode(item.evidence.latencyEvidenceStatus)} />
+      <div className="mt-3 grid gap-2 text-[11px] text-neutral-500 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.55fr)]">
+        <EndpointBucketStrip buckets={item.evidence.durationBuckets} source={item.evidence.bucketDistributionSource} />
+        <div className="grid grid-cols-2 gap-2">
+          <InfoCell label="마지막 관측" value={formatOptionalDateTime(item.freshness.lastObservedAt)} />
+          <InfoCell label="근거 상태" value={`${humanizeStatusCode(item.evidence.errorEvidenceStatus)} / ${humanizeStatusCode(item.evidence.latencyEvidenceStatus)}`} />
+        </div>
       </div>
     </li>
   );
+}
+
+function EndpointMetricBar({
+  label,
+  tone,
+  unavailable = false,
+  value,
+  width,
+}: {
+  label: string;
+  tone: "danger" | "hot" | "neutral";
+  unavailable?: boolean;
+  value: string;
+  width: number;
+}) {
+  const fillClassName = tone === "danger" ? "bg-red-500" : tone === "hot" ? "bg-amber-700" : "bg-neutral-500";
+  return (
+    <div className="grid grid-cols-[68px_minmax(72px,1fr)_72px] items-center gap-2">
+      <span className="truncate uppercase">{label}</span>
+      <span className={`h-1.5 bg-neutral-100 ${unavailable ? "border border-dashed border-neutral-300 bg-white" : ""}`}>
+        <span className={`block h-full ${fillClassName}`} style={{ width: `${unavailable ? 0 : width}%` }} />
+      </span>
+      <span className="truncate text-right text-neutral-700">{unavailable ? "미제공" : value}</span>
+    </div>
+  );
+}
+
+function EndpointBucketStrip({ buckets, source }: { buckets: HistogramBucket[] | null; source: string }) {
+  if (!buckets || buckets.length === 0) {
+    return (
+      <div className="border border-neutral-200 bg-neutral-50 p-2">
+        duration buckets 미제공 · endpoint p95/p99로 해석하지 않습니다.
+      </div>
+    );
+  }
+  const maxCount = Math.max(0, ...buckets.map((bucket) => bucket.count));
+  return (
+    <div className="border border-neutral-200 bg-neutral-50 p-2">
+      <div className="mb-1 text-neutral-500">duration buckets · {humanizeSourceCode(source)}</div>
+      <div className="flex h-8 items-end gap-1">
+        {buckets.slice(0, 8).map((bucket) => (
+          <span
+            aria-label={`<= ${bucket.leMs}ms: ${bucket.count}`}
+            className="min-w-3 flex-1 bg-neutral-300"
+            key={`${bucket.leMs}-${bucket.count}`}
+            style={{ height: `${Math.max(8, ratioWidth(bucket.count, maxCount))}%` }}
+            title={`<= ${bucket.leMs}ms · ${formatCount(bucket.count)}`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function endpointPriorityBadgeText(item: EndpointPriorityItem): string {
+  return item.rank === 1 ? "FIRST LOOK" : "ATTENTION";
+}
+
+function endpointPriorityBadgeClassName(item: EndpointPriorityItem): string {
+  if (item.rank === 1) {
+    return "border-neutral-900 bg-neutral-900 text-white";
+  }
+  if (item.evidence.errorCount > 0 || item.evidence.errorRate > 0) {
+    return "border-red-200 bg-red-50 text-red-700";
+  }
+  if ((item.evidence.slowShare ?? 0) > 0) {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+  return "border-neutral-300 bg-neutral-50 text-neutral-700";
+}
+
+function sortEndpointPriorityItems(items: EndpointPriorityItem[], sortKey: EndpointPrioritySortKey): EndpointPriorityItem[] {
+  const sorted = [...items];
+  sorted.sort((left, right) => {
+    if (sortKey === "request") {
+      return right.evidence.requestCount - left.evidence.requestCount || left.rank - right.rank;
+    }
+    if (sortKey === "error") {
+      return right.evidence.errorRate - left.evidence.errorRate || right.evidence.errorCount - left.evidence.errorCount || left.rank - right.rank;
+    }
+    if (sortKey === "slow") {
+      return (right.evidence.slowShare ?? -1) - (left.evidence.slowShare ?? -1) || left.rank - right.rank;
+    }
+    return left.rank - right.rank;
+  });
+  return sorted;
+}
+
+function endpointLimitOptions(itemCount: number): number[] {
+  if (itemCount <= 0) {
+    return [];
+  }
+  return Array.from(new Set([3, 5, itemCount].filter((option) => option > 0 && option <= itemCount))).sort((left, right) => left - right);
+}
+
+function endpointPriorityEmptyCopy(dashboard: DashboardPresentation): string {
+  const red = dashboard.signals.red;
+  const hasRedSignal = red.errorCount > 0 || (red.errorRate ?? 0) > 0 || (red.slowShareOver500ms ?? 0) > 0;
+  if (hasRedSignal) {
+    return "RED signal은 관찰됐지만 server endpointPriority[]가 비어 있습니다. endpoint breakdown 미수집, read model 생성 불가, 또는 현재 window의 evidence 제한으로 봐야 하며 '문제 endpoint 없음'으로 해석하지 않습니다.";
+  }
+  return "server가 제공한 endpoint evidence 후보가 없습니다. endpoint breakdown을 새로 계산하거나 raw path/query를 표시하지 않습니다.";
+}
+
+function ratioWidth(value: number, max: number): number {
+  if (!Number.isFinite(value) || !Number.isFinite(max) || value <= 0 || max <= 0) {
+    return 0;
+  }
+  return Math.min(100, Math.max(6, (value / max) * 100));
 }
 
 function ProjectRegistrationPanel({ onRegistered }: { onRegistered: (projectId: string) => void }) {

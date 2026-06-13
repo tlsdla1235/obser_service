@@ -23,7 +23,7 @@ import {
   type ApplicationPresentationItem,
   type ProjectPresentationItem,
 } from "../lib/read-model-adapters";
-import type { DashboardSnapshotDetailReadModel, JsonValue } from "../lib/read-model-types";
+import type { DashboardSnapshotDetailReadModel, JsonValue, SnapshotEndpointEvidenceItem } from "../lib/read-model-types";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";
 import type { SnapshotInstanceDashboardTarget } from "./instance-dashboard-surface";
@@ -279,39 +279,7 @@ export function SnapshotDetailSurface({
           상세 근거 {activeAnchor}: {humanizeAnchorStatus(anchorExists ? "resolved" : "missing")}
         </div>
       )}
-      <div className="p-3">
-        <div className="text-[11px] uppercase text-neutral-500">엔드포인트 근거</div>
-        {detail.snapshotEndpointEvidence.items.length === 0 ? (
-          <div className="mt-2 text-[12px] text-neutral-500">
-            이 스냅샷에 연결된 엔드포인트 근거가 없습니다.
-          </div>
-        ) : (
-          <ul className="mt-2 space-y-2">
-            {detail.snapshotEndpointEvidence.items.map((item) => {
-              const active = activeAnchor === item.anchorId;
-              return (
-                <li key={item.anchorId} id={item.anchorId} className={`border p-2 ${active ? "border-neutral-900 bg-neutral-50" : "border-neutral-200"}`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-neutral-900">{item.endpointKey}</div>
-                      <div className="mt-0.5 text-[11px] text-neutral-500">
-                        상세 근거 {item.anchorId} · 우선순위 {item.rank ?? "참조 없음"} · {item.reason ? humanizeStatusCode(item.reason) : "추가 설명 없음"}
-                      </div>
-                    </div>
-                    <StatusBadge>{active ? "선택됨" : "저장됨"}</StatusBadge>
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500">
-                    <InfoCell label="요청 수" value={item.requestCount === null ? "확인할 수 없음" : formatCount(item.requestCount)} />
-                    <InfoCell label="오류율" value={formatNullableRatio(item.errorRate)} />
-                    <InfoCell label="신뢰도" value={formatNullableRatio(item.confidence)} />
-                    <InfoCell label="분포 기준" value={humanizeSourceCode(item.bucketDistributionSource)} />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+      <SnapshotEndpointEvidencePanel activeAnchor={activeAnchor} evidence={detail.snapshotEndpointEvidence} />
       <div className="border-t border-neutral-100 p-3">
         <div className="text-[11px] uppercase text-neutral-500">인스턴스 요약</div>
         <div className="mt-1 text-[12px] text-neutral-600">
@@ -355,6 +323,196 @@ type StoredDashboardItem = {
   meta: string;
   title: string;
 };
+
+type SnapshotDurationBucket = {
+  count: number;
+  leMs: number;
+};
+
+function SnapshotEndpointEvidencePanel({
+  activeAnchor,
+  evidence,
+}: {
+  activeAnchor: string | null;
+  evidence: DashboardSnapshotDetailReadModel["snapshotEndpointEvidence"];
+}) {
+  const maxRequestCount = Math.max(0, ...evidence.items.map((item) => item.requestCount ?? 0));
+  const maxErrorRate = Math.max(0, ...evidence.items.map((item) => item.errorRate ?? 0));
+
+  return (
+    <div className="border-t border-neutral-100 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] uppercase text-neutral-500">엔드포인트 근거</div>
+          <p className="mt-1 text-[12px] text-neutral-500">
+            저장된 snapshotEndpointEvidence만 표시합니다. errorCount와 slow count/share는 저장 projection에 없으면 계산하지 않습니다.
+          </p>
+        </div>
+        <StatusBadge>max {evidence.maxItems}</StatusBadge>
+      </div>
+      {evidence.items.length === 0 ? (
+        <div className="mt-3 text-[12px] leading-5 text-neutral-500">
+          {evidence.unavailableReason
+            ? `${humanizeStatusCode(evidence.unavailableReason)} · 저장된 endpoint evidence가 없습니다.`
+            : "이 스냅샷에 연결된 엔드포인트 근거가 없습니다."}
+        </div>
+      ) : (
+        <ol className="mt-3 divide-y divide-neutral-100 border border-neutral-200">
+          {evidence.items.map((item) => (
+            <SnapshotEndpointEvidenceRow
+              active={activeAnchor === item.anchorId}
+              item={item}
+              key={item.anchorId}
+              maxErrorRate={maxErrorRate}
+              maxRequestCount={maxRequestCount}
+            />
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+function SnapshotEndpointEvidenceRow({
+  active,
+  item,
+  maxErrorRate,
+  maxRequestCount,
+}: {
+  active: boolean;
+  item: SnapshotEndpointEvidenceItem;
+  maxErrorRate: number;
+  maxRequestCount: number;
+}) {
+  const durationBuckets = snapshotDurationBuckets(item.durationBuckets);
+  return (
+    <li className={`p-3 ${active ? "bg-neutral-50 ring-1 ring-inset ring-neutral-900" : "bg-white"}`} id={item.anchorId}>
+      <div className="grid gap-3 md:grid-cols-[32px_minmax(0,1fr)_minmax(220px,0.9fr)] md:items-start">
+        <span className="grid h-8 w-8 place-items-center border border-neutral-900 bg-neutral-900 text-[12px] text-white tabular-nums">
+          {item.rank ?? "-"}
+        </span>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="truncate font-medium text-neutral-950">{item.endpointKey}</div>
+            <StatusBadge className={snapshotEndpointBadgeClassName(item)}>{snapshotEndpointBadgeText(item)}</StatusBadge>
+            {active && <StatusBadge className="border-neutral-900 text-neutral-900">선택됨</StatusBadge>}
+          </div>
+          <div className="mt-0.5 text-[11px] text-neutral-500">
+            상세 근거 {item.anchorId} · {item.reason ? humanizeStatusCode(item.reason) : "추가 설명 없음"}
+          </div>
+        </div>
+        <div className="grid gap-1.5 text-[11px] text-neutral-500">
+          <EndpointMetricBar
+            label="request"
+            tone="neutral"
+            unavailable={item.requestCount === null}
+            value={item.requestCount === null ? "미제공" : formatCount(item.requestCount)}
+            width={ratioWidth(item.requestCount ?? 0, maxRequestCount)}
+          />
+          <EndpointMetricBar
+            label="errorRate"
+            tone="danger"
+            unavailable={item.errorRate === null}
+            value={formatNullableRatio(item.errorRate)}
+            width={ratioWidth(item.errorRate ?? 0, maxErrorRate)}
+          />
+          <EndpointMetricBar label="slow >500ms" tone="hot" unavailable value="미제공" width={0} />
+        </div>
+      </div>
+      <div className="mt-3 grid gap-2 text-[11px] text-neutral-500 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.55fr)]">
+        <SnapshotBucketStrip buckets={durationBuckets} source={item.bucketDistributionSource} />
+        <div className="grid grid-cols-2 gap-2">
+          <InfoCell label="errorCount" value="미제공" />
+          <InfoCell label="slowShare" value="미제공" />
+          <InfoCell label="confidence" value={formatNullableRatio(item.confidence)} />
+          <InfoCell label="recommended" value={item.recommendedAction ?? "저장값 없음"} />
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function EndpointMetricBar({
+  label,
+  tone,
+  unavailable = false,
+  value,
+  width,
+}: {
+  label: string;
+  tone: "danger" | "hot" | "neutral";
+  unavailable?: boolean;
+  value: string;
+  width: number;
+}) {
+  const fillClassName = tone === "danger" ? "bg-red-500" : tone === "hot" ? "bg-amber-700" : "bg-neutral-500";
+  return (
+    <div className="grid grid-cols-[68px_minmax(72px,1fr)_72px] items-center gap-2">
+      <span className="truncate uppercase">{label}</span>
+      <span className={`h-1.5 bg-neutral-100 ${unavailable ? "border border-dashed border-neutral-300 bg-white" : ""}`}>
+        <span className={`block h-full ${fillClassName}`} style={{ width: `${unavailable ? 0 : width}%` }} />
+      </span>
+      <span className="truncate text-right text-neutral-700">{unavailable ? "미제공" : value}</span>
+    </div>
+  );
+}
+
+function SnapshotBucketStrip({ buckets, source }: { buckets: SnapshotDurationBucket[]; source: string | null }) {
+  if (buckets.length === 0) {
+    return (
+      <div className="border border-neutral-200 bg-neutral-50 p-2">
+        duration buckets 미제공 · snapshot slowShare로 해석하지 않습니다.
+      </div>
+    );
+  }
+  const maxCount = Math.max(0, ...buckets.map((bucket) => bucket.count));
+  return (
+    <div className="border border-neutral-200 bg-neutral-50 p-2">
+      <div className="mb-1 text-neutral-500">duration buckets · {humanizeSourceCode(source)}</div>
+      <div className="flex h-8 items-end gap-1">
+        {buckets.slice(0, 8).map((bucket) => (
+          <span
+            aria-label={`<= ${bucket.leMs}ms: ${bucket.count}`}
+            className="min-w-3 flex-1 bg-neutral-300"
+            key={`${bucket.leMs}-${bucket.count}`}
+            style={{ height: `${Math.max(8, ratioWidth(bucket.count, maxCount))}%` }}
+            title={`<= ${bucket.leMs}ms · ${formatCount(bucket.count)}`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function snapshotEndpointBadgeText(item: SnapshotEndpointEvidenceItem): string {
+  return item.rank === 1 ? "FIRST LOOK" : "ATTENTION";
+}
+
+function snapshotEndpointBadgeClassName(item: SnapshotEndpointEvidenceItem): string {
+  if (item.rank === 1) {
+    return "border-neutral-900 bg-neutral-900 text-white";
+  }
+  if ((item.errorRate ?? 0) > 0) {
+    return "border-red-200 bg-red-50 text-red-700";
+  }
+  return "border-neutral-300 bg-neutral-50 text-neutral-700";
+}
+
+function snapshotDurationBuckets(value: JsonValue | null): SnapshotDurationBucket[] {
+  return jsonArray(value).flatMap((bucket) => {
+    const record = jsonRecord(bucket);
+    const leMs = nullableNumberField(record, "leMs");
+    const count = nullableNumberField(record, "count");
+    return leMs === null || count === null ? [] : [{ count, leMs }];
+  });
+}
+
+function ratioWidth(value: number, max: number): number {
+  if (!Number.isFinite(value) || !Number.isFinite(max) || value <= 0 || max <= 0) {
+    return 0;
+  }
+  return Math.min(100, Math.max(6, (value / max) * 100));
+}
 
 type StoredDashboardView = {
   applicationName: string;

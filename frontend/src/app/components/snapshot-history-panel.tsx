@@ -85,7 +85,7 @@ export function SnapshotHistoryPanel({
   selectedApplication: ApplicationPresentationItem;
   selectedProject: ProjectPresentationItem;
 }) {
-  const [preset, setPreset] = useState<HistoryPreset>("24h");
+  const preset: HistoryPreset = "24h";
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
   const [selectedSlotKey, setSelectedSlotKey] = useState<string | null>(null);
   const historyResourceKey = `${selectedProject.projectId}|${selectedApplication.applicationId}|${preset}`;
@@ -93,7 +93,7 @@ export function SnapshotHistoryPanel({
   useEffect(() => {
     setSelectedDayKey(null);
     setSelectedSlotKey(null);
-  }, [preset, selectedApplication.applicationId, selectedProject.projectId]);
+  }, [selectedApplication.applicationId, selectedProject.projectId]);
 
   const requestHistory = useCallback(
     async ({ authFetch, signal }: { authFetch: AuthFetch; signal: AbortSignal }) => {
@@ -108,12 +108,10 @@ export function SnapshotHistoryPanel({
           ...NO_STORE_REQUEST_OPTIONS,
           signal,
         }),
-        preset === "14d"
-          ? Promise.resolve(null)
-          : authFetch(retentionPaths.markers, {
-              ...NO_STORE_REQUEST_OPTIONS,
-              signal,
-            }),
+        authFetch(retentionPaths.markers, {
+          ...NO_STORE_REQUEST_OPTIONS,
+          signal,
+        }),
       ]);
       const events = await readJsonResource<OperationalEventHistoryReadModel>(eventsResponse);
       const markers = await readJsonResource<DashboardSnapshotMarkerReadModel>(markersResponse);
@@ -123,19 +121,17 @@ export function SnapshotHistoryPanel({
         markerLimit: HISTORY_PRESET_QUERY[preset].markerLimit,
         preset,
       });
-      const retentionMarkers = retentionMarkersResponse
-        ? guardSnapshotMarkerReadModel(await readJsonResource<DashboardSnapshotMarkerReadModel>(retentionMarkersResponse), {
-            applicationId: selectedApplication.applicationId,
-            markerLimit: HISTORY_PRESET_QUERY["14d"].markerLimit,
-            preset: "14d",
-          })
-        : guardedHistory.markers;
+      const retentionMarkers = guardSnapshotMarkerReadModel(await readJsonResource<DashboardSnapshotMarkerReadModel>(retentionMarkersResponse), {
+        applicationId: selectedApplication.applicationId,
+        markerLimit: HISTORY_PRESET_QUERY["14d"].markerLimit,
+        preset: "14d",
+      });
       return {
         ...guardedHistory,
         retentionMarkers,
       };
     },
-    [preset, selectedApplication.applicationId, selectedProject.projectId],
+    [selectedApplication.applicationId, selectedProject.projectId],
   );
 
   const resource = useApiResource<SnapshotHistoryModel>({
@@ -155,9 +151,7 @@ export function SnapshotHistoryPanel({
       {error && <SnapshotHistoryError error={error} onReload={resource.reload} />}
       {!loading && !error && history && (
         <SnapshotHistoryReady
-          allSelected={preset === "14d"}
           retentionMarkers={history.retentionMarkers}
-          onSelectAll={() => setPreset("14d")}
           onSelectDay={(dayKey) => {
             setSelectedDayKey(dayKey);
             setSelectedSlotKey(null);
@@ -180,17 +174,13 @@ export function SnapshotHistoryPanel({
 }
 
 function SnapshotHistoryReady({
-  allSelected,
   retentionMarkers,
-  onSelectAll,
   onSelectDay,
   onSelectMarker,
   selectedDayKey,
   selectedSlotKey,
 }: {
-  allSelected: boolean;
   retentionMarkers: DashboardSnapshotMarkerReadModel;
-  onSelectAll: () => void;
   onSelectDay: (dayKey: string) => void;
   onSelectMarker: (marker: DashboardSnapshotMarkerItem) => void;
   selectedDayKey: string | null;
@@ -215,14 +205,6 @@ function SnapshotHistoryReady({
               아래까지 내려온 상태에서도 날짜를 고르고 하루 48개 slot에서 바로 다른 snapshot을 열 수 있습니다.
             </p>
           </div>
-          <Button
-            aria-pressed={allSelected}
-            variant="outline"
-            className="h-12 border-neutral-300 bg-white px-6 text-[16px] font-medium text-neutral-950 hover:border-neutral-500 hover:bg-neutral-50"
-            onClick={onSelectAll}
-          >
-            전체 선택
-          </Button>
         </div>
         <div className="p-6">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">

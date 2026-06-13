@@ -66,3 +66,10 @@
 - 가능하면 8080에서 instance/snapshot dashboard를 열고 endpoint evidence 표가 실제 데이터로 보이는지 확인한다.
 - 에러가 있는 window에서 "evidence 없음"이 나오면 원인별 empty state가 충분히 설명되는지 확인한다.
 - read model 확장이 필요한 경우 문서에 후속 작업으로 명확히 남긴다.
+
+## 2026-06-13 구현 후속 메모
+- 이번 구현은 frontend가 이미 받은 field만 사용해 Application Dashboard, Instance Dashboard live/snapshot, Snapshot Detail의 endpoint evidence를 같은 랭킹/막대형 visual language로 정리했다.
+- Application Dashboard는 `endpointPriority[].evidence.requestCount`, `errorCount`, `errorRate`, `slowShare`, `durationBuckets`만 사용한다. backend cap이 현재 5개라 UI limit도 받은 항목 범위 안에서만 동작한다.
+- Instance Dashboard live/snapshot은 `endpointEvidence.items[]`의 `requestCount`, `errorCount`, `errorRate`, `presenceOnSelectedInstance`, `localDisplayOrder`만 표시한다. endpoint별 `durationBuckets`, `slowCountOver500ms`, `slowShareOver500ms`는 read model에 없으므로 `미제공`으로 둔다.
+- Snapshot Detail은 stored `snapshotEndpointEvidence.items[]`의 `requestCount`, `errorRate`, `durationBuckets`를 표시하되, 저장 projection에 없는 `errorCount`, `slowCountOver500ms`, `slowShareOver500ms`는 계산하지 않고 `미제공`으로 표시한다.
+- 후속 read model 확장 후보는 별도 작업으로 분리한다: endpoint priority cap 10/20 확장, instance endpoint별 duration bucket/slow evidence 추가, snapshot stored endpoint evidence의 `errorCount`와 slow evidence 저장 확장.

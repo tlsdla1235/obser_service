@@ -698,7 +698,6 @@ assert.throws(
 );
 
 for (const path of [
-  "src/app/components/dashboard.tsx",
   "src/app/components/instance-dashboard-surface.tsx",
   "src/app/components/instance-panels.tsx",
   "src/app/components/snapshot-detail-surface.tsx",
@@ -707,6 +706,12 @@ for (const path of [
   const source = readFileSync(path, "utf8");
   assert.equal(/\.sort\(|\.toSorted\(|\.reduce\(/.test(source), false, `${path} must preserve server order`);
 }
+const dashboardComponentSourceForOrdering = readFileSync("src/app/components/dashboard.tsx", "utf8");
+assert.equal(
+  /dashboard\.endpointPriority\.(sort|toSorted|reduce)\(/.test(dashboardComponentSourceForOrdering),
+  false,
+  "src/app/components/dashboard.tsx must not mutate dashboard.endpointPriority",
+);
 
 // Story 14.2: Live dashboard와 Snapshot/History는 tab으로 분리하지 않고 같은 main flow anchor를 유지한다.
 // SoT 화면 순서는 lifecycle/starter/golden signal 이후 evidence panel로 이어지는 compact flow를 기준으로 검증한다.
@@ -759,7 +764,6 @@ const instanceDashboardModalAnchors = [
   "<EndpointEvidencePanel",
   "<ResourceEvidencePanel",
   "<StarterConnectionPanel",
-  "<NormalizedEndpointEvidenceTable",
 ];
 let previousInstanceDashboardAnchor = -1;
 for (const anchor of instanceDashboardModalAnchors) {
@@ -772,6 +776,8 @@ assert.equal(/<ContextHeader/.test(instanceDashboardSurfaceSource), false, "Inst
 assert.match(instanceDashboardSurfaceSource, /InfoCell label="mode"/);
 assert.match(instanceDashboardSurfaceSource, /InfoCell label="source"/);
 assert.match(instanceDashboardSurfaceSource, /InfoCell label="instance top-level state" value="없음"/);
+assert.match(instanceDashboardSurfaceSource, /InfoCell label="duration buckets" value="미제공"/);
+assert.match(instanceDashboardSurfaceSource, /InfoCell label="slowShare" value="미제공"/);
 assert.equal(
   /not_observed.*(정상|문제 없음|복구 완료)|(정상|문제 없음|복구 완료).*not_observed/.test(instanceDashboardSurfaceSource),
   false,
