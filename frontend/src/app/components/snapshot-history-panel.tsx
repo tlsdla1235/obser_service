@@ -275,8 +275,8 @@ function SnapshotHistoryReady({
 }
 
 /**
- * 날짜 cell의 markerBucket은 색상/탐색 색인일 뿐 state나 evidence source가 아니다.
- * 같은 날짜에 여러 marker가 있으면 더 눈에 띄는 bucket만 date map summary 색으로 사용한다.
+ * 날짜 cell 색상은 marker type이 아니라 저장된 state/severity에서 요약한다.
+ * marker type은 state_change, scheduled_snapshot 같은 탐색 타입이므로 색상 판단 source로 쓰지 않는다.
  */
 function buildSnapshotDateMap(markers: DashboardSnapshotMarkerReadModel, selectedDayKey: string | null): { days: SnapshotDateCell[]; selectedDay: SnapshotDateCell | null } {
   const dayKeys = snapshotRetentionDayKeys(markers.horizon.until, SNAPSHOT_RETENTION_DAYS);
@@ -294,8 +294,9 @@ function buildSnapshotDateMap(markers: DashboardSnapshotMarkerReadModel, selecte
         continue;
       }
       count += 1;
-      bucket = moreVisibleMarkerBucket(bucket, marker.type);
-      const display = bucketDisplayText(markerBucketWeight(marker.type) === 0 ? "normal" : marker.type);
+      const visualBucket = markerVisualBucket(marker);
+      bucket = moreVisibleMarkerBucket(bucket, visualBucket);
+      const display = bucketDisplayText(visualBucket);
       countByDisplay.set(display, (countByDisplay.get(display) ?? 0) + 1);
     }
     // 저장된 snapshot이 있는데 가장 높은 bucket이 "none"(영향 없음)뿐이면 healthy 날짜다.
@@ -343,10 +344,8 @@ function buildSnapshotSlotCells(
 
   for (let slotIndex = 0; slotIndex < HALF_HOUR_SLOT_COUNT; slotIndex += 1) {
     const marker = markerForSlot(markers.markers, selectedDayKey, slotIndex);
-    // marker가 있으면 저장된 snapshot이다. "none"(영향 없음)도 healthy 저장 point이므로 normal로 칠해
-    // marker가 아예 없는 빈 slot("none"/plain)과 색으로 구분한다.
-    const rawBucket = marker?.type ?? "none";
-    const bucket = marker && markerBucketWeight(rawBucket) === 0 ? "normal" : rawBucket;
+    // marker가 있으면 저장된 snapshot이다. 색상은 탐색 type이 아니라 stored state/severity에서 고른다.
+    const bucket = marker ? markerVisualBucket(marker) : "none";
     slots.push({
       bucket,
       key: `${selectedDayKey}-${slotIndex}`,
@@ -355,11 +354,54 @@ function buildSnapshotSlotCells(
       selected: Boolean(marker && selectedSlotKey === marker.snapshotId),
       time: shortSlotTimeLabel(snapshotSlotTimeLabel(slotIndex)),
       title: marker
-        ? `${snapshotSlotTimeLabel(slotIndex)} · ${humanizeCaptureReason(marker.captureReason)} · markerBucket=${marker.type} · storedState=${marker.storedApplicationStateCode}`
+        ? `${snapshotSlotTimeLabel(slotIndex)} · ${humanizeCaptureReason(marker.captureReason)} · markerType=${marker.type} · severity=${marker.severity} · storedState=${marker.storedApplicationStateCode}`
         : `${snapshotSlotTimeLabel(slotIndex)} · 예약 slot에 저장된 marker 없음 · source absence 판정 아님`,
     });
   }
   return slots;
+}
+
+/**
+ * Snapshot marker의 표시 버킷을 stored state와 severity에서만 만든다.
+ * marker.type은 탐색/분류 레이블이라 state_change 같은 값이 정상 색으로 오인되지 않게 분리한다.
+ */
+function markerVisualBucket(marker: DashboardSnapshotMarkerItem): string {
+  const stateBucket = storedStateVisualBucket(marker.storedApplicationStateCode);
+  if (stateBucket === "critical" || stateBucket === "attention" || stateBucket === "unavailable") {
+    return stateBucket;
+  }
+  return severityVisualBucket(marker.severity);
+}
+
+function storedStateVisualBucket(stateCode: string | null | undefined): string {
+  switch ((stateCode ?? "").trim().toLowerCase()) {
+    case "down":
+      return "critical";
+    case "degraded":
+      return "attention";
+    case "stale":
+    case "unknown":
+    case "waiting_first_data":
+      return "unavailable";
+    case "active":
+    case "idle":
+      return "normal";
+    default:
+      return "none";
+  }
+}
+
+function severityVisualBucket(severity: string | null | undefined): string {
+  switch ((severity ?? "").trim().toLowerCase()) {
+    case "critical":
+      return "critical";
+    case "warning":
+      return "attention";
+    case "info":
+      return "normal";
+    default:
+      return "none";
+  }
 }
 
 function slotMarkerLabel(marker: DashboardSnapshotMarkerItem): string {

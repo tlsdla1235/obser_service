@@ -571,6 +571,9 @@ export type InstanceDashboardEndpointEvidenceItem = {
   requestCount: number;
   errorCount: number;
   errorRate: number | null;
+  durationBuckets: HistogramBucket[] | null;
+  slowCountOver500ms: number | null;
+  slowShareOver500ms: number | null;
   localDisplayOrder: number;
   status: string;
   reason: string | null;

@@ -429,6 +429,23 @@ public record InstanceDashboardReadModel(
     }
 
     /**
+     * endpoint duration evidence의 누적 histogram bucket이다.
+     *
+     * <p>endpoint p95/p99를 만들기 위한 입력이 아니라, selected window 안의 bucket distribution 표시와 500ms 초과
+     * slow evidence 계산 가능 여부를 전달하는 값이다.</p>
+     */
+    public record HistogramBucket(long leMs, long count) {
+
+        /**
+         * bucket boundary와 누적 count가 음수가 아닌 bounded 값인지 검증한다.
+         */
+        public HistogramBucket {
+            validateCount(leMs, "leMs");
+            validateCount(count, "count");
+        }
+    }
+
+    /**
      * selected instance endpoint JSON을 bounded evidence item으로 해석한 block이다.
      */
     public record EndpointEvidence(
@@ -442,7 +459,7 @@ public record InstanceDashboardReadModel(
     ) {
 
         /**
-         * raw endpoint JSON을 노출하지 않고 최대 5개 item만 담도록 검증한다.
+         * raw endpoint JSON을 노출하지 않고 최대 10개 item만 담도록 검증한다.
          */
         public EndpointEvidence {
             source = requireText(source, "source");
@@ -459,8 +476,8 @@ public record InstanceDashboardReadModel(
             validateAllowed(status, ENDPOINT_STATUSES, "status");
             reason = trimNullable(reason);
             items = List.copyOf(Objects.requireNonNull(items, "items must not be null"));
-            if (items.size() > 5) {
-                throw new IllegalArgumentException("items must not exceed 5");
+            if (items.size() > 10) {
+                throw new IllegalArgumentException("items must not exceed 10");
             }
         }
 
@@ -490,6 +507,9 @@ public record InstanceDashboardReadModel(
             long requestCount,
             long errorCount,
             BigDecimal errorRate,
+            List<HistogramBucket> durationBuckets,
+            Long slowCountOver500ms,
+            BigDecimal slowShareOver500ms,
             int localDisplayOrder,
             String status,
             String reason,
@@ -518,6 +538,9 @@ public record InstanceDashboardReadModel(
                 throw new IllegalArgumentException("errorCount must not exceed requestCount");
             }
             validateNullableFraction(errorRate, "errorRate");
+            durationBuckets = durationBuckets == null ? null : List.copyOf(durationBuckets);
+            validateNullableCount(slowCountOver500ms, "slowCountOver500ms");
+            validateNullableFraction(slowShareOver500ms, "slowShareOver500ms");
             if (localDisplayOrder < 1) {
                 throw new IllegalArgumentException("localDisplayOrder must be positive");
             }

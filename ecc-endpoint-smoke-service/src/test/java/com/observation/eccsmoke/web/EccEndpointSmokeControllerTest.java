@@ -74,10 +74,20 @@ class EccEndpointSmokeControllerTest {
 
     @Test
     void intentionalErrorEndpointReturnsServerErrorWithoutLeakingSecrets() throws Exception {
-        mockMvc.perform(get("/api/ecc-smoke/error-500"))
+        mockMvc.perform(get("/api/ecc-smoke/error-500").param("delayMillis", "1"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(content().string(containsString("\"success\":false")))
                 .andExpect(content().string(containsString("\"route\":\"/api/ecc-smoke/error-500\"")))
+                .andExpect(content().string(not(containsString("ECC_ENDPOINT_SMOKE_PROJECT_KEY"))))
+                .andExpect(content().string(not(containsString("Authorization"))));
+    }
+
+    @Test
+    void intentionalSlowEndpointReturnsBoundedStubResponseWithoutSecrets() throws Exception {
+        mockMvc.perform(get("/api/ecc-smoke/slow-p99").param("delayMillis", "1"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("\"group\":\"smoke-latency\"")))
+                .andExpect(content().string(containsString("\"route\":\"/api/ecc-smoke/slow-p99\"")))
                 .andExpect(content().string(not(containsString("ECC_ENDPOINT_SMOKE_PROJECT_KEY"))))
                 .andExpect(content().string(not(containsString("Authorization"))));
     }

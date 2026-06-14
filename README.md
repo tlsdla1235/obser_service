@@ -109,6 +109,19 @@ ECC_ENDPOINT_SMOKE_PROJECT_KEY='<starter credential>' \
 scripts/smoke/run-ecc-endpoint-polling.py
 ```
 
+snapshot QA처럼 30분마다 다른 상태 신호를 만들고 싶을 때는 2시간 시나리오 모드를 사용합니다.
+이 모드는 healthy, error spike, latency spike, error+latency slot을 순서대로 만들며, 지연 응답은
+ECC smoke 서버가 의도적으로 늦게 응답해 starter duration bucket과 local p95/p99에 반영되게 합니다.
+
+```bash
+scripts/smoke/run-ecc-endpoint-polling.py \
+  --scenario-plan snapshot-2h \
+  --align-to-half-hour \
+  --duration-seconds 7200 \
+  --slot-seconds 1800 \
+  --interval-seconds 5
+```
+
 ## 검증 방법
 
 대표 검증 명령은 아래와 같습니다.

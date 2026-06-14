@@ -669,7 +669,11 @@ function assertInstanceDashboardEndpointEvidence(endpointEvidence: Record<string
   assertNonEmptyString(endpointEvidence.selectionPolicy, INSTANCE_DASHBOARD_CONTRACT_ERROR);
   assertNonEmptyString(endpointEvidence.status, INSTANCE_DASHBOARD_CONTRACT_ERROR);
   assertOptionalString(endpointEvidence.reason, INSTANCE_DASHBOARD_CONTRACT_ERROR);
-  for (const item of assertArray(endpointEvidence.items, INSTANCE_DASHBOARD_CONTRACT_ERROR)) {
+  const items = assertArray(endpointEvidence.items, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  if (items.length > 10) {
+    throw new ApiRequestError(INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  }
+  for (const item of items) {
     const endpoint = asRecord(item, INSTANCE_DASHBOARD_CONTRACT_ERROR);
     assertNonEmptyString(endpoint.method, INSTANCE_DASHBOARD_CONTRACT_ERROR);
     assertNonEmptyString(endpoint.route, INSTANCE_DASHBOARD_CONTRACT_ERROR);
@@ -685,10 +689,24 @@ function assertInstanceDashboardEndpointEvidence(endpointEvidence: Record<string
     assertFiniteNumber(endpoint.requestCount, INSTANCE_DASHBOARD_CONTRACT_ERROR);
     assertFiniteNumber(endpoint.errorCount, INSTANCE_DASHBOARD_CONTRACT_ERROR);
     assertNullableFiniteNumber(endpoint.errorRate, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertNullableHistogramBuckets(endpoint.durationBuckets, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertNullableFiniteNumber(endpoint.slowCountOver500ms, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+    assertNullableFiniteNumber(endpoint.slowShareOver500ms, INSTANCE_DASHBOARD_CONTRACT_ERROR);
     assertFiniteNumber(endpoint.localDisplayOrder, INSTANCE_DASHBOARD_CONTRACT_ERROR);
     assertNonEmptyString(endpoint.status, INSTANCE_DASHBOARD_CONTRACT_ERROR);
     assertOptionalString(endpoint.reason, INSTANCE_DASHBOARD_CONTRACT_ERROR);
     assertOptionalString(endpoint.relatedApplicationEndpointEvidenceRef, INSTANCE_DASHBOARD_CONTRACT_ERROR);
+  }
+}
+
+function assertNullableHistogramBuckets(value: unknown, errorCode: string) {
+  if (value === null || value === undefined) {
+    return;
+  }
+  for (const bucket of assertArray(value, errorCode)) {
+    const item = asRecord(bucket, errorCode);
+    assertFiniteNumber(item.leMs, errorCode);
+    assertFiniteNumber(item.count, errorCode);
   }
 }
 

@@ -698,7 +698,6 @@ assert.throws(
 );
 
 for (const path of [
-  "src/app/components/instance-dashboard-surface.tsx",
   "src/app/components/instance-panels.tsx",
   "src/app/components/snapshot-detail-surface.tsx",
   "src/app/components/snapshot-history-panel.tsx",
@@ -776,8 +775,16 @@ assert.equal(/<ContextHeader/.test(instanceDashboardSurfaceSource), false, "Inst
 assert.match(instanceDashboardSurfaceSource, /InfoCell label="mode"/);
 assert.match(instanceDashboardSurfaceSource, /InfoCell label="source"/);
 assert.match(instanceDashboardSurfaceSource, /InfoCell label="instance top-level state" value="없음"/);
-assert.match(instanceDashboardSurfaceSource, /InfoCell label="duration buckets" value="미제공"/);
-assert.match(instanceDashboardSurfaceSource, /InfoCell label="slowShare" value="미제공"/);
+assert.match(instanceDashboardSurfaceSource, /NORMALIZED ENDPOINT EVIDENCE TABLE/);
+assert.match(instanceDashboardSurfaceSource, /requestCountDesc/);
+assert.match(instanceDashboardSurfaceSource, /errorRateDesc/);
+assert.match(instanceDashboardSurfaceSource, /slowShareOver500msDesc/);
+assert.match(instanceDashboardSurfaceSource, /max \{ENDPOINT_TABLE_LIMIT\}/);
+assert.match(instanceDashboardSurfaceSource, /endpointDurationSegments\(item\.durationBuckets\)/);
+assert.match(instanceDashboardSurfaceSource, /endpointSortState/);
+assert.match(instanceDashboardSurfaceSource, /compareEndpointSortTieBreaker/);
+assert.match(instanceDashboardSurfaceSource, /동일값/);
+assert.equal(/errorCountDesc|slowCountOver500msDesc|serverOrder/.test(instanceDashboardSurfaceSource), false);
 assert.equal(
   /not_observed.*(정상|문제 없음|복구 완료)|(정상|문제 없음|복구 완료).*not_observed/.test(instanceDashboardSurfaceSource),
   false,

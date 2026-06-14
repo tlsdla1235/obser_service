@@ -106,6 +106,111 @@ class InstanceDashboardReadModelServiceTest {
     }
 
     @Test
+    @DisplayName("live endpoint evidence는 duration bucket이 있을 때만 endpoint slow evidence를 계산해 노출한다")
+    void liveDashboardEndpointEvidenceExposesDurationBucketsAndSlowEvidenceWhenProvided() {
+        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationInstanceId(
+                INSTANCE_ID,
+                LIVE_WINDOW_START,
+                EVALUATION_AT))
+                .thenReturn(List.of(endpointRowWithDuration(
+                        EVALUATION_AT.minusSeconds(30),
+                        "POST",
+                        "/orders",
+                        60L,
+                        3L)));
+
+        InstanceDashboardReadModel dashboard = service.getLiveDashboard(PROJECT_ID, APPLICATION_ID, INSTANCE_ID)
+                .orElseThrow();
+
+        assertThat(dashboard.endpointEvidence().items()).singleElement().satisfies(item -> {
+            assertThat(item.endpointKey()).isEqualTo("POST /orders");
+            assertThat(item.durationBuckets()).hasSize(3);
+            assertThat(item.durationBuckets().get(0).leMs()).isEqualTo(100L);
+            assertThat(item.durationBuckets().get(0).count()).isEqualTo(12L);
+            assertThat(item.durationBuckets().get(1).leMs()).isEqualTo(500L);
+            assertThat(item.durationBuckets().get(1).count()).isEqualTo(40L);
+            assertThat(item.slowCountOver500ms()).isEqualTo(20L);
+            assertThat(item.slowShareOver500ms()).isEqualByComparingTo("0.333333");
+        });
+    }
+
+    @Test
+    @DisplayName("application anchor가 없어도 selected instance slow endpoint는 evidence 후보로 남긴다")
+    void liveDashboardKeepsSelectedSlowEndpointWithoutApplicationAnchor() {
+        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationInstanceId(
+                INSTANCE_ID,
+                LIVE_WINDOW_START,
+                EVALUATION_AT))
+                .thenReturn(List.of(endpointRowWithDuration(
+                        EVALUATION_AT.minusSeconds(30),
+                        "GET",
+                        "/slow",
+                        60L,
+                        0L)));
+
+        InstanceDashboardReadModel dashboard = service.getLiveDashboard(PROJECT_ID, APPLICATION_ID, INSTANCE_ID)
+                .orElseThrow();
+
+        assertThat(dashboard.endpointEvidence().items()).singleElement().satisfies(item -> {
+            assertThat(item.endpointKey()).isEqualTo("GET /slow");
+            assertThat(item.errorCount()).isZero();
+            assertThat(item.slowCountOver500ms()).isEqualTo(20L);
+            assertThat(item.slowShareOver500ms()).isEqualByComparingTo("0.333333");
+        });
+    }
+
+    @Test
+    @DisplayName("live endpoint evidence는 오류 없는 endpoint도 요청량 탐색 후보로 남긴다")
+    void liveDashboardEndpointEvidenceIncludesHighTrafficEndpointsWithoutErrors() {
+        when(metricBucketRepository.findEndpointEvidenceRowsByApplicationInstanceId(
+                INSTANCE_ID,
+                LIVE_WINDOW_START,
+                EVALUATION_AT))
+                .thenReturn(List.of(endpointRowJson(
+                        EVALUATION_AT.minusSeconds(30),
+                        """
+                                [
+                                  {
+                                    "method": "GET",
+                                    "route": "/api/ecc-smoke/error-500",
+                                    "requestCount": 12,
+                                    "errorCount": 12
+                                  },
+                                  {
+                                    "method": "GET",
+                                    "route": "/api/ecc-smoke/fast",
+                                    "requestCount": 18,
+                                    "errorCount": 0
+                                  },
+                                  {
+                                    "method": "GET",
+                                    "route": "/api/ecc-smoke/ok",
+                                    "requestCount": 9,
+                                    "errorCount": 0
+                                  }
+                                ]
+                                """)));
+
+        InstanceDashboardReadModel dashboard = service.getLiveDashboard(PROJECT_ID, APPLICATION_ID, INSTANCE_ID)
+                .orElseThrow();
+
+        assertThat(dashboard.endpointEvidence().items())
+                .extracting(InstanceDashboardReadModel.EndpointEvidenceItem::endpointKey)
+                .contains(
+                        "GET /api/ecc-smoke/error-500",
+                        "GET /api/ecc-smoke/fast",
+                        "GET /api/ecc-smoke/ok");
+        assertThat(dashboard.endpointEvidence().items())
+                .filteredOn(item -> item.endpointKey().equals("GET /api/ecc-smoke/fast"))
+                .singleElement()
+                .satisfies(item -> {
+                    assertThat(item.requestCount()).isEqualTo(18L);
+                    assertThat(item.errorCount()).isZero();
+                    assertThat(item.errorRate()).isEqualByComparingTo("0");
+                });
+    }
+
+    @Test
     @DisplayName("retention 밖 selected snapshot row는 current metric으로 복원하지 않고 empty로 수렴한다")
     void snapshotDashboardOutsideRetentionReturnsEmptyWithoutMetricFallback() {
         when(snapshotRepository.findDetailRow(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID))
@@ -198,8 +303,8 @@ class InstanceDashboardReadModelServiceTest {
     }
 
     @Test
-    @DisplayName("application anchor가 없는 저신호 selected endpoint는 evidence item으로 노출하지 않는다")
-    void snapshotDashboardDoesNotPromoteLowSignalSelectedEndpointWithoutApplicationAnchor() {
+    @DisplayName("application anchor가 없는 저신호 selected endpoint도 요청량 탐색 후보로 노출한다")
+    void snapshotDashboardPromotesLowSignalSelectedEndpointForRequestExploration() {
         when(snapshotRepository.findDetailRow(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID))
                 .thenReturn(Optional.of(snapshotRow("""
                         {"instanceSummary":{"items":[]}}
@@ -232,8 +337,13 @@ class InstanceDashboardReadModelServiceTest {
                         INSTANCE_ID)
                 .orElseThrow();
 
-        assertThat(dashboard.endpointEvidence().status()).isEqualTo("missing");
-        assertThat(dashboard.endpointEvidence().items()).isEmpty();
+        assertThat(dashboard.endpointEvidence().status()).isEqualTo("available");
+        assertThat(dashboard.endpointEvidence().items()).singleElement().satisfies(item -> {
+            assertThat(item.endpointKey()).isEqualTo("GET /noise");
+            assertThat(item.requestCount()).isEqualTo(20L);
+            assertThat(item.errorCount()).isZero();
+            assertThat(item.presenceOnSelectedInstance()).isEqualTo("observed");
+        });
     }
 
     @Test
@@ -272,6 +382,9 @@ class InstanceDashboardReadModelServiceTest {
             assertThat(item.presenceOnSelectedInstance()).isEqualTo("observed");
             assertThat(item.requestCount()).isEqualTo(65L);
             assertThat(item.errorCount()).isEqualTo(12L);
+            assertThat(item.durationBuckets()).isNull();
+            assertThat(item.slowCountOver500ms()).isNull();
+            assertThat(item.slowShareOver500ms()).isNull();
             assertThat(item.relatedApplicationEndpointEvidenceRef()).isNull();
         });
     }
@@ -519,6 +632,41 @@ class InstanceDashboardReadModelServiceTest {
                             "route": "%s",
                             "requestCount": %d,
                             "errorCount": %d
+                          }
+                        ]
+                        """.formatted(method, route, requestCount, errorCount));
+    }
+
+    private static EndpointEvidenceRow endpointRowJson(Instant bucketStartUtc, String endpointsJson) {
+        return new EndpointEvidenceRow(
+                APPLICATION_ID,
+                offset(bucketStartUtc),
+                offset(bucketStartUtc.plusSeconds(30)),
+                endpointsJson);
+    }
+
+    private static EndpointEvidenceRow endpointRowWithDuration(
+            Instant bucketStartUtc,
+            String method,
+            String route,
+            long requestCount,
+            long errorCount) {
+        return new EndpointEvidenceRow(
+                APPLICATION_ID,
+                offset(bucketStartUtc),
+                offset(bucketStartUtc.plusSeconds(30)),
+                """
+                        [
+                          {
+                            "method": "%s",
+                            "route": "%s",
+                            "requestCount": %d,
+                            "errorCount": %d,
+                            "durationBuckets": [
+                              {"leMs": 100, "count": 12},
+                              {"leMs": 500, "count": 40},
+                              {"leMs": 1000, "count": 60}
+                            ]
                           }
                         ]
                         """.formatted(method, route, requestCount, errorCount));

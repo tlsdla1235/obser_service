@@ -73,3 +73,24 @@
 - Instance Dashboard live/snapshot은 `endpointEvidence.items[]`의 `requestCount`, `errorCount`, `errorRate`, `presenceOnSelectedInstance`, `localDisplayOrder`만 표시한다. endpoint별 `durationBuckets`, `slowCountOver500ms`, `slowShareOver500ms`는 read model에 없으므로 `미제공`으로 둔다.
 - Snapshot Detail은 stored `snapshotEndpointEvidence.items[]`의 `requestCount`, `errorRate`, `durationBuckets`를 표시하되, 저장 projection에 없는 `errorCount`, `slowCountOver500ms`, `slowShareOver500ms`는 계산하지 않고 `미제공`으로 표시한다.
 - 후속 read model 확장 후보는 별도 작업으로 분리한다: endpoint priority cap 10/20 확장, instance endpoint별 duration bucket/slow evidence 추가, snapshot stored endpoint evidence의 `errorCount`와 slow evidence 저장 확장.
+
+## 2026-06-14 Instance Dashboard normalized table 구현 메모
+- Instance Dashboard live/snapshot read model의 `endpointEvidence.items[]`에 endpoint별 `durationBuckets`, `slowCountOver500ms`, `slowShareOver500ms` nullable field를 추가했다.
+- `slowCountOver500ms`와 `slowShareOver500ms`는 endpoint duration bucket에 500ms boundary가 있을 때만 계산한다. bucket이 없거나 100ms/500ms boundary 기반 분포를 만들 수 없으면 frontend는 `미제공` 또는 `확인할 수 없음`으로 표시한다.
+- Instance Dashboard endpoint evidence cap은 max 10으로 확장했다. max 20은 아직 UI/API 계약에 넣지 않고 후속 후보로 둔다.
+- `InstanceDashboardSurface`의 endpoint evidence 영역은 SOT mockup의 `NORMALIZED ENDPOINT EVIDENCE TABLE`에 맞춰 compact table로 변경했다.
+- sort 옵션은 `requestCount desc`, `errorRate desc`, `slowShareOver500ms desc` 세 개만 제공한다. `server order`, `errorCount desc`, `slowCountOver500ms desc`는 제공하지 않는다.
+- live mode와 snapshot mode는 기존처럼 같은 `InstanceDashboardSurface`를 재사용한다. snapshot mode는 selected snapshot row window 기준 read model만 사용하고 live fallback을 섞지 않는다.
+- 이번 작업은 Instance Dashboard selected instance evidence 탐색만 다루며 Application Dashboard top20, snapshot stored endpoint evidence의 `errorCount`/slow 저장 확장, endpoint p95/p99, root cause/priority 재판정은 포함하지 않는다.
+
+## 2026-06-14 1차 QA 반영 메모
+- 8080 확인에서 `requestCount desc`가 선택돼도 오류 endpoint 1개만 보이는 문제가 확인됐다. 원인은 backend가 application anchor가 없는 selected instance endpoint를 오류/느림 후보 위주로만 승격해, 정상 고호출 endpoint가 read model 후보에 들어오지 못하던 것이다.
+- endpoint table 후보 선정은 application anchor를 보존한 뒤 selected instance의 호출량 상위, 느림 상위, 오류율 상위 endpoint를 균형 있게 섞는 방식으로 변경했다.
+- 호출량 상위 후보는 `requestCount`가 minimum sample 미만이어도 포함한다. 표 전체 data quality는 sample-limited일 수 있지만, 사용자가 "어느 API가 가장 많이 호출됐는지"를 확인하는 탐색 표에서는 수집된 endpoint 자체를 숨기지 않는 쪽이 더 일관적이다.
+- frontend 정렬 옵션은 그대로 `requestCount desc`, `errorRate desc`, `slowShareOver500ms desc` 세 개만 유지한다. 이번 QA 반영은 정렬 UI가 아니라 backend 후보 집합을 넓히는 변경이다.
+
+## 2026-06-14 2차 QA 반영 메모
+- Instance Dashboard endpoint table에서 sort option을 바꿔도 화면이 변하지 않는 것처럼 보이는 문제가 확인됐다.
+- 코드상 정렬 state는 적용되고 있었지만, `errorRate desc`는 오류 endpoint가 이미 첫 번째이고 `slowShareOver500ms desc`는 모든 row가 0%인 데이터에서는 결과 순서가 server 제공 순서와 같아 보일 수 있었다.
+- 정렬 tie-breaker를 보강해 `errorRate desc`는 errorCount/requestCount, `slowShareOver500ms desc`는 slowCount/requestCount를 보조 기준으로 사용하도록 바꿨다. 완전 동률일 때만 기존 `localDisplayOrder`를 보존한다.
+- 그래도 값이 모두 같거나 이미 같은 순서일 때는 table 상단에 `동일값` 또는 `동일 순서` 상태와 현재 정렬 설명을 표시해, sort control이 동작하지 않는 것처럼 보이지 않게 했다.
