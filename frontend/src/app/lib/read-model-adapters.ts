@@ -549,6 +549,7 @@ export function statusBadgeClassName(status: string): string {
     case "snapshot":
       return "border-amber-300 bg-amber-50 text-amber-800";
     case "critical":
+    case "degraded":
       return "border-red-300 bg-red-50 text-red-700";
     case "warning":
       return "border-amber-300 bg-amber-50 text-amber-700";
@@ -689,7 +690,7 @@ export function humanizeStatusCode(value: string | null | undefined): string {
     case "attention":
       return "주의 필요";
     case "degraded":
-      return "주의 필요";
+      return "서비스 성능 저하";
     case "down":
       return "중단";
     case "down_candidate":

@@ -376,9 +376,9 @@ function markerVisualBucket(marker: DashboardSnapshotMarkerItem): string {
 function storedStateVisualBucket(stateCode: string | null | undefined): string {
   switch ((stateCode ?? "").trim().toLowerCase()) {
     case "down":
+    case "degraded":
       return "critical";
     case "attention":
-    case "degraded":
       return "attention";
     case "stale":
     case "unknown":
@@ -433,10 +433,10 @@ function markerBucketWeight(bucket: string): number {
   switch (bucket) {
     case "critical":
     case "down":
+    case "degraded":
       return 4;
     case "attention":
     case "warning":
-    case "degraded":
       return 3;
     case "unavailable":
     case "stale":
@@ -456,10 +456,10 @@ function markerBucketCellClassName(bucket: string): string {
   switch (bucket) {
     case "critical":
     case "down":
+    case "degraded":
       return "border-[#fecaca] bg-[#fef2f2]";
     case "attention":
     case "warning":
-    case "degraded":
       return "border-[#fcd34d] bg-[#fffbeb]";
     case "unavailable":
     case "stale":
@@ -479,10 +479,10 @@ function markerBucketStateTextClassName(bucket: string): string {
   switch (bucket) {
     case "critical":
     case "down":
+    case "degraded":
       return "text-[#b91c1c]";
     case "attention":
     case "warning":
-    case "degraded":
       return "text-[#b45309]";
     case "unavailable":
     case "stale":
@@ -516,10 +516,10 @@ function bucketDisplayText(bucket: string): string {
   switch (bucket) {
     case "critical":
     case "down":
+    case "degraded":
       return "긴급";
     case "attention":
     case "warning":
-    case "degraded":
       return "확인";
     case "unavailable":
     case "stale":

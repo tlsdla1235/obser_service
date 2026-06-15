@@ -831,7 +831,7 @@ class DashboardReadModelServiceTest {
                 .contains("application_error_rate_high");
         assertThat(dashboard.triageCards().get(0).confidence()).isLessThan(0.75d);
         assertThat(dashboard.state().code()).isEqualTo("attention");
-        assertThat(dashboard.state().label()).contains("주의");
+        assertThat(dashboard.state().label()).isEqualTo("주의 필요");
         assertThat(dashboard.stateReasons())
                 .extracting(ApplicationDashboardReadModel.StateReason::reasonCode)
                 .contains("application_error_rate_high");
@@ -1047,6 +1047,7 @@ class DashboardReadModelServiceTest {
 
         assertThat(dashboard.triageCards()).isNotEmpty();
         assertThat(dashboard.state().code()).isEqualTo("degraded");
+        assertThat(dashboard.state().label()).isEqualTo("서비스 성능 저하");
         assertThat(dashboard.zeroInsight()).isNull();
     }
 

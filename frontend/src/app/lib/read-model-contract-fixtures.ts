@@ -72,7 +72,7 @@ export const dashboardContractFixture: ApplicationDashboardReadModel = {
   },
   state: {
     code: "degraded",
-    label: "주의 필요",
+    label: "서비스 성능 저하",
     rationale: "서버가 이미 판단한 상태 설명",
     recommendedAction: "서버가 제공한 조치 문구를 표시합니다.",
     scope: "application",

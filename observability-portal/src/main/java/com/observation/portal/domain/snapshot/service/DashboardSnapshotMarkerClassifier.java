@@ -116,7 +116,7 @@ public class DashboardSnapshotMarkerClassifier {
             PreviousState previousState,
             DashboardSnapshotStoredReadModelProjection projection) {
         String state = normalized(row.stateCode());
-        if ("down".equals(state) || projection.criticalTriageSeverityPresent()) {
+        if ("down".equals(state) || "degraded".equals(state) || projection.criticalTriageSeverityPresent()) {
             return DashboardSnapshotMarkerSeverity.CRITICAL;
         }
         if (isWarningState(state)
@@ -169,7 +169,7 @@ public class DashboardSnapshotMarkerClassifier {
     }
 
     private static boolean isWarningState(String state) {
-        return "attention".equals(state) || "degraded".equals(state) || "stale".equals(state) || "unknown".equals(state);
+        return "attention".equals(state) || "stale".equals(state) || "unknown".equals(state);
     }
 
     private static boolean isNeutralState(String state) {
@@ -215,9 +215,11 @@ public class DashboardSnapshotMarkerClassifier {
                     "저장 당시 짧은 구간의 강한 이상 신호가 snapshot으로 남았습니다.",
                     "다음 snapshot과 함께 추세가 이어지는지 확인하세요.");
             case STATE_OBSERVATION -> new MarkerCopy(
-                    "주의 상태 snapshot",
                     severity == DashboardSnapshotMarkerSeverity.CRITICAL
-                            ? "저장 당시 application state가 critical 수준으로 보였습니다."
+                            ? "성능 저하 snapshot"
+                            : "주의 상태 snapshot",
+                    severity == DashboardSnapshotMarkerSeverity.CRITICAL
+                            ? "저장 당시 application state가 서비스 성능 저하로 보였습니다."
                             : "저장 당시 application state가 주의가 필요한 상태로 보였습니다.",
                     "저장된 detail evidence를 확인하세요.");
             case QUERY_FALLBACK_SNAPSHOT -> new MarkerCopy(

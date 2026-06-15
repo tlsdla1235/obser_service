@@ -141,7 +141,7 @@ class DashboardSnapshotMarkerClassifierTest {
         DashboardSnapshotMarkerItem legacyState = marker(row("mystery", null, null), NO_PREVIOUS, emptyProjection());
 
         assertThat(down.severity()).isEqualTo(DashboardSnapshotMarkerSeverity.CRITICAL);
-        assertThat(degraded.severity()).isEqualTo(DashboardSnapshotMarkerSeverity.WARNING);
+        assertThat(degraded.severity()).isEqualTo(DashboardSnapshotMarkerSeverity.CRITICAL);
         assertThat(stale.severity()).isEqualTo(DashboardSnapshotMarkerSeverity.WARNING);
         assertThat(criticalTriage.severity()).isEqualTo(DashboardSnapshotMarkerSeverity.CRITICAL);
         assertThat(warningTriage.severity()).isEqualTo(DashboardSnapshotMarkerSeverity.WARNING);

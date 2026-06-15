@@ -153,7 +153,7 @@ class DashboardSnapshotMarkerServiceTest {
                 .extracting(marker -> marker.snapshotId())
                 .containsExactly(SNAPSHOT_EARLIER, SNAPSHOT_TIED_LOW, SNAPSHOT_TIED_HIGH);
         assertThat(markers.markers().get(0).type().value()).isEqualTo("state_observation");
-        assertThat(markers.markers().get(0).severity().value()).isEqualTo("warning");
+        assertThat(markers.markers().get(0).severity().value()).isEqualTo("critical");
         verify(snapshotRepository).findMarkerRows(
                 PROJECT_ID,
                 APPLICATION_ID,

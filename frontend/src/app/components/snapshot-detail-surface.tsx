@@ -745,6 +745,7 @@ function snapshotStateAccentClassName(stateCode: string): string {
     case "normal":
       return "border-l-emerald-700";
     case "degraded":
+      return "border-l-red-700";
     case "attention":
     case "warning":
       return "border-l-amber-700";
@@ -762,6 +763,7 @@ function snapshotStateBadgeClassName(stateCode: string): string {
     case "normal":
       return "border-emerald-300 bg-emerald-50 text-emerald-700";
     case "degraded":
+      return "border-red-300 bg-red-50 text-red-700";
     case "attention":
     case "warning":
       return "border-amber-300 bg-amber-50 text-amber-700";
@@ -779,6 +781,7 @@ function snapshotStateDisplayText(stateCode: string): string {
     case "normal":
       return "ACTIVE";
     case "degraded":
+      return "DEGRADED";
     case "attention":
     case "warning":
       return "ATTENTION";

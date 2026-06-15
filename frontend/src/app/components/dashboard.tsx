@@ -950,8 +950,9 @@ function stateStripAccentClassName(code: string): string {
       return "border-l-emerald-600";
     case "down":
       return "border-l-red-700";
-    case "attention":
     case "degraded":
+      return "border-l-red-700";
+    case "attention":
     case "stale":
     case "waiting_first_data":
       return "border-l-amber-600";
@@ -2062,9 +2063,9 @@ function applicationStateDisplayText(status: string | null | undefined): string 
     case "active":
       return "정상";
     case "degraded":
-      return "주의 필요";
+      return "서비스 성능 저하";
     case "attention":
-      return "확인 필요";
+      return "주의 필요";
     case "down":
       return "수집 중단";
     case "idle":

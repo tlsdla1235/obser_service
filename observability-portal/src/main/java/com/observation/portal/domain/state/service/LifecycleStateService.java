@@ -225,9 +225,9 @@ public class LifecycleStateService {
     private static MetricLifecycleState degradedState(String rationale) {
         return metricState(
                 LifecycleStateCode.DEGRADED,
-                "Metric data degraded",
+                "서비스 성능 저하",
                 rationale,
-                "Typed concern 입력이 가리키는 rule과 endpoint evidence를 확인하세요.");
+                "성능 저하를 만든 rule과 endpoint evidence를 우선 확인하세요.");
     }
 
     private static MetricLifecycleState attentionState(String rationale) {
