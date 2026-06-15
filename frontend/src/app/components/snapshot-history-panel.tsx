@@ -377,6 +377,7 @@ function storedStateVisualBucket(stateCode: string | null | undefined): string {
   switch ((stateCode ?? "").trim().toLowerCase()) {
     case "down":
       return "critical";
+    case "attention":
     case "degraded":
       return "attention";
     case "stale":

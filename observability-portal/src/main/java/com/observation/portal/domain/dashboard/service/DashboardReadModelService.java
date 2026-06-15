@@ -1195,8 +1195,8 @@ public class DashboardReadModelService {
         if (!endpointPriority.isEmpty()) {
             return new ApplicationDashboardReadModel.ZeroInsight(
                     "no_action_needed",
-                    "Application 단위 triage card는 없습니다.",
-                    "낮은 우선순위 endpoint 후보가 있으면 해당 API의 최근 오류 로그를 함께 확인하세요.");
+                    "Application 단위 triage card는 없지만 endpoint evidence가 있습니다.",
+                    "Root cause 확정이 아니라 먼저 볼 단서로 해당 API의 최근 5xx 로그를 확인하세요.");
         }
         return new ApplicationDashboardReadModel.ZeroInsight(
                 "no_action_needed",

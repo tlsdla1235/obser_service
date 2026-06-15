@@ -950,6 +950,7 @@ function stateStripAccentClassName(code: string): string {
       return "border-l-emerald-600";
     case "down":
       return "border-l-red-700";
+    case "attention":
     case "degraded":
     case "stale":
     case "waiting_first_data":

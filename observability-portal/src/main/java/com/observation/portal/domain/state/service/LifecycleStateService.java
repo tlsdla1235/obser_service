@@ -94,6 +94,9 @@ public class LifecycleStateService {
         if (input.degradedHysteresis().canEnterDegraded()) {
             return degradedState("Concern signal이 guard, confidence, 5-bucket bad count 기준을 모두 통과했습니다.");
         }
+        if (input.degradedHysteresis().canEnterAttention()) {
+            return attentionState("RED concern이 degraded hysteresis 진입 기준에는 못 미치지만 주의가 필요한 수준입니다.");
+        }
         return activeState();
     }
 
@@ -225,6 +228,14 @@ public class LifecycleStateService {
                 "Metric data degraded",
                 rationale,
                 "Typed concern 입력이 가리키는 rule과 endpoint evidence를 확인하세요.");
+    }
+
+    private static MetricLifecycleState attentionState(String rationale) {
+        return metricState(
+                LifecycleStateCode.ATTENTION,
+                "주의 필요",
+                rationale,
+                "최근 RED concern과 endpoint evidence를 먼저 확인하세요.");
     }
 
     private static MetricLifecycleState metricState(

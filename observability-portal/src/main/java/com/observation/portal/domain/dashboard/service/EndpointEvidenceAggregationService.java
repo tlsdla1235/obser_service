@@ -34,6 +34,8 @@ public class EndpointEvidenceAggregationService {
     private static final Pattern ULID_SEGMENT = Pattern.compile("(?i)[0-7][0-9a-hjkmnp-tv-z]{25}");
     private static final Pattern LONG_HEX_SEGMENT = Pattern.compile("(?i)[0-9a-f]{8,}");
     private static final Pattern VERSION_SEGMENT = Pattern.compile("(?i)v[0-9]{1,2}");
+    private static final Pattern NORMALIZED_DIAGNOSTIC_SEGMENT = Pattern.compile(
+            "(?i)(error|errors|http|status|slow|latency|p50|p90|p95|p99|p999)[A-Za-z0-9._~-]*");
     private static final Pattern LITERAL_ROUTE_SEGMENT = Pattern.compile("[A-Za-z0-9._~-]+");
     private static final Set<String> ALLOWED_METHODS = Set.of(
             "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE", "UNKNOWN");
@@ -271,8 +273,13 @@ public class EndpointEvidenceAggregationService {
                 || segment.contains(".")
                 || segment.contains("@")
                 || (!VERSION_SEGMENT.matcher(segment).matches()
+                && !isNormalizedDiagnosticSegment(segment)
                 && hasLetterAndDigit(segment)
                 && (isLongAlphaNumericToken(segment) || isDigitLetterSlug(segment)));
+    }
+
+    private static boolean isNormalizedDiagnosticSegment(String segment) {
+        return NORMALIZED_DIAGNOSTIC_SEGMENT.matcher(segment).matches();
     }
 
     private static boolean isLongAlphaNumericToken(String segment) {

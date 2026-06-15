@@ -525,6 +525,8 @@ export function metricStateClassName(code: LifecycleStateCode | (string & {})): 
   switch (code) {
     case "active":
       return "border-emerald-500 bg-emerald-50 text-emerald-900";
+    case "attention":
+      return "border-amber-500 bg-amber-50 text-amber-900";
     case "degraded":
       return "border-rose-500 bg-rose-50 text-rose-900";
     case "down":
@@ -569,6 +571,7 @@ export function statusBadgeClassName(status: string): string {
     case "insufficient":
     case "insufficient_baseline":
     case "insufficient_evidence":
+    case "attention":
     case "malformed_evidence":
     case "metric_missing":
     case "missing":
@@ -603,6 +606,7 @@ export function severityDisplayText(severity: string | null | undefined): string
   switch ((severity ?? "").toLowerCase()) {
     case "critical":
       return "긴급";
+    case "attention":
     case "warning":
       return "주의";
     case "info":
@@ -682,6 +686,8 @@ export function humanizeStatusCode(value: string | null | undefined): string {
       return "현재 구간";
     case "does_not_change_metric_state":
       return "metric state에 영향 없음";
+    case "attention":
+      return "주의 필요";
     case "degraded":
       return "주의 필요";
     case "down":

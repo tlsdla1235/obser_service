@@ -161,14 +161,15 @@ public class DashboardSnapshotMarkerClassifier {
 
     private static boolean isAttentionState(String stateCode) {
         String state = normalized(stateCode);
-        return "degraded".equals(state)
+        return "attention".equals(state)
+                || "degraded".equals(state)
                 || "stale".equals(state)
                 || "down".equals(state)
                 || "unknown".equals(state);
     }
 
     private static boolean isWarningState(String state) {
-        return "degraded".equals(state) || "stale".equals(state) || "unknown".equals(state);
+        return "attention".equals(state) || "degraded".equals(state) || "stale".equals(state) || "unknown".equals(state);
     }
 
     private static boolean isNeutralState(String state) {

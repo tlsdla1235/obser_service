@@ -805,7 +805,7 @@ class DashboardReadModelServiceTest {
     }
 
     @Test
-    void exposesTriageCardWhileStateCanRemainActiveWhenConfidenceBelowDegradedEnter() {
+    void exposesAttentionStateAndFirstLookWhenRedConcernIsBelowDegradedEnter() {
         when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
                 .thenReturn(Optional.of(application()));
         when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
@@ -830,7 +830,14 @@ class DashboardReadModelServiceTest {
                 .extracting(ApplicationDashboardReadModel.TriageCard::ruleId)
                 .contains("application_error_rate_high");
         assertThat(dashboard.triageCards().get(0).confidence()).isLessThan(0.75d);
-        assertThat(dashboard.state().code()).isEqualTo("active");
+        assertThat(dashboard.state().code()).isEqualTo("attention");
+        assertThat(dashboard.state().label()).contains("주의");
+        assertThat(dashboard.stateReasons())
+                .extracting(ApplicationDashboardReadModel.StateReason::reasonCode)
+                .contains("application_error_rate_high");
+        assertThat(dashboard.firstLookCandidates())
+                .extracting(ApplicationDashboardReadModel.FirstLookCandidate::type)
+                .contains("application");
         assertThat(dashboard.zeroInsight()).isNull();
         assertThat(dashboard.endpointPriority()).isEmpty();
     }
@@ -941,7 +948,7 @@ class DashboardReadModelServiceTest {
         assertThat(dashboard.triageCards()).isEmpty();
         assertThat(dashboard.zeroInsight().reasonCode()).isEqualTo("no_action_needed");
         assertThat(dashboard.zeroInsight().message()).contains("Application 단위 triage card");
-        assertThat(dashboard.zeroInsight().recommendedAction()).contains("endpoint 후보");
+        assertThat(dashboard.zeroInsight().recommendedAction()).contains("먼저 볼 단서", "5xx 로그");
         assertThat(dashboard.zeroInsight().message()).doesNotContain("우선 조치가 필요한 신호는 없습니다");
         assertThat(dashboard.endpointPriority()).singleElement().satisfies(item -> {
             assertThat(item.endpointKey()).isEqualTo("GET /health");
@@ -950,6 +957,9 @@ class DashboardReadModelServiceTest {
             assertThat(item.evidence().requestCount()).isEqualTo(1L);
             assertThat(item.evidence().errorCount()).isEqualTo(1L);
         });
+        assertThat(dashboard.firstLookCandidates())
+                .extracting(ApplicationDashboardReadModel.FirstLookCandidate::source)
+                .contains("endpointPriority");
     }
 
     @Test
@@ -986,7 +996,7 @@ class DashboardReadModelServiceTest {
     }
 
     @Test
-    void keepsStateActiveWhenHighConfidenceConcernHasOnlyTwoRecentBadBuckets() {
+    void usesAttentionWhenHighConfidenceConcernHasOnlyTwoRecentBadBuckets() {
         when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
                 .thenReturn(Optional.of(application()));
         when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
@@ -1009,7 +1019,8 @@ class DashboardReadModelServiceTest {
 
         assertThat(dashboard.triageCards()).isNotEmpty();
         assertThat(dashboard.triageCards().get(0).confidence()).isGreaterThanOrEqualTo(0.75d);
-        assertThat(dashboard.state().code()).isEqualTo("active");
+        assertThat(dashboard.state().code()).isEqualTo("attention");
+        assertThat(dashboard.firstLookCandidates()).isNotEmpty();
     }
 
     @Test

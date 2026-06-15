@@ -108,6 +108,7 @@ public class EndpointPriorityService {
                 : slowShare(current.durationBuckets());
         boolean latencyAvailable = slowShareValue.isPresent();
         BigDecimal slowShare = latencyAvailable ? slowShareValue.orElseThrow() : null;
+        long slowCountOver500ms = latencyAvailable ? slowCountOver500ms(current.durationBuckets()) : 0L;
         boolean latencyHigh = current.requestCount() >= COMMON_MINIMUM_REQUEST_COUNT
                 && latencyAvailable
                 && slowShare.compareTo(LATENCY_SLOW_SHARE_THRESHOLD) >= 0;
@@ -167,6 +168,8 @@ public class EndpointPriorityService {
                 confidence,
                 score,
                 current.requestCount(),
+                current.errorCount(),
+                slowCountOver500ms,
                 evidence,
                 recommendedAction(reason)));
     }
@@ -187,6 +190,21 @@ public class EndpointPriorityService {
         }
         long slowCount = Math.max(0L, totalCount - thresholdBucket.orElseThrow().count());
         return Optional.of(decimal(slowCount, totalCount));
+    }
+
+    private static long slowCountOver500ms(List<ApplicationDashboardReadModel.HistogramBucket> buckets) {
+        if (buckets == null || buckets.isEmpty()) {
+            return 0L;
+        }
+        long totalCount = buckets.get(buckets.size() - 1).count();
+        if (totalCount <= 0L) {
+            return 0L;
+        }
+        return buckets.stream()
+                .filter(bucket -> bucket.leMs() == LATENCY_SLOW_BUCKET_LE_MS)
+                .findFirst()
+                .map(bucket -> Math.max(0L, totalCount - bucket.count()))
+                .orElse(0L);
     }
 
     private static Optional<OffsetDateTime> latestObservedAt(List<EndpointEvidenceRow> rows) {
@@ -251,6 +269,22 @@ public class EndpointPriorityService {
         int reasonPriority = Integer.compare(reasonPriority(first.reason()), reasonPriority(second.reason()));
         if (reasonPriority != 0) {
             return reasonPriority;
+        }
+        if (first.reason() == ApplicationDashboardReadModel.EndpointPriorityReason.RECENT_ERROR
+                && second.reason() == ApplicationDashboardReadModel.EndpointPriorityReason.RECENT_ERROR) {
+            int errorCount = Long.compare(second.errorCount(), first.errorCount());
+            if (errorCount != 0) {
+                return errorCount;
+            }
+            int slowCount = Long.compare(second.slowCountOver500ms(), first.slowCountOver500ms());
+            if (slowCount != 0) {
+                return slowCount;
+            }
+            int requestCount = Long.compare(second.requestCount(), first.requestCount());
+            if (requestCount != 0) {
+                return requestCount;
+            }
+            return first.endpointKey().compareTo(second.endpointKey());
         }
         int confidence = Double.compare(second.confidence(), first.confidence());
         if (confidence != 0) {
@@ -317,6 +351,8 @@ public class EndpointPriorityService {
             double confidence,
             int score,
             long requestCount,
+            long errorCount,
+            long slowCountOver500ms,
             ApplicationDashboardReadModel.EndpointPriorityEvidence evidence,
             String recommendedAction
     ) {

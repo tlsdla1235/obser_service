@@ -11,6 +11,7 @@ export type LifecycleStateCode =
   | "unknown"
   | "idle"
   | "active"
+  | "attention"
   | "stale"
   | "down"
   | "degraded";

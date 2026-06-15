@@ -1586,7 +1586,7 @@ public record ApplicationDashboardReadModel(
     private static List<StateReason> stateReasons(State state, List<TriageCard> triageCards) {
         State requiredState = Objects.requireNonNull(state, "state must not be null");
         List<TriageCard> cards = List.copyOf(Objects.requireNonNullElse(triageCards, List.of()));
-        if ("degraded".equals(requiredState.code()) && !cards.isEmpty()) {
+        if (isConcernState(requiredState.code()) && !cards.isEmpty()) {
             List<StateReason> reasons = cards.stream()
                     .filter(ApplicationDashboardReadModel::affectsLifecycleState)
                     .map(card -> new StateReason(
@@ -1620,7 +1620,7 @@ public record ApplicationDashboardReadModel(
         State requiredState = Objects.requireNonNull(state, "state must not be null");
         List<AttentionEvidence> items = new java.util.ArrayList<>();
         List.copyOf(Objects.requireNonNullElse(triageCards, List.of())).stream()
-                .filter(card -> !"degraded".equals(requiredState.code()) || !affectsLifecycleState(card))
+                .filter(card -> !isConcernState(requiredState.code()) || !affectsLifecycleState(card))
                 .map(card -> new AttentionEvidence(
                         "triage_attention",
                         card.severity().value(),
@@ -1660,7 +1660,7 @@ public record ApplicationDashboardReadModel(
         List<FirstLookCandidate> candidates = new java.util.ArrayList<>();
         State requiredState = Objects.requireNonNull(state, "state must not be null");
         List<TriageCard> cards = List.copyOf(Objects.requireNonNullElse(triageCards, List.of()));
-        if ("degraded".equals(requiredState.code()) && !cards.isEmpty()) {
+        if (isConcernState(requiredState.code()) && !cards.isEmpty()) {
             TriageCard card = cards.get(0);
             candidates.add(new FirstLookCandidate(
                     1,
@@ -1692,6 +1692,10 @@ public record ApplicationDashboardReadModel(
                     requiredState.recommendedAction()));
         }
         return List.copyOf(candidates);
+    }
+
+    private static boolean isConcernState(String stateCode) {
+        return "attention".equals(stateCode) || "degraded".equals(stateCode);
     }
 
     private static BigDecimal fraction(long numerator, long denominator) {

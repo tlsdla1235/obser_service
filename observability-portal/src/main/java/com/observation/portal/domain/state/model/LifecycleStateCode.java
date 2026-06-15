@@ -10,6 +10,7 @@ public enum LifecycleStateCode {
     UNKNOWN("unknown"),
     IDLE("idle"),
     ACTIVE("active"),
+    ATTENTION("attention"),
     STALE("stale"),
     DOWN("down"),
     DEGRADED("degraded");
