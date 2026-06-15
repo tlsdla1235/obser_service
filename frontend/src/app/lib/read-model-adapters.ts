@@ -374,16 +374,19 @@ export function snapshotSlotIndexFromWindowEndUtc(value: string): number {
 
 /**
  * slot index를 end-boundary label로 표시한다.
- * 첫 slot은 00:30Z, 마지막 slot은 다음 날짜 00:00Z가 아니라 24:00Z로 표시한다.
+ * slot 계산은 UTC boundary 계약을 따르지만, operator 화면에는 같은 instant를 KST로 보여준다.
  */
 export function snapshotSlotTimeLabel(slotIndex: number): string {
-  const totalMinutes = (slotIndex + 1) * 30;
-  if (totalMinutes === 24 * 60) {
-    return "24:00Z";
+  if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex > 47) {
+    return `--:-- ${DISPLAY_TIME_ZONE_LABEL}`;
   }
-  const hour = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
-  const minute = String(totalMinutes % 60).padStart(2, "0");
-  return `${hour}:${minute}Z`;
+  const utcEndMinutes = (slotIndex + 1) * 30;
+  const rawKstEndMinutes = utcEndMinutes + 9 * 60;
+  const kstEndMinutes = rawKstEndMinutes % (24 * 60);
+  const dayPrefix = rawKstEndMinutes >= 24 * 60 ? "D+1 " : "";
+  const hour = String(Math.floor(kstEndMinutes / 60)).padStart(2, "0");
+  const minute = String(kstEndMinutes % 60).padStart(2, "0");
+  return `${dayPrefix}${hour}:${minute} ${DISPLAY_TIME_ZONE_LABEL}`;
 }
 
 function snapshotUtcDayStart(value: string): Date | null {
@@ -522,6 +525,8 @@ export function metricStateClassName(code: LifecycleStateCode | (string & {})): 
   switch (code) {
     case "active":
       return "border-emerald-500 bg-emerald-50 text-emerald-900";
+    case "attention":
+      return "border-amber-500 bg-amber-50 text-amber-900";
     case "degraded":
       return "border-rose-500 bg-rose-50 text-rose-900";
     case "down":
@@ -544,6 +549,7 @@ export function statusBadgeClassName(status: string): string {
     case "snapshot":
       return "border-amber-300 bg-amber-50 text-amber-800";
     case "critical":
+    case "degraded":
       return "border-red-300 bg-red-50 text-red-700";
     case "warning":
       return "border-amber-300 bg-amber-50 text-amber-700";
@@ -566,6 +572,7 @@ export function statusBadgeClassName(status: string): string {
     case "insufficient":
     case "insufficient_baseline":
     case "insufficient_evidence":
+    case "attention":
     case "malformed_evidence":
     case "metric_missing":
     case "missing":
@@ -600,6 +607,7 @@ export function severityDisplayText(severity: string | null | undefined): string
   switch ((severity ?? "").toLowerCase()) {
     case "critical":
       return "긴급";
+    case "attention":
     case "warning":
       return "주의";
     case "info":
@@ -679,8 +687,10 @@ export function humanizeStatusCode(value: string | null | undefined): string {
       return "현재 구간";
     case "does_not_change_metric_state":
       return "metric state에 영향 없음";
-    case "degraded":
+    case "attention":
       return "주의 필요";
+    case "degraded":
+      return "서비스 성능 저하";
     case "down":
       return "중단";
     case "down_candidate":

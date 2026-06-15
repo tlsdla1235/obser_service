@@ -80,6 +80,33 @@ class MicrometerHttpServerObservationBinderTest {
     }
 
     @Test
+    void usesSpringMvcPathPatternWhenHttpRouteTagIsAbsent() {
+        RecordingCollector collector = new RecordingCollector();
+        AtomicLong nanos = new AtomicLong(1L);
+        ObservationRegistry registry = ObservationRegistry.create();
+        registry.observationConfig()
+                .observationHandler(new MicrometerHttpServerObservationBinder(collector, nanos::get));
+
+        Observation.Context context = new PathPatternObservationContext("/api/admin/users/{uuid}");
+        context.setName("http.server.requests");
+        Observation observation = Observation.start("http.server.requests", () -> context, registry)
+                .lowCardinalityKeyValue("method", "GET")
+                .lowCardinalityKeyValue("status", "200")
+                .lowCardinalityKeyValue("uri", "/api/admin/users/{uuid}");
+
+        nanos.addAndGet(5_000_000L);
+        observation.stop();
+
+        HttpServerObservationInput input = collector.onlyHttp();
+        LowCardinalityHttpServerObservation guarded = new LowCardinalityHttpObservationGuard().guard(input);
+
+        assertEquals(Optional.of("/api/admin/users/{uuid}"), input.routePattern(),
+                "Spring MVC 기본 convention의 pathPattern은 framework route 후보로 사용한다");
+        assertEquals("/api/admin/users/{uuid}", guarded.normalizedRoute().value());
+        assertEquals("GET /api/admin/users/{uuid}", guarded.endpointKey().value());
+    }
+
+    @Test
     void invalidPresentHttpRouteKeepsLowCardinalityRawCandidateForServiceFallback() {
         RecordingCollector collector = new RecordingCollector();
         AtomicLong nanos = new AtomicLong(1L);
@@ -380,6 +407,22 @@ class MicrometerHttpServerObservationBinderTest {
                 "tenant-42", "user-99", "checkout.latency");
         assertDoesNotExpose(guarded, "POST", "/orders/123", "debug=true",
                 "tenant-42", "user-99", "checkout.latency");
+    }
+
+    private static final class PathPatternObservationContext extends Observation.Context {
+
+        private final String pathPattern;
+
+        private PathPatternObservationContext(String pathPattern) {
+            this.pathPattern = pathPattern;
+        }
+
+        /**
+         * Spring Web의 ServerRequestObservationContext#getPathPattern과 같은 형태의 테스트용 접근자다.
+         */
+        public String getPathPattern() {
+            return pathPattern;
+        }
     }
 
     @Test

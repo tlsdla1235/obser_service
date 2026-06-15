@@ -129,6 +129,35 @@ class IngestEnvelopeBuilderServiceTest {
     }
 
     @Test
+    void buildsResourceOnlyEnvelopeWithJvmAndNullableDatasource() {
+        IngestEnvelopeBuilderService builder = new IngestEnvelopeBuilderService(identity());
+        ClosedMetricBucket bucket = new ClosedMetricBucket(
+                interval("2026-05-08T01:00:00Z"),
+                new AppMetricRollup(
+                        0,
+                        0,
+                        List.of(
+                                new HistogramBucket(50, 0),
+                                new HistogramBucket(100, 0),
+                                new HistogramBucket(250, 0),
+                                new HistogramBucket(500, 0),
+                                new HistogramBucket(1000, 0)),
+                        Optional.of(new JvmMetricSample(Instant.parse("2026-05-08T01:00:10Z"), 0.31d, 0.42d)),
+                        Optional.empty()),
+                List.of());
+
+        IngestEnvelope payload = builder.build(bucket).payload();
+
+        assertEquals(0, payload.summary().requestCount());
+        assertEquals(0, payload.summary().errorCount());
+        assertEquals(0.31d, payload.summary().jvm().cpuUsage());
+        assertEquals(0.42d, payload.summary().jvm().heapUsedRatio());
+        assertEquals(null, payload.summary().datasource());
+        assertEquals(null, payload.summary().localPercentiles());
+        assertTrue(payload.endpoints().isEmpty());
+    }
+
+    @Test
     void idempotencyKeyChangesOnlyWithBucketStartIdentityTuple() {
         IngestEnvelopeBuilderService builder = new IngestEnvelopeBuilderService(identity());
 

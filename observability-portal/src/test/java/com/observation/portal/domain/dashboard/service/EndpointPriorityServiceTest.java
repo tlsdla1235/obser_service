@@ -160,6 +160,53 @@ class EndpointPriorityServiceTest {
     }
 
     @Test
+    void sortsFallbackRecentErrorEvidenceAfterPrimaryConcernsByErrorSlowAndRequestCount() {
+        List<ApplicationDashboardReadModel.EndpointPriorityItem> items = service.endpointPriority(input(
+                List.of(
+                        endpoint("GET", "/fallback-high-error", 10, 3, 10, 10),
+                        endpoint("GET", "/fallback-slow-tie", 20, 2, 5, 20),
+                        endpoint("GET", "/fallback-request-tie", 80, 2, 70, 80),
+                        endpoint("GET", "/fallback-low", 100, 1, 100, 100),
+                        endpoint("GET", "/primary-error", 100, 5, 100, 100)),
+                List.of()));
+
+        assertThat(items)
+                .extracting(ApplicationDashboardReadModel.EndpointPriorityItem::endpointKey)
+                .containsExactly(
+                        "GET /primary-error",
+                        "GET /fallback-high-error",
+                        "GET /fallback-slow-tie",
+                        "GET /fallback-request-tie",
+                        "GET /fallback-low");
+        assertThat(items.get(0).reason()).isEqualTo(ApplicationDashboardReadModel.EndpointPriorityReason.ERROR_SPIKE);
+        assertThat(items.subList(1, items.size()))
+                .allSatisfy(item -> assertThat(item.reason())
+                        .isEqualTo(ApplicationDashboardReadModel.EndpointPriorityReason.RECENT_ERROR));
+    }
+
+    @Test
+    void keepsNormalizedDiagnosticRoutesWhileStillSuppressingUnsafeIdentifiers() {
+        List<ApplicationDashboardReadModel.EndpointPriorityItem> items = service.endpointPriority(input(
+                List.of(
+                        endpoint("GET", "/api/ecc-smoke/error-500", 40, 4, 40, 40),
+                        endpoint("GET", "/api/ecc-smoke/slow-p99", 40, 0, 20, 40),
+                        endpoint("GET", "/orders/order-123", 120, 12, 70, 120),
+                        endpoint("GET", "/orders/12345?token=secret", 120, 12, 70, 120),
+                        endpoint("GET", "https://example.test/orders/{orderId}", 120, 12, 70, 120),
+                        endpoint("GET", "/orders/550e8400-e29b-41d4-a716-446655440000", 120, 12, 70, 120)),
+                List.of()));
+
+        assertThat(items)
+                .extracting(ApplicationDashboardReadModel.EndpointPriorityItem::endpointKey)
+                .containsExactly("GET /api/ecc-smoke/error-500", "GET /api/ecc-smoke/slow-p99");
+        assertThat(items.toString())
+                .doesNotContain("order-123")
+                .doesNotContain("token")
+                .doesNotContain("https://example.test")
+                .doesNotContain("550e8400");
+    }
+
+    @Test
     void skipsPrivateRoutesWithoutLeakingRawRouteValues() throws Exception {
         List<ApplicationDashboardReadModel.EndpointPriorityItem> items = service.endpointPriority(input(
                 List.of(

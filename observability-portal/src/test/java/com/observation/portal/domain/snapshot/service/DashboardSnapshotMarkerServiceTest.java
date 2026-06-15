@@ -39,6 +39,7 @@ class DashboardSnapshotMarkerServiceTest {
     private static final UUID SNAPSHOT_STALE = UUID.fromString("00000000-0000-0000-0000-000000005824");
     private static final UUID SNAPSHOT_DOWN = UUID.fromString("00000000-0000-0000-0000-000000005825");
     private static final UUID SNAPSHOT_RECOVERY = UUID.fromString("00000000-0000-0000-0000-000000005826");
+    private static final UUID SNAPSHOT_OFF_SLOT = UUID.fromString("00000000-0000-0000-0000-000000005827");
     private static final Instant QUERY_AT = Instant.parse("2026-05-26T08:10:35Z");
     private static final Clock CLOCK = Clock.fixed(QUERY_AT, ZoneOffset.UTC);
     private static final OffsetDateTime SNAPSHOT_CUTOFF = offset("2026-05-16T08:10:35Z");
@@ -98,14 +99,14 @@ class DashboardSnapshotMarkerServiceTest {
                 50))
                 .thenReturn(List.of(
                         row(SNAPSHOT_RECOVERY, "2026-05-26T08:00:00Z", "unknown", "state_change", null, recoveryJson()),
-                        row(SNAPSHOT_DOWN, "2026-05-26T07:50:00Z", "down", "state_change", null),
-                        row(SNAPSHOT_STALE, "2026-05-26T07:40:00Z", "stale", "state_change", null)));
-        when(snapshotRepository.findPreviousSnapshot(APPLICATION_ID, offset("2026-05-26T07:40:00Z"), SNAPSHOT_CUTOFF))
-                .thenReturn(Optional.of(sourceRow("active", "2026-05-26T07:00:00Z")));
-        when(snapshotRepository.findPreviousSnapshot(APPLICATION_ID, offset("2026-05-26T07:50:00Z"), SNAPSHOT_CUTOFF))
-                .thenReturn(Optional.of(sourceRow("stale", "2026-05-26T07:40:00Z")));
+                        row(SNAPSHOT_DOWN, "2026-05-26T07:30:00Z", "down", "state_change", null),
+                        row(SNAPSHOT_STALE, "2026-05-26T07:00:00Z", "stale", "state_change", null)));
+        when(snapshotRepository.findPreviousSnapshot(APPLICATION_ID, offset("2026-05-26T07:00:00Z"), SNAPSHOT_CUTOFF))
+                .thenReturn(Optional.of(sourceRow("active", "2026-05-26T06:30:00Z")));
+        when(snapshotRepository.findPreviousSnapshot(APPLICATION_ID, offset("2026-05-26T07:30:00Z"), SNAPSHOT_CUTOFF))
+                .thenReturn(Optional.of(sourceRow("stale", "2026-05-26T07:00:00Z")));
         when(snapshotRepository.findPreviousSnapshot(APPLICATION_ID, offset("2026-05-26T08:00:00Z"), SNAPSHOT_CUTOFF))
-                .thenReturn(Optional.of(sourceRow("down", "2026-05-26T07:50:00Z")));
+                .thenReturn(Optional.of(sourceRow("down", "2026-05-26T07:30:00Z")));
 
         DashboardSnapshotMarkerReadModel markers = service.getMarkers(PROJECT_ID, APPLICATION_ID, "24h", "50")
                 .orElseThrow();
@@ -152,7 +153,7 @@ class DashboardSnapshotMarkerServiceTest {
                 .extracting(marker -> marker.snapshotId())
                 .containsExactly(SNAPSHOT_EARLIER, SNAPSHOT_TIED_LOW, SNAPSHOT_TIED_HIGH);
         assertThat(markers.markers().get(0).type().value()).isEqualTo("state_observation");
-        assertThat(markers.markers().get(0).severity().value()).isEqualTo("warning");
+        assertThat(markers.markers().get(0).severity().value()).isEqualTo("critical");
         verify(snapshotRepository).findMarkerRows(
                 PROJECT_ID,
                 APPLICATION_ID,
@@ -171,8 +172,8 @@ class DashboardSnapshotMarkerServiceTest {
                 50))
                 .thenReturn(List.of(
                         row(SNAPSHOT_STALE, "2026-05-15T08:40:00Z", "2026-05-15T08:00:00Z", "stale", null, (BigDecimal) null),
-                        row(SNAPSHOT_EARLIER, "2026-05-16T08:40:00Z", "2026-05-16T08:10:35Z", "active", null, (BigDecimal) null)));
-        when(snapshotRepository.findPreviousSnapshot(APPLICATION_ID, offset("2026-05-16T08:10:35Z"), SNAPSHOT_CUTOFF))
+                        row(SNAPSHOT_EARLIER, "2026-05-16T08:40:00Z", "2026-05-16T08:30:00Z", "active", null, (BigDecimal) null)));
+        when(snapshotRepository.findPreviousSnapshot(APPLICATION_ID, offset("2026-05-16T08:30:00Z"), SNAPSHOT_CUTOFF))
                 .thenReturn(Optional.empty());
 
         DashboardSnapshotMarkerReadModel markers = service.getMarkers(PROJECT_ID, APPLICATION_ID, "14d", "50")
@@ -182,6 +183,72 @@ class DashboardSnapshotMarkerServiceTest {
                 .extracting(marker -> marker.snapshotId())
                 .containsExactly(SNAPSHOT_EARLIER);
         verify(snapshotRepository, never()).findPreviousSnapshot(APPLICATION_ID, offset("2026-05-15T08:00:00Z"), SNAPSHOT_CUTOFF);
+    }
+
+    @Test
+    void filtersOffSlotFallbackRowsBeforeProjectionSoMarkerContractKeepsThirtyMinuteSlots() {
+        when(snapshotRepository.findMarkerRows(
+                PROJECT_ID,
+                APPLICATION_ID,
+                offset("2026-05-25T08:10:35Z"),
+                offset("2026-05-26T08:10:35Z"),
+                50))
+                .thenReturn(List.of(
+                        row(SNAPSHOT_OFF_SLOT,
+                                "2026-05-26T08:08:35Z",
+                                "2026-05-26T08:08:30Z",
+                                "active",
+                                "query_fallback",
+                                (BigDecimal) null),
+                        row(SNAPSHOT_EARLIER,
+                                "2026-05-26T08:00:05Z",
+                                "2026-05-26T08:00:00Z",
+                                "active",
+                                "hourly_scheduled",
+                                (BigDecimal) null)));
+        when(snapshotRepository.findPreviousSnapshot(APPLICATION_ID, offset("2026-05-26T08:00:00Z"), SNAPSHOT_CUTOFF))
+                .thenReturn(Optional.empty());
+
+        DashboardSnapshotMarkerReadModel markers = service.getMarkers(PROJECT_ID, APPLICATION_ID, "24h", "50")
+                .orElseThrow();
+
+        assertThat(markers.markers())
+                .extracting(marker -> marker.snapshotId())
+                .containsExactly(SNAPSHOT_EARLIER);
+        assertThat(markers.markers().get(0).currentWindowEndUtc())
+                .isEqualTo(offset("2026-05-26T08:00:00Z"));
+        assertThat(markers.emptyState()).isNull();
+        verify(snapshotRepository, never()).findPreviousSnapshot(
+                APPLICATION_ID,
+                offset("2026-05-26T08:08:30Z"),
+                SNAPSHOT_CUTOFF);
+    }
+
+    @Test
+    void offSlotFallbackRowsOnlyReturnNormalEmptyMarkerCollection() {
+        when(snapshotRepository.findMarkerRows(
+                PROJECT_ID,
+                APPLICATION_ID,
+                offset("2026-05-25T08:10:35Z"),
+                offset("2026-05-26T08:10:35Z"),
+                50))
+                .thenReturn(List.of(
+                        row(SNAPSHOT_OFF_SLOT,
+                                "2026-05-26T08:08:35Z",
+                                "2026-05-26T08:08:30Z",
+                                "active",
+                                "query_fallback",
+                                (BigDecimal) null)));
+
+        DashboardSnapshotMarkerReadModel markers = service.getMarkers(PROJECT_ID, APPLICATION_ID, "24h", "50")
+                .orElseThrow();
+
+        assertThat(markers.emptyState().reasonCode()).isEqualTo("no_snapshots_in_retention");
+        assertThat(markers.markers()).isEmpty();
+        verify(snapshotRepository, never()).findPreviousSnapshot(
+                APPLICATION_ID,
+                offset("2026-05-26T08:08:30Z"),
+                SNAPSHOT_CUTOFF);
     }
 
     @Test

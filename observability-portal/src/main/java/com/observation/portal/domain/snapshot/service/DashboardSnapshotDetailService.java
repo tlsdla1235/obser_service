@@ -88,6 +88,33 @@ public class DashboardSnapshotDetailService {
                 .map(row -> toReadModel(requiredProjectId, requiredApplicationId, row, snapshotCutoffUtc));
     }
 
+    /**
+     * snapshot mode가 live dashboard surface를 같은 컴포넌트로 복원하도록 저장된 full read model JSON을 그대로 반환한다.
+     *
+     * <p>catalog path 정합성과 retention은 {@link #getDetail}과 동일하게 검증한다. capture 시 enricher가 mode=snapshot,
+     * readSemantics=snapshot으로 덮어쓴 full read model을 저장하므로, 추가 가공/역직렬화 없이 stored `read_model_json`
+     * 문자열을 그대로 내려준다. (record 다중 생성자 round-trip은 일부 필드를 잃을 수 있어 raw passthrough가 충실하다.)</p>
+     */
+    @Transactional(readOnly = true)
+    public Optional<String> getStoredReadModelJson(
+            UUID projectId,
+            UUID applicationId,
+            UUID snapshotId) {
+        UUID requiredProjectId = Objects.requireNonNull(projectId, "projectId must not be null");
+        UUID requiredApplicationId = Objects.requireNonNull(applicationId, "applicationId must not be null");
+        UUID requiredSnapshotId = Objects.requireNonNull(snapshotId, "snapshotId must not be null");
+        if (applicationRepository.findByIdAndProjectId(requiredApplicationId, requiredProjectId).isEmpty()) {
+            return Optional.empty();
+        }
+        OffsetDateTime snapshotCutoffUtc = snapshotCutoffUtc();
+        return dashboardSnapshotRepository.findDetailRow(
+                        requiredProjectId,
+                        requiredApplicationId,
+                        requiredSnapshotId)
+                .filter(row -> snapshotInRetention(row, snapshotCutoffUtc))
+                .map(DashboardSnapshotDetailRow::readModelJson);
+    }
+
     private OffsetDateTime snapshotCutoffUtc() {
         return OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)
                 .minusDays(retentionDays);

@@ -377,7 +377,7 @@ class LifecycleStateServiceTest {
     }
 
     @Test
-    void entersDegradedOnlyWhenTypedHysteresisInputPassesAllEnterGuards() {
+    void entersDegradedBeforeAttentionAndUsesAttentionForConcernBelowBadBucketThreshold() {
         AcceptedBucketFreshness currentFreshness = freshnessEvaluator.evaluate(QUERY_AT.minusSeconds(30));
 
         assertThat(service.decide(
@@ -391,15 +391,19 @@ class LifecycleStateServiceTest {
         assertThat(service.decide(
                         metricInput(currentFreshness, DegradedHysteresisInput.of(true, true, 0.74, 5, false, 0)),
                         StarterConnectionInput.recentHeartbeat(RECENT_HEARTBEAT_AT))
+                .metricState().code()).isEqualTo(LifecycleStateCode.ATTENTION);
+        assertThat(service.decide(
+                        metricInput(currentFreshness, DegradedHysteresisInput.of(true, true, 0.64, 5, false, 0)),
+                        StarterConnectionInput.recentHeartbeat(RECENT_HEARTBEAT_AT))
                 .metricState().code()).isEqualTo(LifecycleStateCode.ACTIVE);
         assertThat(service.decide(
                         metricInput(currentFreshness, DegradedHysteresisInput.of(true, true, 0.95, 2, false, 0)),
                         StarterConnectionInput.recentHeartbeat(RECENT_HEARTBEAT_AT))
-                .metricState().code()).isEqualTo(LifecycleStateCode.ACTIVE);
+                .metricState().code()).isEqualTo(LifecycleStateCode.ATTENTION);
         assertThat(service.decide(
                         metricInput(currentFreshness, DegradedHysteresisInput.of(true, true, 0.95, 1, false, 0)),
                         StarterConnectionInput.recentHeartbeat(RECENT_HEARTBEAT_AT))
-                .metricState().code()).isEqualTo(LifecycleStateCode.ACTIVE);
+                .metricState().code()).isEqualTo(LifecycleStateCode.ATTENTION);
     }
 
     @Test

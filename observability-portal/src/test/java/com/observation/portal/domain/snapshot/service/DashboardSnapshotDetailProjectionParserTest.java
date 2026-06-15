@@ -3,8 +3,12 @@ package com.observation.portal.domain.snapshot.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotDetailReadModel.InstanceSummaryItem;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotDetailReadModel.SnapshotEndpointEvidenceRef;
+import com.observation.portal.domain.snapshot.model.DashboardSnapshotDetailReadModel.StoredReadModel;
 import com.observation.portal.domain.snapshot.model.DashboardSnapshotStoredReadModelProjection;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -71,18 +75,20 @@ class DashboardSnapshotDetailProjectionParserTest {
                 }
                 """);
 
-        assertThat(projection.readModel().schemaVersion().asText()).isEqualTo("dashboard_read_model.v1");
-        assertThat(projection.readModel().mode().asText()).isEqualTo("snapshot");
-        assertThat(projection.readModel().window().path("type").asText()).isEqualTo("recent_30_minutes");
-        assertThat(projection.readModel().thresholds().path("minimumRequestCount").asLong()).isEqualTo(30L);
-        assertThat(projection.readModel().operatorSummary().path("headline").asText()).isEqualTo("저장된 요약");
-        assertThat(projection.readModel().dataQuality().path("limitations").get(0).asText())
+        assertThat(projection.readModel().schemaVersion()).isEqualTo("dashboard_read_model.v1");
+        assertThat(projection.readModel().mode()).isEqualTo("snapshot");
+        assertThat(asMap(projection.readModel().window())).containsEntry("type", "recent_30_minutes");
+        assertThat(asNumber(asMap(projection.readModel().thresholds()).get("minimumRequestCount")).longValue())
+                .isEqualTo(30L);
+        assertThat(asMap(projection.readModel().operatorSummary())).containsEntry("headline", "저장된 요약");
+        assertThat(asList(asMap(projection.readModel().dataQuality()).get("limitations")).get(0))
                 .isEqualTo("baseline_comparison_not_used_for_mvp");
-        assertThat(projection.readModel().signals().path("red").path("requestCount").asLong()).isEqualTo(120L);
-        assertThat(projection.readModel().stateReasons()).isEmpty();
-        assertThat(projection.readModel().attentionEvidence()).isEmpty();
-        assertThat(projection.readModel().firstLookCandidates()).isEmpty();
-        assertThat(projection.readModel().readSemantics().path("source").asText())
+        assertThat(asNumber(asMap(asMap(projection.readModel().signals()).get("red")).get("requestCount")).longValue())
+                .isEqualTo(120L);
+        assertThat(asList(projection.readModel().stateReasons())).isEmpty();
+        assertThat(asList(projection.readModel().attentionEvidence())).isEmpty();
+        assertThat(asList(projection.readModel().firstLookCandidates())).isEmpty();
+        assertThat(asMap(projection.readModel().readSemantics()).get("source"))
                 .isEqualTo("dashboard_snapshots.read_model_json");
         assertThat(projection.snapshotEndpointEvidence().source())
                 .isEqualTo("dashboard_snapshots.read_model_json.endpointPriority");
@@ -144,23 +150,25 @@ class DashboardSnapshotDetailProjectionParserTest {
                 }
                 """);
 
-        assertThat(projection.readModel().schemaVersion().asText()).isEqualTo("dashboard_read_model.v1");
-        assertThat(projection.readModel().mode().asText()).isEqualTo("snapshot");
-        assertThat(projection.readModel().window().path("type").asText()).isEqualTo("recent_30_minutes");
-        assertThat(projection.readModel().window().path("startUtc").asText())
+        assertThat(projection.readModel().schemaVersion()).isEqualTo("dashboard_read_model.v1");
+        assertThat(projection.readModel().mode()).isEqualTo("snapshot");
+        assertThat(asMap(projection.readModel().window())).containsEntry("type", "recent_30_minutes");
+        assertThat(asMap(projection.readModel().window()).get("startUtc"))
                 .isEqualTo("2026-05-25T10:02:30Z");
-        assertThat(projection.readModel().thresholds().path("minimumRequestCount").asLong()).isEqualTo(30L);
-        assertThat(projection.readModel().operatorSummary().path("primaryProblemCode").asText())
+        assertThat(asNumber(asMap(projection.readModel().thresholds()).get("minimumRequestCount")).longValue())
+                .isEqualTo(30L);
+        assertThat(asMap(projection.readModel().operatorSummary()).get("primaryProblemCode"))
                 .isEqualTo("application_error_rate_high");
-        assertThat(projection.readModel().dataQuality().path("limitations").get(0).asText())
+        assertThat(asList(asMap(projection.readModel().dataQuality()).get("limitations")).get(0))
                 .isEqualTo("legacy_snapshot_without_canonical_fields");
-        assertThat(projection.readModel().dataQuality().path("limitations").get(1).asText())
+        assertThat(asList(asMap(projection.readModel().dataQuality()).get("limitations")).get(1))
                 .isEqualTo("baseline_comparison_not_used_for_mvp");
-        assertThat(projection.readModel().signals().path("red").path("requestCount").asLong()).isEqualTo(91L);
-        assertThat(projection.readModel().readSemantics().path("source").asText())
+        assertThat(asNumber(asMap(asMap(projection.readModel().signals()).get("red")).get("requestCount")).longValue())
+                .isEqualTo(91L);
+        assertThat(asMap(projection.readModel().readSemantics()).get("source"))
                 .isEqualTo("dashboard_snapshots.read_model_json");
-        assertThat(projection.readModel().readSemantics().path("snapshotDetailRecalculates").asBoolean())
-                .isFalse();
+        assertThat(asMap(projection.readModel().readSemantics()).get("snapshotDetailRecalculates"))
+                .isEqualTo(false);
         assertThat(projection.instanceSummary().schemaVersion()).isEqualTo("dashboard_read_model.v1");
     }
 
@@ -180,8 +188,7 @@ class DashboardSnapshotDetailProjectionParserTest {
         assertThat(projection.instanceSummary().unavailableReason())
                 .isEqualTo("stored_instance_summary_unavailable");
         assertThat(projection.instanceSummary().items()).isEmpty();
-        assertThat(projection.readModel().triageCards().isArray()).isTrue();
-        assertThat(projection.readModel().triageCards()).isEmpty();
+        assertThat(asList(projection.readModel().triageCards())).isEmpty();
     }
 
     @Test
@@ -192,5 +199,48 @@ class DashboardSnapshotDetailProjectionParserTest {
         assertThatThrownBy(() -> parser.project("{"))
                 .isInstanceOf(DashboardSnapshotProjectionException.class)
                 .hasMessageContaining("projection failed");
+    }
+
+    @Test
+    void publicResponseProjectionRejectsJacksonTreeValues() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+
+        assertThatThrownBy(() -> new StoredReadModel(
+                mapper.readTree("\"dashboard_read_model.v1\""),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("plain JSON-compatible value");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asMap(Object value) {
+        return (Map<String, Object>) value;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Object> asList(Object value) {
+        return (List<Object>) value;
+    }
+
+    private static Number asNumber(Object value) {
+        return (Number) value;
     }
 }

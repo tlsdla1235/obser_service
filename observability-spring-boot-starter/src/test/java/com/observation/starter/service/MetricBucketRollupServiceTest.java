@@ -132,6 +132,24 @@ class MetricBucketRollupServiceTest {
     }
 
     @Test
+    void resourceSamplesCanCreateClosedBucketWithoutHttpTraffic() {
+        MetricBucketRollupService service = new MetricBucketRollupService();
+
+        service.recordJvmMetricSample(new JvmMetricSample(Instant.parse("2026-05-08T01:00:10Z"), 0.31d, 0.42d));
+
+        ClosedMetricBucket bucket = service.drainClosedBuckets(Instant.parse("2026-05-08T01:01:00Z")).get(0);
+
+        assertEquals(0, bucket.appSummary().requestCount());
+        assertEquals(0, bucket.appSummary().errorCount());
+        assertTrue(bucket.endpointRollups().isEmpty());
+        assertEquals(0.31d, bucket.appSummary().jvm().orElseThrow().cpuUsageRatio());
+        assertEquals(0.42d, bucket.appSummary().jvm().orElseThrow().heapUsedRatio());
+        assertTrue(bucket.appSummary().datasource().isEmpty());
+        assertEquals(0, countFor(bucket.appSummary().httpServerDurationBuckets(), 50));
+        assertEquals(0, countFor(bucket.appSummary().httpServerDurationBuckets(), 1000));
+    }
+
+    @Test
     void drainsOnlyAfterBucketDurationGraceWindowAsFlushCandidates() {
         MetricBucketRollupService service = new MetricBucketRollupService();
         service.recordHttpServerObservation(http("GET", "/health",

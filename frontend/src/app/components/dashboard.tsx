@@ -29,26 +29,27 @@ import { type AuthFetch, useAuth } from "../lib/auth";
 import { guardApplicationDashboardReadModel } from "../lib/read-model-contract-guard";
 import { useApiResource } from "../lib/use-api-resource";
 import {
+  buildSnapshotDetailPath,
   buildStarterCredentialMetadataPath,
   buildStarterCredentialRevocationPath,
   buildStarterCredentialRotationPath,
   formatCount,
-  formatDateRange,
   formatNullableRatio,
   formatOptionalDateTime,
   formatRatio,
-  histogramRangeBarWidth,
+  humanizeCaptureReason,
   humanizeSourceCode,
   humanizeStatusCode,
   severityBadgeClassName,
   severityDisplayText,
+  snapshotIdFromDetailPath,
   statusBadgeClassName,
   toApplicationPresentationItems,
   toDashboardPresentation,
-  toDisplayLatencyBuckets,
   toProjectPresentationItems,
   validateDashboardPath,
   validateProjectApplicationsPath,
+  validateSnapshotDetailPath,
   type ApplicationPresentationItem,
   type DashboardPresentation,
   type ProjectPresentationItem,
@@ -60,7 +61,7 @@ import type {
   DashboardResourceSignal,
   DashboardStateReason,
   EndpointPriorityItem,
-  HistogramWindow,
+  HistogramBucket,
   OneTimeStarterCredential,
   ProjectRegistrationResponse,
   ProjectApplicationNavigationReadModel,
@@ -73,9 +74,23 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { InstancePanels, useInstanceView } from "./instance-panels";
+import type { InstanceDashboardTarget, SnapshotInstanceDashboardTarget } from "./instance-dashboard-surface";
 import { SnapshotHistoryPanel } from "./snapshot-history-panel";
+import { type SnapshotDetailTarget } from "./snapshot-detail-surface";
 
 type ResourceScope = "applications" | "dashboard" | "projects";
+
+type InstanceSummaryOpenAction =
+  | {
+      mode: "live";
+      open: (target: InstanceDashboardTarget) => void;
+    }
+  | {
+      mode: "snapshot";
+      open: (target: SnapshotInstanceDashboardTarget) => void;
+      snapshotDetailLink: string;
+      snapshotId: string;
+    };
 
 function StatusBadge({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
@@ -558,6 +573,36 @@ function ApplicationRail({
   );
 }
 
+/**
+ * live와 snapshot이 동일하게 쓰는 dashboard panel tree다.
+ * snapshot mode는 같은 컴포넌트에 mode=snapshot presentation만 주입한다.
+ */
+function DashboardPanels({
+  dashboard,
+  instanceOpenAction,
+  mode = "live",
+  selectedProject,
+}: {
+  dashboard: DashboardPresentation;
+  instanceOpenAction: InstanceSummaryOpenAction;
+  mode?: "live" | "snapshot";
+  selectedProject: ProjectPresentationItem;
+}) {
+  return (
+    <>
+      <DashboardContext dashboard={dashboard} mode={mode} selectedProject={selectedProject} />
+      <LifecycleStateHero dashboard={dashboard} />
+      <StarterConnectionStrip dashboard={dashboard} />
+      <DataQualityFreshnessStrip dashboard={dashboard} />
+      <GoldenSignalsGrid dashboard={dashboard} />
+      <FirstLookCandidatesPanel candidates={dashboard.firstLookCandidates} />
+      <EndpointPriorityPanel dashboard={dashboard} />
+      <ResourceSignalsPanel dashboard={dashboard} />
+      <InstancesPanel dashboard={dashboard} openAction={instanceOpenAction} />
+    </>
+  );
+}
+
 function DashboardMain({
   dashboard,
   error,
@@ -577,6 +622,12 @@ function DashboardMain({
   selectedApplication: ApplicationPresentationItem | null;
   selectedProject: ProjectPresentationItem | null;
 }) {
+  const [snapshotTarget, setSnapshotTarget] = useState<SnapshotDetailTarget | null>(null);
+
+  useEffect(() => {
+    setSnapshotTarget(null);
+  }, [selectedApplication?.applicationId, selectedProject?.projectId]);
+
   if (!selectedProject) {
     return <MainMessage title="Project를 선택하세요" body="Project 목록이 로드된 뒤 application 목록을 불러옵니다." />;
   }
@@ -594,43 +645,209 @@ function DashboardMain({
   }
   return (
     <div className="grid gap-4 p-3 md:p-5">
-      <DashboardContext selectedProject={selectedProject} dashboard={dashboard} />
-      <DataQualityFreshnessStrip dashboard={dashboard} />
-      <LifecycleStateHero dashboard={dashboard} />
-      <DirectStateReasonsPanel reasons={dashboard.stateReasons} />
-      <AttentionAndFirstLookPanel
-        evidence={dashboard.attentionEvidence}
-        firstLookCandidates={dashboard.firstLookCandidates}
-      />
-      <EndpointResourceEvidencePanel dashboard={dashboard} />
-      <MetricDetailSection dashboard={dashboard} />
-      <StarterConnectionStrip dashboard={dashboard} />
-      <InstancesPanel dashboard={dashboard} onOpenEvidence={onOpenEvidence} />
+      {snapshotTarget ? (
+        <SnapshotModeSurface
+          onBackToLive={() => setSnapshotTarget(null)}
+          onOpenSnapshotDashboard={onOpenSnapshotDashboard}
+          selectedApplication={selectedApplication}
+          selectedProject={selectedProject}
+          target={snapshotTarget}
+        />
+      ) : (
+        <DashboardPanels
+          dashboard={dashboard}
+          instanceOpenAction={{ mode: "live", open: onOpenEvidence }}
+          selectedProject={selectedProject}
+        />
+      )}
       <SnapshotHistoryPanel
-        dashboard={dashboard}
-        onOpenSnapshotInstanceDashboard={onOpenSnapshotDashboard}
+        onRestoreSnapshotDashboard={setSnapshotTarget}
         selectedApplication={selectedApplication}
         selectedProject={selectedProject}
       />
-      <CredentialLifecyclePanel selectedProject={selectedProject} />
+      {!snapshotTarget && (
+        <details className="border border-neutral-200 bg-white">
+          <summary className="cursor-pointer px-3 py-2.5 text-[11px] uppercase text-neutral-500">
+            Starter credential lifecycle
+          </summary>
+          <div className="border-t border-neutral-100 p-3">
+            <CredentialLifecyclePanel selectedProject={selectedProject} />
+          </div>
+        </details>
+      )}
     </div>
   );
 }
 
-function DashboardContext({ dashboard, selectedProject }: { dashboard: DashboardPresentation; selectedProject: ProjectPresentationItem }) {
+/**
+ * snapshot slot 클릭 시 저장된 read model을 live와 동일한 컴포넌트로 복원하는 surface다.
+ * 별도 detail 화면으로 redirect하지 않고 같은 자리에서 mode=snapshot으로 전환한 뒤 상단으로 scroll한다.
+ */
+function SnapshotModeSurface({
+  onBackToLive,
+  onOpenSnapshotDashboard,
+  selectedApplication,
+  selectedProject,
+  target,
+}: {
+  onBackToLive: () => void;
+  onOpenSnapshotDashboard: ReturnType<typeof useInstanceView>["openSnapshotDashboard"];
+  selectedApplication: ApplicationPresentationItem;
+  selectedProject: ProjectPresentationItem;
+  target: SnapshotDetailTarget;
+}) {
+  const topRef = useRef<HTMLDivElement | null>(null);
+  const readModelPath = snapshotReadModelPath(target, selectedProject, selectedApplication);
+  const resourceKey = `snapshot-read-model:${readModelPath}`;
+  const instanceOpenAction = useMemo(
+    () => snapshotInstanceOpenAction(target, selectedProject, selectedApplication, onOpenSnapshotDashboard),
+    [onOpenSnapshotDashboard, selectedApplication, selectedProject, target],
+  );
+
+  const requestSnapshotReadModel = useCallback(
+    async ({ authFetch, signal }: { authFetch: AuthFetch; signal: AbortSignal }) => {
+      const response = await authFetch(readModelPath, { ...NO_STORE_REQUEST_OPTIONS, signal });
+      return guardApplicationDashboardReadModel(await readJsonResource<ApplicationDashboardReadModel>(response), {
+        applicationId: selectedApplication.applicationId,
+        expectedMode: "snapshot",
+        projectId: selectedProject.projectId,
+      });
+    },
+    [readModelPath, selectedApplication.applicationId, selectedProject.projectId],
+  );
+
+  const resource = useApiResource<ApplicationDashboardReadModel>({
+    dependencies: [resourceKey],
+    request: requestSnapshotReadModel,
+    resourceKey,
+  });
+
+  const current = resource.resourceKey === resourceKey;
+  const loading = !current || resource.loading;
+  const error = current ? resource.error : null;
+  const model = current ? resource.data : null;
+  const presentation = useMemo(() => (model ? toDashboardPresentation(model) : null), [model]);
+
+  useEffect(() => {
+    topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [target]);
+
+  return (
+    <div ref={topRef} className="grid gap-4 scroll-mt-4">
+      <SnapshotModeBanner onBackToLive={onBackToLive} presentation={presentation} target={target} />
+      {loading && <MainMessage title="Snapshot 복원 중" body="저장된 read model을 live surface로 불러오는 중입니다." />}
+      {error && <ResourceErrorMessage scope="dashboard" error={error} onReload={resource.reload} roomy />}
+      {!loading && !error && presentation && (
+        <DashboardPanels
+          dashboard={presentation}
+          instanceOpenAction={instanceOpenAction}
+          mode="snapshot"
+          selectedProject={selectedProject}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * snapshot mode의 Instance summary action은 selected snapshot id를 target에 고정한다.
+ * snapshotId가 없는 legacy 진입은 snapshot detail link에서 id를 파싱해 live/current evidence로 흐르지 않게 한다.
+ */
+function snapshotInstanceOpenAction(
+  target: SnapshotDetailTarget,
+  selectedProject: ProjectPresentationItem,
+  selectedApplication: ApplicationPresentationItem,
+  open: ReturnType<typeof useInstanceView>["openSnapshotDashboard"],
+): InstanceSummaryOpenAction {
+  const snapshotDetailLink = target.snapshotLink
+    ? validateSnapshotDetailPath(target.snapshotLink, selectedProject.projectId, selectedApplication.applicationId, target.snapshotId)
+    : buildSnapshotDetailPath(selectedProject.projectId, selectedApplication.applicationId, target.snapshotId ?? "");
+  const snapshotId = target.snapshotId ?? snapshotIdFromDetailPath(snapshotDetailLink);
+  validateSnapshotDetailPath(snapshotDetailLink, selectedProject.projectId, selectedApplication.applicationId, snapshotId);
+  return {
+    mode: "snapshot",
+    open,
+    snapshotDetailLink,
+    snapshotId,
+  };
+}
+
+/**
+ * snapshot mode 진입 안내와 live 복귀 버튼, 저장 시점 provenance를 보여주는 상단 banner다.
+ */
+function SnapshotModeBanner({
+  onBackToLive,
+  presentation,
+  target,
+}: {
+  onBackToLive: () => void;
+  presentation: DashboardPresentation | null;
+  target: SnapshotDetailTarget;
+}) {
+  const captureReason = target.captureReason ? humanizeCaptureReason(target.captureReason) : null;
+  return (
+    <section className="flex flex-wrap items-start justify-between gap-3 border border-amber-300 bg-amber-50 p-3">
+      <div className="min-w-0">
+        <SectionLabel icon={Radio}>Snapshot mode</SectionLabel>
+        <div className="mt-1 text-[13px] font-medium text-neutral-900">
+          저장된 시점을 live와 동일한 dashboard로 복원했습니다.
+        </div>
+        <div className="mt-1 text-[11px] text-neutral-600">
+          {presentation
+            ? `생성 ${presentation.generatedAtDisplay} · window ${presentation.canonicalWindowDisplay}${captureReason ? ` · ${captureReason}` : ""}`
+            : captureReason ?? "저장된 read model을 불러오는 중입니다."}
+        </div>
+      </div>
+      <Button
+        variant="outline"
+        className="h-9 gap-1.5 border-neutral-300 bg-white px-3 text-[12px] font-medium text-neutral-900 hover:border-neutral-500 hover:bg-neutral-50"
+        onClick={onBackToLive}
+      >
+        <Radio className="h-3.5 w-3.5" strokeWidth={1.5} /> 라이브로 돌아가기
+      </Button>
+    </section>
+  );
+}
+
+/**
+ * snapshot read model API path를 만든다. marker가 준 self link 뒤에 `/read-model`을 붙이고, 없으면 id로 직접 만든다.
+ */
+function snapshotReadModelPath(
+  target: SnapshotDetailTarget,
+  selectedProject: ProjectPresentationItem,
+  selectedApplication: ApplicationPresentationItem,
+): string {
+  const base =
+    target.snapshotLink ??
+    `/api/projects/${selectedProject.projectId}/applications/${selectedApplication.applicationId}/dashboard/snapshots/${target.snapshotId ?? ""}`;
+  return `${base.replace(/\/+$/, "")}/read-model`;
+}
+
+function DashboardContext({
+  dashboard,
+  mode = "live",
+  selectedProject,
+}: {
+  dashboard: DashboardPresentation;
+  mode?: "live" | "snapshot";
+  selectedProject: ProjectPresentationItem;
+}) {
+  const snapshotMode = mode === "snapshot";
   const baselineSignal = dashboard.readSemantics.baselineComparisonUsedForMvpDecision ? "baseline used" : "baseline not used";
   return (
     <section className="border border-neutral-900 bg-white">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-neutral-200 p-3">
         <div className="min-w-0">
-          <SectionLabel icon={Activity}>Application Dashboard / Live</SectionLabel>
+          <SectionLabel icon={Activity}>Application Dashboard / {snapshotMode ? "Snapshot" : "Live"}</SectionLabel>
           <h1 className="mt-1 text-[22px] font-medium leading-tight text-neutral-950">{dashboard.application.name}</h1>
           <p className="mt-1 text-[12px] text-neutral-600">
-            Server read model을 표시합니다. UI는 lifecycle state, endpoint priority, resource pattern을 재계산하지 않습니다.
+            {snapshotMode
+              ? "저장된 read model을 live와 동일한 surface로 복원합니다. 현재 metric으로 재계산하지 않습니다."
+              : "Server read model을 표시합니다. UI는 lifecycle state, endpoint priority, resource pattern을 재계산하지 않습니다."}
           </p>
         </div>
         <div className="flex max-w-full flex-wrap gap-1.5">
-          <StatusBadge className={statusBadgeClassName("live")}>mode={dashboard.mode}</StatusBadge>
+          <StatusBadge className={statusBadgeClassName(snapshotMode ? "attention" : "live")}>mode={dashboard.mode}</StatusBadge>
           <StatusBadge className={statusBadgeClassName("info")}>{dashboard.window.type}</StatusBadge>
           <StatusBadge>{dashboard.readSemantics.source}</StatusBadge>
           <StatusBadge>{baselineSignal}</StatusBadge>
@@ -654,40 +871,41 @@ function DashboardContext({ dashboard, selectedProject }: { dashboard: Dashboard
 
 function DataQualityFreshnessStrip({ dashboard }: { dashboard: DashboardPresentation }) {
   return (
-    <div className="border border-neutral-200 bg-white p-3">
-      <div className="flex items-center justify-between gap-3">
+    <details className="border border-neutral-200 bg-white">
+      <summary className="grid cursor-pointer gap-2 px-3 py-2.5 text-[11px] uppercase text-neutral-500 md:grid-cols-[minmax(180px,0.55fr)_minmax(0,1.4fr)_minmax(200px,0.8fr)]">
         <SectionLabel icon={Activity}>Data quality / freshness</SectionLabel>
-        <StatusBadge className={statusBadgeClassName(dashboard.dataQuality.state)}>
-          {humanizeStatusCode(dashboard.dataQuality.state)}
-        </StatusBadge>
+        <span className="text-neutral-700">
+          {formatCount(dashboard.dataQuality.requestCount)} / 최소 {formatCount(dashboard.dataQuality.minimumRequestCount)}
+        </span>
+        <span className="text-neutral-700">{humanizeStatusCode(dashboard.dataQuality.state)} · {dashboard.dataQualityLastObservedDisplay}</span>
+      </summary>
+      <div className={`grid gap-3 border-t border-neutral-100 border-l-4 p-3 md:grid-cols-[minmax(180px,0.55fr)_minmax(0,1.4fr)_minmax(200px,0.8fr)] md:items-center ${stateStripAccentClassName(dashboard.dataQuality.state)}`}>
+        <div>
+          <StatusBadge className={statusBadgeClassName(dashboard.dataQuality.state)}>
+            {humanizeStatusCode(dashboard.dataQuality.state)}
+          </StatusBadge>
+          <h2 className="mt-2 text-[16px] font-medium leading-tight text-neutral-950">
+            {formatCount(dashboard.dataQuality.requestCount)} / 최소 {formatCount(dashboard.dataQuality.minimumRequestCount)}
+          </h2>
+        </div>
+        <div className="text-[13px] leading-5 text-neutral-900">
+          마지막 관측 {dashboard.dataQualityLastObservedDisplay}
+          <p className="text-[12px] text-neutral-600">마지막 수집 구간 {dashboard.lastAcceptedBucketDisplay}</p>
+        </div>
+        <div className="text-[12px] text-neutral-600">
+          <p>stale {formatOptionalDateTime(dashboard.application.freshness.staleAt)}</p>
+          <p>down {formatOptionalDateTime(dashboard.application.freshness.downAt)}</p>
+          <p className="mt-1 text-[11px] text-neutral-500">
+            baseline not used · histogram percentile {dashboard.readSemantics.histogramBucketsUsedForPercentiles ? "사용" : "사용 안 함"}
+          </p>
+          <p className="mt-1 truncate text-[11px] text-neutral-500" title={dashboard.dataQuality.limitations.map(humanizeStatusCode).join(" · ")}>
+            {dashboard.dataQuality.limitations.length > 0
+              ? dashboard.dataQuality.limitations.map(humanizeStatusCode).join(" · ")
+              : "서버가 별도 data quality limitation을 제공하지 않았습니다."}
+          </p>
+        </div>
       </div>
-      <div className="mt-3 grid grid-cols-1 gap-2 text-[11px] text-neutral-600 sm:grid-cols-2 lg:grid-cols-4">
-        <InfoCell label="판단 요청 수" value={`${formatCount(dashboard.dataQuality.requestCount)} / 최소 ${formatCount(dashboard.dataQuality.minimumRequestCount)}`} />
-        <InfoCell label="마지막 관측" value={dashboard.dataQualityLastObservedDisplay} />
-        <InfoCell label="마지막 수집 구간" value={dashboard.lastAcceptedBucketDisplay} />
-        <InfoCell label="baseline" value="baseline not used" />
-        <InfoCell label="stale 기준" value={formatOptionalDateTime(dashboard.application.freshness.staleAt)} />
-        <InfoCell label="down 기준" value={formatOptionalDateTime(dashboard.application.freshness.downAt)} />
-        <InfoCell label="histogram percentile" value={dashboard.readSemantics.histogramBucketsUsedForPercentiles ? "사용" : "사용 안 함"} />
-        <InfoCell label="분포 source" value={dashboard.readSemanticsBucketSourceDisplay} />
-      </div>
-      <LimitationList limitations={dashboard.dataQuality.limitations} />
-    </div>
-  );
-}
-
-function LimitationList({ limitations }: { limitations: string[] }) {
-  if (limitations.length === 0) {
-    return <div className="mt-3 text-[12px] text-neutral-500">서버가 별도 data quality limitation을 제공하지 않았습니다.</div>;
-  }
-  return (
-    <ul className="mt-3 grid grid-cols-1 gap-2 text-[12px] text-neutral-600 md:grid-cols-2">
-      {limitations.map((limitation) => (
-        <li key={limitation} className="border-l-2 border-neutral-300 pl-2">
-          {humanizeStatusCode(limitation)}
-        </li>
-      ))}
-    </ul>
+    </details>
   );
 }
 
@@ -705,11 +923,14 @@ function LifecycleStateHero({ dashboard }: { dashboard: DashboardPresentation })
           </InlineHelp>
         </div>
         <StatusBadge className={`mt-2 ${dashboard.metricStateClassName}`}>{applicationStateDisplayText(dashboard.state.code)}</StatusBadge>
-        <h2 className="mt-2 text-[16px] font-medium leading-tight text-neutral-950">{dashboard.operatorSummary.headline}</h2>
+        <h2 className="mt-2 text-[16px] font-medium leading-tight text-neutral-950">{applicationStateDisplayText(dashboard.state.code)}</h2>
       </div>
-      <p className="text-[13px] text-neutral-900">{applicationStateSummary(dashboard)}</p>
+      <div className="text-[13px] text-neutral-900">
+        <p className="line-clamp-1">{dashboard.operatorSummary.headline}</p>
+        <p className="line-clamp-2 text-[12px] text-neutral-600">{applicationStateSummary(dashboard)}</p>
+      </div>
       <div className="text-[12px] text-neutral-600">
-        <p>{dashboard.state.recommendedAction}</p>
+        <p className="line-clamp-2">{dashboard.state.recommendedAction}</p>
         {dashboard.recovery.isRecovering && (
           <p className="mt-2 border border-neutral-300 bg-neutral-50 p-2">
             {dashboard.recovery.recommendedAction ?? "회복 여부를 확정하지 말고 다음 수집 데이터까지 관찰하세요."}
@@ -730,6 +951,8 @@ function stateStripAccentClassName(code: string): string {
     case "down":
       return "border-l-red-700";
     case "degraded":
+      return "border-l-red-700";
+    case "attention":
     case "stale":
     case "waiting_first_data":
       return "border-l-amber-600";
@@ -816,25 +1039,25 @@ function EvidenceListPanel({
 function FirstLookCandidatesPanel({ candidates }: { candidates: DashboardFirstLookCandidate[] }) {
   return (
     <div className="border border-neutral-200 bg-white">
-      <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2.5">
-        <SectionLabel icon={ListChecks}>First look candidates</SectionLabel>
+      <div className="flex items-start justify-between gap-3 border-b border-neutral-200 px-3 py-2.5">
+        <div>
+          <SectionLabel icon={ListChecks}>First look candidates</SectionLabel>
+          <p className="mt-1 text-[12px] text-neutral-500">최대 3개만 보여주는 bounded evidence queue입니다.</p>
+        </div>
         <span className="text-[11px] text-neutral-500">server order</span>
       </div>
       {candidates.length === 0 ? (
         <div className="p-3 text-[12px] text-neutral-500">서버가 먼저 볼 후보를 제공하지 않았습니다.</div>
       ) : (
-        <ol>
+        <ol className="grid gap-3 p-3 lg:grid-cols-3">
           {candidates.map((candidate) => (
-            <li key={`${candidate.rank}-${candidate.type}-${candidate.target ?? "none"}`} className="border-b border-neutral-100 p-3 last:border-b-0">
-              <div className="flex items-start gap-3">
-                <span className="text-[12px] tabular-nums text-neutral-400">{String(candidate.rank).padStart(2, "0")}</span>
-                <div>
-                  <div className="text-[13px] text-neutral-900">{candidate.operatorText}</div>
-                  <div className="mt-1 text-[11px] text-neutral-500">
-                    {humanizeStatusCode(candidate.type)} · {candidate.target ?? "target 없음"} · {humanizeSourceCode(candidate.source)}
-                  </div>
-                </div>
+            <li key={`${candidate.rank}-${candidate.type}-${candidate.target ?? "none"}`} className="border border-neutral-200 p-3">
+              <StatusBadge>{humanizeStatusCode(candidate.type)}</StatusBadge>
+              <h3 className="mt-2 text-[14px] font-medium leading-snug text-neutral-950">{candidate.target ?? candidate.reasonCode}</h3>
+              <div className="mt-1 text-[11px] text-neutral-500">
+                rank {candidate.rank} · {humanizeSourceCode(candidate.source)}
               </div>
+              <p className="mt-2 text-[12px] leading-5 text-neutral-700">{candidate.operatorText}</p>
             </li>
           ))}
         </ol>
@@ -845,10 +1068,10 @@ function FirstLookCandidatesPanel({ candidates }: { candidates: DashboardFirstLo
 
 function StarterConnectionStrip({ dashboard }: { dashboard: DashboardPresentation }) {
   return (
-    <div className="border border-neutral-300 bg-white p-3">
-      <div className="flex items-center justify-between gap-3">
+    <div className="grid gap-3 border border-neutral-900 border-l-4 border-l-emerald-600 bg-white p-3 md:grid-cols-[minmax(180px,0.55fr)_minmax(0,1.4fr)_minmax(200px,0.8fr)] md:items-center">
+      <div>
         <div className="flex items-center gap-2">
-          <SectionLabel icon={Radio}>Starter control-plane</SectionLabel>
+          <SectionLabel icon={Radio}>StarterConnection</SectionLabel>
           <InlineHelp label="상태 판단 영향 설명">
             <div className="space-y-1">
               <div>마지막 연결 신호는 앱이 마지막으로 살아 있다고 알려온 시각입니다.</div>
@@ -856,19 +1079,19 @@ function StarterConnectionStrip({ dashboard }: { dashboard: DashboardPresentatio
             </div>
           </InlineHelp>
         </div>
-        <StatusBadge className={statusBadgeClassName(dashboard.starterConnection.lastHeartbeatStatus)}>
+        <StatusBadge className={`mt-2 ${statusBadgeClassName(dashboard.starterConnection.lastHeartbeatStatus)}`}>
           {statusDisplayText(dashboard.starterConnection.lastHeartbeatStatus)}
         </StatusBadge>
+        <h2 className="mt-2 text-[16px] font-medium leading-tight text-neutral-950">Control-plane only</h2>
       </div>
-      <div className="mt-2 text-[13px] text-neutral-900">Control-plane only</div>
-      <div className="mt-1 text-[12px] text-neutral-600">
+      <div className="text-[13px] text-neutral-900">
+        heartbeat {dashboard.starterLastHeartbeatDisplay}, metric state 변경 없음
+      </div>
+      <div className="text-[12px] text-neutral-600">
         heartbeat는 accepted bucket freshness나 application lifecycle state를 직접 만들지 않습니다.
-      </div>
-      <div className="mt-2 grid grid-cols-1 gap-2 text-[12px] sm:grid-cols-2">
-        <InfoCell label="마지막 연결 확인" value={dashboard.starterLastHeartbeatDisplay} />
-        <InfoCell label="연결 의미" value={humanizeStatusCode(dashboard.starterConnection.connectionMeaning)} />
-        <InfoCell label="state impact" value={starterStateImpactText(dashboard.starterConnection.stateImpact)} />
-        <InfoCell label="source" value={humanizeSourceCode(dashboard.starterConnection.statusSource)} />
+        <p className="mt-1 text-[11px] text-neutral-500">
+          {humanizeStatusCode(dashboard.starterConnection.connectionMeaning)} · {humanizeSourceCode(dashboard.starterConnection.statusSource)}
+        </p>
       </div>
     </div>
   );
@@ -877,7 +1100,7 @@ function StarterConnectionStrip({ dashboard }: { dashboard: DashboardPresentatio
 function EndpointResourceEvidencePanel({ dashboard }: { dashboard: DashboardPresentation }) {
   return (
     <div className="space-y-4">
-      <EndpointPriorityPanel items={dashboard.endpointPriority} />
+      <EndpointPriorityPanel dashboard={dashboard} />
       <ResourceSignalsPanel dashboard={dashboard} />
     </div>
   );
@@ -892,11 +1115,11 @@ function ResourceSignalsPanel({ dashboard }: { dashboard: DashboardPresentation 
 
   return (
     <div className="border border-neutral-200 bg-white">
-      <div className="px-4 py-3 border-b border-neutral-200">
+      <div className="border-b border-neutral-200 px-3 py-2.5">
         <SectionLabel icon={Activity}>Resource evidence</SectionLabel>
         <p className="mt-1 text-[12px] text-neutral-500">root cause 확정이 아니라 server read model의 USE hint를 표시합니다.</p>
       </div>
-      <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 p-3 md:grid-cols-3">
         {resources.map(([key, label, signal]) => (
           <ResourceSignalCard key={key} label={label} signal={signal} />
         ))}
@@ -922,27 +1145,9 @@ function ResourceSignalCard({ label, signal }: { label: string; signal: Dashboar
   );
 }
 
-function MetricDetailSection({ dashboard }: { dashboard: DashboardPresentation }) {
-  return (
-    <div className="space-y-4">
-      <div className="border border-neutral-200 bg-white">
-        <div className="px-4 py-3 border-b border-neutral-200">
-          <SectionLabel icon={Gauge}>Metric detail</SectionLabel>
-          <p className="mt-1 text-[12px] text-neutral-500">
-            request/error/slow share와 source-scoped starter percentile, bucket distribution을 표시합니다.
-          </p>
-        </div>
-        <GoldenSignalsGrid dashboard={dashboard} />
-      </div>
-      <SourceScopedPercentilesPanel dashboard={dashboard} />
-      <HistogramPanel dashboard={dashboard} />
-    </div>
-  );
-}
-
 function GoldenSignalsGrid({ dashboard }: { dashboard: DashboardPresentation }) {
   return (
-    <div className="grid grid-cols-1 gap-0 bg-white md:grid-cols-4">
+    <section className="grid grid-cols-1 gap-0 border border-neutral-200 bg-white md:grid-cols-4" aria-label="golden signals">
       <MetricCell label="RED Rate" note="최근 30분 요청량" value={formatCount(dashboard.signals.red.requestCount)} />
       <MetricCell label="RED Errors" note={dashboard.signals.red.errorSemantic} value={formatRatio(dashboard.signals.red.errorRate)} />
       <MetricCell label="RED Duration" note="500ms 초과 요청 비율" value={formatNullableRatio(dashboard.signals.red.slowShareOver500ms)} />
@@ -952,119 +1157,7 @@ function GoldenSignalsGrid({ dashboard }: { dashboard: DashboardPresentation }) 
         value={formatNullableRatio(dashboard.signals.use.datasourcePoolUsage.max)}
         last
       />
-    </div>
-  );
-}
-
-function SourceScopedPercentilesPanel({ dashboard }: { dashboard: DashboardPresentation }) {
-  const source = dashboard.sourceScopedPercentiles;
-  return (
-    <div className="border border-neutral-200 bg-white">
-      <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <SectionLabel icon={Gauge}>Source-scoped p95 / p99</SectionLabel>
-          <InlineHelp label="응답 시간 지표 설명">
-            <div className="space-y-1">
-              <div>Starter canonical percentile source와 instance bucket scope만 표시합니다.</div>
-              <div>여러 instance 값을 평균, 최댓값, 병합하거나 histogram bucket에서 다시 계산하지 않습니다.</div>
-            </div>
-          </InlineHelp>
-        </div>
-        <StatusBadge className={statusBadgeClassName(source.status)}>{statusDisplayText(source.status)}</StatusBadge>
-      </div>
-      <div className="grid grid-cols-1 gap-2 border-b border-neutral-100 px-4 py-3 text-[11px] text-neutral-500 md:grid-cols-3">
-        <InfoCell label="source" value={humanizeSourceCode(source.source)} />
-        <InfoCell label="scope" value={humanizeStatusCode(source.scope)} />
-        <InfoCell label="policy" value={humanizeStatusCode(source.aggregatePolicy)} />
-      </div>
-      {source.items.length === 0 ? (
-        <div className="p-4 text-[12px] text-neutral-600">
-          {sourceScopedEmptyText(source.status, source.reason ? humanizeStatusCode(source.reason) : dashboard.sourceScopedReasonDisplay)}
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-[720px] w-full text-[12px]">
-            <thead>
-              <tr className="text-left text-neutral-500">
-                <th className="px-4 py-2">인스턴스</th>
-                <th className="px-4 py-2">요청 수</th>
-                <th className="px-4 py-2">
-                  <span className="inline-flex items-center gap-1">
-                    p95 응답시간
-                    <InlineHelp label="p95 응답시간 설명">요청 100개 중 95개가 이 시간 안에 끝났다는 뜻입니다.</InlineHelp>
-                  </span>
-                </th>
-                <th className="px-4 py-2">
-                  <span className="inline-flex items-center gap-1">
-                    p99 응답시간
-                    <InlineHelp label="p99 응답시간 설명">매우 느린 일부 요청까지 포함해 tail latency를 보는 기준입니다.</InlineHelp>
-                  </span>
-                </th>
-                <th className="px-4 py-2">측정 구간</th>
-              </tr>
-            </thead>
-            <tbody>
-              {source.items.map((item) => (
-                <tr key={`${item.instance}-${item.bucketEndUtc}`} className="border-t border-neutral-100">
-                  <td className="px-4 py-2 text-neutral-700">{item.instance}</td>
-                  <td className="px-4 py-2 text-neutral-700">{formatCount(item.requestCount)}</td>
-                  <td className="px-4 py-2 text-neutral-900">{item.p95Ms} ms</td>
-                  <td className="px-4 py-2 text-neutral-900">{item.p99Ms} ms</td>
-                  <td className="px-4 py-2 text-neutral-500">{formatDateRange(item.bucketStartUtc, item.bucketEndUtc)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function HistogramPanel({ dashboard }: { dashboard: DashboardPresentation }) {
-  return (
-    <div className="border border-neutral-200 bg-white">
-      <div className="px-4 py-3 border-b border-neutral-200 flex items-center gap-2">
-        <SectionLabel icon={Activity}>Bucket distribution</SectionLabel>
-        <InlineHelp label="응답 시간 구간 설명">
-          accepted bucket 분포를 표시 전용으로 변환합니다. p95/p99나 평균/최댓값 latency를 만들지 않습니다.
-        </InlineHelp>
-      </div>
-      <div className="grid grid-cols-1 gap-2 border-b border-neutral-100 px-4 py-3 text-[11px] text-neutral-500 md:grid-cols-3">
-        <InfoCell label="source" value={humanizeSourceCode(dashboard.histogramDistribution.source)} />
-        <InfoCell label="display policy" value={humanizeStatusCode(dashboard.histogramDistribution.displayPolicy)} />
-        <InfoCell label="percentile source" value={dashboard.readSemantics.histogramBucketsUsedForPercentiles ? "사용" : "사용 안 함"} />
-      </div>
-      <HistogramWindowCard label="최근 30분 분포" window={dashboard.histogramDistribution.current} />
-    </div>
-  );
-}
-
-function HistogramWindowCard({ label, window }: { label: string; window: HistogramWindow }) {
-  const buckets = toDisplayLatencyBuckets(window.buckets);
-  return (
-    <div className="p-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-[11px] uppercase text-neutral-500">{label}</div>
-        <StatusBadge className={statusBadgeClassName(window.status)}>{statusDisplayText(window.status)}</StatusBadge>
-      </div>
-      <div className="mt-1 text-[11px] text-neutral-500">총 요청 수 {formatCount(window.totalCount)}</div>
-      {buckets.length === 0 ? (
-        <div className="mt-3 text-[12px] text-neutral-500">응답 시간 구간 데이터가 아직 없습니다.</div>
-      ) : (
-        <div className="mt-3 space-y-1.5">
-          {buckets.map((bucket) => (
-            <div key={bucket.key} className="flex items-center gap-2 text-[11px]">
-              <span className="w-44 text-neutral-500 tabular-nums">{bucket.label}</span>
-              <div className="h-3 flex-1 border border-neutral-200 bg-neutral-100">
-                <div className="h-full bg-neutral-800" style={{ width: histogramRangeBarWidth(bucket.count, buckets) }} />
-              </div>
-              <span className="w-16 text-right text-neutral-700 tabular-nums">{formatCount(bucket.count)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+    </section>
   );
 }
 
@@ -1125,22 +1218,79 @@ function TriageCardItem({ card }: { card: TriageCard }) {
   );
 }
 
-function EndpointPriorityPanel({ items }: { items: EndpointPriorityItem[] }) {
+type EndpointPrioritySortKey = "server" | "request" | "error" | "slow";
+
+function EndpointPriorityPanel({ dashboard }: { dashboard: DashboardPresentation }) {
+  const items = dashboard.endpointPriority;
+  const [sortKey, setSortKey] = useState<EndpointPrioritySortKey>("server");
+  const [limit, setLimit] = useState(5);
+  const slowSortAvailable = items.some((item) => item.evidence.slowShare !== null);
+  const effectiveSortKey = sortKey === "slow" && !slowSortAvailable ? "server" : sortKey;
+  const sortedItems = useMemo(
+    () => sortEndpointPriorityItems(items, effectiveSortKey),
+    [effectiveSortKey, items],
+  );
+  const limitOptions = endpointLimitOptions(items.length);
+  const effectiveLimit = Math.min(limit, items.length || limit);
+  const visibleItems = sortedItems.slice(0, effectiveLimit);
+  const maxRequestCount = Math.max(0, ...visibleItems.map((item) => item.evidence.requestCount));
+  const maxErrorRate = Math.max(0, ...visibleItems.map((item) => item.evidence.errorRate));
+  const maxSlowShare = Math.max(0, ...visibleItems.map((item) => item.evidence.slowShare ?? 0));
+
   return (
     <div className="border border-neutral-200 bg-white">
-      <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-neutral-200 px-3 py-2.5">
         <div>
           <SectionLabel icon={ListChecks}>Endpoint evidence</SectionLabel>
-          <p className="mt-1 text-[12px] text-neutral-500">server-provided order와 rank를 그대로 표시합니다.</p>
+          <p className="mt-1 text-[12px] text-neutral-500">
+            server가 보낸 endpointPriority 안에서만 정렬하고, p95/p99나 raw path를 만들지 않습니다.
+          </p>
         </div>
-        <span className="text-[11px] text-neutral-500">server order</span>
+        {items.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
+            <select
+              aria-label="endpoint evidence sort"
+              className="h-8 border border-neutral-300 bg-white px-2 text-[11px] text-neutral-800"
+              onChange={(event) => setSortKey(event.target.value as EndpointPrioritySortKey)}
+              value={sortKey}
+            >
+              <option value="server">server rank</option>
+              <option value="request">requestCount desc</option>
+              <option value="error">errorRate desc</option>
+              <option disabled={!slowSortAvailable} value="slow">
+                {slowSortAvailable ? "slowShare desc" : "slowShare 미제공"}
+              </option>
+            </select>
+            {limitOptions.length > 1 && (
+              <select
+                aria-label="endpoint evidence limit"
+                className="h-8 border border-neutral-300 bg-white px-2 text-[11px] text-neutral-800"
+                onChange={(event) => setLimit(Number(event.target.value))}
+                value={String(effectiveLimit)}
+              >
+                {limitOptions.map((option) => (
+                  <option key={option} value={option}>
+                    max {option}
+                  </option>
+                ))}
+              </select>
+            )}
+            <span>received {items.length}</span>
+          </div>
+        )}
       </div>
       {items.length === 0 ? (
-        <div className="p-4 text-[12px] text-neutral-500">서버가 제공한 endpoint evidence 후보가 없습니다.</div>
+        <div className="p-3 text-[12px] leading-5 text-neutral-500">{endpointPriorityEmptyCopy(dashboard)}</div>
       ) : (
-        <ol className="grid gap-2 p-4">
-          {items.map((item) => (
-            <EndpointPriorityRow item={item} key={`${item.rank}-${item.endpointKey}`} />
+        <ol className="divide-y divide-neutral-100">
+          {visibleItems.map((item) => (
+            <EndpointPriorityRow
+              item={item}
+              key={`${item.rank}-${item.endpointKey}`}
+              maxErrorRate={maxErrorRate}
+              maxRequestCount={maxRequestCount}
+              maxSlowShare={maxSlowShare}
+            />
           ))}
         </ol>
       )}
@@ -1148,32 +1298,173 @@ function EndpointPriorityPanel({ items }: { items: EndpointPriorityItem[] }) {
   );
 }
 
-function EndpointPriorityRow({ item }: { item: EndpointPriorityItem }) {
+function EndpointPriorityRow({
+  item,
+  maxErrorRate,
+  maxRequestCount,
+  maxSlowShare,
+}: {
+  item: EndpointPriorityItem;
+  maxErrorRate: number;
+  maxRequestCount: number;
+  maxSlowShare: number;
+}) {
   return (
-    <li className="border border-neutral-200 p-3">
-      <div className="flex items-start justify-between gap-3">
+    <li className="p-3">
+      <div className="grid gap-3 md:grid-cols-[32px_minmax(0,1fr)_minmax(220px,0.9fr)] md:items-start">
+        <span className="grid h-8 w-8 place-items-center border border-neutral-900 bg-neutral-900 text-[12px] text-white tabular-nums">
+          {item.rank}
+        </span>
         <div className="min-w-0">
-          <div className="flex items-center gap-3">
-            <span className="grid h-6 w-6 place-items-center bg-neutral-900 text-[11px] text-white tabular-nums">{item.rank}</span>
-            <span className="truncate text-[13px] text-neutral-900">{item.endpointKey}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="truncate text-[13px] font-medium text-neutral-950">{item.endpointKey}</span>
+            <StatusBadge className={endpointPriorityBadgeClassName(item)}>{endpointPriorityBadgeText(item)}</StatusBadge>
           </div>
           <div className="mt-1 text-[12px] text-neutral-700">{item.recommendedAction}</div>
-          <div className="mt-1 text-[11px] text-neutral-500">{item.reason} · {item.ruleIds.join(", ")}</div>
+          <div className="mt-1 text-[11px] text-neutral-500">
+            {humanizeStatusCode(item.reason)} · {item.ruleIds.length > 0 ? item.ruleIds.join(", ") : "rule 없음"} · server rank {item.rank}
+          </div>
         </div>
-        <StatusBadge className={statusBadgeClassName(item.freshness.status)}>{humanizeStatusCode(item.freshness.status)}</StatusBadge>
+        <div className="grid gap-1.5 text-[11px] text-neutral-500">
+          <EndpointMetricBar
+            label="request"
+            tone="neutral"
+            value={formatCount(item.evidence.requestCount)}
+            width={ratioWidth(item.evidence.requestCount, maxRequestCount)}
+          />
+          <EndpointMetricBar
+            label="error"
+            tone="danger"
+            value={`${formatCount(item.evidence.errorCount)} · ${formatRatio(item.evidence.errorRate)}`}
+            width={ratioWidth(item.evidence.errorRate, maxErrorRate)}
+          />
+          <EndpointMetricBar
+            label="slow >500ms"
+            tone="hot"
+            unavailable={item.evidence.slowShare === null}
+            value={formatNullableRatio(item.evidence.slowShare)}
+            width={ratioWidth(item.evidence.slowShare ?? 0, maxSlowShare)}
+          />
+        </div>
       </div>
-      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500 md:grid-cols-4">
-        <InfoCell label="요청 수" value={formatCount(item.evidence.requestCount)} />
-        <InfoCell label="오류 수" value={formatCount(item.evidence.errorCount)} />
-        <InfoCell label="오류율" value={formatRatio(item.evidence.errorRate)} />
-        <InfoCell label="분포 기준" value={humanizeSourceCode(item.evidence.bucketDistributionSource)} />
-        <InfoCell label="마지막 관측" value={formatOptionalDateTime(item.freshness.lastObservedAt)} />
-        <InfoCell label="관측 구간" value={humanizeStatusCode(item.freshness.sourceWindow)} />
-        <InfoCell label="오류 근거" value={humanizeStatusCode(item.evidence.errorEvidenceStatus)} />
-        <InfoCell label="응답시간 근거" value={humanizeStatusCode(item.evidence.latencyEvidenceStatus)} />
+      <div className="mt-3 grid gap-2 text-[11px] text-neutral-500 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.55fr)]">
+        <EndpointBucketStrip buckets={item.evidence.durationBuckets} source={item.evidence.bucketDistributionSource} />
+        <div className="grid grid-cols-2 gap-2">
+          <InfoCell label="마지막 관측" value={formatOptionalDateTime(item.freshness.lastObservedAt)} />
+          <InfoCell label="근거 상태" value={`${humanizeStatusCode(item.evidence.errorEvidenceStatus)} / ${humanizeStatusCode(item.evidence.latencyEvidenceStatus)}`} />
+        </div>
       </div>
     </li>
   );
+}
+
+function EndpointMetricBar({
+  label,
+  tone,
+  unavailable = false,
+  value,
+  width,
+}: {
+  label: string;
+  tone: "danger" | "hot" | "neutral";
+  unavailable?: boolean;
+  value: string;
+  width: number;
+}) {
+  const fillClassName = tone === "danger" ? "bg-red-500" : tone === "hot" ? "bg-amber-700" : "bg-neutral-500";
+  return (
+    <div className="grid grid-cols-[68px_minmax(72px,1fr)_72px] items-center gap-2">
+      <span className="truncate uppercase">{label}</span>
+      <span className={`h-1.5 bg-neutral-100 ${unavailable ? "border border-dashed border-neutral-300 bg-white" : ""}`}>
+        <span className={`block h-full ${fillClassName}`} style={{ width: `${unavailable ? 0 : width}%` }} />
+      </span>
+      <span className="truncate text-right text-neutral-700">{unavailable ? "미제공" : value}</span>
+    </div>
+  );
+}
+
+function EndpointBucketStrip({ buckets, source }: { buckets: HistogramBucket[] | null; source: string }) {
+  if (!buckets || buckets.length === 0) {
+    return (
+      <div className="border border-neutral-200 bg-neutral-50 p-2">
+        duration buckets 미제공 · endpoint p95/p99로 해석하지 않습니다.
+      </div>
+    );
+  }
+  const maxCount = Math.max(0, ...buckets.map((bucket) => bucket.count));
+  return (
+    <div className="border border-neutral-200 bg-neutral-50 p-2">
+      <div className="mb-1 text-neutral-500">duration buckets · {humanizeSourceCode(source)}</div>
+      <div className="flex h-8 items-end gap-1">
+        {buckets.slice(0, 8).map((bucket) => (
+          <span
+            aria-label={`<= ${bucket.leMs}ms: ${bucket.count}`}
+            className="min-w-3 flex-1 bg-neutral-300"
+            key={`${bucket.leMs}-${bucket.count}`}
+            style={{ height: `${Math.max(8, ratioWidth(bucket.count, maxCount))}%` }}
+            title={`<= ${bucket.leMs}ms · ${formatCount(bucket.count)}`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function endpointPriorityBadgeText(item: EndpointPriorityItem): string {
+  return item.rank === 1 ? "FIRST LOOK" : "ATTENTION";
+}
+
+function endpointPriorityBadgeClassName(item: EndpointPriorityItem): string {
+  if (item.rank === 1) {
+    return "border-neutral-900 bg-neutral-900 text-white";
+  }
+  if (item.evidence.errorCount > 0 || item.evidence.errorRate > 0) {
+    return "border-red-200 bg-red-50 text-red-700";
+  }
+  if ((item.evidence.slowShare ?? 0) > 0) {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+  return "border-neutral-300 bg-neutral-50 text-neutral-700";
+}
+
+function sortEndpointPriorityItems(items: EndpointPriorityItem[], sortKey: EndpointPrioritySortKey): EndpointPriorityItem[] {
+  const sorted = [...items];
+  sorted.sort((left, right) => {
+    if (sortKey === "request") {
+      return right.evidence.requestCount - left.evidence.requestCount || left.rank - right.rank;
+    }
+    if (sortKey === "error") {
+      return right.evidence.errorRate - left.evidence.errorRate || right.evidence.errorCount - left.evidence.errorCount || left.rank - right.rank;
+    }
+    if (sortKey === "slow") {
+      return (right.evidence.slowShare ?? -1) - (left.evidence.slowShare ?? -1) || left.rank - right.rank;
+    }
+    return left.rank - right.rank;
+  });
+  return sorted;
+}
+
+function endpointLimitOptions(itemCount: number): number[] {
+  if (itemCount <= 0) {
+    return [];
+  }
+  return Array.from(new Set([3, 5, itemCount].filter((option) => option > 0 && option <= itemCount))).sort((left, right) => left - right);
+}
+
+function endpointPriorityEmptyCopy(dashboard: DashboardPresentation): string {
+  const red = dashboard.signals.red;
+  const hasRedSignal = red.errorCount > 0 || (red.errorRate ?? 0) > 0 || (red.slowShareOver500ms ?? 0) > 0;
+  if (hasRedSignal) {
+    return "RED signal은 관찰됐지만 server endpointPriority[]가 비어 있습니다. endpoint breakdown 미수집, read model 생성 불가, 또는 현재 window의 evidence 제한으로 봐야 하며 '문제 endpoint 없음'으로 해석하지 않습니다.";
+  }
+  return "server가 제공한 endpoint evidence 후보가 없습니다. endpoint breakdown을 새로 계산하거나 raw path/query를 표시하지 않습니다.";
+}
+
+function ratioWidth(value: number, max: number): number {
+  if (!Number.isFinite(value) || !Number.isFinite(max) || value <= 0 || max <= 0) {
+    return 0;
+  }
+  return Math.min(100, Math.max(6, (value / max) * 100));
 }
 
 function ProjectRegistrationPanel({ onRegistered }: { onRegistered: (projectId: string) => void }) {
@@ -1591,10 +1882,10 @@ function credentialErrorCopy(error: Error): string {
 
 function InstancesPanel({
   dashboard,
-  onOpenEvidence,
+  openAction,
 }: {
   dashboard: DashboardPresentation;
-  onOpenEvidence: ReturnType<typeof useInstanceView>["openEvidence"];
+  openAction: InstanceSummaryOpenAction;
 }) {
   return (
     <div className="border border-neutral-200 bg-white">
@@ -1609,6 +1900,8 @@ function InstancesPanel({
       ) : (
         <ul className="grid gap-2 p-3">
           {dashboard.instances.map((instance) => {
+            // 과거 snapshot은 InstanceEntry.summary(D5에서 추가) 이전 스키마일 수 있어 summary가 없을 수 있다.
+            const summary = instance.summary as typeof instance.summary | undefined;
             const target = {
               applicationId: dashboard.application.applicationId,
               evidenceLink: instance.links.evidence,
@@ -1616,17 +1909,44 @@ function InstancesPanel({
               instanceName: instance.instanceName,
               projectId: dashboard.application.projectId,
             };
+            const openInstanceDashboard = () => {
+              if (openAction.mode === "snapshot") {
+                openAction.open({
+                  ...target,
+                  snapshotDetailLink: openAction.snapshotDetailLink,
+                  snapshotId: openAction.snapshotId,
+                });
+                return;
+              }
+              openAction.open(target);
+            };
             return (
-              <li key={instance.instanceId} className="grid gap-3 border border-neutral-200 p-3 md:grid-cols-[minmax(180px,1fr)_minmax(180px,1fr)_auto] md:items-center">
+              <li key={instance.instanceId} className="grid gap-3 border border-neutral-200 p-3 md:grid-cols-[minmax(180px,1fr)_minmax(220px,0.85fr)_auto] md:items-center">
                 <div>
                   <div className="text-[13px] text-neutral-900">{instance.instanceName}</div>
-                  <div className="mt-0.5 text-[11px] text-neutral-500">마지막 관측 {formatOptionalDateTime(instance.lastSeenAt)}</div>
+                  <div className="mt-0.5 text-[11px] text-neutral-500">
+                    {summary
+                      ? `${instanceObservationText(summary.observationStatus)} · heartbeat ${instanceHeartbeatText(summary.starterConnection)}`
+                      : `마지막 관찰 ${formatOptionalDateTime(instance.lastSeenAt)}`}
+                  </div>
                 </div>
-                <div className="text-[12px] text-neutral-600">
-                  같은 live window의 selected instance evidence만 확인합니다.
+                <div className="grid grid-cols-2 gap-1.5 text-[11px] text-neutral-500">
+                  {summary ? (
+                    <>
+                      <InfoCell label="requests" value={formatCount(summary.red.requestCount)} />
+                      <InfoCell label="slow >500ms" value={formatNullableRatio(summary.red.slowShareOver500ms)} />
+                    </>
+                  ) : (
+                    <div className="col-span-2 text-[11px] text-neutral-400">이 시점 snapshot에는 instance summary가 저장되지 않았습니다.</div>
+                  )}
                 </div>
-                <div className="flex flex-wrap gap-2 text-[11px] text-neutral-700">
-                  <Button variant="outline" size="sm" className="h-8 border-neutral-300" onClick={() => onOpenEvidence(target)}>
+                <div className="flex flex-wrap items-center justify-start gap-2 text-[11px] text-neutral-700 md:justify-end">
+                  {summary && (
+                    <StatusBadge className={instanceContributionBadgeClassName(summary.applicationContribution.level)}>
+                      {humanizeStatusCode(summary.applicationContribution.level)}
+                    </StatusBadge>
+                  )}
+                  <Button variant="outline" size="sm" className="h-8 border-neutral-300" onClick={openInstanceDashboard}>
                     Open modal
                   </Button>
                 </div>
@@ -1637,6 +1957,41 @@ function InstancesPanel({
       )}
     </div>
   );
+}
+
+function instanceObservationText(
+  observationStatus: DashboardPresentation["instances"][number]["summary"]["observationStatus"],
+): string {
+  const observedAt = formatOptionalDateTime(observationStatus.lastObservedBucketEndUtc);
+  if (observationStatus.code === "observed") {
+    return `observed ${observedAt}`;
+  }
+  return `${humanizeStatusCode(observationStatus.code)} ${observedAt}`;
+}
+
+function instanceHeartbeatText(
+  starterConnection: DashboardPresentation["instances"][number]["summary"]["starterConnection"],
+): string {
+  if (!starterConnection.lastHeartbeatAt) {
+    return humanizeStatusCode(starterConnection.lastHeartbeatStatus);
+  }
+  return `${humanizeStatusCode(starterConnection.lastHeartbeatStatus)} ${formatOptionalDateTime(starterConnection.lastHeartbeatAt)}`;
+}
+
+function instanceContributionBadgeClassName(level: string): string {
+  switch (level) {
+    case "contributing":
+    case "attention":
+      return "border-amber-500 bg-amber-50 text-amber-900";
+    case "supporting":
+      return "border-sky-400 bg-sky-50 text-sky-800";
+    case "none":
+      return "border-neutral-300 bg-white text-neutral-700";
+    case "insufficient":
+      return "border-neutral-400 bg-neutral-50 text-neutral-700";
+    default:
+      return statusBadgeClassName(level);
+  }
 }
 
 function isRegistrationRequestCurrent(
@@ -1708,9 +2063,9 @@ function applicationStateDisplayText(status: string | null | undefined): string 
     case "active":
       return "정상";
     case "degraded":
-      return "주의 필요";
+      return "서비스 성능 저하";
     case "attention":
-      return "확인 필요";
+      return "주의 필요";
     case "down":
       return "수집 중단";
     case "idle":
@@ -1740,26 +2095,6 @@ function starterStateImpactText(stateImpact: string): string {
   return `상태 판단 영향: ${humanizeStatusCode(stateImpact)}`;
 }
 
-function sourceScopedEmptyText(status: string, reason: string | null): string {
-  if (status === "missing") {
-    return "인스턴스별 응답 시간 데이터가 아직 없습니다.";
-  }
-  if (status === "insufficient") {
-    return "인스턴스별 응답 시간 표본이 아직 충분하지 않습니다.";
-  }
-  return reason && reason !== "확인할 수 없음" ? reason : "인스턴스별 응답 시간 데이터를 확인할 수 없습니다.";
-}
-
-function formatLatencyThreshold(leMs: number): string {
-  if (!Number.isFinite(leMs)) {
-    return "응답 시간 기준 없음";
-  }
-  if (leMs >= 1000 && leMs % 1000 === 0) {
-    return `${leMs / 1000}초 이하`;
-  }
-  return `${leMs}ms 이하`;
-}
-
 function MetricCell({
   label,
   last = false,
@@ -1782,9 +2117,9 @@ function MetricCell({
 
 function InfoCell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 border border-neutral-200 bg-white p-2">
+    <div className="min-w-0 border border-neutral-200 bg-white p-2" title={`${label}: ${value}`}>
       <div className="text-neutral-500">{label}</div>
-      <div className="mt-0.5 break-words text-neutral-900">{value}</div>
+      <div className="mt-0.5 truncate text-neutral-900">{value}</div>
     </div>
   );
 }

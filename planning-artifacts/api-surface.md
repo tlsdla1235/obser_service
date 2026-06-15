@@ -438,6 +438,28 @@ Snapshot marker와 bounded endpoint/instance summary의 세부 shape는 Epic 5 S
 | `404` | active account-project membership 없음, snapshot이 없거나 retention으로 삭제됨 |
 | `500` | snapshot 조회 실패 |
 
+### 4.2.1 Snapshot Read Model (snapshot-mode restore) Endpoint
+
+```http
+GET /api/projects/{projectId}/applications/{applicationId}/dashboard/snapshots/{snapshotId}/read-model
+Authorization: Bearer <access_token>
+Accept: application/json
+```
+
+Snapshot/History에서 slot을 클릭하면 live dashboard surface를 **동일한 컴포넌트로** 복원하는(snapshot-mode) API다. 4.2 detail의 bounded projection과 달리, capture 당시 enricher가 저장한 **full `read_model_json`(application-dashboard-read-model shape, `mode=snapshot`)을 그대로** 반환한다. 따라서 응답 shape는 4.1 Dashboard current read model과 동일하되 `mode`/`readSemantics.source`만 snapshot 값이다.
+
+- current state를 재판정하거나 metric을 재계산하지 않는다. 저장된 read model을 표시만 한다.
+- 저장된 JSON을 record로 역직렬화/재직렬화하지 않고 **문자열 그대로** 내려준다(다중 생성자 record round-trip 시 일부 필드 유실 방지).
+- 저장 당시 schema를 따른다. `InstanceEntry.summary`(D5) 이전 snapshot은 `instances[]`에 `summary`가 없을 수 있고, 이를 backfill하지 않는다. 소비 측 guard/렌더는 snapshot-mode에서 이를 허용한다.
+
+| Status | 조건 |
+|---|---|
+| `200` | 저장된 full read model JSON 반환(`mode=snapshot`) |
+| `400` | snapshotId가 UUID 형식이 아님 |
+| `401` | Bearer access token 없음/invalid/expired |
+| `404` | active account-project membership 없음, snapshot이 없거나 retention으로 삭제됨 |
+| `500` | 저장된 read model JSON 조회/파싱 실패 |
+
 ### 4.3 Instance Snapshot Trend Endpoint
 
 ```http

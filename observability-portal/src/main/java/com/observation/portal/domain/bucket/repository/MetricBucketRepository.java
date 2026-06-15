@@ -605,6 +605,31 @@ public class MetricBucketRepository {
     }
 
     /**
+     * snapshot instance summary row의 duration bucket evidence를 accepted_at cutoff 이전 row만으로 조회한다.
+     */
+    @Transactional(readOnly = true)
+    public List<HistogramBucketEvidenceRow> findSummaryDurationBucketEvidenceRowsByApplicationInstanceIdAcceptedAtOrBefore(
+            UUID applicationInstanceId,
+            Instant windowStartUtc,
+            Instant windowEndUtc,
+            OffsetDateTime acceptedAtCutoffUtc) {
+        UUID requiredApplicationInstanceId = Objects.requireNonNull(
+                applicationInstanceId,
+                "applicationInstanceId must not be null");
+        OffsetDateTime windowStart = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowStartUtc, "windowStartUtc must not be null"));
+        OffsetDateTime windowEnd = toUtcOffsetDateTime(
+                Objects.requireNonNull(windowEndUtc, "windowEndUtc must not be null"));
+        validateWindow(windowStart, windowEnd);
+        return acceptedMetricBucketJpaRepository
+                .findSummaryDurationBucketEvidenceRowsByApplicationInstanceIdAcceptedAtOrBefore(
+                        requiredApplicationInstanceId,
+                        windowStart,
+                        windowEnd,
+                        toUtcOffsetDateTime(acceptedAtCutoffUtc));
+    }
+
+    /**
      * endpoint priority read model용 accepted bucket endpoint JSON evidence row를 조회한다.
      *
      * <p>조회는 application scope와 `(start, end]` bucket end boundary, `endpoints_json is not null` 조건만 적용한다.

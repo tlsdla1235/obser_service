@@ -58,6 +58,8 @@ Snapshot `read_model_json`은 instance snapshot trend를 위해 bounded instance
 
 Snapshot detail의 세부 shape는 Epic 5의 `Snapshot Marker and Bounded Tail Summary Contract` 후속 story에서 확정한다. 이 계약에서는 저장 당시 read model과 bounded evidence를 보여주며 current state를 재판정하지 않는다는 원칙만 유지한다.
 
+Snapshot/History에서 저장 시점을 live dashboard와 **동일한 surface로 복원**(snapshot-mode)할 때는 bounded detail이 아니라 capture 당시 저장된 **full read model**(이 문서의 응답 shape와 동일, `mode=snapshot`)을 사용한다. 진입점은 detail self link(`selfSnapshot`)에 `/read-model`을 붙인 경로 규약(`{selfSnapshot}/read-model`, 즉 `GET .../dashboard/snapshots/{snapshotId}/read-model`)이며, 응답은 `mode`/`readSemantics.source`만 snapshot 값이고 나머지는 live와 같은 계약을 따른다. snapshot-mode 소비 측 guard는 이 한 가지 차이(`mode=snapshot`, `readSemantics.source=dashboard_snapshots.read_model_json`)만 다르게 허용한다. 또한 저장본은 immutable historical artifact이므로 `InstanceEntry.summary` 도입 이전 snapshot은 `instances[]`에 `summary`가 없을 수 있고, 이를 backfill/재계산하지 않으며 snapshot-mode에서 core field만으로 허용한다.
+
 ## 2. Response Shape
 
 ```json

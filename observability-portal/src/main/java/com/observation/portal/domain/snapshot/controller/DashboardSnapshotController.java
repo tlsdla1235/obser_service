@@ -6,6 +6,7 @@ import com.observation.portal.domain.snapshot.service.DashboardSnapshotDetailSer
 import com.observation.portal.domain.snapshot.service.DashboardSnapshotMarkerService;
 import com.observation.portal.domain.snapshot.service.DashboardSnapshotProjectionException;
 import com.observation.portal.domain.snapshot.service.InvalidSnapshotMarkerQueryException;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -56,6 +57,28 @@ public class DashboardSnapshotController {
         }
         return detailService.getDetail(projectId, applicationId, parsedSnapshotId)
                 .<ResponseEntity<?>>map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.status(404).body(ApiErrorResponse.snapshotNotFoundOrExpired()));
+    }
+
+    /**
+     * 특정 stored snapshot을 live dashboard와 동일한 full read model(mode=snapshot)로 복원해 반환한다.
+     *
+     * <p>snapshot mode가 live dashboard surface를 같은 컴포넌트로 재현하도록 bounded projection이 아니라 저장된
+     * read model 전체를 돌려준다. invalid UUID는 400, missing/retention/path mismatch는 404, parse 실패는 500.</p>
+     */
+    @GetMapping("/snapshots/{snapshotId}/read-model")
+    public ResponseEntity<?> getSnapshotReadModel(
+            @PathVariable UUID projectId,
+            @PathVariable UUID applicationId,
+            @PathVariable String snapshotId) {
+        UUID parsedSnapshotId;
+        try {
+            parsedSnapshotId = UUID.fromString(snapshotId);
+        } catch (IllegalArgumentException exception) {
+            return ResponseEntity.badRequest().body(ApiErrorResponse.invalidSnapshotId());
+        }
+        return detailService.getStoredReadModelJson(projectId, applicationId, parsedSnapshotId)
+                .<ResponseEntity<?>>map(json -> ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(json))
                 .orElseGet(() -> ResponseEntity.status(404).body(ApiErrorResponse.snapshotNotFoundOrExpired()));
     }
 

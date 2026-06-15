@@ -1,7 +1,5 @@
 package com.observation.portal.domain.snapshot.model;
 
-import com.fasterxml.jackson.databind.JsonNode;
-
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -243,43 +241,71 @@ public record DashboardSnapshotDetailReadModel(
 
     /**
      * stored `read_model_json`의 UI-facing top-level block만 담는 bounded projection이다.
+     *
+     * <p>각 field는 API 직렬화 시 Jackson tree 내부 구조가 노출되지 않도록 plain JSON-compatible value로 보존한다.</p>
      */
     public record StoredReadModel(
-            JsonNode schemaVersion,
-            JsonNode mode,
-            JsonNode window,
-            JsonNode thresholds,
-            JsonNode operatorSummary,
-            JsonNode dataQuality,
-            JsonNode signals,
-            JsonNode stateReasons,
-            JsonNode attentionEvidence,
-            JsonNode firstLookCandidates,
-            JsonNode readSemantics,
-            JsonNode application,
-            JsonNode state,
-            JsonNode starterConnection,
-            JsonNode zeroInsight,
-            JsonNode recovery,
-            JsonNode metrics,
-            JsonNode sourceScopedPercentiles,
-            JsonNode triageCards,
-            JsonNode endpointPriority
+            Object schemaVersion,
+            Object mode,
+            Object window,
+            Object thresholds,
+            Object operatorSummary,
+            Object dataQuality,
+            Object signals,
+            Object stateReasons,
+            Object attentionEvidence,
+            Object firstLookCandidates,
+            Object readSemantics,
+            Object application,
+            Object state,
+            Object starterConnection,
+            Object zeroInsight,
+            Object recovery,
+            Object metrics,
+            Object sourceScopedPercentiles,
+            Object triageCards,
+            Object endpointPriority
     ) {
+
+        /**
+         * public response surface가 Jackson tree나 임의 POJO를 품지 않고 JSON-compatible 값만 갖도록 검증한다.
+         */
+        public StoredReadModel {
+            schemaVersion = requirePlainJsonValue(schemaVersion, "schemaVersion");
+            mode = requirePlainJsonValue(mode, "mode");
+            window = requirePlainJsonValue(window, "window");
+            thresholds = requirePlainJsonValue(thresholds, "thresholds");
+            operatorSummary = requirePlainJsonValue(operatorSummary, "operatorSummary");
+            dataQuality = requirePlainJsonValue(dataQuality, "dataQuality");
+            signals = requirePlainJsonValue(signals, "signals");
+            stateReasons = requirePlainJsonValue(stateReasons, "stateReasons");
+            attentionEvidence = requirePlainJsonValue(attentionEvidence, "attentionEvidence");
+            firstLookCandidates = requirePlainJsonValue(firstLookCandidates, "firstLookCandidates");
+            readSemantics = requirePlainJsonValue(readSemantics, "readSemantics");
+            application = requirePlainJsonValue(application, "application");
+            state = requirePlainJsonValue(state, "state");
+            starterConnection = requirePlainJsonValue(starterConnection, "starterConnection");
+            zeroInsight = requirePlainJsonValue(zeroInsight, "zeroInsight");
+            recovery = requirePlainJsonValue(recovery, "recovery");
+            metrics = requirePlainJsonValue(metrics, "metrics");
+            sourceScopedPercentiles = requirePlainJsonValue(sourceScopedPercentiles, "sourceScopedPercentiles");
+            triageCards = requirePlainJsonValue(triageCards, "triageCards");
+            endpointPriority = requirePlainJsonValue(endpointPriority, "endpointPriority");
+        }
 
         /**
          * legacy test/helper가 쓰는 기존 projection constructor다.
          */
         public StoredReadModel(
-                JsonNode application,
-                JsonNode state,
-                JsonNode starterConnection,
-                JsonNode zeroInsight,
-                JsonNode recovery,
-                JsonNode metrics,
-                JsonNode sourceScopedPercentiles,
-                JsonNode triageCards,
-                JsonNode endpointPriority) {
+                Object application,
+                Object state,
+                Object starterConnection,
+                Object zeroInsight,
+                Object recovery,
+                Object metrics,
+                Object sourceScopedPercentiles,
+                Object triageCards,
+                Object endpointPriority) {
             this(
                     null,
                     null,
@@ -353,10 +379,10 @@ public record DashboardSnapshotDetailReadModel(
             Integer score,
             Long requestCount,
             BigDecimal errorRate,
-            JsonNode durationBuckets,
-            JsonNode baselineDurationBuckets,
+            Object durationBuckets,
+            Object baselineDurationBuckets,
             String bucketDistributionSource,
-            JsonNode freshness,
+            Object freshness,
             String recommendedAction
     ) {
 
@@ -370,7 +396,10 @@ public record DashboardSnapshotDetailReadModel(
             route = trimNullable(route);
             reason = trimNullable(reason);
             ruleIds = List.copyOf(Objects.requireNonNull(ruleIds, "ruleIds must not be null"));
+            durationBuckets = requirePlainJsonValue(durationBuckets, "durationBuckets");
+            baselineDurationBuckets = requirePlainJsonValue(baselineDurationBuckets, "baselineDurationBuckets");
             bucketDistributionSource = trimNullable(bucketDistributionSource);
+            freshness = requirePlainJsonValue(freshness, "freshness");
             recommendedAction = trimNullable(recommendedAction);
         }
     }
@@ -422,11 +451,11 @@ public record DashboardSnapshotDetailReadModel(
             String instanceId,
             String instanceName,
             String observationStatus,
-            JsonNode metricData,
-            JsonNode starterConnection,
-            JsonNode starterPercentilePoint,
-            JsonNode resourceHints,
-            JsonNode applicationTriageContribution,
+            Object metricData,
+            Object starterConnection,
+            Object starterPercentilePoint,
+            Object resourceHints,
+            Object applicationTriageContribution,
             List<SnapshotEndpointEvidenceRef> endpointEvidenceRefs
     ) {
 
@@ -437,6 +466,13 @@ public record DashboardSnapshotDetailReadModel(
             instanceId = requireText(instanceId, "instanceId");
             instanceName = requireText(instanceName, "instanceName");
             observationStatus = requireText(observationStatus, "observationStatus");
+            metricData = requirePlainJsonValue(metricData, "metricData");
+            starterConnection = requirePlainJsonValue(starterConnection, "starterConnection");
+            starterPercentilePoint = requirePlainJsonValue(starterPercentilePoint, "starterPercentilePoint");
+            resourceHints = requirePlainJsonValue(resourceHints, "resourceHints");
+            applicationTriageContribution = requirePlainJsonValue(
+                    applicationTriageContribution,
+                    "applicationTriageContribution");
             endpointEvidenceRefs = List.copyOf(Objects.requireNonNull(
                     endpointEvidenceRefs,
                     "endpointEvidenceRefs must not be null"));
@@ -502,5 +538,30 @@ public record DashboardSnapshotDetailReadModel(
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static Object requirePlainJsonValue(Object value, String fieldName) {
+        if (value == null
+                || value instanceof String
+                || value instanceof Number
+                || value instanceof Boolean) {
+            return value;
+        }
+        if (value instanceof List<?> list) {
+            for (Object item : list) {
+                requirePlainJsonValue(item, fieldName + "[]");
+            }
+            return value;
+        }
+        if (value instanceof java.util.Map<?, ?> map) {
+            for (java.util.Map.Entry<?, ?> entry : map.entrySet()) {
+                if (!(entry.getKey() instanceof String)) {
+                    throw new IllegalArgumentException(fieldName + " must use string JSON object keys");
+                }
+                requirePlainJsonValue(entry.getValue(), fieldName + "." + entry.getKey());
+            }
+            return value;
+        }
+        throw new IllegalArgumentException(fieldName + " must be a plain JSON-compatible value");
     }
 }

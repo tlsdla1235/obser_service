@@ -6,6 +6,7 @@ import io.micrometer.common.KeyValue;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
 
+import java.lang.reflect.Method;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
@@ -139,7 +140,30 @@ public final class MicrometerHttpServerObservationBinder implements ObservationH
 
     private static Optional<String> routePattern(Observation.Context context) {
         return lowCardinalityValue(context, "http.route")
-                .filter(value -> !UNKNOWN.equalsIgnoreCase(value));
+                .filter(value -> !UNKNOWN.equalsIgnoreCase(value))
+                .or(() -> springMvcPathPattern(context));
+    }
+
+    /**
+     * Spring MVC 기본 observation convention은 matched route template을 {@code uri} tag가 아니라
+     * {@code ServerRequestObservationContext#getPathPattern()}에 보관한 뒤 low-cardinality {@code uri}로
+     * 내보낸다. starter는 Spring Web compile dependency를 갖지 않으므로 reflection으로 framework
+     * route 후보만 읽고, 실패하면 기존 tag 기반 fallback에 맡긴다.
+     */
+    private static Optional<String> springMvcPathPattern(Observation.Context context) {
+        try {
+            Method pathPatternMethod = context.getClass().getMethod("getPathPattern");
+            if (!pathPatternMethod.canAccess(context)) {
+                pathPatternMethod.setAccessible(true);
+            }
+            Object pathPattern = pathPatternMethod.invoke(context);
+            if (pathPattern instanceof String value && !value.isBlank() && !UNKNOWN.equalsIgnoreCase(value)) {
+                return Optional.of(value.trim());
+            }
+            return Optional.empty();
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return Optional.empty();
+        }
     }
 
     /**

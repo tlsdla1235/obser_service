@@ -144,13 +144,16 @@ class LifecycleStateSemanticsRegressionTest {
                 starterAxis.connected()).metricState().code()).isEqualTo(LifecycleStateCode.DEGRADED);
         assertThat(decide(metricAxis.currentBucket()
                         .withDegradedHysteresis(DegradedHysteresisInput.of(true, true, 0.74, 5, false, 0)),
+                starterAxis.connected()).metricState().code()).isEqualTo(LifecycleStateCode.ATTENTION);
+        assertThat(decide(metricAxis.currentBucket()
+                        .withDegradedHysteresis(DegradedHysteresisInput.of(true, true, 0.64, 5, false, 0)),
                 starterAxis.connected()).metricState().code()).isEqualTo(LifecycleStateCode.ACTIVE);
         assertThat(decide(metricAxis.currentBucket()
                         .withDegradedHysteresis(DegradedHysteresisInput.of(true, true, 0.95, 2, false, 0)),
-                starterAxis.connected()).metricState().code()).isEqualTo(LifecycleStateCode.ACTIVE);
+                starterAxis.connected()).metricState().code()).isEqualTo(LifecycleStateCode.ATTENTION);
         assertThat(decide(metricAxis.currentBucket()
                         .withDegradedHysteresis(DegradedHysteresisInput.of(true, true, 0.95, 1, false, 0)),
-                starterAxis.connected()).metricState().code()).isEqualTo(LifecycleStateCode.ACTIVE);
+                starterAxis.connected()).metricState().code()).isEqualTo(LifecycleStateCode.ATTENTION);
     }
 
     @Test

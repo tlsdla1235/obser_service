@@ -286,8 +286,10 @@ assert.equal(snapshotSlotDayKey("2026-06-09T00:30:00Z"), "2026-06-09");
 assert.equal(snapshotSlotIndexFromWindowEndUtc("2026-06-09T00:00:00Z"), 47);
 assert.equal(snapshotSlotIndexFromWindowEndUtc("2026-06-09T00:30:00Z"), 0);
 assert.equal(snapshotSlotIndexFromWindowEndUtc("2026-06-09T23:30:00Z"), 46);
-assert.equal(snapshotSlotTimeLabel(0), "00:30Z");
-assert.equal(snapshotSlotTimeLabel(47), "24:00Z");
+assert.equal(snapshotSlotTimeLabel(0), "09:30 KST");
+assert.equal(snapshotSlotTimeLabel(25), "22:00 KST");
+assert.equal(snapshotSlotTimeLabel(29), "D+1 00:00 KST");
+assert.equal(snapshotSlotTimeLabel(47), "D+1 09:00 KST");
 assert.throws(
   () =>
     guardSnapshotHistoryReadModels(
@@ -696,8 +698,6 @@ assert.throws(
 );
 
 for (const path of [
-  "src/app/components/dashboard.tsx",
-  "src/app/components/instance-dashboard-surface.tsx",
   "src/app/components/instance-panels.tsx",
   "src/app/components/snapshot-detail-surface.tsx",
   "src/app/components/snapshot-history-panel.tsx",
@@ -705,20 +705,27 @@ for (const path of [
   const source = readFileSync(path, "utf8");
   assert.equal(/\.sort\(|\.toSorted\(|\.reduce\(/.test(source), false, `${path} must preserve server order`);
 }
+const dashboardComponentSourceForOrdering = readFileSync("src/app/components/dashboard.tsx", "utf8");
+assert.equal(
+  /dashboard\.endpointPriority\.(sort|toSorted|reduce)\(/.test(dashboardComponentSourceForOrdering),
+  false,
+  "src/app/components/dashboard.tsx must not mutate dashboard.endpointPriority",
+);
 
 // Story 14.2: Live dashboard와 Snapshot/History는 tab으로 분리하지 않고 같은 main flow anchor를 유지한다.
+// SoT 화면 순서는 lifecycle/starter/golden signal 이후 evidence panel로 이어지는 compact flow를 기준으로 검증한다.
 const dashboardSource = readFileSync("src/app/components/dashboard.tsx", "utf8");
 assert.equal(/from "\.\/ui\/tabs"/.test(dashboardSource), false, "DashboardMain must not reintroduce tab-only dashboard flow");
 assert.equal(/<Tabs|TabsList|TabsTrigger|TabsContent/.test(dashboardSource), false, "DashboardMain must keep Snapshot/History in the same flow");
 const dashboardFlowAnchors = [
   "<DashboardContext",
-  "<DataQualityFreshnessStrip",
   "<LifecycleStateHero",
-  "<DirectStateReasonsPanel",
-  "<AttentionAndFirstLookPanel",
-  "<EndpointResourceEvidencePanel",
-  "<MetricDetailSection",
   "<StarterConnectionStrip",
+  "<DataQualityFreshnessStrip",
+  "<GoldenSignalsGrid",
+  "<FirstLookCandidatesPanel",
+  "<EndpointPriorityPanel",
+  "<ResourceSignalsPanel",
   "<InstancesPanel",
   "<SnapshotHistoryPanel",
 ];
@@ -729,6 +736,18 @@ for (const anchor of dashboardFlowAnchors) {
   assert.ok(currentDashboardAnchor > previousDashboardAnchor, `DashboardMain order regression at ${anchor}`);
   previousDashboardAnchor = currentDashboardAnchor;
 }
+assert.match(dashboardSource, /<SnapshotModeSurface[\s\S]*onOpenSnapshotDashboard=\{onOpenSnapshotDashboard\}/);
+assert.equal(
+  /<SnapshotModeSurface[\s\S]*onOpenEvidence=\{onOpenEvidence\}/.test(dashboardSource),
+  false,
+  "Restored snapshot surface must not open live instance evidence",
+);
+assert.match(dashboardSource, /function snapshotInstanceOpenAction/);
+assert.match(dashboardSource, /snapshotIdFromDetailPath\(snapshotDetailLink\)/);
+assert.match(dashboardSource, /validateSnapshotDetailPath\(snapshotDetailLink/);
+assert.match(dashboardSource, /openAction\.mode === "snapshot"/);
+assert.match(dashboardSource, /snapshotDetailLink: openAction\.snapshotDetailLink/);
+assert.match(dashboardSource, /snapshotId: openAction\.snapshotId/);
 
 const instanceDashboardSurfaceSource = readFileSync("src/app/components/instance-dashboard-surface.tsx", "utf8");
 assert.match(instanceDashboardSurfaceSource, /buildLiveInstanceDashboardPath/);
@@ -744,7 +763,6 @@ const instanceDashboardModalAnchors = [
   "<EndpointEvidencePanel",
   "<ResourceEvidencePanel",
   "<StarterConnectionPanel",
-  "<NormalizedEndpointEvidenceTable",
 ];
 let previousInstanceDashboardAnchor = -1;
 for (const anchor of instanceDashboardModalAnchors) {
@@ -757,6 +775,16 @@ assert.equal(/<ContextHeader/.test(instanceDashboardSurfaceSource), false, "Inst
 assert.match(instanceDashboardSurfaceSource, /InfoCell label="mode"/);
 assert.match(instanceDashboardSurfaceSource, /InfoCell label="source"/);
 assert.match(instanceDashboardSurfaceSource, /InfoCell label="instance top-level state" value="없음"/);
+assert.match(instanceDashboardSurfaceSource, /NORMALIZED ENDPOINT EVIDENCE TABLE/);
+assert.match(instanceDashboardSurfaceSource, /requestCountDesc/);
+assert.match(instanceDashboardSurfaceSource, /errorRateDesc/);
+assert.match(instanceDashboardSurfaceSource, /slowShareOver500msDesc/);
+assert.match(instanceDashboardSurfaceSource, /max \{ENDPOINT_TABLE_LIMIT\}/);
+assert.match(instanceDashboardSurfaceSource, /endpointDurationSegments\(item\.durationBuckets\)/);
+assert.match(instanceDashboardSurfaceSource, /endpointSortState/);
+assert.match(instanceDashboardSurfaceSource, /compareEndpointSortTieBreaker/);
+assert.match(instanceDashboardSurfaceSource, /동일값/);
+assert.equal(/errorCountDesc|slowCountOver500msDesc|serverOrder/.test(instanceDashboardSurfaceSource), false);
 assert.equal(
   /not_observed.*(정상|문제 없음|복구 완료)|(정상|문제 없음|복구 완료).*not_observed/.test(instanceDashboardSurfaceSource),
   false,

@@ -94,6 +94,7 @@ public class DashboardSnapshotMarkerService {
         OffsetDateTime snapshotCutoffUtc = snapshotCutoffUtc();
         List<DashboardSnapshotMarkerItem> markers = rows.stream()
                 .filter(row -> rowInHorizon(row, effectiveQuery.since(), effectiveQuery.until()))
+                .filter(DashboardSnapshotMarkerService::rowOnHalfHourBoundary)
                 .map(row -> marker(requiredProjectId, requiredApplicationId, row, snapshotCutoffUtc))
                 .sorted(Comparator.comparing(DashboardSnapshotMarkerItem::currentWindowEndUtc)
                         .thenComparing(DashboardSnapshotMarkerItem::capturedAt)
@@ -123,6 +124,20 @@ public class DashboardSnapshotMarkerService {
         OffsetDateTime currentWindowEndUtc = row.currentWindowEndUtc().withOffsetSameInstant(ZoneOffset.UTC);
         return !currentWindowEndUtc.isBefore(currentWindowEndSince)
                 && !currentWindowEndUtc.isAfter(currentWindowEndUntil);
+    }
+
+    /**
+     * Marker collection은 30분 slot 탐색 UI의 source이므로 off-slot fallback snapshot을 제외한다.
+     *
+     * <p>`query_fallback` row는 live dashboard의 30초 boundary window를 보존할 수 있지만, marker API는
+     * `currentWindowEndUtc`를 slot identity로 내보내므로 00/30분 정각 row만 collection에 포함한다.</p>
+     */
+    private static boolean rowOnHalfHourBoundary(DashboardSnapshotDetailRow row) {
+        OffsetDateTime currentWindowEndUtc = row.currentWindowEndUtc().withOffsetSameInstant(ZoneOffset.UTC);
+        int minute = currentWindowEndUtc.getMinute();
+        return (minute == 0 || minute == 30)
+                && currentWindowEndUtc.getSecond() == 0
+                && currentWindowEndUtc.getNano() == 0;
     }
 
     private DashboardSnapshotMarkerItem marker(

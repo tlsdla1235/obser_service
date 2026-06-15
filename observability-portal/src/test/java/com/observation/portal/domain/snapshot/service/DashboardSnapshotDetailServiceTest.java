@@ -18,6 +18,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -85,10 +86,10 @@ class DashboardSnapshotDetailServiceTest {
         assertThat(detail.snapshot().captureReason()).isEqualTo("hourly_scheduled");
         assertThat(detail.snapshot().storedApplicationStateCode()).isEqualTo("degraded");
         assertThat(detail.marker().type().value()).isEqualTo("state_change");
-        assertThat(detail.readModel().schemaVersion().asText()).isEqualTo("dashboard_read_model.v1");
-        assertThat(detail.readModel().mode().asText()).isEqualTo("snapshot");
-        assertThat(detail.readModel().window().path("type").asText()).isEqualTo("recent_30_minutes");
-        assertThat(detail.readModel().readSemantics().path("source").asText())
+        assertThat(detail.readModel().schemaVersion()).isEqualTo("dashboard_read_model.v1");
+        assertThat(detail.readModel().mode()).isEqualTo("snapshot");
+        assertThat(asMap(detail.readModel().window())).containsEntry("type", "recent_30_minutes");
+        assertThat(asMap(detail.readModel().readSemantics()).get("source"))
                 .isEqualTo("dashboard_snapshots.read_model_json");
         assertThat(detail.previousState().stateCode()).isEqualTo("active");
         assertThat(detail.previousState().source()).isEqualTo("dashboard_snapshots");
@@ -323,5 +324,10 @@ class DashboardSnapshotDetailServiceTest {
 
     private static OffsetDateTime offset(String instant) {
         return OffsetDateTime.parse(instant);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asMap(Object value) {
+        return (Map<String, Object>) value;
     }
 }

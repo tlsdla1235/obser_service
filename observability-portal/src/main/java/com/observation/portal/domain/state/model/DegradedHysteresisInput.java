@@ -15,6 +15,7 @@ public record DegradedHysteresisInput(
 ) {
 
     public static final double ENTER_CONFIDENCE_THRESHOLD = 0.75;
+    public static final double ATTENTION_CONFIDENCE_THRESHOLD = 0.65;
     public static final double RESOLVE_CONFIDENCE_THRESHOLD = 0.60;
     public static final int ENTER_BAD_BUCKET_THRESHOLD = 3;
     public static final int RECENT_BUCKET_WINDOW = 5;
@@ -69,6 +70,15 @@ public record DegradedHysteresisInput(
                 && ruleGuardPassed
                 && confidence >= ENTER_CONFIDENCE_THRESHOLD
                 && badBucketsInRecentFive >= ENTER_BAD_BUCKET_THRESHOLD;
+    }
+
+    /**
+     * degraded bad bucket threshold에는 못 미치지만 RED concern을 주의 상태로 표시할 수 있는지 판단한다.
+     */
+    public boolean canEnterAttention() {
+        return concernPresent
+                && ruleGuardPassed
+                && confidence >= ATTENTION_CONFIDENCE_THRESHOLD;
     }
 
     /**

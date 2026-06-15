@@ -27,6 +27,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -82,11 +83,20 @@ class DashboardSnapshotControllerTest {
                 .andExpect(jsonPath("$.instanceSummary.source")
                         .value("dashboard_snapshots.read_model_json.instanceSummary.items"))
                 .andExpect(jsonPath("$.instanceSummary.selectionPolicy").value("stored_read_model"))
+                .andExpect(jsonPath("$.readModel.schemaVersion").value("dashboard_read_model.v1"))
+                .andExpect(jsonPath("$.readModel.mode").value("snapshot"))
+                .andExpect(jsonPath("$.readModel.window.type").value("recent_30_minutes"))
+                .andExpect(jsonPath("$.readModel.thresholds.minimumRequestCount").value(30))
+                .andExpect(jsonPath("$.readModel.attentionEvidence[0].kind").value("endpoint"))
+                .andExpect(jsonPath("$.readModel.readSemantics.source")
+                        .value("dashboard_snapshots.read_model_json"))
                 .andExpect(jsonPath("$.previousState.source").value("dashboard_snapshots"))
                 .andExpect(jsonPath("$.lastHealthyAt.source").value("dashboard_snapshots"))
                 .andExpect(jsonPath("$.links.self").value("/api/projects/%s/applications/%s/dashboard/snapshots/%s"
                         .formatted(PROJECT_ID, APPLICATION_ID, SNAPSHOT_ID)))
                 .andExpect(content().string(not(containsString("rawReadModelJson\":"))))
+                .andExpect(content().string(not(containsString("nodeType"))))
+                .andExpect(content().string(not(containsString("containerNode"))))
                 .andExpect(content().string(not(containsString("operationalEvents"))))
                 .andExpect(content().string(not(containsString("resolvedAt"))));
     }
@@ -195,7 +205,27 @@ class DashboardSnapshotControllerTest {
                 PreviousState.none(),
                 LastHealthyAt.none(),
                 null,
-                new StoredReadModel(null, null, null, null, null, null, null, null, null),
+                new StoredReadModel(
+                        "dashboard_read_model.v1",
+                        "snapshot",
+                        Map.of("type", "recent_30_minutes"),
+                        Map.of("minimumRequestCount", 30),
+                        Map.of("headline", "저장된 요약"),
+                        Map.of("limitations", List.of("baseline_comparison_not_used_for_mvp")),
+                        Map.of("red", Map.of("requestCount", 120)),
+                        List.of(),
+                        List.of(Map.of("kind", "endpoint")),
+                        List.of(),
+                        Map.of("source", "dashboard_snapshots.read_model_json"),
+                        Map.of("applicationId", APPLICATION_ID.toString()),
+                        Map.of("code", "active"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        List.of()),
                 new SnapshotEndpointEvidence(
                         "dashboard_snapshots.read_model_json.endpointPriority",
                         10,

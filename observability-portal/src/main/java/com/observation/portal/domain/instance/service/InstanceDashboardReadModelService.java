@@ -32,6 +32,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -55,7 +56,7 @@ public class InstanceDashboardReadModelService {
     private static final BigDecimal HEAP_THRESHOLD = new BigDecimal("0.90");
     private static final BigDecimal DATASOURCE_POOL_THRESHOLD = new BigDecimal("0.85");
     private static final long MINIMUM_SAMPLE_REQUEST_COUNT = 30L;
-    private static final int MAX_ENDPOINT_ITEMS = 5;
+    private static final int MAX_ENDPOINT_ITEMS = 10;
 
     private final ApplicationRepository applicationRepository;
     private final ApplicationInstanceRepository instanceRepository;
@@ -458,9 +459,9 @@ public class InstanceDashboardReadModelService {
             for (EndpointItem item : parsed.orElseThrow()) {
                 aggregates.compute(item.endpointKey(), (key, existing) -> {
                     if (existing == null) {
-                        return new EndpointAggregate(item.method(), item.route(), item.requestCount(), item.errorCount());
+                        return EndpointAggregate.from(item);
                     }
-                    return existing.plus(item.requestCount(), item.errorCount());
+                    return existing.plus(item);
                 });
             }
         }
@@ -468,20 +469,7 @@ public class InstanceDashboardReadModelService {
         for (ApplicationEndpointAnchor anchor : List.copyOf(Objects.requireNonNullElse(applicationAnchors, List.of()))) {
             anchorsByEndpointKey.putIfAbsent(anchor.endpointKey(), anchor);
         }
-        List<String> orderedEndpointKeys = new ArrayList<>(anchorsByEndpointKey.keySet());
-        List<String> selectedSymptomKeys = aggregates.values().stream()
-                .filter(InstanceDashboardReadModelService::standaloneSelectedEndpointEvidenceCandidate)
-                .sorted(Comparator.comparingLong(EndpointAggregate::errorCount)
-                        .reversed()
-                        .thenComparing(Comparator.comparingLong(EndpointAggregate::requestCount).reversed())
-                        .thenComparing(EndpointAggregate::endpointKey))
-                .map(EndpointAggregate::endpointKey)
-                .filter(endpointKey -> !orderedEndpointKeys.contains(endpointKey))
-                .toList();
-        orderedEndpointKeys.addAll(selectedSymptomKeys);
-        List<String> selected = orderedEndpointKeys.stream()
-                .limit(MAX_ENDPOINT_ITEMS)
-                .toList();
+        List<String> selected = selectedEndpointKeys(aggregates, anchorsByEndpointKey);
         if (selected.isEmpty()) {
             return InstanceDashboardReadModel.EndpointEvidence.missing();
         }
@@ -495,6 +483,7 @@ public class InstanceDashboardReadModelService {
             long requestCount = endpoint == null ? 0L : endpoint.requestCount();
             long errorCount = endpoint == null ? 0L : endpoint.errorCount();
             boolean observed = endpoint != null && endpoint.requestCount() > 0L;
+            SlowEvidence endpointSlowEvidence = endpoint == null ? SlowEvidence.missing() : endpointSlowEvidence(endpoint);
             items.add(new InstanceDashboardReadModel.EndpointEvidenceItem(
                     method,
                     route,
@@ -503,6 +492,9 @@ public class InstanceDashboardReadModelService {
                     requestCount,
                     errorCount,
                     requestCount == 0L ? null : ratio(errorCount, requestCount),
+                    endpoint == null ? null : endpoint.durationBuckets(),
+                    endpointSlowEvidence.slowCountOver500ms(),
+                    endpointSlowEvidence.slowShareOver500ms(),
                     index + 1,
                     observed ? "available" : "missing",
                     observed && errorCount > 0L
@@ -523,16 +515,105 @@ public class InstanceDashboardReadModelService {
     }
 
     /**
-     * Application anchor 없이 selected instance metric만으로 endpoint evidence 후보가 될 수 있는지 판단한다.
+     * endpoint table은 application anchor를 보존하되, selected instance 안에서 호출량/느림/오류 축을 함께 탐색할 수 있게
+     * 각 축의 상위 endpoint를 균형 있게 섞어 max 10개 후보를 만든다.
      */
-    private static boolean standaloneSelectedEndpointEvidenceCandidate(EndpointAggregate endpoint) {
-        if (endpoint.errorCount() > 0L) {
-            return true;
+    private static List<String> selectedEndpointKeys(
+            Map<String, EndpointAggregate> aggregates,
+            Map<String, ApplicationEndpointAnchor> anchorsByEndpointKey) {
+        LinkedHashSet<String> selected = new LinkedHashSet<>();
+        anchorsByEndpointKey.keySet().forEach(selected::add);
+
+        List<EndpointAggregate> requestCountRank = aggregates.values().stream()
+                .sorted(requestCountDescending())
+                .toList();
+        List<EndpointAggregate> slowShareRank = aggregates.values().stream()
+                .filter(InstanceDashboardReadModelService::hasEndpointSlowEvidence)
+                .sorted(slowShareDescending())
+                .toList();
+        List<EndpointAggregate> errorRateRank = aggregates.values().stream()
+                .filter(endpoint -> endpoint.errorCount() > 0L)
+                .sorted(errorRateDescending())
+                .toList();
+
+        for (int rank = 0; selected.size() < MAX_ENDPOINT_ITEMS && rank < MAX_ENDPOINT_ITEMS; rank++) {
+            addEndpointAtRank(selected, requestCountRank, rank);
+            addEndpointAtRank(selected, slowShareRank, rank);
+            addEndpointAtRank(selected, errorRateRank, rank);
         }
-        if (endpoint.requestCount() < MINIMUM_SAMPLE_REQUEST_COUNT) {
-            return false;
+        return selected.stream()
+                .limit(MAX_ENDPOINT_ITEMS)
+                .toList();
+    }
+
+    private static void addEndpointAtRank(
+            LinkedHashSet<String> selected,
+            List<EndpointAggregate> rankedEndpoints,
+            int rank) {
+        if (selected.size() >= MAX_ENDPOINT_ITEMS || rank >= rankedEndpoints.size()) {
+            return;
         }
-        return ratio(endpoint.errorCount(), endpoint.requestCount()).compareTo(ERROR_RATE_THRESHOLD) >= 0;
+        selected.add(rankedEndpoints.get(rank).endpointKey());
+    }
+
+    private static boolean hasEndpointSlowEvidence(EndpointAggregate endpoint) {
+        SlowEvidence slowEvidence = endpointSlowEvidence(endpoint);
+        return slowEvidence.slowCountOver500ms() != null && slowEvidence.slowCountOver500ms() > 0L;
+    }
+
+    private static Comparator<EndpointAggregate> requestCountDescending() {
+        return Comparator.comparingLong(EndpointAggregate::requestCount)
+                .reversed()
+                .thenComparing(EndpointAggregate::endpointKey);
+    }
+
+    private static Comparator<EndpointAggregate> slowShareDescending() {
+        return (left, right) -> {
+            BigDecimal leftShare = endpointSlowEvidence(left).slowShareOver500ms();
+            BigDecimal rightShare = endpointSlowEvidence(right).slowShareOver500ms();
+            int compared = compareNullableRatioDescending(leftShare, rightShare);
+            if (compared != 0) {
+                return compared;
+            }
+            compared = Long.compare(right.requestCount(), left.requestCount());
+            if (compared != 0) {
+                return compared;
+            }
+            return left.endpointKey().compareTo(right.endpointKey());
+        };
+    }
+
+    private static Comparator<EndpointAggregate> errorRateDescending() {
+        return (left, right) -> {
+            BigDecimal leftRate = ratio(left.errorCount(), left.requestCount());
+            BigDecimal rightRate = ratio(right.errorCount(), right.requestCount());
+            int compared = compareNullableRatioDescending(leftRate, rightRate);
+            if (compared != 0) {
+                return compared;
+            }
+            compared = Long.compare(right.errorCount(), left.errorCount());
+            if (compared != 0) {
+                return compared;
+            }
+            compared = Long.compare(right.requestCount(), left.requestCount());
+            if (compared != 0) {
+                return compared;
+            }
+            return left.endpointKey().compareTo(right.endpointKey());
+        };
+    }
+
+    private static int compareNullableRatioDescending(BigDecimal left, BigDecimal right) {
+        if (left == null && right == null) {
+            return 0;
+        }
+        if (left == null) {
+            return 1;
+        }
+        if (right == null) {
+            return -1;
+        }
+        return right.compareTo(left);
     }
 
     private List<ApplicationEndpointAnchor> applicationEndpointAnchors(
@@ -561,8 +642,8 @@ public class InstanceDashboardReadModelService {
             }
             for (EndpointItem item : parsed.orElseThrow()) {
                 aggregates.compute(item.endpointKey(), (key, existing) -> existing == null
-                        ? new EndpointAggregate(item.method(), item.route(), item.requestCount(), item.errorCount())
-                        : existing.plus(item.requestCount(), item.errorCount()));
+                        ? EndpointAggregate.from(item)
+                        : existing.plus(item));
             }
         }
         List<EndpointAggregate> selected = aggregates.values().stream()
@@ -849,23 +930,119 @@ public class InstanceDashboardReadModelService {
                 String route = textValue(item, "route");
                 Long requestCount = longValue(item, "requestCount");
                 Long errorCount = longValue(item, "errorCount");
-                if (method == null || route == null || requestCount == null || errorCount == null
+                if (method == null || route == null || !safeEndpointRoute(route) || requestCount == null || errorCount == null
                         || requestCount < 0L || errorCount < 0L || errorCount > requestCount) {
                     return Optional.empty();
-                }
-                if ("UNKNOWN".equalsIgnoreCase(route.trim())) {
-                    continue;
                 }
                 items.add(new EndpointItem(
                         method.trim().toUpperCase(Locale.ROOT),
                         route.trim(),
                         requestCount,
-                        errorCount));
+                        errorCount,
+                        parseEndpointDurationBuckets(item, requestCount)));
             }
             return Optional.of(items);
         } catch (JsonProcessingException exception) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * endpoint별 duration bucket은 표시와 slow evidence 계산에만 쓰고, parsing이 불가능하면 endpoint 자체는 유지한다.
+     */
+    private static List<InstanceDashboardReadModel.HistogramBucket> parseEndpointDurationBuckets(
+            JsonNode endpoint,
+            long requestCount) {
+        JsonNode root = endpoint.get("durationBuckets");
+        if (root == null || !root.isArray() || root.isEmpty()) {
+            return null;
+        }
+        List<InstanceDashboardReadModel.HistogramBucket> buckets = new ArrayList<>();
+        for (JsonNode item : root) {
+            Long leMs = longValue(item, "leMs");
+            Long count = longValue(item, "count");
+            if (leMs == null || count == null || leMs < 0L || count < 0L || count > requestCount) {
+                return null;
+            }
+            buckets.add(new InstanceDashboardReadModel.HistogramBucket(leMs, count));
+        }
+        return validEndpointDurationBuckets(buckets);
+    }
+
+    /**
+     * duration bucket이 cumulative bucket 계약을 만족할 때만 frontend에 전달한다.
+     */
+    private static List<InstanceDashboardReadModel.HistogramBucket> validEndpointDurationBuckets(
+            List<InstanceDashboardReadModel.HistogramBucket> buckets) {
+        List<InstanceDashboardReadModel.HistogramBucket> sortedBuckets = buckets.stream()
+                .sorted(Comparator.comparingLong(InstanceDashboardReadModel.HistogramBucket::leMs))
+                .toList();
+        Long previousBoundary = null;
+        Long previousCount = null;
+        for (InstanceDashboardReadModel.HistogramBucket bucket : sortedBuckets) {
+            if (Objects.equals(previousBoundary, bucket.leMs())) {
+                return null;
+            }
+            if (previousCount != null && bucket.count() < previousCount) {
+                return null;
+            }
+            previousBoundary = bucket.leMs();
+            previousCount = bucket.count();
+        }
+        return sortedBuckets;
+    }
+
+    /**
+     * 500ms boundary가 endpoint duration bucket에 있을 때만 slow count/share를 계산한다.
+     */
+    private static SlowEvidence endpointSlowEvidence(EndpointAggregate endpoint) {
+        List<InstanceDashboardReadModel.HistogramBucket> buckets = endpoint.durationBuckets();
+        if (buckets == null || buckets.isEmpty()) {
+            return SlowEvidence.missing();
+        }
+        long total = buckets.get(buckets.size() - 1).count();
+        if (total <= 0L) {
+            return SlowEvidence.missing();
+        }
+        return buckets.stream()
+                .filter(bucket -> bucket.leMs() == 500L)
+                .findFirst()
+                .map(bucket -> {
+                    long slowCount = Math.max(0L, total - bucket.count());
+                    return new SlowEvidence(slowCount, ratio(slowCount, total), false);
+                })
+                .orElseGet(SlowEvidence::missing);
+    }
+
+    /**
+     * Instance Dashboard는 normalized route만 표시한다.
+     * UNKNOWN은 route normalization의 bounded fallback이므로 raw path/query 노출 없이 endpoint evidence로 사용할 수 있다.
+     */
+    private static boolean safeEndpointRoute(String route) {
+        if (route == null || route.isBlank()) {
+            return false;
+        }
+        String trimmed = route.trim();
+        if (trimmed.length() != route.length() || containsControlCharacter(trimmed)) {
+            return false;
+        }
+        if ("UNKNOWN".equalsIgnoreCase(trimmed)) {
+            return true;
+        }
+        String lowerCaseRoute = trimmed.toLowerCase(Locale.ROOT);
+        if (trimmed.contains("?") || lowerCaseRoute.startsWith("http://") || lowerCaseRoute.startsWith("https://")) {
+            return false;
+        }
+        return trimmed.startsWith("/") && !trimmed.startsWith("//") && !trimmed.contains("//");
+    }
+
+    private static boolean containsControlCharacter(String value) {
+        for (int index = 0; index < value.length(); index++) {
+            if (Character.isISOControl(value.charAt(index))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Long longValue(JsonNode root, String fieldName) {
@@ -1011,7 +1188,12 @@ public class InstanceDashboardReadModelService {
         }
     }
 
-    private record EndpointItem(String method, String route, long requestCount, long errorCount) {
+    private record EndpointItem(
+            String method,
+            String route,
+            long requestCount,
+            long errorCount,
+            List<InstanceDashboardReadModel.HistogramBucket> durationBuckets) {
 
         private String endpointKey() {
             return method + " " + route;
@@ -1024,18 +1206,57 @@ public class InstanceDashboardReadModelService {
     private record ApplicationEndpointAnchor(String method, String route, String endpointKey, String anchorId) {
     }
 
-    private record EndpointAggregate(String method, String route, long requestCount, long errorCount) {
+    private record EndpointAggregate(
+            String method,
+            String route,
+            long requestCount,
+            long errorCount,
+            List<InstanceDashboardReadModel.HistogramBucket> durationBuckets) {
 
-        private EndpointAggregate plus(long additionalRequestCount, long additionalErrorCount) {
+        private EndpointAggregate {
+            durationBuckets = durationBuckets == null ? null : List.copyOf(durationBuckets);
+        }
+
+        private static EndpointAggregate from(EndpointItem item) {
+            return new EndpointAggregate(
+                    item.method(),
+                    item.route(),
+                    item.requestCount(),
+                    item.errorCount(),
+                    item.durationBuckets());
+        }
+
+        private EndpointAggregate plus(EndpointItem item) {
             return new EndpointAggregate(
                     method,
                     route,
-                    requestCount + additionalRequestCount,
-                    errorCount + additionalErrorCount);
+                    requestCount + item.requestCount(),
+                    errorCount + item.errorCount(),
+                    mergeEndpointDurationBuckets(durationBuckets, item.durationBuckets()));
         }
 
         private String endpointKey() {
             return method + " " + route;
         }
+    }
+
+    private static List<InstanceDashboardReadModel.HistogramBucket> mergeEndpointDurationBuckets(
+            List<InstanceDashboardReadModel.HistogramBucket> first,
+            List<InstanceDashboardReadModel.HistogramBucket> second) {
+        if (first == null || second == null || first.size() != second.size()) {
+            return null;
+        }
+        List<InstanceDashboardReadModel.HistogramBucket> merged = new ArrayList<>();
+        for (int index = 0; index < first.size(); index++) {
+            InstanceDashboardReadModel.HistogramBucket left = first.get(index);
+            InstanceDashboardReadModel.HistogramBucket right = second.get(index);
+            if (left.leMs() != right.leMs()) {
+                return null;
+            }
+            merged.add(new InstanceDashboardReadModel.HistogramBucket(
+                    left.leMs(),
+                    left.count() + right.count()));
+        }
+        return merged;
     }
 }

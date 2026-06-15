@@ -246,7 +246,7 @@ class EndpointPriorityReadModelShapeTest {
                         new ApplicationDashboardReadModel.Freshness(end, end.plusSeconds(90), end.plusSeconds(180))),
                 new ApplicationDashboardReadModel.State(
                         "degraded",
-                        "주의 필요",
+                        "서비스 성능 저하",
                         "최근 30분 기준 degraded입니다.",
                         "state reason을 확인하세요.",
                         "application"),

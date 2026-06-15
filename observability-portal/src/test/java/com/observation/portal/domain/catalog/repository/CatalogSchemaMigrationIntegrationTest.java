@@ -37,7 +37,7 @@ class CatalogSchemaMigrationIntegrationTest {
     void appliesMigrationsToCleanDatabase() throws SQLException {
         MigrateResult result = cleanAndMigrate();
 
-        assertThat(result.migrationsExecuted).isEqualTo(12);
+        assertThat(result.migrationsExecuted).isEqualTo(13);
         assertThat(tableExists("projects")).isTrue();
         assertThat(tableExists("applications")).isTrue();
         assertThat(tableExists("application_instances")).isTrue();
@@ -269,6 +269,14 @@ class CatalogSchemaMigrationIntegrationTest {
                 "active",
                 "unknown_future_reason",
                 "{\"instanceSummary\":{\"schemaVersion\":\"1.0\",\"items\":[]}}");
+        insertDashboardSnapshot(
+                UUID.fromString("00000000-0000-0000-0000-000000000909"),
+                projectId,
+                applicationId,
+                "2026-05-26T11:00:00Z",
+                "attention",
+                "high_confidence_concern",
+                "{\"instanceSummary\":{\"schemaVersion\":\"1.0\",\"items\":[]}}");
         assertSqlState(UNIQUE_VIOLATION,
                 () -> insertDashboardSnapshot(
                         UUID.fromString("00000000-0000-0000-0000-000000000908"),
@@ -490,7 +498,7 @@ class CatalogSchemaMigrationIntegrationTest {
 
         MigrateResult result = migrateRemaining();
 
-        assertThat(result.migrationsExecuted).isEqualTo(6);
+        assertThat(result.migrationsExecuted).isEqualTo(7);
         assertThat(dashboardSnapshotCount(applicationId)).isEqualTo(1);
         assertThat(dashboardSnapshotExists(stateChangeId)).isTrue();
         assertThat(constraintExists(

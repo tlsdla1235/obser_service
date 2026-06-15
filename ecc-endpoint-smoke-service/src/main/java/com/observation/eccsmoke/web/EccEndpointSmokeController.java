@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.HandlerMapping;
@@ -25,6 +26,7 @@ import java.util.List;
 public class EccEndpointSmokeController {
 
     private static final String SOURCE_PROJECT = "DevelopYour/ECC-back";
+    private static final long MAX_DELAY_MILLIS = 950L;
 
     private static final List<RouteSpec> ROUTE_SPECS = List.of(
             new RouteSpec("GET", "/api/auth/signup/check-id", "auth"),
@@ -137,11 +139,29 @@ public class EccEndpointSmokeController {
      * 의도적인 500 응답을 만들어 portal과 starter의 error path 집계를 확인한다.
      */
     @GetMapping("/api/ecc-smoke/error-500")
-    public ResponseEntity<EccSmokeEnvelope<EccEndpointResponse>> intentionalServerError(HttpServletRequest request) {
+    public ResponseEntity<EccSmokeEnvelope<EccEndpointResponse>> intentionalServerError(
+            @RequestParam(defaultValue = "0") long delayMillis,
+            HttpServletRequest request) {
+        sleepBounded(delayMillis);
         EccEndpointResponse data = responseFor("GET", "smoke-error", request);
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(EccSmokeEnvelope.error("의도적으로 발생시킨 500 응답입니다.", data));
+    }
+
+    /**
+     * 의도적으로 늦게 응답해 starter local percentile과 duration bucket의 slow path 집계를 확인한다.
+     *
+     * <p>기본 delay는 850ms로, 현재 histogram의 500ms 초과/1000ms 이하 bucket에 안전하게 들어간다.</p>
+     */
+    @GetMapping("/api/ecc-smoke/slow-p99")
+    public EccSmokeEnvelope<EccEndpointResponse> intentionalSlowResponse(
+            @RequestParam(defaultValue = "850") long delayMillis,
+            HttpServletRequest request) {
+        sleepBounded(delayMillis);
+        return EccSmokeEnvelope.success(
+                "의도적으로 늦게 응답한 smoke endpoint입니다.",
+                responseFor("GET", "smoke-latency", request));
     }
 
     /**
@@ -302,6 +322,18 @@ public class EccEndpointSmokeController {
     private static String matchedRoute(HttpServletRequest request) {
         Object route = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
         return route == null ? request.getRequestURI() : route.toString();
+    }
+
+    private static void sleepBounded(long delayMillis) {
+        long boundedDelayMillis = Math.max(0L, Math.min(delayMillis, MAX_DELAY_MILLIS));
+        if (boundedDelayMillis == 0L) {
+            return;
+        }
+        try {
+            Thread.sleep(boundedDelayMillis);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**

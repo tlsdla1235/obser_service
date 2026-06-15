@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Activity, Gauge, ListChecks, Radio, RefreshCw, Server } from "lucide-react";
 import { ApiRequestError, AuthRequiredError, NO_STORE_REQUEST_OPTIONS, readJsonResource } from "../lib/api";
@@ -42,6 +42,9 @@ export type SnapshotInstanceDashboardTarget = InstanceDashboardTarget & {
 };
 
 type InstanceDashboardMode = "live" | "snapshot";
+type EndpointEvidenceSort = "requestCountDesc" | "errorRateDesc" | "slowShareOver500msDesc";
+
+const ENDPOINT_TABLE_LIMIT = 10;
 
 function StatusBadge({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
@@ -169,7 +172,6 @@ export function InstanceDashboardSurface({
         <ResourceEvidencePanel dashboard={dashboard} />
         <StarterConnectionPanel dashboard={dashboard} />
       </div>
-      <NormalizedEndpointEvidenceTable items={dashboard.endpointEvidence.items} />
     </div>
   );
 }
@@ -275,14 +277,41 @@ function MetricGrid({ dashboard }: { dashboard: InstanceDashboardReadModel }) {
 
 function EndpointEvidencePanel({ dashboard }: { dashboard: InstanceDashboardReadModel }) {
   const evidence = dashboard.endpointEvidence;
+  const [sort, setSort] = useState<EndpointEvidenceSort>("requestCountDesc");
+  const visibleItems = useMemo(
+    () => sortedEndpointEvidenceItems(evidence.items, sort).slice(0, ENDPOINT_TABLE_LIMIT),
+    [evidence.items, sort],
+  );
+  const sortState = useMemo(
+    () => endpointSortState(evidence.items, visibleItems, sort),
+    [evidence.items, sort, visibleItems],
+  );
   return (
     <section className="border border-neutral-200 bg-white">
-      <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-3 py-2.5">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-neutral-100 px-3 py-2.5">
         <div>
-          <SectionLabel icon={Server}>Endpoint evidence on selected instance</SectionLabel>
-          <p className="mt-1 text-[12px] text-neutral-500">Application endpoint evidence와 selected instance 관측 여부를 연결합니다.</p>
+          <SectionLabel icon={Server}>NORMALIZED ENDPOINT EVIDENCE TABLE</SectionLabel>
+          <p className="mt-1 text-[12px] text-neutral-500">
+            selected instance의 normalized route evidence를 탐색합니다. application state나 endpoint priority를 새로 판정하지 않습니다.
+          </p>
         </div>
-        <StatusBadge className={statusBadgeClassName(evidence.status)}>{humanizeStatusCode(evidence.status)}</StatusBadge>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            aria-label="endpoint table sort"
+            className="h-8 border border-neutral-300 bg-white px-2 text-[11px] uppercase text-neutral-700"
+            onChange={(event) => setSort(event.target.value as EndpointEvidenceSort)}
+            value={sort}
+          >
+            <option value="requestCountDesc">requestCount desc</option>
+            <option value="errorRateDesc">errorRate desc</option>
+            <option value="slowShareOver500msDesc">slowShareOver500ms desc</option>
+          </select>
+          <Button className="h-8 border-neutral-300 px-2 text-[11px] uppercase" disabled size="sm" type="button" variant="outline">
+            max {ENDPOINT_TABLE_LIMIT}
+          </Button>
+          <StatusBadge className={sortState.badgeClassName}>{sortState.badgeText}</StatusBadge>
+          <StatusBadge className={statusBadgeClassName(evidence.status)}>{humanizeStatusCode(evidence.status)}</StatusBadge>
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-2 border-b border-neutral-100 p-3 text-[11px] md:grid-cols-4">
         <InfoCell label="source" value={humanizeSourceCode(evidence.source)} />
@@ -291,39 +320,93 @@ function EndpointEvidencePanel({ dashboard }: { dashboard: InstanceDashboardRead
         <InfoCell label="display order" value={humanizeStatusCode(evidence.displayOrderingPolicy)} />
       </div>
       {evidence.items.length === 0 ? (
-        <div className="p-3 text-[12px] text-neutral-500">
-          {evidence.reason ? humanizeStatusCode(evidence.reason) : "selected instance에서 표시할 endpoint evidence가 없습니다."}
+        <div className="p-3 text-[12px] leading-5 text-neutral-500">
+          {instanceEndpointEvidenceEmptyCopy(dashboard)}
         </div>
       ) : (
-        <ul>
-          {evidence.items.map((item) => (
-            <EndpointEvidenceRow item={item} key={`${item.localDisplayOrder}-${item.endpointKey}`} />
-          ))}
-        </ul>
+        <div className="overflow-x-auto p-3">
+          <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-neutral-500">
+            <span>source: accepted_metric_buckets.endpoints_json · raw path/query/per-request sample 없음 · endpoint p95/p99 rollup 없음</span>
+            <span>{sortState.description}</span>
+          </div>
+          <table className="w-full min-w-[980px] border-collapse text-left text-[11px]">
+            <thead>
+              <tr className="border-y border-neutral-200 bg-neutral-50 text-neutral-500">
+                <th className="px-2 py-2 font-normal uppercase">ENDPOINTKEY / NORMALIZED ROUTE</th>
+                <th className="px-2 py-2 text-right font-normal uppercase">REQUESTCOUNT</th>
+                <th className="px-2 py-2 text-right font-normal uppercase">ERRORCOUNT</th>
+                <th className="px-2 py-2 text-right font-normal uppercase">ERRORRATE</th>
+                <th className="px-2 py-2 text-right font-normal uppercase">SLOWCOUNT &gt;500MS</th>
+                <th className="px-2 py-2 text-right font-normal uppercase">SLOWSHARE &gt;500MS</th>
+                <th className="px-2 py-2 font-normal uppercase">ENDPOINT DURATION BUCKET DISTRIBUTION</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100">
+              {visibleItems.map((item) => (
+                <EndpointEvidenceTableRow item={item} key={`${item.localDisplayOrder}-${item.endpointKey}`} />
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
 }
 
-function EndpointEvidenceRow({ item }: { item: InstanceDashboardEndpointEvidenceItem }) {
+function EndpointEvidenceTableRow({ item }: { item: InstanceDashboardEndpointEvidenceItem }) {
   return (
-    <li className="border-b border-neutral-100 p-3 last:border-b-0">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate text-neutral-900">{item.endpointKey}</div>
-          <div className="mt-0.5 text-[11px] text-neutral-500">
-            표시 순서 {item.localDisplayOrder} · 앱 근거 {item.relatedApplicationEndpointEvidenceRef ?? "연결 없음"}
-          </div>
+    <tr className="align-top text-neutral-700">
+      <td className="px-2 py-2">
+        <div className="font-medium text-neutral-950">{item.endpointKey}</div>
+        <div className="mt-0.5 text-neutral-500">
+          {item.method} · {item.route} · {endpointPresenceText(item.presenceOnSelectedInstance)}
         </div>
-        <StatusBadge className={statusBadgeClassName(item.status)}>{endpointPresenceText(item.presenceOnSelectedInstance)}</StatusBadge>
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          <StatusBadge className={endpointRowStatusClassName(item)}>{humanizeStatusCode(item.status)}</StatusBadge>
+          <StatusBadge>#{item.localDisplayOrder}</StatusBadge>
+        </div>
+      </td>
+      <td className="px-2 py-2 text-right tabular-nums text-neutral-900">{formatCount(item.requestCount)}</td>
+      <td className={`px-2 py-2 text-right tabular-nums ${item.errorCount > 0 ? "text-red-700" : "text-neutral-900"}`}>
+        {formatCount(item.errorCount)}
+      </td>
+      <td className={`px-2 py-2 text-right tabular-nums ${hasPositiveRatio(item.errorRate) ? "text-red-700" : "text-neutral-900"}`}>
+        {formatNullableRatio(item.errorRate)}
+      </td>
+      <td className={`px-2 py-2 text-right tabular-nums ${hasPositiveCount(item.slowCountOver500ms) ? "text-amber-800" : "text-neutral-900"}`}>
+        {formatNullableCount(item.slowCountOver500ms)}
+      </td>
+      <td className={`px-2 py-2 text-right tabular-nums ${hasPositiveRatio(item.slowShareOver500ms) ? "text-amber-800" : "text-neutral-900"}`}>
+        {formatNullableRatio(item.slowShareOver500ms)}
+      </td>
+      <td className="px-2 py-2">
+        <EndpointDurationDistribution item={item} />
+      </td>
+    </tr>
+  );
+}
+
+function EndpointDurationDistribution({ item }: { item: InstanceDashboardEndpointEvidenceItem }) {
+  const segments = endpointDurationSegments(item.durationBuckets);
+  if (!segments) {
+    return (
+      <div className="text-neutral-500">
+        확인할 수 없음 · 100ms/500ms boundary 미제공
       </div>
-      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-500 md:grid-cols-4">
-        <InfoCell label="요청 수" value={formatCount(item.requestCount)} />
-        <InfoCell label="오류 수" value={formatCount(item.errorCount)} />
-        <InfoCell label="오류율" value={formatNullableRatio(item.errorRate)} />
-        <InfoCell label="제한" value={item.reason ? humanizeStatusCode(item.reason) : "추가 제한 없음"} />
-      </div>
-    </li>
+    );
+  }
+  return (
+    <div className="grid gap-1.5">
+      {segments.map((segment) => (
+        <div className="grid grid-cols-[64px_minmax(96px,1fr)_48px] items-center gap-2" key={segment.key}>
+          <span className="truncate text-neutral-500">{segment.label}</span>
+          <span className="h-1.5 bg-neutral-100">
+            <span className={`block h-full ${segment.className}`} style={{ width: `${segment.width}%` }} />
+          </span>
+          <span className="text-right tabular-nums text-neutral-700">{formatCount(segment.count)}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -368,6 +451,259 @@ function ResourceEvidenceRow({ item }: { item: InstanceDashboardResourceEvidence
   );
 }
 
+function sortedEndpointEvidenceItems(
+  items: InstanceDashboardEndpointEvidenceItem[],
+  sort: EndpointEvidenceSort,
+): InstanceDashboardEndpointEvidenceItem[] {
+  return [...items].sort((left, right) => {
+    const primary = sort === "errorRateDesc"
+      ? compareNullableNumberDesc(left.errorRate, right.errorRate)
+      : sort === "slowShareOver500msDesc"
+        ? compareNullableNumberDesc(left.slowShareOver500ms, right.slowShareOver500ms)
+        : compareNumberDesc(left.requestCount, right.requestCount);
+    if (primary !== 0) {
+      return primary;
+    }
+    const secondary = compareEndpointSortTieBreaker(left, right, sort);
+    return secondary !== 0 ? secondary : left.localDisplayOrder - right.localDisplayOrder;
+  });
+}
+
+function compareEndpointSortTieBreaker(
+  left: InstanceDashboardEndpointEvidenceItem,
+  right: InstanceDashboardEndpointEvidenceItem,
+  sort: EndpointEvidenceSort,
+): number {
+  if (sort === "errorRateDesc") {
+    return (
+      compareNumberDesc(left.errorCount, right.errorCount) ||
+      compareNumberDesc(left.requestCount, right.requestCount) ||
+      compareNullableNumberDesc(left.slowShareOver500ms, right.slowShareOver500ms) ||
+      left.endpointKey.localeCompare(right.endpointKey)
+    );
+  }
+  if (sort === "slowShareOver500msDesc") {
+    return (
+      compareNullableNumberDesc(left.slowCountOver500ms, right.slowCountOver500ms) ||
+      compareNumberDesc(left.requestCount, right.requestCount) ||
+      compareNullableNumberDesc(left.errorRate, right.errorRate) ||
+      left.endpointKey.localeCompare(right.endpointKey)
+    );
+  }
+  return (
+    compareNullableNumberDesc(left.errorRate, right.errorRate) ||
+    compareNullableNumberDesc(left.slowShareOver500ms, right.slowShareOver500ms) ||
+    compareNumberDesc(left.errorCount, right.errorCount) ||
+    left.endpointKey.localeCompare(right.endpointKey)
+  );
+}
+
+type EndpointSortState = {
+  badgeClassName: string;
+  badgeText: string;
+  description: string;
+};
+
+function endpointSortState(
+  items: InstanceDashboardEndpointEvidenceItem[],
+  visibleItems: InstanceDashboardEndpointEvidenceItem[],
+  sort: EndpointEvidenceSort,
+): EndpointSortState {
+  if (items.length <= 1) {
+    return {
+      badgeClassName: "border-neutral-300 bg-neutral-50 text-neutral-600",
+      badgeText: "비교 없음",
+      description: `정렬: ${endpointSortLabel(sort)} · 비교할 endpoint가 ${items.length}개입니다.`,
+    };
+  }
+
+  const providedItems = [...items]
+    .sort((left, right) => left.localDisplayOrder - right.localDisplayOrder)
+    .slice(0, ENDPOINT_TABLE_LIMIT);
+  const sameOrder = sameEndpointOrder(providedItems, visibleItems);
+  if (!sameOrder) {
+    return {
+      badgeClassName: "border-emerald-300 bg-emerald-50 text-emerald-700",
+      badgeText: "정렬 적용",
+      description: `정렬: ${endpointSortLabel(sort)} · ${formatCount(visibleItems.length)}개 행에 적용됨`,
+    };
+  }
+
+  const distinctPrimaryValues = distinctEndpointPrimarySortValues(items, sort);
+  const reason = distinctPrimaryValues <= 1
+    ? `${endpointSortMetricLabel(sort)} 값이 모두 같아 행 순서가 바뀌지 않습니다.`
+    : `server 제공 순서가 이미 ${endpointSortLabel(sort)} 결과와 같습니다.`;
+  return {
+    badgeClassName: "border-neutral-300 bg-neutral-50 text-neutral-600",
+    badgeText: distinctPrimaryValues <= 1 ? "동일값" : "동일 순서",
+    description: `정렬: ${endpointSortLabel(sort)} · ${reason}`,
+  };
+}
+
+function endpointSortLabel(sort: EndpointEvidenceSort): string {
+  if (sort === "errorRateDesc") {
+    return "errorRate desc";
+  }
+  if (sort === "slowShareOver500msDesc") {
+    return "slowShare >500ms desc";
+  }
+  return "requestCount desc";
+}
+
+function endpointSortMetricLabel(sort: EndpointEvidenceSort): string {
+  if (sort === "errorRateDesc") {
+    return "errorRate";
+  }
+  if (sort === "slowShareOver500msDesc") {
+    return "slowShare >500ms";
+  }
+  return "requestCount";
+}
+
+function distinctEndpointPrimarySortValues(
+  items: InstanceDashboardEndpointEvidenceItem[],
+  sort: EndpointEvidenceSort,
+): number {
+  const values = items
+    .map((item) => endpointPrimarySortValue(item, sort))
+    .filter((value): value is number => value !== null && Number.isFinite(value));
+  return new Set(values.map((value) => value.toString())).size;
+}
+
+function endpointPrimarySortValue(
+  item: InstanceDashboardEndpointEvidenceItem,
+  sort: EndpointEvidenceSort,
+): number | null {
+  if (sort === "errorRateDesc") {
+    return item.errorRate;
+  }
+  if (sort === "slowShareOver500msDesc") {
+    return item.slowShareOver500ms;
+  }
+  return item.requestCount;
+}
+
+function sameEndpointOrder(
+  providedItems: InstanceDashboardEndpointEvidenceItem[],
+  visibleItems: InstanceDashboardEndpointEvidenceItem[],
+): boolean {
+  if (providedItems.length !== visibleItems.length) {
+    return false;
+  }
+  return providedItems.every((item, index) => {
+    const visibleItem = visibleItems[index];
+    return visibleItem?.endpointKey === item.endpointKey
+      && visibleItem.localDisplayOrder === item.localDisplayOrder;
+  });
+}
+
+function compareNumberDesc(left: number, right: number): number {
+  return right - left;
+}
+
+function compareNullableNumberDesc(left: number | null, right: number | null): number {
+  const leftMissing = left === null || !Number.isFinite(left);
+  const rightMissing = right === null || !Number.isFinite(right);
+  if (leftMissing && rightMissing) {
+    return 0;
+  }
+  if (leftMissing) {
+    return 1;
+  }
+  if (rightMissing) {
+    return -1;
+  }
+  return right - left;
+}
+
+function endpointRowStatusClassName(item: InstanceDashboardEndpointEvidenceItem): string {
+  if (item.errorCount > 0 || (item.errorRate ?? 0) > 0) {
+    return "border-red-200 bg-red-50 text-red-700";
+  }
+  if ((item.slowCountOver500ms ?? 0) > 0 || (item.slowShareOver500ms ?? 0) > 0) {
+    return "border-amber-200 bg-amber-50 text-amber-800";
+  }
+  return statusBadgeClassName(item.status);
+}
+
+type EndpointDurationSegment = {
+  className: string;
+  count: number;
+  key: string;
+  label: string;
+  width: number;
+};
+
+function endpointDurationSegments(
+  buckets: InstanceDashboardEndpointEvidenceItem["durationBuckets"],
+): EndpointDurationSegment[] | null {
+  if (!buckets || buckets.length === 0) {
+    return null;
+  }
+  const sortedBuckets = [...buckets].sort((left, right) => left.leMs - right.leMs);
+  const total = sortedBuckets[sortedBuckets.length - 1]?.count ?? 0;
+  const atOrBelow100 = sortedBuckets.find((bucket) => bucket.leMs === 100)?.count;
+  const atOrBelow500 = sortedBuckets.find((bucket) => bucket.leMs === 500)?.count;
+  if (total <= 0 || atOrBelow100 === undefined || atOrBelow500 === undefined || atOrBelow500 < atOrBelow100) {
+    return null;
+  }
+  return [
+    {
+      className: "bg-neutral-500",
+      count: atOrBelow100,
+      key: "lte-100",
+      label: "<=100ms",
+      width: segmentWidth(atOrBelow100, total),
+    },
+    {
+      className: "bg-neutral-400",
+      count: Math.max(0, atOrBelow500 - atOrBelow100),
+      key: "100-500",
+      label: "100-500ms",
+      width: segmentWidth(Math.max(0, atOrBelow500 - atOrBelow100), total),
+    },
+    {
+      className: "bg-amber-700",
+      count: Math.max(0, total - atOrBelow500),
+      key: "gt-500",
+      label: ">500ms",
+      width: segmentWidth(Math.max(0, total - atOrBelow500), total),
+    },
+  ];
+}
+
+function segmentWidth(count: number, total: number): number {
+  if (count <= 0 || total <= 0) {
+    return 0;
+  }
+  return Math.min(100, Math.max(4, (count / total) * 100));
+}
+
+function hasPositiveCount(value: number | null): boolean {
+  return value !== null && value > 0;
+}
+
+function hasPositiveRatio(value: number | null): boolean {
+  return value !== null && value > 0;
+}
+
+function formatNullableCount(value: number | null): string {
+  return value === null ? "미제공" : formatCount(value);
+}
+
+function instanceEndpointEvidenceEmptyCopy(dashboard: InstanceDashboardReadModel): string {
+  const evidence = dashboard.endpointEvidence;
+  const red = dashboard.signals.red;
+  const hasRedSignal = red.errorCount > 0 || (red.errorRate ?? 0) > 0 || (red.slowShareOver500ms ?? 0) > 0;
+  if (evidence.reason) {
+    return `${humanizeStatusCode(evidence.reason)} · endpoint evidence 부재를 selected instance 정상으로 해석하지 않습니다.`;
+  }
+  if (hasRedSignal) {
+    return "selected instance RED signal은 관찰됐지만 endpointEvidence.items가 비어 있습니다. endpoint breakdown 미수집 또는 read model evidence 제한으로 표시합니다.";
+  }
+  return "selected instance에서 표시할 endpoint evidence가 없습니다. raw path/query나 endpoint priority를 client에서 만들지 않습니다.";
+}
+
 function StarterConnectionPanel({ dashboard }: { dashboard: InstanceDashboardReadModel }) {
   const starter = dashboard.starterConnection;
   return (
@@ -385,58 +721,6 @@ function StarterConnectionPanel({ dashboard }: { dashboard: InstanceDashboardRea
       <p className="border-t border-neutral-100 p-3 text-[12px] text-neutral-500">
         heartbeat는 metric state, observationStatus, applicationState를 직접 바꾸지 않는 control-plane 정보입니다.
       </p>
-    </section>
-  );
-}
-
-function NormalizedEndpointEvidenceTable({ items }: { items: InstanceDashboardEndpointEvidenceItem[] }) {
-  return (
-    <section className="border border-neutral-200 bg-white">
-      <div className="border-b border-neutral-100 px-3 py-2.5">
-        <SectionLabel icon={ListChecks}>Normalized endpoint evidence table</SectionLabel>
-        <p className="mt-1 text-[12px] text-neutral-500">
-          server-provided order를 그대로 표시합니다. client에서 endpoint priority를 다시 계산하지 않습니다.
-        </p>
-      </div>
-      <div className="p-3">
-        <div className="border border-neutral-200 bg-neutral-50 p-2 text-[11px] text-neutral-600">
-          source=accepted_metric_buckets.endpoints_json · max 5 · raw path/query/per-request sample 없음
-        </div>
-        <div className="mt-3 overflow-auto">
-          <table className="w-full min-w-[720px] text-left text-[12px]">
-            <thead className="text-neutral-500">
-              <tr>
-                <th className="px-2 py-2">endpointKey</th>
-                <th className="px-2 py-2">presence</th>
-                <th className="px-2 py-2">requestCount</th>
-                <th className="px-2 py-2">errorCount</th>
-                <th className="px-2 py-2">errorRate</th>
-                <th className="px-2 py-2">displayOrder</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 ? (
-                <tr>
-                  <td className="border-t border-neutral-100 px-2 py-3 text-neutral-500" colSpan={6}>
-                    selected instance endpoint evidence가 없습니다.
-                  </td>
-                </tr>
-              ) : (
-                items.map((item) => (
-                  <tr className="border-t border-neutral-100" key={`table-${item.localDisplayOrder}-${item.endpointKey}`}>
-                    <td className="px-2 py-2 text-neutral-900">{item.endpointKey}</td>
-                    <td className="px-2 py-2 text-neutral-600">{endpointPresenceText(item.presenceOnSelectedInstance)}</td>
-                    <td className="px-2 py-2 text-neutral-600">{formatCount(item.requestCount)}</td>
-                    <td className="px-2 py-2 text-neutral-600">{formatCount(item.errorCount)}</td>
-                    <td className="px-2 py-2 text-neutral-600">{formatNullableRatio(item.errorRate)}</td>
-                    <td className="px-2 py-2 text-neutral-600">{item.localDisplayOrder}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </section>
   );
 }

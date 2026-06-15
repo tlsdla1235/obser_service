@@ -35,6 +35,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -655,6 +657,36 @@ class DashboardReadModelServiceTest {
                 APPLICATION_ID,
                 PageRequest.of(0, 50)))
                 .thenReturn(instanceRows(51));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationInstanceIdAtOrBefore(
+                any(UUID.class),
+                eq(EVALUATION_AT)))
+                .thenReturn(Optional.empty());
+        when(metricBucketRepository.findWindowAggregateByApplicationInstanceId(
+                any(UUID.class),
+                eq(CURRENT_START),
+                eq(EVALUATION_AT)))
+                .thenReturn(WindowBucketAggregate.zero());
+        when(metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationInstanceId(
+                any(UUID.class),
+                eq(CURRENT_START),
+                eq(EVALUATION_AT)))
+                .thenReturn(List.of());
+        when(heartbeatRepository.findByIdentity(PROJECT_ID, "orders-api", "prod", "pod-a"))
+                .thenReturn(Optional.of(heartbeat("2026-05-25T10:32:20Z")));
+        when(metricBucketRepository.findLatestBucketEndUtcByApplicationInstanceIdAtOrBefore(
+                INSTANCE_ID,
+                EVALUATION_AT))
+                .thenReturn(Optional.of(offset("2026-05-25T10:32:00Z")));
+        when(metricBucketRepository.findWindowAggregateByApplicationInstanceId(
+                INSTANCE_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(new WindowBucketAggregate(40L, 0L));
+        when(metricBucketRepository.findSummaryDurationBucketEvidenceRowsByApplicationInstanceId(
+                INSTANCE_ID,
+                CURRENT_START,
+                EVALUATION_AT))
+                .thenReturn(List.of(histogramRow("2026-05-25T10:31:30Z", 500L, 32L, 1000L, 40L)));
 
         ApplicationDashboardReadModel dashboard = service.getDashboard(PROJECT_ID, APPLICATION_ID).orElseThrow();
 
@@ -663,6 +695,16 @@ class DashboardReadModelServiceTest {
             assertThat(entry.instanceId()).isEqualTo(INSTANCE_ID);
             assertThat(entry.instanceName()).isEqualTo("pod-a");
             assertThat(entry.lastSeenAt()).isEqualTo(offset("2026-05-25T10:31:30Z"));
+            assertThat(entry.summary().observationStatus().code()).isEqualTo("observed");
+            assertThat(entry.summary().observationStatus().lastObservedBucketEndUtc())
+                    .isEqualTo(offset("2026-05-25T10:32:00Z"));
+            assertThat(entry.summary().starterConnection().lastHeartbeatStatus()).isEqualTo("received");
+            assertThat(entry.summary().starterConnection().lastHeartbeatAt())
+                    .isEqualTo(offset("2026-05-25T10:32:20Z"));
+            assertThat(entry.summary().red().requestCount()).isEqualTo(40L);
+            assertThat(entry.summary().red().slowCountOver500ms()).isEqualTo(8L);
+            assertThat(entry.summary().red().slowShareOver500ms()).isEqualByComparingTo("0.2");
+            assertThat(entry.summary().applicationContribution().level()).isEqualTo("attention");
             assertThat(entry.links().evidence())
                     .isEqualTo("/api/projects/%s/applications/%s/instances/%s/evidence"
                             .formatted(PROJECT_ID, APPLICATION_ID, INSTANCE_ID));
@@ -763,7 +805,7 @@ class DashboardReadModelServiceTest {
     }
 
     @Test
-    void exposesTriageCardWhileStateCanRemainActiveWhenConfidenceBelowDegradedEnter() {
+    void exposesAttentionStateAndFirstLookWhenRedConcernIsBelowDegradedEnter() {
         when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
                 .thenReturn(Optional.of(application()));
         when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
@@ -788,7 +830,14 @@ class DashboardReadModelServiceTest {
                 .extracting(ApplicationDashboardReadModel.TriageCard::ruleId)
                 .contains("application_error_rate_high");
         assertThat(dashboard.triageCards().get(0).confidence()).isLessThan(0.75d);
-        assertThat(dashboard.state().code()).isEqualTo("active");
+        assertThat(dashboard.state().code()).isEqualTo("attention");
+        assertThat(dashboard.state().label()).isEqualTo("주의 필요");
+        assertThat(dashboard.stateReasons())
+                .extracting(ApplicationDashboardReadModel.StateReason::reasonCode)
+                .contains("application_error_rate_high");
+        assertThat(dashboard.firstLookCandidates())
+                .extracting(ApplicationDashboardReadModel.FirstLookCandidate::type)
+                .contains("application");
         assertThat(dashboard.zeroInsight()).isNull();
         assertThat(dashboard.endpointPriority()).isEmpty();
     }
@@ -899,7 +948,7 @@ class DashboardReadModelServiceTest {
         assertThat(dashboard.triageCards()).isEmpty();
         assertThat(dashboard.zeroInsight().reasonCode()).isEqualTo("no_action_needed");
         assertThat(dashboard.zeroInsight().message()).contains("Application 단위 triage card");
-        assertThat(dashboard.zeroInsight().recommendedAction()).contains("endpoint 후보");
+        assertThat(dashboard.zeroInsight().recommendedAction()).contains("먼저 볼 단서", "5xx 로그");
         assertThat(dashboard.zeroInsight().message()).doesNotContain("우선 조치가 필요한 신호는 없습니다");
         assertThat(dashboard.endpointPriority()).singleElement().satisfies(item -> {
             assertThat(item.endpointKey()).isEqualTo("GET /health");
@@ -908,6 +957,9 @@ class DashboardReadModelServiceTest {
             assertThat(item.evidence().requestCount()).isEqualTo(1L);
             assertThat(item.evidence().errorCount()).isEqualTo(1L);
         });
+        assertThat(dashboard.firstLookCandidates())
+                .extracting(ApplicationDashboardReadModel.FirstLookCandidate::source)
+                .contains("endpointPriority");
     }
 
     @Test
@@ -944,7 +996,7 @@ class DashboardReadModelServiceTest {
     }
 
     @Test
-    void keepsStateActiveWhenHighConfidenceConcernHasOnlyTwoRecentBadBuckets() {
+    void usesAttentionWhenHighConfidenceConcernHasOnlyTwoRecentBadBuckets() {
         when(applicationRepository.findByIdAndProjectId(APPLICATION_ID, PROJECT_ID))
                 .thenReturn(Optional.of(application()));
         when(metricBucketRepository.findLatestBucketEndUtcByApplicationIdAtOrBefore(APPLICATION_ID, EVALUATION_AT))
@@ -967,7 +1019,8 @@ class DashboardReadModelServiceTest {
 
         assertThat(dashboard.triageCards()).isNotEmpty();
         assertThat(dashboard.triageCards().get(0).confidence()).isGreaterThanOrEqualTo(0.75d);
-        assertThat(dashboard.state().code()).isEqualTo("active");
+        assertThat(dashboard.state().code()).isEqualTo("attention");
+        assertThat(dashboard.firstLookCandidates()).isNotEmpty();
     }
 
     @Test
@@ -994,6 +1047,7 @@ class DashboardReadModelServiceTest {
 
         assertThat(dashboard.triageCards()).isNotEmpty();
         assertThat(dashboard.state().code()).isEqualTo("degraded");
+        assertThat(dashboard.state().label()).isEqualTo("서비스 성능 저하");
         assertThat(dashboard.zeroInsight()).isNull();
     }
 

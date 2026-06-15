@@ -55,26 +55,26 @@ public class DashboardSnapshotDetailProjectionParser {
     public DashboardSnapshotStoredReadModelProjection project(String readModelJson) {
         JsonNode root = readRoot(readModelJson);
         StoredReadModel readModel = new StoredReadModel(
-                schemaVersion(root),
-                mode(root),
-                window(root),
-                thresholds(root),
-                operatorSummary(root),
-                dataQuality(root),
-                signals(root),
-                arrayOrEmpty(root.get("stateReasons")),
-                arrayOrEmpty(root.get("attentionEvidence")),
-                arrayOrEmpty(root.get("firstLookCandidates")),
-                readSemantics(),
-                objectOrNull(root.get("application")),
-                objectOrNull(root.get("state")),
-                objectOrNull(root.get("starterConnection")),
-                objectOrNull(root.get("zeroInsight")),
-                objectOrNull(root.get("recovery")),
-                objectOrNull(root.get("metrics")),
-                objectOrNull(root.get("sourceScopedPercentiles")),
-                arrayOrEmpty(root.get("triageCards")),
-                arrayOrEmpty(root.get("endpointPriority")));
+                jsonValue(schemaVersion(root)),
+                jsonValue(mode(root)),
+                jsonValue(window(root)),
+                jsonValue(thresholds(root)),
+                jsonValue(operatorSummary(root)),
+                jsonValue(dataQuality(root)),
+                jsonValue(signals(root)),
+                arrayValueOrEmpty(root.get("stateReasons")),
+                arrayValueOrEmpty(root.get("attentionEvidence")),
+                arrayValueOrEmpty(root.get("firstLookCandidates")),
+                jsonValue(readSemantics()),
+                objectValueOrNull(root.get("application")),
+                objectValueOrNull(root.get("state")),
+                objectValueOrNull(root.get("starterConnection")),
+                objectValueOrNull(root.get("zeroInsight")),
+                objectValueOrNull(root.get("recovery")),
+                objectValueOrNull(root.get("metrics")),
+                objectValueOrNull(root.get("sourceScopedPercentiles")),
+                arrayValueOrEmpty(root.get("triageCards")),
+                arrayValueOrEmpty(root.get("endpointPriority")));
         SnapshotEndpointEvidence endpointEvidence = endpointEvidence(root.get("snapshotEndpointEvidence"));
         InstanceSummary instanceSummary = anchorResolver.resolve(endpointEvidence, instanceSummary(root.get("instanceSummary")));
         JsonNode recovery = objectOrNull(root.get("recovery"));
@@ -257,10 +257,10 @@ public class DashboardSnapshotDetailProjectionParser {
                     integer(item, "score"),
                     longValue(item, "requestCount"),
                     decimal(item, "errorRate"),
-                    arrayOrNull(item.get("durationBuckets")),
-                    arrayOrNull(item.get("baselineDurationBuckets")),
+                    arrayValueOrNull(item.get("durationBuckets")),
+                    arrayValueOrNull(item.get("baselineDurationBuckets")),
                     text(item, "bucketDistributionSource"),
-                    objectOrNull(item.get("freshness")),
+                    objectValueOrNull(item.get("freshness")),
                     text(item, "recommendedAction")));
         }
         return new SnapshotEndpointEvidence(
@@ -320,11 +320,11 @@ public class DashboardSnapshotDetailProjectionParser {
                 instanceId,
                 instanceName,
                 observationStatus,
-                objectOrNull(item.get("metricData")),
-                objectOrNull(item.get("starterConnection")),
-                objectOrNull(item.get("starterPercentilePoint")),
-                objectOrNull(item.get("resourceHints")),
-                objectOrNull(item.get("applicationTriageContribution")),
+                objectValueOrNull(item.get("metricData")),
+                objectValueOrNull(item.get("starterConnection")),
+                objectValueOrNull(item.get("starterPercentilePoint")),
+                objectValueOrNull(item.get("resourceHints")),
+                objectValueOrNull(item.get("applicationTriageContribution")),
                 endpointEvidenceRefs(item.get("endpointEvidenceRefs"))));
     }
 
@@ -462,6 +462,28 @@ public class DashboardSnapshotDetailProjectionParser {
 
     private JsonNode arrayOrNull(JsonNode value) {
         return value != null && value.isArray() ? value : NullNode.getInstance();
+    }
+
+    /**
+     * API response DTO에는 Jackson tree type을 싣지 않고 Spring/Jackson이 그대로 JSON으로 직렬화할 수 있는 값만 전달한다.
+     */
+    private Object jsonValue(JsonNode value) {
+        if (value == null || value.isNull() || value.isMissingNode()) {
+            return null;
+        }
+        return objectMapper.convertValue(value, Object.class);
+    }
+
+    private Object objectValueOrNull(JsonNode value) {
+        return jsonValue(objectOrNull(value));
+    }
+
+    private Object arrayValueOrEmpty(JsonNode value) {
+        return jsonValue(arrayOrEmpty(value));
+    }
+
+    private Object arrayValueOrNull(JsonNode value) {
+        return jsonValue(arrayOrNull(value));
     }
 
     private static String text(JsonNode parent, String fieldName) {
