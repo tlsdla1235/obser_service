@@ -1,0 +1,24 @@
+{
+  "case" : "LOCALSTACK_SQS",
+  "requestLatencyMs" : {
+    "count" : 3000,
+    "min" : 6.820542,
+    "p50" : 23.667666,
+    "p95" : 41.838542,
+    "p99" : 63.271458,
+    "max" : 76.329958
+  },
+  "requestCount" : 3000,
+  "failureCount" : 0,
+  "errorRate" : 0.0,
+  "queuedCount" : 3000,
+  "requestThreadDbWriteCount" : 0,
+  "acceptedUniqueBucketCount" : 3000,
+  "persistedUniqueBucketCount" : 3000,
+  "eventualPersistedRatio" : 1.0,
+  "workerDrainSeconds" : 11.711963625,
+  "workerPollCount" : 300,
+  "duplicateSentCount" : 2,
+  "duplicateSuppressedCount" : 1,
+  "persistedRowsAfterDuplicate" : 3001
+}

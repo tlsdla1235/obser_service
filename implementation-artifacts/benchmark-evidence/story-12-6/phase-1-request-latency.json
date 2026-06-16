@@ -1,6 +1,6 @@
 {
   "phase" : "phase-1-request-latency",
-  "claimBoundary" : "request latency only; direct persist response and fake enqueue response are separate meanings",
+  "claimBoundary" : "request latency only; direct persist response and in-memory enqueue response are separate meanings",
   "direct" : {
     "name" : "direct-insert-request-path",
     "queueMode" : "direct",
@@ -28,9 +28,9 @@
     "requestThreadDbWriteAbsent" : false
   },
   "enqueue" : {
-    "name" : "fake-queue-enqueue-request-path",
-    "queueMode" : "fake",
-    "measurementMeaning" : "SQS mode enqueue semantics with in-memory fake queue; real SQS network latency evidence가 아님",
+    "name" : "in-memory-queue-enqueue-request-path",
+    "queueMode" : "in_memory",
+    "measurementMeaning" : "SQS mode enqueue semantics with in-memory queue test double; real SQS network latency evidence가 아님",
     "latencyMs" : {
       "count" : 90,
       "min" : 0.087791,
