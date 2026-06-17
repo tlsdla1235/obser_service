@@ -34,8 +34,8 @@
     "fallbackReason" : "postgres:16-alpine isolated Testcontainers PostgreSQL on local workstation"
   },
   "queue" : {
-    "phase1Mode" : "fake",
-    "queueType" : "in-memory fake queue",
+    "phase1Mode" : "in_memory",
+    "queueType" : "in-memory queue test double",
     "queueEndpointStored" : false,
     "realSqsLatencyEvidence" : false
   },
@@ -44,7 +44,7 @@
     "measurementCount" : 90,
     "clockSource" : "System.nanoTime for durations, UTC wall clock for run metadata"
   },
-  "scenarios" : [ "direct-insert-request-path", "fake-queue-enqueue-request-path", "worker-mvp-message-by-message-persistence", "batch-writer-persistence" ],
+  "scenarios" : [ "direct-insert-request-path", "in-memory-queue-enqueue-request-path", "worker-mvp-message-by-message-persistence", "batch-writer-persistence" ],
   "duplicateNoopSmoke" : {
     "scenario" : "same-key-same-hash-duplicate-smoke",
     "firstStatus" : "INSERTED",

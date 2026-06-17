@@ -12,9 +12,9 @@ import {
   formatDateRange,
   formatNullableRatio,
   formatOptionalDateTime,
-  humanizeCaptureReason,
   humanizeSourceCode,
   humanizeStatusCode,
+  metricStateClassName,
   statusBadgeClassName,
   validateLiveInstanceDashboardPath,
   validateSnapshotDetailPath,
@@ -166,6 +166,7 @@ export function InstanceDashboardSurface({
         <ApplicationStateReferencePanel dashboard={dashboard} />
         <ReadSemanticsPanel dashboard={dashboard} />
       </div>
+      <InstanceReadModelDetails dashboard={dashboard} mode={mode} />
       <MetricGrid dashboard={dashboard} />
       <EndpointEvidencePanel dashboard={dashboard} />
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -183,34 +184,25 @@ function InstanceContextNote({
   dashboard: InstanceDashboardReadModel;
   mode: InstanceDashboardMode;
 }) {
-  const snapshotCopy = "selected Application Snapshot row window 기준 evidence입니다. Application Snapshot 자체는 dashboard_snapshots.read_model_json 저장본이고, selected instance evidence는 selected snapshot row metadata와 accepted_metric_buckets로 재구성합니다. late accepted metric이 포함될 수 있습니다. stored Application Snapshot state/evidence를 override, 검증, 대체하지 않습니다.";
-  const liveCopy = "live context evidence입니다. 현재 query 시각 기준 recent_30_minutes accepted_metric_buckets에서 selected instance evidence를 봅니다. Application 판단을 새로 만들지 않고 application-owned state reference만 표시합니다.";
+  const snapshotMode = mode === "snapshot";
+  const snapshotCopy = "저장된 시점의 인스턴스 근거입니다. 현재 값으로 다시 계산하지 않습니다.";
+  const liveCopy = "이 인스턴스의 최근 30분 요청·오류·지연 근거입니다.";
   return (
-    <section className={`border p-3 ${mode === "snapshot" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-neutral-200 bg-neutral-50 text-neutral-700"}`}>
+    <section className={`border p-3 ${snapshotMode ? "border-amber-300 bg-amber-50 text-amber-950" : "border-neutral-200 bg-neutral-50 text-neutral-700"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <SectionLabel icon={Server}>Context note</SectionLabel>
+          <SectionLabel icon={Server}>{dashboard.instance.instanceId}</SectionLabel>
           <p className="mt-2 max-w-3xl text-[12px] leading-5">
-            {mode === "snapshot" ? snapshotCopy : liveCopy}
+            {snapshotMode ? snapshotCopy : liveCopy}
           </p>
           <div className="mt-2 text-[11px] text-neutral-500">
-            {dashboard.application.name} · {dashboard.application.environment} · {dashboard.instance.instanceId}
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <StatusBadge>{dashboard.schemaVersion}</StatusBadge>
-            <StatusBadge className={statusBadgeClassName(mode)}>{`mode=${dashboard.mode}`}</StatusBadge>
-            <StatusBadge>{humanizeStatusCode(dashboard.window.name)}</StatusBadge>
-            <StatusBadge>{humanizeSourceCode(dashboard.readSemantics.source)}</StatusBadge>
+            {dashboard.application.name} · {dashboard.application.environment}
           </div>
         </div>
         <div className="flex flex-col items-start gap-2 text-[12px] text-neutral-600 sm:items-end">
+          {snapshotMode && <StatusBadge className={statusBadgeClassName("snapshot")}>스냅샷</StatusBadge>}
           <div>생성 시각 <span className="text-neutral-900">{formatOptionalDateTime(dashboard.generatedAt)}</span></div>
-          <div>window <span className="text-neutral-900">{formatDateRange(dashboard.window.startUtc, dashboard.window.endUtc)}</span></div>
-          {dashboard.snapshot && (
-            <div>
-              snapshot <span className="text-neutral-900">{dashboard.snapshot.snapshotId}</span> · {humanizeCaptureReason(dashboard.snapshot.captureReason)}
-            </div>
-          )}
+          <div>기준 구간 <span className="text-neutral-900">{formatDateRange(dashboard.window.startUtc, dashboard.window.endUtc)}</span></div>
         </div>
       </div>
     </section>
@@ -219,22 +211,21 @@ function InstanceContextNote({
 
 function ApplicationStateReferencePanel({ dashboard }: { dashboard: InstanceDashboardReadModel }) {
   const ref = dashboard.applicationStateRef;
+  const stateCode = ref.applicationStateCode ?? "unknown";
   return (
     <section className="border border-neutral-200 bg-white">
       <div className="border-b border-neutral-100 px-3 py-2.5">
-        <SectionLabel icon={Activity}>Application state reference</SectionLabel>
+        <SectionLabel icon={Activity}>애플리케이션 상태</SectionLabel>
+        <p className="mt-1 text-[12px] text-neutral-500">이 인스턴스가 속한 애플리케이션의 현재 상태입니다.</p>
       </div>
-      <div className="grid grid-cols-2 gap-2 p-3 text-[11px] md:grid-cols-4 lg:grid-cols-2">
-        <InfoCell label="lifecycleOwner" value={ref.lifecycleOwner} />
-        <InfoCell label="source" value={humanizeSourceCode(ref.source)} />
-        <InfoCell label="applicationStateCode" value={ref.applicationStateCode ? humanizeStatusCode(ref.applicationStateCode) : "참조 없음"} />
-        <InfoCell label="contribution" value={dashboard.applicationContribution.level} />
-        <InfoCell label="snapshotId" value={ref.snapshotId ?? "live reference"} />
-        <InfoCell label="instance top-level state" value="없음" />
+      <div className="flex flex-wrap items-center gap-3 p-3">
+        <StatusBadge className={metricStateClassName(stateCode)}>
+          {ref.applicationStateCode ? humanizeStatusCode(ref.applicationStateCode) : "참조 없음"}
+        </StatusBadge>
+        <span className="text-[12px] text-neutral-600">
+          이 인스턴스 기여도: {humanizeStatusCode(dashboard.applicationContribution.level)}
+        </span>
       </div>
-      <p className="border-t border-neutral-100 p-3 text-[12px] text-neutral-500">
-        Application Dashboard/Application Snapshot이 소유한 state 참조만 표시합니다. selected instance evidence는 이 판단을 대체하지 않습니다.
-      </p>
     </section>
   );
 }
@@ -244,22 +235,57 @@ function ReadSemanticsPanel({ dashboard }: { dashboard: InstanceDashboardReadMod
   return (
     <section className="border border-neutral-200 bg-white">
       <div className="border-b border-neutral-100 px-3 py-2.5">
-        <SectionLabel icon={ListChecks}>Read semantics</SectionLabel>
+        <SectionLabel icon={ListChecks}>조회 기준</SectionLabel>
       </div>
-      <div className="grid grid-cols-2 gap-2 p-3 text-[11px] md:grid-cols-4 lg:grid-cols-2">
-        <InfoCell label="mode" value={dashboard.mode} />
-        <InfoCell label="source" value={humanizeSourceCode(semantics.source)} />
-        <InfoCell label="window" value={humanizeStatusCode(dashboard.window.name)} />
-        <InfoCell label="windowSource" value={humanizeSourceCode(semantics.windowSource)} />
-        <InfoCell label="snapshotRowSource" value={semantics.snapshotRowSource ?? "n/a"} />
-        <InfoCell label="acceptedAtCutoffApplied" value={String(semantics.acceptedAtCutoffApplied)} />
-        <InfoCell label="includesLateAcceptedMetrics" value={String(semantics.includesLateAcceptedMetrics)} />
-        <InfoCell label="mayDifferFromStoredApplicationSnapshot" value={String(semantics.mayDifferFromStoredApplicationSnapshot)} />
-        <InfoCell label="applicationSnapshotRecalculated" value={String(semantics.applicationSnapshotRecalculated)} />
-        <InfoCell label="instanceEvidenceReconstructedFromMetrics" value={String(semantics.instanceEvidenceReconstructedFromMetrics)} />
-        <InfoCell label="markerIsStateSource" value={String(semantics.markerIsStateSource)} />
+      <div className="grid grid-cols-2 gap-2 p-3 text-[11px] md:grid-cols-3">
+        <InfoCell label="모드" value={dashboard.mode === "snapshot" ? "스냅샷" : "라이브"} />
+        <InfoCell label="기준 시간" value={humanizeStatusCode(dashboard.window.name)} />
+        <InfoCell label="데이터 출처" value={humanizeSourceCode(semantics.source)} />
       </div>
     </section>
+  );
+}
+
+// 기본 화면은 단순화하되, read-model 계약상 노출해야 하는 원본 값·면책 문구는
+// 접이식 상세 섹션에 그대로 보존한다(기본 접힘).
+function InstanceReadModelDetails({
+  dashboard,
+  mode,
+}: {
+  dashboard: InstanceDashboardReadModel;
+  mode: InstanceDashboardMode;
+}) {
+  const semantics = dashboard.readSemantics;
+  const ref = dashboard.applicationStateRef;
+  const snapshotNote =
+    "selected Application Snapshot row window 기준 evidence입니다. Application Snapshot 자체는 dashboard_snapshots.read_model_json 저장본이고, selected instance evidence는 selected snapshot row metadata와 accepted_metric_buckets로 재구성합니다. late accepted metric이 포함될 수 있습니다. stored Application Snapshot state/evidence를 override, 검증, 대체하지 않습니다.";
+  const liveNote =
+    "live context evidence입니다. 현재 query 시각 기준 recent_30_minutes accepted_metric_buckets에서 selected instance evidence를 봅니다. Application 판단을 새로 만들지 않고 application-owned state reference만 표시합니다.";
+  return (
+    <details className="border border-neutral-200 bg-white text-[12px] text-neutral-600">
+      <summary className="cursor-pointer px-3 py-2.5 text-[11px] uppercase text-neutral-500">
+        상세 정보 (read-model 원본)
+      </summary>
+      <div className="border-t border-neutral-100 p-3">
+        <p className="max-w-3xl leading-5">{mode === "snapshot" ? snapshotNote : liveNote}</p>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] md:grid-cols-4">
+          <InfoCell label="mode" value={dashboard.mode} />
+          <InfoCell label="source" value={humanizeSourceCode(semantics.source)} />
+          <InfoCell label="windowSource" value={humanizeSourceCode(semantics.windowSource)} />
+          <InfoCell label="snapshotRowSource" value={semantics.snapshotRowSource ?? "n/a"} />
+          <InfoCell label="lifecycleOwner" value={ref.lifecycleOwner} />
+          <InfoCell label="applicationStateCode" value={ref.applicationStateCode ? humanizeStatusCode(ref.applicationStateCode) : "참조 없음"} />
+          <InfoCell label="snapshotId" value={ref.snapshotId ?? "live reference"} />
+          <InfoCell label="instance top-level state" value="없음" />
+          <InfoCell label="acceptedAtCutoffApplied" value={String(semantics.acceptedAtCutoffApplied)} />
+          <InfoCell label="includesLateAcceptedMetrics" value={String(semantics.includesLateAcceptedMetrics)} />
+          <InfoCell label="mayDifferFromStoredApplicationSnapshot" value={String(semantics.mayDifferFromStoredApplicationSnapshot)} />
+          <InfoCell label="applicationSnapshotRecalculated" value={String(semantics.applicationSnapshotRecalculated)} />
+          <InfoCell label="instanceEvidenceReconstructedFromMetrics" value={String(semantics.instanceEvidenceReconstructedFromMetrics)} />
+          <InfoCell label="markerIsStateSource" value={String(semantics.markerIsStateSource)} />
+        </div>
+      </div>
+    </details>
   );
 }
 
@@ -292,7 +318,7 @@ function EndpointEvidencePanel({ dashboard }: { dashboard: InstanceDashboardRead
         <div>
           <SectionLabel icon={Server}>NORMALIZED ENDPOINT EVIDENCE TABLE</SectionLabel>
           <p className="mt-1 text-[12px] text-neutral-500">
-            selected instance의 normalized route evidence를 탐색합니다. application state나 endpoint priority를 새로 판정하지 않습니다.
+            이 인스턴스의 엔드포인트별 요청·오류·지연 기록입니다.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -313,22 +339,12 @@ function EndpointEvidencePanel({ dashboard }: { dashboard: InstanceDashboardRead
           <StatusBadge className={statusBadgeClassName(evidence.status)}>{humanizeStatusCode(evidence.status)}</StatusBadge>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-2 border-b border-neutral-100 p-3 text-[11px] md:grid-cols-4">
-        <InfoCell label="source" value={humanizeSourceCode(evidence.source)} />
-        <InfoCell label="scope" value={humanizeStatusCode(evidence.scope)} />
-        <InfoCell label="selection" value={humanizeStatusCode(evidence.selectionPolicy)} />
-        <InfoCell label="display order" value={humanizeStatusCode(evidence.displayOrderingPolicy)} />
-      </div>
       {evidence.items.length === 0 ? (
         <div className="p-3 text-[12px] leading-5 text-neutral-500">
           {instanceEndpointEvidenceEmptyCopy(dashboard)}
         </div>
       ) : (
         <div className="overflow-x-auto p-3">
-          <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-neutral-500">
-            <span>source: accepted_metric_buckets.endpoints_json · raw path/query/per-request sample 없음 · endpoint p95/p99 rollup 없음</span>
-            <span>{sortState.description}</span>
-          </div>
           <table className="w-full min-w-[980px] border-collapse text-left text-[11px]">
             <thead>
               <tr className="border-y border-neutral-200 bg-neutral-50 text-neutral-500">

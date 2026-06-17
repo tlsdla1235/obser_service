@@ -1,0 +1,16 @@
+{
+  "case" : "DIRECT_DB",
+  "requestLatencyMs" : {
+    "count" : 10000,
+    "min" : 4.106208,
+    "p50" : 86.872917,
+    "p95" : 132.491167,
+    "p99" : 278.518042,
+    "max" : 459.782167
+  },
+  "requestCount" : 10000,
+  "failureCount" : 0,
+  "errorRate" : 0.0,
+  "requestThreadDbWriteCount" : 10000,
+  "persistedUniqueBucketCount" : 10000
+}

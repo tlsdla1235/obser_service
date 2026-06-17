@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { BookOpen } from "lucide-react";
 
 const sections = [
@@ -24,6 +24,27 @@ function Code({ children }: { children: ReactNode }) {
  */
 export function Docs() {
   const [active, setActive] = useState(sections[0].id);
+
+  // 스크롤에 따라 현재 보이는 섹션을 TOC에 표시한다(scroll-spy). 클릭 없이도 bar가 따라온다.
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible.length > 0) {
+          setActive(visible[0].target.id);
+        }
+      },
+      // 상단 nav 높이만큼 위를 비우고, 섹션이 화면 상단부에 들어왔을 때 활성으로 본다.
+      { rootMargin: "-96px 0px -55% 0px", threshold: 0 },
+    );
+    const observed = sections
+      .map((s) => document.getElementById(s.id))
+      .filter((el): el is HTMLElement => el !== null);
+    observed.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <div className="bg-white">
@@ -56,7 +77,7 @@ export function Docs() {
         </aside>
 
         {/* Content */}
-        <main className="col-span-12 lg:col-span-9 space-y-14 text-neutral-800 text-[14px] leading-relaxed">
+        <main className="col-span-12 lg:col-span-9 space-y-14 text-neutral-800 text-[14px] leading-relaxed [&>section]:scroll-mt-24">
           <section id="overview">
             <h2 className="text-neutral-900">1. 무엇을 볼 수 있나요</h2>
             <p className="mt-3">
@@ -137,14 +158,37 @@ export function Docs() {
     project-key: <복사한 연결 키>
     starter-version: 0.1.0-SNAPSHOT
     interval-seconds: 30`}</Code>
-            <ul className="mt-4 list-disc pl-5 space-y-1">
-              <li><code>portal-base-url</code>은 Portal이 실행 중인 주소입니다.</li>
-              <li><code>application-name</code>은 Dashboard에서 보일 앱 이름입니다.</li>
-              <li><code>environment</code>는 local, dev, prod처럼 실행 환경을 구분하는 값입니다.</li>
-              <li><code>instance</code>는 실행 중인 서버나 프로세스를 알아보기 위한 이름입니다.</li>
-              <li><code>project-id</code>는 키가 아닙니다. 앱 안에서 안정적으로 쓰는 식별 이름으로 둡니다.</li>
+            <p className="mt-5 text-neutral-900">꼭 채워야 하는 값</p>
+            <ul className="mt-2 list-disc pl-5 space-y-1">
+              <li><code>portal-base-url</code> — Portal이 실행 중인 주소입니다. (예: <code>http://localhost:8080</code>)</li>
+              <li><code>project-key</code> — Project를 만들 때 받은 Starter credential입니다.</li>
             </ul>
-            <p className="mt-4 text-neutral-600">
+            <p className="mt-4 text-neutral-900">채워 두면 좋은 값 (없으면 기본값 사용)</p>
+            <ul className="mt-2 list-disc pl-5 space-y-1">
+              <li><code>application-name</code> — Dashboard에서 보일 앱 이름입니다.</li>
+              <li><code>environment</code> — local, dev, prod처럼 실행 환경을 구분하는 값입니다.</li>
+              <li><code>instance</code> — 실행 중인 서버나 프로세스를 알아보기 위한 이름입니다.</li>
+              <li><code>project-id</code> — 키가 아닙니다. 앱 안에서 안정적으로 쓰는 식별 이름으로 둡니다.</li>
+              <li><code>interval-seconds</code> — heartbeat 주기입니다. 기본 30초면 대부분 충분합니다.</li>
+            </ul>
+
+            <p className="mt-6 text-neutral-900">엔드포인트 이름을 깔끔하게 보고 싶다면 (선택)</p>
+            <p className="mt-2">
+              Dashboard의 Endpoint evidence는 <code>/api/orders/123</code>처럼 ID가 박힌 주소를
+              <code>/api/orders/{`{orderId}`}</code> 같은 경로 묶음으로 정리해서 보여줍니다. 프레임워크가 경로
+              패턴을 알려주지 못하는 경우를 위해, 묶고 싶은 경로 템플릿을 미리 등록해 둘 수 있습니다.
+            </p>
+            <Code>{`observation:
+  route-attribution:
+    allowlist:
+      - /api/orders/{orderId}
+      - /api/teams/{teamId}/score`}</Code>
+            <ul className="mt-3 list-disc pl-5 space-y-1 text-neutral-700">
+              <li>실제 주소가 아니라 <strong>경로 템플릿</strong>만 넣습니다. (쿼리스트링·전체 URL·실제 ID 값은 들어갈 수 없습니다.)</li>
+              <li>등록하지 않아도 동작합니다. 경로가 잘게 흩어져 보일 때만 추가하면 됩니다.</li>
+            </ul>
+
+            <p className="mt-5 text-neutral-600">
               사용자가 직접 외워야 할 API 목록은 없습니다. 앱은 설정한 Portal 주소로 데이터를 보내고,
               화면은 로그인한 사용자 권한으로 필요한 정보를 불러옵니다.
             </p>

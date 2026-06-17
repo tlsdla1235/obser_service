@@ -64,14 +64,6 @@ type SnapshotSlotCell = {
   title: string;
 };
 
-function StatusBadge({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return (
-    <span className={`inline-flex items-center border px-1.5 py-0.5 text-[11px] uppercase ${className || "border-neutral-400 text-neutral-800"}`}>
-      {children}
-    </span>
-  );
-}
-
 /**
  * Snapshot history를 marker-first 30분 dashboard point 탐색 UI로 렌더링한다.
  * history fetch는 selected Project/Application/preset을 resourceKey에 포함해 stale 응답을 폐기한다.
@@ -243,7 +235,6 @@ function SnapshotHistoryReady({
               slot을 클릭하면 별도 열기 단계 없이 저장된 snapshot dashboard로 복원합니다.
             </p>
           </div>
-          <StatusBadge className="px-4 py-2 text-[15px] normal-case">하루 48개 SLOT</StatusBadge>
         </div>
         <div className="p-6">
           <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6 lg:grid-cols-8">

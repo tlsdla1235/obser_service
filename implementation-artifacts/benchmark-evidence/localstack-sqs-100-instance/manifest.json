@@ -1,0 +1,25 @@
+{
+  "runId" : "20260616T142354Z-localstack-sqs-evidence",
+  "generatedAtUtc" : "2026-06-16T14:23:54.539752Z",
+  "gitRevision" : "8227dc2",
+  "gitDirty" : true,
+  "purpose" : "document LocalStack SQS buffered ingest local evidence",
+  "environment" : {
+    "postgres" : "Testcontainers PostgreSQL",
+    "queue" : "LocalStack SQS Standard queue",
+    "awsProductionClaim" : false
+  },
+  "load" : {
+    "instances" : 100,
+    "measurementCount" : 10000,
+    "warmupCount" : 1000,
+    "concurrency" : 100,
+    "duplicateSmokeMessages" : 2
+  },
+  "worker" : {
+    "maxMessagesPerPoll" : 10,
+    "maxBatchSize" : 10,
+    "drainTimeoutSeconds" : 90
+  },
+  "claimBoundary" : [ "request-path latency only", "eventual DB persistence correctness", "local benchmark with LocalStack SQS; not AWS production latency" ]
+}

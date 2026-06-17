@@ -790,7 +790,7 @@ function SnapshotModeBanner({
       <div className="min-w-0">
         <SectionLabel icon={Radio}>Snapshot mode</SectionLabel>
         <div className="mt-1 text-[13px] font-medium text-neutral-900">
-          저장된 시점을 live와 동일한 dashboard로 복원했습니다.
+          저장된 시점의 대시보드를 그대로 복원했습니다.
         </div>
         <div className="mt-1 text-[11px] text-neutral-600">
           {presentation
@@ -833,36 +833,21 @@ function DashboardContext({
   selectedProject: ProjectPresentationItem;
 }) {
   const snapshotMode = mode === "snapshot";
-  const baselineSignal = dashboard.readSemantics.baselineComparisonUsedForMvpDecision ? "baseline used" : "baseline not used";
   return (
     <section className="border border-neutral-900 bg-white">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-neutral-200 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3 p-3">
         <div className="min-w-0">
           <SectionLabel icon={Activity}>Application Dashboard / {snapshotMode ? "Snapshot" : "Live"}</SectionLabel>
           <h1 className="mt-1 text-[22px] font-medium leading-tight text-neutral-950">{dashboard.application.name}</h1>
-          <p className="mt-1 text-[12px] text-neutral-600">
-            {snapshotMode
-              ? "저장된 read model을 live와 동일한 surface로 복원합니다. 현재 metric으로 재계산하지 않습니다."
-              : "Server read model을 표시합니다. UI는 lifecycle state, endpoint priority, resource pattern을 재계산하지 않습니다."}
+          <p className="mt-1 text-[12px] text-neutral-500">
+            {selectedProject.name} · {dashboard.application.environment} · 생성 {dashboard.generatedAtDisplay}
           </p>
         </div>
         <div className="flex max-w-full flex-wrap gap-1.5">
-          <StatusBadge className={statusBadgeClassName(snapshotMode ? "attention" : "live")}>mode={dashboard.mode}</StatusBadge>
-          <StatusBadge className={statusBadgeClassName("info")}>{dashboard.window.type}</StatusBadge>
-          <StatusBadge>{dashboard.readSemantics.source}</StatusBadge>
-          <StatusBadge>{baselineSignal}</StatusBadge>
-        </div>
-      </div>
-      <div className="p-3">
-        <div className="grid grid-cols-1 gap-2 text-[11px] text-neutral-600 md:grid-cols-2 lg:grid-cols-4">
-          <InfoCell label="mode" value={dashboard.mode} />
-          <InfoCell label="window" value={`${dashboard.window.type} · ${dashboard.canonicalWindowDisplay}`} />
-          <InfoCell label="source" value={dashboard.readSemantics.source} />
-          <InfoCell label="baseline" value={baselineSignal} />
-          <InfoCell label="project / application" value={`${selectedProject.name} / ${dashboard.application.name}`} />
-          <InfoCell label="environment" value={dashboard.application.environment} />
-          <InfoCell label="generated" value={dashboard.generatedAtDisplay} />
-          <InfoCell label="bucket boundary" value={dashboard.bucketEndBoundaryDisplay} />
+          <StatusBadge className={statusBadgeClassName(snapshotMode ? "snapshot" : "live")}>
+            {snapshotMode ? "스냅샷" : "라이브"}
+          </StatusBadge>
+          <StatusBadge className={statusBadgeClassName("info")}>{humanizeStatusCode(dashboard.window.type)}</StatusBadge>
         </div>
       </div>
     </section>
@@ -942,6 +927,18 @@ function LifecycleStateHero({ dashboard }: { dashboard: DashboardPresentation })
       </div>
     </div>
   );
+}
+
+// 배경과 조화되는 은은한 좌측 보더 틴트. reasonCode로 문제 성격(오류/지연)을 추정한다.
+function evidenceAccentClassName(reasonCode: string): string {
+  const code = (reasonCode ?? "").toLowerCase();
+  if (code.includes("error") || code.includes("down") || code.includes("5xx") || code.includes("fail")) {
+    return "border-l-red-400 bg-red-50";
+  }
+  if (code.includes("slow") || code.includes("latency") || code.includes("p95") || code.includes("p99")) {
+    return "border-l-amber-400 bg-amber-50";
+  }
+  return "border-l-neutral-300";
 }
 
 function stateStripAccentClassName(code: string): string {
@@ -1042,7 +1039,7 @@ function FirstLookCandidatesPanel({ candidates }: { candidates: DashboardFirstLo
       <div className="flex items-start justify-between gap-3 border-b border-neutral-200 px-3 py-2.5">
         <div>
           <SectionLabel icon={ListChecks}>First look candidates</SectionLabel>
-          <p className="mt-1 text-[12px] text-neutral-500">최대 3개만 보여주는 bounded evidence queue입니다.</p>
+          <p className="mt-1 text-[12px] text-neutral-500">지금 가장 먼저 확인하면 좋은 항목입니다.</p>
         </div>
         <span className="text-[11px] text-neutral-500">server order</span>
       </div>
@@ -1051,7 +1048,7 @@ function FirstLookCandidatesPanel({ candidates }: { candidates: DashboardFirstLo
       ) : (
         <ol className="grid gap-3 p-3 lg:grid-cols-3">
           {candidates.map((candidate) => (
-            <li key={`${candidate.rank}-${candidate.type}-${candidate.target ?? "none"}`} className="border border-neutral-200 p-3">
+            <li key={`${candidate.rank}-${candidate.type}-${candidate.target ?? "none"}`} className={`border border-neutral-200 border-l-2 p-3 ${evidenceAccentClassName(candidate.reasonCode)}`}>
               <StatusBadge>{humanizeStatusCode(candidate.type)}</StatusBadge>
               <h3 className="mt-2 text-[14px] font-medium leading-snug text-neutral-950">{candidate.target ?? candidate.reasonCode}</h3>
               <div className="mt-1 text-[11px] text-neutral-500">
@@ -1085,13 +1082,7 @@ function StarterConnectionStrip({ dashboard }: { dashboard: DashboardPresentatio
         <h2 className="mt-2 text-[16px] font-medium leading-tight text-neutral-950">Control-plane only</h2>
       </div>
       <div className="text-[13px] text-neutral-900">
-        heartbeat {dashboard.starterLastHeartbeatDisplay}, metric state 변경 없음
-      </div>
-      <div className="text-[12px] text-neutral-600">
-        heartbeat는 accepted bucket freshness나 application lifecycle state를 직접 만들지 않습니다.
-        <p className="mt-1 text-[11px] text-neutral-500">
-          {humanizeStatusCode(dashboard.starterConnection.connectionMeaning)} · {humanizeSourceCode(dashboard.starterConnection.statusSource)}
-        </p>
+        마지막 연결 신호 {dashboard.starterLastHeartbeatDisplay}
       </div>
     </div>
   );
@@ -1117,7 +1108,7 @@ function ResourceSignalsPanel({ dashboard }: { dashboard: DashboardPresentation 
     <div className="border border-neutral-200 bg-white">
       <div className="border-b border-neutral-200 px-3 py-2.5">
         <SectionLabel icon={Activity}>Resource evidence</SectionLabel>
-        <p className="mt-1 text-[12px] text-neutral-500">root cause 확정이 아니라 server read model의 USE hint를 표시합니다.</p>
+        <p className="mt-1 text-[12px] text-neutral-500">DB·CPU·메모리 사용량이 임계치에 가까워졌는지 보여줍니다. 원인 확정용은 아닙니다.</p>
       </div>
       <div className="grid grid-cols-1 gap-3 p-3 md:grid-cols-3">
         {resources.map(([key, label, signal]) => (
@@ -1243,7 +1234,7 @@ function EndpointPriorityPanel({ dashboard }: { dashboard: DashboardPresentation
         <div>
           <SectionLabel icon={ListChecks}>Endpoint evidence</SectionLabel>
           <p className="mt-1 text-[12px] text-neutral-500">
-            server가 보낸 endpointPriority 안에서만 정렬하고, p95/p99나 raw path를 만들지 않습니다.
+            먼저 확인할 엔드포인트를 요청량·오류·지연 순으로 보여줍니다.
           </p>
         </div>
         {items.length > 0 && (
@@ -1310,7 +1301,7 @@ function EndpointPriorityRow({
   maxSlowShare: number;
 }) {
   return (
-    <li className="p-3">
+    <li className={`border-l-2 p-3 ${endpointRowAccentClassName(item)}`}>
       <div className="grid gap-3 md:grid-cols-[32px_minmax(0,1fr)_minmax(220px,0.9fr)] md:items-start">
         <span className="grid h-8 w-8 place-items-center border border-neutral-900 bg-neutral-900 text-[12px] text-white tabular-nums">
           {item.rank}
@@ -1383,31 +1374,58 @@ function EndpointMetricBar({
   );
 }
 
-function EndpointBucketStrip({ buckets, source }: { buckets: HistogramBucket[] | null; source: string }) {
-  if (!buckets || buckets.length === 0) {
+function EndpointBucketStrip({ buckets }: { buckets: HistogramBucket[] | null; source: string }) {
+  const visible = (buckets ?? []).slice(0, 8);
+  const total = visible.reduce((sum, bucket) => sum + bucket.count, 0);
+  if (total === 0) {
     return (
-      <div className="border border-neutral-200 bg-neutral-50 p-2">
-        duration buckets 미제공 · endpoint p95/p99로 해석하지 않습니다.
+      <div className="border border-neutral-200 bg-neutral-50 p-2 text-neutral-500">
+        응답 시간 분포: 측정된 표본이 없습니다.
       </div>
     );
   }
-  const maxCount = Math.max(0, ...buckets.map((bucket) => bucket.count));
+  const maxCount = Math.max(0, ...visible.map((bucket) => bucket.count));
   return (
     <div className="border border-neutral-200 bg-neutral-50 p-2">
-      <div className="mb-1 text-neutral-500">duration buckets · {humanizeSourceCode(source)}</div>
+      <div className="mb-1 flex items-center justify-between text-neutral-500">
+        <span>응답 시간 분포</span>
+        <span className="text-neutral-400">빠름 → 느림</span>
+      </div>
       <div className="flex h-8 items-end gap-1">
-        {buckets.slice(0, 8).map((bucket) => (
+        {visible.map((bucket) => (
           <span
-            aria-label={`<= ${bucket.leMs}ms: ${bucket.count}`}
-            className="min-w-3 flex-1 bg-neutral-300"
+            aria-label={`${formatLatencyBound(bucket.leMs)} 이내 ${bucket.count}건`}
+            className={`min-w-3 flex-1 ${bucket.count > 0 ? "bg-neutral-400" : "bg-neutral-200"}`}
             key={`${bucket.leMs}-${bucket.count}`}
-            style={{ height: `${Math.max(8, ratioWidth(bucket.count, maxCount))}%` }}
-            title={`<= ${bucket.leMs}ms · ${formatCount(bucket.count)}`}
+            style={{ height: `${bucket.count > 0 ? Math.max(14, ratioWidth(bucket.count, maxCount)) : 6}%` }}
+            title={`${formatLatencyBound(bucket.leMs)} 이내 · ${formatCount(bucket.count)}건`}
           />
         ))}
       </div>
     </div>
   );
+}
+
+// "<=50ms" 대신 사용자 친화적 응답 시간 경계 표기.
+function formatLatencyBound(leMs: number): string {
+  if (!Number.isFinite(leMs) || leMs <= 0) {
+    return "그 이상";
+  }
+  if (leMs >= 1000) {
+    return `${(leMs / 1000).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}초`;
+  }
+  return `${leMs}ms`;
+}
+
+// 행 좌측에 은은한 색 단서. 오류가 우선, 그다음 지연, 정상이면 보더 없음.
+function endpointRowAccentClassName(item: EndpointPriorityItem): string {
+  if (item.evidence.errorCount > 0 || item.evidence.errorRate > 0) {
+    return "border-l-red-400 bg-red-50";
+  }
+  if ((item.evidence.slowShare ?? 0) > 0) {
+    return "border-l-amber-400 bg-amber-50";
+  }
+  return "border-l-transparent";
 }
 
 function endpointPriorityBadgeText(item: EndpointPriorityItem): string {
@@ -1892,7 +1910,7 @@ function InstancesPanel({
       <div className="border-b border-neutral-200 px-3 py-2.5">
         <SectionLabel icon={Server}>Instance summary</SectionLabel>
         <p className="mt-1 text-[12px] text-neutral-500">
-          Application 판단을 대체하지 않고 selected instance evidence를 wide modal로 확인합니다.
+          실행 중인 인스턴스별 요청·오류·지연을 보여줍니다. 자세히 보려면 모달을 여세요.
         </p>
       </div>
       {dashboard.instances.length === 0 ? (

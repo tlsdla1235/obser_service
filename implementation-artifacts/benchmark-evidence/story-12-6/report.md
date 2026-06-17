@@ -11,20 +11,20 @@ evidence for a distributed host fleet, scaling behavior, financial planning, or 
 - gitDirty: true
 - fixture: applicationCount=1, instanceCount=30, synthetic local identities
 - database fallback: postgres:16-alpine isolated Testcontainers PostgreSQL on local workstation
-- queue mode for Phase 1 enqueue: fake queue; real SQS network latency is not claimed
+- queue mode for Phase 1 enqueue: in-memory queue test double; real SQS network latency is not claimed
 
 ## Phase 1 Request Latency Evidence
 
 Direct insert request latency measures the request path that persists before responding.
-Enqueue request latency measures the request path that returns after fake queue enqueue succeeds.
+Enqueue request latency measures the request path that returns after in-memory queue enqueue succeeds.
 These rows are request-boundary evidence only and are not a shared end-to-end persistence latency table.
 
 | Scenario | Count | p50 ms | p95 ms | p99 ms | Max ms | Failure count | Request-thread accepted bucket rows |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | Direct insert | 90 | 4.154 | 5.997 | 10.553 | 10.553 | 0 | 90 |
-| Fake queue enqueue | 90 | 0.108 | 0.153 | 0.409 | 0.409 | 0 | 0 |
+| In-memory queue enqueue | 90 | 0.108 | 0.153 | 0.409 | 0.409 | 0 | 0 |
 
-Fake enqueue duration summary: count=90, p50=0.001 ms, p95=0.002 ms, p99=0.031 ms.
+In-memory enqueue duration summary: count=90, p50=0.001 ms, p95=0.002 ms, p99=0.031 ms.
 Request-thread DB write absence evidence for enqueue path: acceptedBucketRowsAfterScenario=0.
 
 ## Worker MVP Correctness/Lag Baseline

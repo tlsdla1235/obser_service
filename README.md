@@ -11,7 +11,7 @@ Observation Portal은 이 문제를 starter-first 방식으로 풀었습니다. 
 ## 주요 기능
 
 - Spring Boot starter 기반 애플리케이션 지표 수집
-- request path와 DB persistence path를 분리한 SQS/fake queue buffered ingest
+- request path와 DB persistence path를 분리한 SQS buffered ingest
 - 애플리케이션, 인스턴스, API 엔드포인트 단위 상태 확인
 - 지표 수집 상태와 애플리케이션 연결 상태를 분리해서 표시
 - p95/p99 latency, error rate, endpoint priority 등 서버 계산 결과 표시
@@ -31,7 +31,7 @@ flowchart LR
   Metrics --> Portal["Portal backend<br/>검증 / enqueue 또는 저장 / 집계"]
   Heartbeat --> Portal
   Portal -->|direct mode| Db["PostgreSQL<br/>Flyway schema"]
-  Portal -->|buffered mode| Queue["SQS / fake queue<br/>(metric ingest buffer)"]
+  Portal -->|buffered mode| Queue["SQS buffered queue<br/>(metric ingest buffer)"]
   Queue --> Worker["Portal 내부 worker<br/>bounded batch persistence"]
   Worker --> Db
   Portal --> Api["Dashboard API<br/>서버 계산 대시보드 데이터<br/>(read model)"]
@@ -54,7 +54,7 @@ flowchart LR
 |---|---|
 | Backend | Java 17, Spring Boot, Spring MVC, JPA, Flyway, PostgreSQL, Micrometer |
 | Frontend | React, TypeScript, Vite, Tailwind/shadcn 스타일 UI |
-| Test/Verification | JUnit, MockMvc, Testcontainers, Gradle, smoke scripts |
+| Test/Verification | JUnit, MockMvc, Testcontainers, LocalStack SQS, Gradle, smoke scripts |
 
 ## 실행 방법
 
@@ -138,34 +138,29 @@ scripts/smoke/run-ecc-endpoint-polling.py
 
 ## SQS Buffered Ingest 전환과 benchmark evidence
 
-기존 ingest는 HTTP request thread가 metric bucket 검증뿐 아니라 `accepted_metric_buckets` DB insert까지 수행했습니다. Epic 12에서는 이 경로를 request path와 persistence path로 나누어, request thread가 DB write round trip에 묶이는 병목을 분리했습니다.
+기존 ingest는 HTTP request thread가 metric bucket 검증뿐 아니라 `accepted_metric_buckets` DB insert까지 수행했습니다. SQS buffered ingest는 이 경로를 request path와 persistence path로 분리합니다.
 
-SQS/fake queue mode에서 request thread는 project key와 payload를 검증하고 queue message를 만든 뒤 enqueue 성공 시에만 `202 queued`를 반환합니다. 이 응답은 DB 저장 완료, dashboard freshness current, snapshot 반영 완료를 뜻하지 않습니다. 실제 consumer는 Lambda가 아니라 Spring Boot portal 내부 worker이며, Lambda consumer, event source mapping, separate worker service는 구현하지 않았습니다.
+Buffered mode에서 request thread는 project key와 payload를 검증하고 LocalStack SQS enqueue가 성공하면 `202 queued`를 반환합니다. 이 응답은 DB 저장 완료, dashboard freshness current, snapshot 반영 완료를 뜻하지 않습니다. DB 저장은 Spring Boot portal 내부 worker가 queue를 poll한 뒤 bounded batch로 수행합니다.
 
-Local/test 기본 queue는 fake queue입니다. 따라서 아래 Phase 1 수치는 real SQS network latency evidence가 아니라, 같은 fixture에서 request boundary가 DB insert에서 enqueue로 이동했을 때의 local/isolated benchmark evidence입니다. Benchmark는 Testcontainers PostgreSQL과 fake queue 기준이며, primary fixture는 `applicationCount=1`, `instanceCount=30`, `measurementCount=90`, `batchSize=30`입니다. 이 결과는 production load test, autoscaling proof, cost claim, dashboard UI performance claim으로 해석하지 않습니다.
+로컬 검증은 같은 코드 경로에서 `DIRECT_DB`와 `LOCALSTACK_SQS`를 비교했습니다. 환경은 macOS arm64, Docker, Testcontainers PostgreSQL `postgres:16-alpine`, LocalStack SQS `localstack/localstack:4.8.1`입니다. 아래 수치는 request-path acceptance latency와 worker drain 이후 최종 저장 정합성을 보기 위한 로컬 evidence이며, AWS 운영 환경 latency, autoscaling, 비용, dashboard UI 성능을 보장하지 않습니다.
 
-| Phase 1 request boundary | p50 ms | p95 ms | p99 ms | request-thread accepted bucket rows |
-| --- | ---: | ---: | ---: | ---: |
-| Direct insert | 3.329 | 4.933 | 6.994 | 90 |
-| Fake queue enqueue | 0.114 | 0.212 | 0.495 | 0 |
+| Scenario | Mode | Requests | Error | p50 ms | p95 ms | p99 ms | Request-thread DB writes | Persisted | Drain sec |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 30 synthetic instances, concurrency 30 | Direct DB | 3,000 | 0% | 27.648 | 42.776 | 52.882 | 3,000 | 100% | 0.000 |
+| 30 synthetic instances, concurrency 30 | LocalStack SQS | 3,000 | 0% | 23.668 | 41.839 | 63.271 | 0 | 100% | 11.712 |
+| 100 synthetic instances, concurrency 100 | Direct DB | 10,000 | 0% | 86.873 | 132.491 | 278.518 | 10,000 | 100% | 0.000 |
+| 100 synthetic instances, concurrency 100 | LocalStack SQS | 10,000 | 0% | 69.209 | 119.177 | 136.400 | 0 | 100% | 34.735 |
 
-Fake enqueue 자체의 duration은 p50/p95/p99 `0.001 / 0.002 / 0.010 ms`로 측정됐습니다. 이 표는 request latency만 보여주며, DB persistence throughput claim과 섞지 않습니다.
+30-instance 실행에서는 request thread DB write가 제거되고 최종 저장률 100%를 확인했지만, p99는 개선되지 않았습니다. 따라서 30-instance 결과는 p99 개선 claim으로 사용하지 않습니다. 100-instance burst 실행에서는 request p95가 `132.491ms -> 119.177ms`, p99가 `278.518ms -> 136.400ms`로 낮아졌고, worker drain 이후 10,000개 bucket이 모두 저장됐습니다.
 
-Worker는 SQS Standard queue의 at-least-once/out-of-order 가능성을 전제로 idempotency를 처리합니다. Same key/same hash duplicate는 `DUPLICATE_NOOP` 성공으로 처리하고, same key/different hash 및 same instance bucket/different key는 application DLQ 대상으로 분리합니다. Snapshot에는 capture delay와 `accepted_at` cutoff를 적용해 queue lag가 stale/down 또는 host application down 의미를 오염시키지 않게 했습니다.
-
-| Phase 2 DB persistence | Inserted | Batch size | Bucket statement count | Batch chunks | Persist duration ms | Throughput |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Worker MVP message-by-message | 90 | - | 90 | - | 175.262 | 513.517 buckets/sec |
-| Batch writer | 90 | 30 | 9 | 3 | 49.873 | 1804.581 buckets/sec |
-
-Batch writer는 message-by-message DB insert를 bounded batch persistence로 바꾸어 statement count를 `90 -> 9`로 줄였고, local/isolated benchmark 기준 DB persistence throughput이 `513.5 -> 1804.6 buckets/sec`로 측정됐습니다. 이는 write-side pressure를 낮춘 근거이지, 서비스 전체가 같은 비율로 빨라졌다는 주장은 아닙니다. Same key/same hash duplicate smoke도 first `INSERTED`, duplicate `DUPLICATE_NOOP`로 확인했습니다.
+Worker는 SQS Standard queue의 at-least-once/out-of-order 가능성을 전제로 idempotency를 처리합니다. Duplicate smoke에서는 같은 bucket 2건 중 1건이 중복으로 억제됐고, same key/different hash 및 same instance bucket/different key는 application DLQ 대상으로 분리됩니다. Snapshot에는 capture delay와 `accepted_at` cutoff를 적용해 queue lag가 stale/down 또는 host application down 의미를 오염시키지 않게 했습니다.
 
 Benchmark artifact:
 
-- [manifest.json](implementation-artifacts/benchmark-evidence/story-12-6/manifest.json)
-- [phase-1-request-latency.json](implementation-artifacts/benchmark-evidence/story-12-6/phase-1-request-latency.json)
-- [phase-2-db-throughput.json](implementation-artifacts/benchmark-evidence/story-12-6/phase-2-db-throughput.json)
-- [report.md](implementation-artifacts/benchmark-evidence/story-12-6/report.md)
+- [30-instance summary](implementation-artifacts/benchmark-evidence/localstack-sqs-30-instance/summary.md)
+- [100-instance summary](implementation-artifacts/benchmark-evidence/localstack-sqs-100-instance/summary.md)
+- [evidence note](docs/sqs-buffered-ingest-evidence.md)
+- [runner plan](docs/sqs-buffered-ingest-local-evidence-plan.md)
 
 ## 핵심 구현 포인트
 
