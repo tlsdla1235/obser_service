@@ -702,6 +702,54 @@ psql "host=<RDS endpoint> port=5432 dbname=observation user=observation_app sslm
 | SSM parameter prefix | `/observation/prod/` |
 | 운영 앱 URL | `https://portal.observstarter.cloud` |
 
+### E4.1 systemd + SSM env loader 전환
+
+Repository에는 systemd 전환을 위한 운영 파일을 둔다.
+
+| Repo 파일 | 서버 배치 위치 | 역할 |
+| --- | --- | --- |
+| `scripts/deploy/observation-load-env.sh` | `/usr/local/bin/observation-load-env` | `/observation/prod/` SSM parameters를 복호화해 `/etc/observation/observation.env`로 갱신한다. |
+| `scripts/deploy/observation-stop-manual-java.sh` | `/usr/local/bin/observation-stop-manual-java` | systemd 전환 전에 남은 수동 `java -jar /opt/observation/current/app.jar` 프로세스를 종료한다. |
+| `deploy/systemd/observation.service` | `/etc/systemd/system/observation.service` | SSM env loader 실행 후 `appuser` 권한으로 portal jar를 관리하고 live endpoint로 HTTP 기동을 확인한다. |
+
+서버 적용 순서:
+
+```bash
+sudo install -o root -g root -m 0755 scripts/deploy/observation-load-env.sh /usr/local/bin/observation-load-env
+sudo install -o root -g root -m 0755 scripts/deploy/observation-stop-manual-java.sh /usr/local/bin/observation-stop-manual-java
+sudo install -o root -g root -m 0644 deploy/systemd/observation.service /etc/systemd/system/observation.service
+sudo /usr/local/bin/observation-load-env
+sudo /usr/local/bin/observation-stop-manual-java
+sudo systemctl daemon-reload
+sudo systemctl enable --now observation.service
+sudo systemctl status observation.service --no-pager
+```
+
+전환 시 주의:
+
+- Epic 3 수동 기동은 pid file이 실제 PID가 아닐 수 있으므로 `observation-stop-manual-java`는 command line 기준으로 수동 프로세스를 찾는다.
+- systemd가 이미 관리 중인 `observation.service`의 `MainPID`는 종료 대상에서 제외한다.
+- prod profile은 `SERVER_ADDRESS` 기본값 `127.0.0.1`로 앱을 loopback에만 바인딩한다.
+- systemd는 `ExecStartPost`에서 `http://127.0.0.1:8080/internal/health/live`를 사용한다.
+- 이 단계는 기존 EC2 instance role의 SSM 읽기 권한을 사용하며 IAM/OIDC 리소스를 만들지 않는다.
+
+### E4.2 health endpoint 확정
+
+운영 health endpoint는 Spring Actuator 대신 secret-free lightweight controller로 직접 구현한다.
+
+| Consumer | Endpoint | 사용 방식 |
+| --- | --- | --- |
+| systemd | `http://127.0.0.1:8080/internal/health/live` | app process와 HTTP server가 응답 가능한지만 확인한다. |
+| Nginx | `http://127.0.0.1:8080/internal/health/ready` | reverse proxy 적용/재시작 후 upstream ready smoke에 사용한다. |
+| GitHub Actions CD | `https://portal.observstarter.cloud/internal/health/ready` | 배포 후 외부 HTTPS 경로가 DB/Flyway 준비 상태까지 통과하는지 확인한다. |
+| 배포/롤백 스크립트 | `http://127.0.0.1:8080/internal/health/ready` | jar 교체 후 server-local success/rollback 판단에 사용한다. |
+
+응답 정책:
+
+- `/internal/health/live`: HTTP 응답 가능 여부만 나타내며 DB나 외부 dependency를 확인하지 않는다.
+- `/internal/health/ready`: DB `select 1`과 Flyway pending migration `0`을 확인한다.
+- 응답 body에는 `status`와 `checks`만 포함하며 secret, 내부 endpoint 값, SSM parameter 값, datasource URL/password, queue URL query를 포함하지 않는다.
+
 ## 검증 결과
 
 2026-06-21에 로컬 AWS CLI와 EC2 SSM Run Command로 아래를 확인했다.
@@ -723,11 +771,255 @@ psql "host=<RDS endpoint> port=5432 dbname=observation user=observation_app sslm
 - Local HTTP: EC2 내부 `http://127.0.0.1:8080/` 응답 `200`.
 - Flyway: `flyway_schema_history` 성공 migration `13`개, 최신 version `013`.
 - DB schema: `public` table `13`개 확인.
+- E4.1 systemd 전환: 기존 수동 Java process를 종료하고 `observation.service`를 `enabled/active` 상태로 기동했다.
+- E4.1 SSM env loader: `/etc/observation/observation.env`를 root 전용 `600` 권한으로 갱신했다.
+- E4.1 service process: `appuser` 권한의 `/usr/bin/java -jar /opt/observation/current/app.jar`, `MainPID=29001`, restart count `0`.
+- E4.1 bind 확인: `8080`은 `[::ffff:127.0.0.1]:8080` loopback에만 listen하며 EC2 내부 `http://127.0.0.1:8080/` 응답 `200`.
+- E4.2 health endpoint: 새 jar 배포 후 EC2 내부 `http://127.0.0.1:8080/internal/health/live` 응답 `200`, body `{"status":"UP","checks":{"http":"UP"}}`.
+- E4.2 readiness endpoint: EC2 내부 `http://127.0.0.1:8080/internal/health/ready` 응답 `200`, body `{"status":"UP","checks":{"database":"UP","flyway":"UP"}}`.
+- E4.2 service process: health endpoint 포함 jar로 교체 후 `observation.service`는 `enabled/active`, `MainPID=29580`, restart count `0`.
+
+### E4.3 Nginx reverse proxy + TLS
+
+Repository에는 Nginx/TLS 구성을 위한 운영 파일을 둔다.
+
+| Repo 파일 | 서버 배치 위치 | 역할 |
+| --- | --- | --- |
+| `deploy/nginx/observation.conf` | `/etc/nginx/conf.d/observation.conf` | 80 -> 443 redirect와 443 reverse proxy를 정의한다. |
+| `scripts/deploy/install-nginx-tls.sh` | 필요 시 서버 작업 디렉터리에서 실행 | Nginx/certbot 설치, webroot 인증서 발급, 최종 Nginx 설정 적용, certbot timer 활성화를 수행한다. |
+
+Nginx 정책:
+
+- 외부는 Nginx `80/443`만 받는다.
+- portal jar는 계속 `127.0.0.1:8080` loopback에만 listen한다.
+- `80`은 `/.well-known/acme-challenge/`를 제외하고 `443`으로 `301` redirect한다.
+- `443`은 Let's Encrypt certificate를 사용한다.
+- `proxy_pass`는 `http://127.0.0.1:8080`이다.
+- 전달 header는 `Host`, `X-Forwarded-Proto`, `X-Forwarded-For`, `X-Forwarded-Host`, `X-Real-IP`다.
+- Nginx access log는 OAuth callback `code`/`state` query가 남지 않도록 `$request_uri` 대신 `$uri`만 기록하는 `observation_no_query` format을 사용한다.
+
+검증 명령:
+
+```bash
+curl -I http://portal.observstarter.cloud/internal/health/ready
+curl -fsS https://portal.observstarter.cloud/internal/health/ready
+systemctl is-active nginx
+systemctl is-enabled nginx
+systemctl is-active certbot-renew.timer
+systemctl is-enabled certbot-renew.timer
+sudo certbot renew --dry-run
+```
+
+GitHub OAuth prod redirect URI와 실제 HTTPS callback URL은 모두 아래 값으로 맞춘다.
+
+```text
+https://portal.observstarter.cloud/api/auth/github/callback
+```
+
+검증 결과:
+
+- Nginx package `1.30.2`와 certbot package `2.6.0`을 설치했다.
+- `/etc/nginx/conf.d/observation.conf`를 적용했고 `nginx -t`가 성공했다.
+- `nginx.service`는 `enabled/active` 상태다.
+- 외부 HTTP `http://portal.observstarter.cloud/internal/health/ready`는 `301`로 `https://portal.observstarter.cloud/internal/health/ready`에 redirect한다.
+- 외부 HTTPS `https://portal.observstarter.cloud/internal/health/ready`는 `200`, body `{"status":"UP","checks":{"database":"UP","flyway":"UP"}}`.
+- EC2 listen 상태는 Nginx `0.0.0.0:80`, `0.0.0.0:443`, portal Java `[::ffff:127.0.0.1]:8080`이다.
+- TLS certificate subject는 `CN=portal.observstarter.cloud`, issuer는 Let's Encrypt `YE2`, 만료 시각은 `2026-09-19T14:06:19Z`다.
+- `certbot-renew.timer`는 `enabled/active`이고 다음 실행 예정이 등록되어 있다.
+- `sudo certbot renew --dry-run`은 simulated renewal success로 완료됐다.
+- SSM `/observation/prod/PORTAL_AUTH_GITHUB_REDIRECT_URI` 값과 실제 HTTPS callback URL은 `https://portal.observstarter.cloud/api/auth/github/callback`로 일치한다.
+- 실제 callback route는 query 없이 접근 시 secret-free OAuth 실패 응답 `400`을 반환해 route가 HTTPS로 도달 가능함을 확인했다.
+- OAuth callback query가 기존 Nginx 기본 access log에 1건 남은 것을 확인했고 원문 출력 없이 log를 비운 뒤, `/etc/nginx/conf.d/observation.conf`를 query 없는 access log format으로 재적용했다.
+- fake callback query 요청 후 `/var/log/nginx/observation_access.log`에는 callback path만 기록되고 query 기록은 `0`건임을 확인했다.
+
+### E4.4 deploy/rollback script + GitHub Actions CD/OIDC
+
+Repository에는 단일 EC2 stop/start 배포를 위한 스크립트와 workflow를 둔다.
+
+| Repo 파일 | 서버/서비스 위치 | 역할 |
+| --- | --- | --- |
+| `scripts/deploy/observation-deploy-portal.sh` | `/usr/local/bin/observation-deploy-portal` | 새 jar 다운로드/검증, 기존 jar 백업, `systemctl stop/start`, server-local ready check, 실패 시 자동 롤백을 수행한다. |
+| `scripts/deploy/observation-rollback-portal.sh` | `/usr/local/bin/observation-rollback-portal` | `/opt/observation/releases/app-*.jar` 최신 백업 또는 지정 백업으로 수동 롤백한다. |
+| `.github/workflows/deploy.yml` | GitHub Actions | main/tag ref에서 immutable jar를 빌드하고 OIDC + SSM Run Command로 배포한다. |
+| `deploy/aws/github-oidc-trust-policy.json` | AWS IAM 검토용 | GitHub production environment OIDC subject만 deploy role을 assume하도록 제한한다. |
+| `deploy/aws/github-oidc-deploy-policy.json` | AWS IAM 검토용 | deploy role의 S3 artifact write/read, SSM Run Command, command result 조회 권한 범위다. |
+| `deploy/aws/ec2-deploy-artifact-read-policy.json` | AWS IAM 검토용 | EC2 instance role이 artifact bucket `portal/*`를 읽는 최소 권한이다. |
+
+배포 방식:
+
+- 운영 배포는 PR artifact를 사용하지 않는다.
+- `.github/workflows/deploy.yml`이 `main` push 또는 `v*` tag에서 checkout한 ref로 `:observability-portal:bootJar`를 새로 생성한다.
+- 생성 jar는 SHA-256과 함께 S3 immutable prefix에 저장한다.
+- SSM Run Command가 EC2에서 배포 스크립트를 실행한다.
+- EC2 배포 스크립트는 `/opt/observation/current/app.jar` 기준을 유지한다.
+- 기존 jar는 `/opt/observation/releases/app-<UTC timestamp>-<commit sha>.jar`로 백업한다.
+- 배포 성공 기준은 `http://127.0.0.1:8080/internal/health/ready` 성공이다.
+- workflow 최종 검증 URL은 `https://portal.observstarter.cloud/internal/health/ready`다.
+- 단일 EC2 stop/start이므로 `systemctl stop`부터 ready 통과 전까지 짧은 502/503 또는 연결 실패가 발생할 수 있다.
+
+수동 롤백:
+
+```bash
+sudo /usr/local/bin/observation-rollback-portal
+```
+
+특정 백업으로 롤백:
+
+```bash
+sudo /usr/local/bin/observation-rollback-portal /opt/observation/releases/app-<timestamp>-<sha>.jar
+```
+
+GitHub Environment `production` 설정:
+
+- Code로 제공됨: workflow의 `environment: production`, OIDC role assume, `main`/`v*` ref guard.
+- GitHub UI에서 수동 설정 필요: required reviewers, deployment branches/tags 제한(`main`, `v*`).
+- 등록할 environment variables:
+  - `OBSERVATION_PROD_DEPLOY_ROLE_ARN`: GitHub OIDC deploy role ARN.
+  - `OBSERVATION_DEPLOY_ARTIFACT_BUCKET`: `observation-prod-deploy-artifacts-491013322019-ap-northeast-2`.
+  - `OBSERVATION_PROD_INSTANCE_ID`: `i-06defdb40c40905d9`.
+
+GitHub UI 수동 설정 절차:
+
+1. Repository `Settings` -> `Environments` -> `production`으로 이동한다.
+2. `Required reviewers`를 켜고 운영 배포를 승인할 사용자 또는 team을 등록한다.
+3. 개인 repository에서 운영자가 1명뿐이면 self-review 방지를 켤 경우 배포가 막힐 수 있다. 별도 reviewer를 둘 수 있으면 self-review 방지를 켜고, 1인 운영이면 위험을 인지한 상태로 끄거나 reviewer를 추가한 뒤 켠다.
+4. `Deployment branches and tags`는 selected branch/tag policy로 제한하고 `main`, `v*` tag만 허용한다.
+5. Environment variables 3개가 위 값으로 등록되어 있는지 확인한다. AWS access key, SSH private key, prod secret은 GitHub Secrets/Variables에 넣지 않는다.
+
+생성/변경한 AWS/GitHub CD 리소스:
+
+| 항목 | 값 |
+| --- | --- |
+| Artifact S3 bucket | `observation-prod-deploy-artifacts-491013322019-ap-northeast-2` |
+| GitHub OIDC provider | `arn:aws:iam::491013322019:oidc-provider/token.actions.githubusercontent.com` |
+| GitHub deploy role | `arn:aws:iam::491013322019:role/observation-prod-github-deploy-role` |
+| Deploy role inline policy | `observation-prod-github-deploy` |
+| EC2 artifact read inline policy | `observation-prod-deploy-artifact-read` on `observation-prod-portal-role` |
+| GitHub environment | `production` |
+
+적용한 보안/권한:
+
+- S3 bucket은 portal deploy artifact 용도이며 public access block을 모두 켰다.
+- S3 bucket versioning을 enabled로 두고 SSE-S3 기본 암호화를 적용했다.
+- GitHub OIDC deploy role trust는 `repo:tlsdla1235/obser_service:environment:production` subject와 `sts.amazonaws.com` audience로 제한했다.
+- Deploy role은 artifact bucket `portal/*` write/read, 지정 EC2 `i-06defdb40c40905d9` 대상 `AWS-RunShellScript` SSM Run Command, command 조회, EC2 describe만 허용한다.
+- EC2 instance role은 artifact bucket `portal/*` read와 bucket location 조회만 허용한다.
+- GitHub Secrets에는 AWS access key, SSH private key, prod secret을 넣지 않았다.
+
+GitHub Environment `production` 상태:
+
+- Environment variables 등록 완료:
+  - `OBSERVATION_PROD_DEPLOY_ROLE_ARN`
+  - `OBSERVATION_DEPLOY_ARTIFACT_BUCKET`
+  - `OBSERVATION_PROD_INSTANCE_ID`
+- Required reviewers와 deployment branch/tag restriction은 GitHub UI에서 수동 설정해야 한다.
+- 현재 `protection_rules`는 비어 있고 `deployment_branch_policy`는 설정되지 않았으므로 운영 merge 전 GitHub UI에서 승인 게이트와 branch/tag 제한을 반드시 설정한다.
+
+승인받아 실행한 권한/영향:
+
+- S3 bucket `observation-prod-deploy-artifacts-491013322019-ap-northeast-2` 생성: 비용은 artifact storage와 request 중심, public access block과 versioning 권장.
+- GitHub OIDC provider 생성 또는 기존 provider 확인: `token.actions.githubusercontent.com`.
+- IAM role `observation-prod-github-deploy-role` 생성: trust policy는 `repo:tlsdla1235/obser_service:environment:production` subject로 제한.
+- Deploy role inline policy: S3 `portal/*` write/read, SSM `AWS-RunShellScript`를 EC2 `i-06defdb40c40905d9`에 전송, command invocation 조회, EC2 describe.
+- EC2 role `observation-prod-portal-role` inline policy 추가: artifact bucket `portal/*` read만 허용.
+
+검증 결과:
+
+- `/usr/local/bin/observation-deploy-portal`, `/usr/local/bin/observation-rollback-portal`을 root 소유 `755`로 서버에 설치했다.
+- local artifact 입력 방식으로 deploy script를 실행했고 기존 jar를 `/opt/observation/releases/app-20260621T151435Z-local-script-validation.jar`로 백업했다.
+- deploy script 실행 후 `observation.service`는 `active`, server-local ready `200`, external HTTPS ready `200`을 확인했다.
+- 수동 rollback script를 최신 backup jar 대상으로 실행했고 `observation.service`는 `active`, server-local ready `200`, external HTTPS ready `200`을 확인했다.
+- rollback 후 `observation.service`는 `MainPID=31648`, restart count `0`이며 `/opt/observation/current/app.jar`는 `appuser:appuser 644` 상태다.
+- IAM policy simulation: deploy role의 artifact S3 object write/read, S3 bucket prefix list/location/multipart lookup, 단일 EC2 + `AWS-RunShellScript` SSM SendCommand, command 조회, EC2 describe가 allowed임을 확인했다.
+- IAM policy simulation: EC2 role은 artifact S3 object read와 bucket location만 allowed이며 S3 put은 implicit deny임을 확인했다.
+- S3 artifact bucket -> SSM Run Command -> EC2 deploy script 경로를 `portal/local-validation/20260621T152453Z/` artifact로 실제 검증했다.
+- S3/SSM 경로 deploy 후 `observation.service`는 `active`, `MainPID=32280`, restart count `0`, server-local ready `200`, external HTTPS ready `200`이다.
+- S3/SSM 경로 deploy metadata: `DEPLOY_COMMIT_SHA=s3-ssm-validation`, `DEPLOY_SOURCE=manual-s3-ssm-validation`.
+
+Deploy workflow 실행 가능 상태:
+
+- `.github/workflows/deploy.yml`은 아직 working tree에만 있고 현재 브랜치가 `codex/cicd-deployment-plan`이므로 GitHub Actions 원격 workflow 목록에는 아직 나타나지 않는다.
+- workflow는 `main` 또는 `v*` tag에서만 운영 배포가 진행되도록 trigger와 ref guard를 둔다.
+- 이 변경을 main에 merge하거나 `v*` tag로 배포 가능한 commit을 push한 뒤, GitHub UI에서 `production` required reviewers/branch restriction을 설정하면 OIDC + SSM CD 실행 준비가 완료된다.
+- 현재 브랜치에서 `workflow_dispatch`를 시도하더라도 guard가 `refs/heads/main` 또는 `refs/tags/v*`가 아니면 실패하도록 되어 있다.
+
+### E4.5 외부 HTTPS OAuth E2E 검증
+
+검증 기준:
+
+- 기준 도메인은 `https://portal.observstarter.cloud`다.
+- GitHub OAuth prod redirect URI와 실제 callback URL은 `https://portal.observstarter.cloud/api/auth/github/callback`로 일치해야 한다.
+- 로그인 후 dashboard 또는 정상 진입 화면까지 도달해야 한다.
+- URL, browser storage, console log, application journal, Nginx log에 secret/provider token/raw payload를 남기지 않는다.
+
+검증 결과:
+
+- `GET https://portal.observstarter.cloud/api/auth/github/authorize` 응답의 provider는 `github`이고, authorization host는 `github.com`, path는 `/login/oauth/authorize`다.
+- authorization URL query는 `client_id`, `redirect_uri`, `scope`, `state`만 포함하며 `redirect_uri`는 `https://portal.observstarter.cloud/api/auth/github/callback`다.
+- SSM `/observation/prod/PORTAL_AUTH_GITHUB_REDIRECT_URI` 값도 같은 callback URL이다.
+- GitHub 로그인/승인 이후 `https://portal.observstarter.cloud/dashboard`로 돌아왔고, 상단 `Dashboard` link를 한 번 클릭하면 dashboard 본문이 렌더링된다.
+- 확인된 정상 진입 화면은 로그인 상태 `GitHub 로그인됨`, `Projects`, `Applications`, `Project를 선택하세요`이며 현재 계정에 active membership project가 없다는 empty state다. 이는 인증 실패나 application 장애로 해석하지 않는다.
+- 최종 dashboard URL은 query string과 hash가 없었다.
+- browser `localStorage`, `sessionStorage`는 비어 있었고 cookie는 없었다.
+- dashboard DOM, browser console log에는 `client_secret`, provider token/raw payload, access/refresh/id token, bearer header 패턴이 없었다.
+- `observation.service` journal 최근 30분, Nginx access/error log에는 secret/provider token/raw payload 계열 패턴이 없었다.
+- Nginx access log는 query 없는 `observation_no_query` format으로 재적용했고, fake callback query 요청 후 callback path는 기록되지만 query 기록은 `0`건임을 확인했다.
+- 외부 HTTPS ready endpoint `https://portal.observstarter.cloud/internal/health/ready`는 OAuth 검증 후에도 `200`이다.
 
 아직 검증하지 않은 항목:
 
-- GitHub OAuth 로그인 end-to-end 동작.
-- Nginx/TLS 적용 후 `https://portal.observstarter.cloud` 외부 접속.
+- GitHub Actions CD workflow end-to-end 운영 배포.
+- GitHub Environment `production` UI approval gate와 deployment branch/tag restriction 실제 설정.
+
+### E4 최종 handoff
+
+main/tag 배포 흐름:
+
+1. 이 변경을 `main`에 merge하거나 `v*` tag를 push한다.
+2. GitHub Actions deploy workflow가 해당 ref를 checkout하고 `:observability-portal:bootJar`로 jar를 새로 만든다.
+3. jar와 SHA-256 file을 S3 `s3://observation-prod-deploy-artifacts-491013322019-ap-northeast-2/portal/<sha>/<run-id>-<attempt>/` prefix에 업로드한다.
+4. GitHub OIDC token으로 `observation-prod-github-deploy-role`을 assume한다.
+5. SSM Run Command가 단일 EC2 `i-06defdb40c40905d9`에서 `/usr/local/bin/observation-deploy-portal`을 실행한다.
+6. EC2는 S3 artifact를 instance role로 읽고 SHA-256을 검증한 뒤, 기존 jar 백업, `systemctl stop`, jar 교체, `systemctl start`, server-local ready check를 수행한다.
+7. workflow는 마지막으로 `https://portal.observstarter.cloud/internal/health/ready`를 확인한다.
+
+S3 artifact handoff:
+
+- GitHub deploy role은 artifact bucket `portal/*`에 write/read/multipart 권한만 가진다.
+- EC2 instance role은 같은 bucket `portal/*` read와 bucket location 조회만 가진다.
+- GitHub Secrets에는 AWS access key, SSH private key, prod secret을 넣지 않는다.
+- artifact는 immutable prefix에 commit SHA, run id, run attempt를 포함해 남긴다.
+
+Rollback 절차:
+
+- 배포 스크립트는 start 또는 server-local ready check 실패 시 직전 jar 백업으로 자동 rollback을 시도한다.
+- 수동 rollback은 `sudo /usr/local/bin/observation-rollback-portal`을 실행한다.
+- 특정 backup jar로 되돌릴 때는 `sudo /usr/local/bin/observation-rollback-portal /opt/observation/releases/app-<timestamp>-<sha>.jar`를 실행한다.
+- rollback 후 `systemctl is-active observation`과 `curl -fsS http://127.0.0.1:8080/internal/health/ready`를 확인하고, 외부 `https://portal.observstarter.cloud/internal/health/ready`까지 확인한다.
+
+Emergency stop/start:
+
+```bash
+sudo systemctl stop observation
+sudo systemctl start observation
+sudo systemctl restart observation
+sudo systemctl status observation --no-pager
+journalctl -u observation.service -n 100 --no-pager
+```
+
+비용/리소스 유지 주의사항:
+
+- EC2 `t4g.small`, RDS `db.t4g.micro` + gp3 20 GiB, Elastic IP, S3 artifact bucket, SQS queue는 유지 중이면 비용이 발생한다.
+- RDS와 EC2를 중지하면 서비스는 내려간다. Elastic IP를 unattached 상태로 두면 비용이 발생할 수 있으므로 연결 상태를 확인한다.
+- S3 artifact bucket은 versioning이 켜져 있어 오래된 jar가 누적된다. 보존 정책 또는 lifecycle rule은 별도 운영 결정으로 둔다.
+- certbot 갱신 timer는 EC2가 켜져 있어야 자동 갱신된다. 장기간 EC2를 중지했다가 재기동하면 `sudo certbot renew --dry-run` 또는 실제 갱신 상태를 확인한다.
+
+E5로 넘어가기 전 남은 항목:
+
+- GitHub UI에서 `production` required reviewers와 `main`/`v*` deployment branch/tag restriction을 설정한다.
+- main merge 또는 `v*` tag 이후 GitHub Actions CD를 실제로 1회 실행하고 approval gate, OIDC assume, SSM deploy, external ready check를 확인한다.
+- 로그인 후 active membership project가 없는 계정의 empty state는 정상 동작으로 확인했다. E5나 후속 운영 smoke에서 실제 project 등록/credential 발급/스타터 연결 흐름을 별도로 검증한다.
+- E5 starter distribution 작업에서는 release tag 기준 starter publish, package registry 권한, 사용 문서, 버전 pinning을 확정한다.
 
 ### E4 CD 접속 방식 입력
 

@@ -12,6 +12,7 @@ CI와 prod는 환경변수 이름을 interface로 삼는다.
 - prod OAuth App은 local/dev OAuth App과 분리한다.
 - prod에서 필수 secret이 비어 있으면 application startup이 실패해야 한다.
 - secret 원문은 채팅, issue, README, log, migration, tracked property file에 붙이지 않는다.
+- OAuth callback `code`/`state` query는 access log에 남기지 않는다. Nginx는 query 없는 `$uri` 기반 log format을 사용한다.
 
 ## 값 출처 요약
 
@@ -27,6 +28,7 @@ CI와 prod는 환경변수 이름을 interface로 삼는다.
 |---|---|---|---|---|---|---|---|---|
 | `spring.config.import` | `SPRING_CONFIG_IMPORT` | `application-local.properties`의 `.private` optional import | 사용 안 함 | 사용 안 함 | no | yes | no | `application-local.properties` |
 | `spring.jpa.hibernate.ddl-auto` | `SPRING_JPA_HIBERNATE_DDL_AUTO` | 공통 `none` | 공통 `none` | 공통 `none` | no | yes | no | Spring JPA |
+| `server.address` | `SERVER_ADDRESS` | 비움 | 비움 | systemd 기본 `127.0.0.1`, SSM/env override 가능 | no | `127.0.0.1` 가능 | no | Spring Boot server bind address |
 | `server.port` | `SERVER_PORT` | `.private/github-oauth.properties` 또는 env | CI env | SSM/systemd env | no | `8080` 가능 | no | Spring Boot server |
 | `server.forward-headers-strategy` | `SERVER_FORWARD_HEADERS_STRATEGY` | 비움 | 비움 | SSM/systemd env | no | `framework` 가능 | no | Spring Boot/Nginx proxy |
 | `spring.datasource.url` | `SPRING_DATASOURCE_URL` | `.private/github-oauth.properties` | GitHub Secrets/env 또는 Testcontainers | SSM String | semi | no | yes | Spring datasource, Flyway, JPA, JdbcTemplate |

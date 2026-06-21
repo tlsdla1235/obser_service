@@ -37,6 +37,7 @@ class PortalProfileConfigurationFilesTest {
         String prod = read("application-prod.properties");
 
         assertThat(prod)
+                .contains("${SERVER_ADDRESS:127.0.0.1}")
                 .contains("${SPRING_DATASOURCE_PASSWORD:}")
                 .contains("${PORTAL_AUTH_GITHUB_CLIENT_SECRET:}")
                 .contains("${PORTAL_AUTH_SERVICE_TOKEN_SIGNING_KEY:}")
