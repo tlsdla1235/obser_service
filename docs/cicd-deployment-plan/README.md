@@ -64,6 +64,7 @@ CI/CD 로드맵이다. 작업 단위는 Epic → Story로 분해했고, Story마
 ### 실행 보강 결정
 
 - **Profile 경계:** 실행 profile은 `local / ci / prod`로 분리한다. 운영과 CI는 `SPRING_PROFILES_ACTIVE`를 명시하고, `prod`가 기본값으로 켜지지 않게 한다.
+- **설정 매트릭스:** E1 이후 환경변수 interface와 값 소유 위치는 [config-matrix.md](config-matrix.md)를 기준으로 한다.
 - **Prod 설정 파일:** `application-prod.properties`는 placeholder와 운영 기본값만 담는 커밋 대상이다. 실값은 GitHub Secrets, SSM Parameter Store, EC2 environment file로만 주입한다.
 - **Health endpoint:** CD 헬스체크 전에 portal에 비밀을 노출하지 않는 health endpoint를 확정한다. Actuator를 쓰면 `health`만 외부 확인 대상으로 열고, 직접 구현하면 DB 연결 여부까지 포함할지 별도 AC로 정한다.
 - **Artifact 전달:** E2가 만든 jar를 E4가 어떻게 받는지 먼저 고정한다. 단순 운영은 같은 workflow 안에서 `build -> deploy` job으로 넘기고, workflow를 분리하면 S3 또는 GitHub artifact 조회 방식을 명시한다.
