@@ -17,6 +17,7 @@ class ProdRequiredPropertiesGuardTest {
     void prodProfileFailsClosedWhenRequiredExternalConfigurationIsMissing() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.getEnvironment().setActiveProfiles("prod");
+            context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("blank-test", blankValues()));
             context.register(ProdRequiredPropertiesGuard.class);
 
             assertThatThrownBy(context::refresh)
@@ -66,5 +67,18 @@ class ProdRequiredPropertiesGuardTest {
                 "portal.auth.github.homepage-url", "https://example.com/dashboard/",
                 "portal.auth.service-token.signing-key", "service-token-signing-key",
                 "portal.auth.oauth-state.signing-key", "oauth-state-signing-key");
+    }
+
+    private static Map<String, Object> blankValues() {
+        return Map.of(
+                "spring.datasource.url", "",
+                "spring.datasource.username", "",
+                "spring.datasource.password", "",
+                "portal.auth.github.client-id", "",
+                "portal.auth.github.client-secret", "",
+                "portal.auth.github.redirect-uri", "",
+                "portal.auth.github.homepage-url", "",
+                "portal.auth.service-token.signing-key", "",
+                "portal.auth.oauth-state.signing-key", "");
     }
 }

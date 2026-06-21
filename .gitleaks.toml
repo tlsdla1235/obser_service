@@ -1,0 +1,37 @@
+title = "Observation Portal gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "테스트 fixture의 starter key prefix placeholder다. 실제 credential suffix가 없으며 ProjectRegistrationControllerTest fixture가 바뀌면 제거 여부를 재검토한다."
+condition = "AND"
+regexTarget = "line"
+paths = [
+  '''observability-portal/src/test/java/com/observation/portal/domain/catalog/controller/ProjectRegistrationControllerTest\.java$''',
+]
+regexes = [
+  '''private static final String KEY_PREFIX = "obs_live_stage1abc";''',
+]
+
+[[allowlists]]
+description = "Story 5.2 기획 문서의 applicationId/environment 용어 false positive다. secret 값이 아니며 해당 story 문서를 정리할 때 제거 여부를 재검토한다."
+condition = "AND"
+regexTarget = "line"
+paths = [
+  '''planning-artifacts/stories/5-2-application-dashboard-read-model-skeleton\.md$''',
+]
+regexes = [
+  '''Dashboard Query API path, applicationId/environment query parameter 경계''',
+]
+
+[[allowlists]]
+description = "Story 7.3 기획 문서의 application/environment/instance identity 용어 false positive다. raw project key 값이 아니며 해당 story 문서를 정리할 때 제거 여부를 재검토한다."
+condition = "AND"
+regexTarget = "line"
+paths = [
+  '''planning-artifacts/stories/7-3-smoke-spring-boot-service-and-portal-communication-verification\.md$''',
+]
+regexes = [
+  '''smoke service config는 portal URL, raw project key, application/environment/instance identity를 local config 또는 env로 받는다''',
+]
