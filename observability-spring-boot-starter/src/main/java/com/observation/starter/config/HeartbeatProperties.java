@@ -12,7 +12,7 @@ import java.time.Duration;
 public class HeartbeatProperties {
 
     public static final String PREFIX = "observation.heartbeat";
-    static final String DEFAULT_STARTER_VERSION = "0.1.0-SNAPSHOT";
+    static final String DEFAULT_STARTER_VERSION = "0.1.0";
     private static final String HEARTBEAT_PATH = "/api/ingest/v1/heartbeat";
 
     private boolean enabled = true;

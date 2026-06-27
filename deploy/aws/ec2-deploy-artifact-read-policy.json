@@ -1,0 +1,17 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadDeployArtifacts",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::observation-prod-deploy-artifacts-491013322019-ap-northeast-2/portal/*"
+    },
+    {
+      "Sid": "LocateDeployArtifactBucket",
+      "Effect": "Allow",
+      "Action": "s3:GetBucketLocation",
+      "Resource": "arn:aws:s3:::observation-prod-deploy-artifacts-491013322019-ap-northeast-2"
+    }
+  ]
+}

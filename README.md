@@ -66,14 +66,24 @@ npm --prefix frontend run typecheck
 npm --prefix frontend run build
 ```
 
-포털 백엔드는 PostgreSQL, GitHub OAuth, 토큰 서명 키 등 필요한 local secret을 준비한 뒤 Gradle로 실행하거나 bootJar를 만들 수 있습니다. Local secret은 읽는 주체가 달라서 목적별로 분리합니다.
+포털 백엔드는 PostgreSQL, GitHub OAuth, 토큰 서명 키 등 필요한 local secret을 준비한 뒤 Gradle로 실행하거나 bootJar를 만들 수 있습니다. 현재 로컬 값은 `local` profile 전용으로 유지하고, CI와 운영은 환경변수/SSM에서 같은 key 이름으로 주입합니다.
 
-- `.env`: shell에서 export할 AWS/SQS와 `PORTAL_INGEST_BUFFER_*` 값
-- `.private/github-oauth.properties`: Spring Boot가 import하는 GitHub OAuth, service token, OAuth state signing key
-- `.private/smoke-seed.properties`: Spring Boot local smoke seed 설정
+- `.env`: shell에서 export할 AWS/SQS와 환경변수 예시 값
+- `.private/github-oauth.properties`: `local` profile에서만 Spring Boot가 import하는 GitHub OAuth, datasource, service token, OAuth state signing key
+- `.private/smoke-seed.properties`: `local` profile에서만 Spring Boot가 import하는 smoke seed 설정
 - `.private/smoke-auth.env`, `.private/smoke-project.env`: smoke script가 단일 key/value로 파싱하는 access token과 starter project key
 
-이 분리는 AWS credential, OAuth secret, smoke token, raw project key가 서로 다른 실행 경로에 섞이지 않게 하기 위한 local-only guard입니다.
+이 분리는 AWS credential, OAuth secret, smoke token, raw project key가 서로 다른 실행 경로에 섞이지 않게 하기 위한 local-only guard입니다. 설정 key 전체 표는 [config matrix](docs/cicd-deployment-plan/config-matrix.md)를 기준으로 관리합니다.
+
+환경 profile은 명시적으로 선택합니다.
+
+| 환경 | 실행 profile | 값 주입 위치 |
+|---|---|---|
+| local | `SPRING_PROFILES_ACTIVE=local` | `.private/*`, `.env` |
+| ci | `SPRING_PROFILES_ACTIVE=ci` | GitHub Secrets / workflow env |
+| prod | `SPRING_PROFILES_ACTIVE=prod` | AWS SSM Parameter Store / systemd env |
+
+운영 profile에서는 OAuth client secret, datasource password, service token signing key, OAuth state signing key 등 필수값이 비어 있으면 application startup이 실패합니다. 실패 메시지는 key 이름만 출력하고 secret 원문은 출력하지 않습니다.
 
 `.env`를 사용하는 SQS buffered ingest 실행은 shell에서 값을 export한 뒤 실행합니다.
 
@@ -86,7 +96,7 @@ set +a
 ```bash
 ./gradlew test
 ./gradlew :observability-portal:bootJar
-./gradlew :observability-portal:bootRun
+./gradlew :observability-portal:bootRun --args='--spring.profiles.active=local'
 ```
 
 starter가 붙은 smoke service는 starter credential 환경 변수를 설정한 뒤 실행합니다.

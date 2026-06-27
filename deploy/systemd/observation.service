@@ -1,0 +1,37 @@
+# Observation portal 운영 프로세스를 systemd로 관리하기 위한 unit template이다.
+# ExecStartPre에서 SSM 값을 EnvironmentFile로 갱신한 뒤 appuser 권한으로 jar를 실행한다.
+[Unit]
+Description=Observation Portal
+Documentation=file:/opt/observation/current/app.jar
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=appuser
+Group=appuser
+WorkingDirectory=/opt/observation/current
+PermissionsStartOnly=true
+Environment=SPRING_PROFILES_ACTIVE=prod
+Environment=SERVER_ADDRESS=127.0.0.1
+Environment=SERVER_PORT=8080
+Environment=AWS_REGION=ap-northeast-2
+Environment=AWS_DEFAULT_REGION=ap-northeast-2
+EnvironmentFile=-/etc/observation/observation.env
+ExecStartPre=/usr/local/bin/observation-load-env
+ExecStart=/usr/bin/java -jar /opt/observation/current/app.jar
+ExecStartPost=/usr/bin/bash -lc 'for i in {1..45}; do /usr/bin/curl -fsS http://127.0.0.1:8080/internal/health/live >/dev/null && exit 0; sleep 2; done; exit 1'
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=10s
+TimeoutStartSec=90s
+TimeoutStopSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/observation /etc/observation
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,202 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend build and test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: observation_ci
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d observation_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      SPRING_PROFILES_ACTIVE: ci
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/observation_ci
+      SPRING_DATASOURCE_USERNAME: ci
+      SPRING_DATASOURCE_PASSWORD: ci
+      PORTAL_AUTH_GITHUB_CLIENT_ID: ci
+      PORTAL_AUTH_GITHUB_CLIENT_SECRET: ci
+      PORTAL_AUTH_GITHUB_REDIRECT_URI: http://localhost:8080/api/auth/github/callback
+      PORTAL_AUTH_GITHUB_HOMEPAGE_URL: http://localhost:8080/dashboard/
+      PORTAL_AUTH_SERVICE_TOKEN_SIGNING_KEY: ci
+      PORTAL_AUTH_OAUTH_STATE_SIGNING_KEY: ci
+      PORTAL_INGEST_BUFFER_MODE: direct
+      PORTAL_INGEST_BUFFER_WORKER_ENABLED: "false"
+      AWS_REGION: ap-northeast-2
+      AWS_DEFAULT_REGION: ap-northeast-2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run Gradle build
+        run: ./gradlew build --no-daemon --stacktrace
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            **/build/reports/tests/
+            **/build/test-results/test/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  frontend:
+    name: Frontend typecheck and contract guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Typecheck frontend
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Guard read model contract
+        working-directory: frontend
+        run: npm run guard:read-model-contract
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Run gitleaks
+        run: >-
+          docker run --rm
+          -v "$PWD:/repo"
+          --workdir /repo
+          ghcr.io/gitleaks/gitleaks:v8.30.1
+          dir /repo
+          --config /repo/.gitleaks.toml
+          --redact
+          --verbose
+
+  portal-artifact:
+    name: Build portal bootJar artifact
+    runs-on: ubuntu-latest
+    needs:
+      - backend
+      - frontend
+      - secret-scan
+    permissions:
+      contents: read
+      actions: write
+    env:
+      SPRING_PROFILES_ACTIVE: ci
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/observation_ci
+      SPRING_DATASOURCE_USERNAME: ci
+      SPRING_DATASOURCE_PASSWORD: ci
+      PORTAL_AUTH_GITHUB_CLIENT_ID: ci
+      PORTAL_AUTH_GITHUB_CLIENT_SECRET: ci
+      PORTAL_AUTH_GITHUB_REDIRECT_URI: http://localhost:8080/api/auth/github/callback
+      PORTAL_AUTH_GITHUB_HOMEPAGE_URL: http://localhost:8080/dashboard/
+      PORTAL_AUTH_SERVICE_TOKEN_SIGNING_KEY: ci
+      PORTAL_AUTH_OAUTH_STATE_SIGNING_KEY: ci
+      PORTAL_INGEST_BUFFER_MODE: direct
+      PORTAL_INGEST_BUFFER_WORKER_ENABLED: "false"
+      AWS_REGION: ap-northeast-2
+      AWS_DEFAULT_REGION: ap-northeast-2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build portal bootJar
+        run: ./gradlew :observability-portal:bootJar --no-daemon --stacktrace
+
+      - name: Prepare portal artifact metadata
+        run: |
+          mkdir -p build/ci-artifacts
+          portal_jar="$(find observability-portal/build/libs -maxdepth 1 -type f -name 'observability-portal-*.jar' ! -name '*-plain.jar' | sort | head -n 1)"
+          test -n "${portal_jar}"
+          cp "${portal_jar}" build/ci-artifacts/
+          {
+            echo "commit_sha=${GITHUB_SHA}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "artifact_source=observability-portal:bootJar"
+          } > build/ci-artifacts/observability-portal-artifact-metadata.txt
+
+      - name: Upload portal bootJar artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: observability-portal-${{ github.sha }}
+          path: build/ci-artifacts/
+          if-no-files-found: error
+          retention-days: 30
