@@ -1,0 +1,97 @@
+name: Publish starter
+
+on:
+  push:
+    tags:
+      - "starter-v*"
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: starter-publish-${{ github.event.release.tag_name || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  starter-guard:
+    name: Starter guard and local publish check
+    runs-on: ubuntu-latest
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'starter-v')
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.release-version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Resolve starter version
+        id: release-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
+            tag_name="${{ github.event.release.tag_name }}"
+          else
+            tag_name="${GITHUB_REF_NAME}"
+          fi
+
+          if [[ ! "${tag_name}" =~ ^starter-v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Starter publish tags must use starter-vMAJOR.MINOR.PATCH, for example starter-v0.1.0." >&2
+            exit 1
+          fi
+
+          echo "version=${tag_name#starter-v}" >> "${GITHUB_OUTPUT}"
+
+      - name: Run starter tests and local publish check
+        run: >-
+          ./gradlew
+          :observability-spring-boot-starter:check
+          :observability-spring-boot-starter:publishToMavenLocal
+          -PstarterVersion=${{ steps.release-version.outputs.version }}
+          --no-daemon
+          --stacktrace
+
+  publish:
+    name: Publish starter to GitHub Packages
+    runs-on: ubuntu-latest
+    needs:
+      - starter-guard
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Publish package
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          ./gradlew
+          :observability-spring-boot-starter:publish
+          -PstarterVersion=${{ needs.starter-guard.outputs.version }}
+          --no-daemon
+          --stacktrace

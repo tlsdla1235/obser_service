@@ -1,8 +1,22 @@
 plugins {
     id 'java-library'
+    id 'maven-publish'
 }
 
 description = 'Observability Spring Boot starter library'
+group = 'io.github.tlsdla1235.observation'
+version = providers.gradleProperty('starterVersion').orElse('0.1.0').get()
+
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
+tasks.withType(Javadoc).configureEach {
+    options.encoding = 'UTF-8'
+    options.charSet = 'UTF-8'
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
 
 dependencies {
     implementation platform(org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES)
@@ -28,6 +42,59 @@ tasks.withType(Test).configureEach {
                 'starter.guard.testRuntimeClasspath': sourceSets.test.runtimeClasspath
         ].each { propertyName, classpath ->
             systemProperty propertyName, classpath.files.collect { it.absolutePath }.join(File.pathSeparator)
+        }
+    }
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            artifactId = 'observability-spring-boot-starter'
+
+            pom {
+                name = 'Observability Spring Boot Starter'
+                description = 'Spring Boot starter that sends low-cardinality HTTP, JVM, datasource, and heartbeat signals to Observation Portal.'
+                url = 'https://github.com/tlsdla1235/obser_service'
+
+                licenses {
+                    license {
+                        name = 'Apache License, Version 2.0'
+                        url = 'https://www.apache.org/licenses/LICENSE-2.0'
+                        distribution = 'repo'
+                    }
+                }
+
+                scm {
+                    connection = 'scm:git:https://github.com/tlsdla1235/obser_service.git'
+                    developerConnection = 'scm:git:ssh://git@github.com/tlsdla1235/obser_service.git'
+                    url = 'https://github.com/tlsdla1235/obser_service'
+                }
+            }
+        }
+    }
+
+    repositories {
+        maven {
+            name = 'GitHubPackages'
+            def githubRepository = providers.gradleProperty('githubPackagesRepository')
+                    .orElse(providers.environmentVariable('GITHUB_REPOSITORY'))
+                    .orElse('tlsdla1235/obser_service')
+                    .get()
+            url = uri("https://maven.pkg.github.com/${githubRepository}")
+            credentials {
+                username = providers.gradleProperty('gpr.user')
+                        .orElse(providers.environmentVariable('GITHUB_ACTOR'))
+                        .orElse(providers.environmentVariable('GITHUB_PACKAGES_USERNAME'))
+                        .orElse('')
+                        .get()
+                password = providers.gradleProperty('gpr.key')
+                        .orElse(providers.environmentVariable('GITHUB_TOKEN'))
+                        .orElse(providers.environmentVariable('GITHUB_PACKAGES_TOKEN'))
+                        .orElse('')
+                        .get()
+            }
         }
     }
 }

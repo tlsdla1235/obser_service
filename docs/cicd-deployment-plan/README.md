@@ -72,6 +72,7 @@ CI/CD 로드맵이다. 작업 단위는 Epic → Story로 분해했고, Story마
 - **배포 가용성:** 현재 목표는 small 단일 EC2의 짧은 다운타임 stop/start 배포다. 무중단, rolling, blue/green, ALB 기반 배포는 이번 범위에서 제외하고 트래픽/비용이 커질 때 후속으로 검토한다.
 - **컨텍스트 운영:** 한 Epic을 한 작업 컨텍스트에서 진행해도 된다. 단, Epic 종료 시 완료/미완료/검증 로그/다음 Epic 입력값을 짧은 handoff note로 남긴다.
 - **E2 handoff:** CI 구현 결과, secret scan allowlist 기준, branch protection 수동 설정, E4 artifact 입력은 [epic-02-handoff.md](epic-02-handoff.md)를 기준으로 이어받는다.
+- **E5 starter 배포:** consumer dependency 수신 절차는 [starter-consumer-guide.md](starter-consumer-guide.md), 버전/릴리스 기준은 [starter-release-policy.md](starter-release-policy.md)를 기준으로 한다.
 
 ## 4. 마일스톤
 
