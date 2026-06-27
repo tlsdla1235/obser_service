@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.JdbcOperations;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * 운영 ready endpoint가 사용할 DB/Flyway readiness probe를 수행한다.
@@ -16,12 +17,15 @@ import java.util.Objects;
 public class ReadinessProbeService {
 
     private final JdbcOperations jdbcOperations;
-    private final Flyway flyway;
+    private final Optional<Flyway> flyway;
 
     /**
      * DB ping과 Flyway migration 상태 확인에 필요한 runtime collaborator를 주입한다.
+     *
+     * <p>일부 schema alignment 테스트처럼 Flyway를 수동으로 실행하고 Spring bean은 끄는 컨텍스트가 있으므로,
+     * Flyway bean이 없더라도 애플리케이션 부팅 자체는 허용하고 ready 판정에서만 실패로 축약한다.</p>
      */
-    public ReadinessProbeService(JdbcOperations jdbcOperations, Flyway flyway) {
+    public ReadinessProbeService(JdbcOperations jdbcOperations, Optional<Flyway> flyway) {
         this.jdbcOperations = Objects.requireNonNull(jdbcOperations, "jdbcOperations must not be null");
         this.flyway = Objects.requireNonNull(flyway, "flyway must not be null");
     }
@@ -49,8 +53,11 @@ public class ReadinessProbeService {
     }
 
     private boolean flywayHasNoPendingMigrations() {
+        if (flyway.isEmpty()) {
+            return false;
+        }
         try {
-            MigrationInfoService info = flyway.info();
+            MigrationInfoService info = flyway.get().info();
             return info != null && info.pending().length == 0;
         } catch (RuntimeException exception) {
             return false;

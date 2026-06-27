@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.jdbc.core.JdbcOperations;
 
+import java.util.Optional;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -17,7 +19,7 @@ class ReadinessProbeServiceTest {
     private final JdbcOperations jdbcOperations = mock(JdbcOperations.class);
     private final Flyway flyway = mock(Flyway.class);
     private final MigrationInfoService migrationInfoService = mock(MigrationInfoService.class);
-    private final ReadinessProbeService service = new ReadinessProbeService(jdbcOperations, flyway);
+    private final ReadinessProbeService service = new ReadinessProbeService(jdbcOperations, Optional.of(flyway));
 
     @Test
     void checkReturnsReadyWhenDatabasePingAndFlywayPendingCheckPass() {
@@ -51,6 +53,18 @@ class ReadinessProbeServiceTest {
         when(migrationInfoService.pending()).thenReturn(new MigrationInfo[] { mock(MigrationInfo.class) });
 
         ReadinessCheckResult result = service.check();
+
+        assertThat(result.ready()).isFalse();
+        assertThat(result.database()).isEqualTo(HealthCheckState.UP);
+        assertThat(result.flyway()).isEqualTo(HealthCheckState.DOWN);
+    }
+
+    @Test
+    void checkMarksFlywayDownWhenFlywayBeanIsUnavailable() {
+        ReadinessProbeService serviceWithoutFlyway = new ReadinessProbeService(jdbcOperations, Optional.empty());
+        when(jdbcOperations.queryForObject("select 1", Integer.class)).thenReturn(1);
+
+        ReadinessCheckResult result = serviceWithoutFlyway.check();
 
         assertThat(result.ready()).isFalse();
         assertThat(result.database()).isEqualTo(HealthCheckState.UP);
