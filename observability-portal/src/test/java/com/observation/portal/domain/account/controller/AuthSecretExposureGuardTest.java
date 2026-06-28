@@ -591,8 +591,11 @@ class AuthSecretExposureGuardTest {
         processBuilder.environment().putAll(environment);
 
         Process process = processBuilder.start();
-        process.getOutputStream().write(input.getBytes(StandardCharsets.UTF_8));
-        process.getOutputStream().close();
+        try (var stdin = process.getOutputStream()) {
+            stdin.write(input.getBytes(StandardCharsets.UTF_8));
+        } catch (IOException ignored) {
+            // 거부 경로의 스크립트는 입력을 모두 소비하기 전에 종료할 수 있으므로 stdout/stderr와 exit code로 검증을 이어간다.
+        }
         String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
         int exitCode = process.waitFor();
