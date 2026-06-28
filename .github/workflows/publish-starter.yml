@@ -91,7 +91,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >-
           ./gradlew
-          :observability-spring-boot-starter:publish
+          :observability-spring-boot-starter:publishMavenJavaPublicationToGitHubPackagesRepository
           -PstarterVersion=${{ needs.starter-guard.outputs.version }}
           --no-daemon
           --stacktrace

@@ -1,6 +1,7 @@
 plugins {
     id 'java-library'
     id 'maven-publish'
+    id 'signing'
 }
 
 description = 'Observability Spring Boot starter library'
@@ -66,6 +67,15 @@ publishing {
                     }
                 }
 
+                developers {
+                    developer {
+                        id = 'tlsdla1235'
+                        name = 'tlsdla1235'
+                        email = 'tlsdla1235@uos.ac.kr'
+                        url = 'https://github.com/tlsdla1235'
+                    }
+                }
+
                 scm {
                     connection = 'scm:git:https://github.com/tlsdla1235/obser_service.git'
                     developerConnection = 'scm:git:ssh://git@github.com/tlsdla1235/obser_service.git'
@@ -96,5 +106,43 @@ publishing {
                         .get()
             }
         }
+        maven {
+            name = 'CentralPortalStaging'
+            url = layout.buildDirectory.dir('central-portal-staging')
+        }
+    }
+}
+
+def signingKeyProvider = providers.gradleProperty('signingKey')
+        .orElse(providers.environmentVariable('SIGNING_KEY'))
+def signingPasswordProvider = providers.gradleProperty('signingPassword')
+        .orElse(providers.environmentVariable('SIGNING_PASSWORD'))
+
+boolean isCentralPortalStagingRequested() {
+    gradle.startParameter.taskNames.any { taskName ->
+        taskName == 'publishMavenJavaPublicationToCentralPortalStagingRepository' ||
+                taskName.endsWith(':publishMavenJavaPublicationToCentralPortalStagingRepository')
+    }
+}
+
+signing {
+    required {
+        isCentralPortalStagingRequested()
+    }
+    if (signingKeyProvider.isPresent() && signingPasswordProvider.isPresent()) {
+        useInMemoryPgpKeys(signingKeyProvider.get(), signingPasswordProvider.get())
+    }
+    sign publishing.publications.mavenJava
+}
+
+tasks.withType(Sign).configureEach {
+    onlyIf {
+        if (signingKeyProvider.isPresent() && signingPasswordProvider.isPresent()) {
+            return true
+        }
+        if (isCentralPortalStagingRequested()) {
+            throw new GradleException('Maven Central staging publish requires SIGNING_KEY and SIGNING_PASSWORD.')
+        }
+        return false
     }
 }

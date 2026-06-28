@@ -7,13 +7,15 @@ PAT 원문, starter project key 원문, 운영 portal secret은 문서, 로그, 
 
 | 항목 | 값 |
 | --- | --- |
-| Maven repository | `https://maven.pkg.github.com/tlsdla1235/obser_service` |
+| GitHub Packages repository | `https://maven.pkg.github.com/tlsdla1235/obser_service` |
+| Maven Central repository | `mavenCentral()` |
 | groupId | `io.github.tlsdla1235.observation` |
 | artifactId | `observability-spring-boot-starter` |
 | version | `0.1.0` |
 | release tag | `starter-v0.1.0` |
 
 GitHub Packages Maven registry는 공개 package라도 consumer 환경에 따라 인증을 요구할 수 있다. 외부 consumer는 classic PAT에 `read:packages` 권한을 부여해 사용한다.
+Maven Central 게시가 완료된 뒤에는 별도 GitHub Packages repository나 PAT 없이 `mavenCentral()`만으로 같은 좌표를 받을 수 있다.
 
 ## 호환 범위
 
@@ -39,7 +41,23 @@ export GITHUB_PACKAGES_TOKEN='<classic PAT with read:packages>'
 unset GITHUB_PACKAGES_USERNAME GITHUB_PACKAGES_TOKEN
 ```
 
-## Gradle 사용 예시
+## Maven Central Gradle 사용 예시
+
+Maven Central publish가 완료된 버전은 인증 없이 `mavenCentral()`에서 받는다.
+
+```groovy
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation "io.github.tlsdla1235.observation:observability-spring-boot-starter:0.1.0"
+}
+```
+
+## GitHub Packages Gradle 사용 예시
+
+Maven Central 게시 전이거나 GitHub Packages에 게시된 빌드를 직접 검증할 때만 GitHub Packages repository와 PAT를 사용한다.
 
 ```groovy
 repositories {
@@ -60,7 +78,21 @@ dependencies {
 
 CI에서는 `GITHUB_PACKAGES_USERNAME`, `GITHUB_PACKAGES_TOKEN`을 secret/variable로 주입한다. repository에 `gradle.properties`로 PAT 원문을 커밋하지 않는다.
 
-## Maven 사용 예시
+## Maven Central Maven 사용 예시
+
+Maven Central publish가 완료된 버전은 `pom.xml`에 dependency만 추가한다.
+
+```xml
+<dependencies>
+    <dependency>
+        <groupId>io.github.tlsdla1235.observation</groupId>
+        <artifactId>observability-spring-boot-starter</artifactId>
+        <version>0.1.0</version>
+    </dependency>
+</dependencies>
+```
+
+## GitHub Packages Maven 사용 예시
 
 `pom.xml`에는 repository와 dependency만 둔다.
 
@@ -158,3 +190,4 @@ dependencies {
 ```
 
 이 검증은 dependency 수신과 Spring Boot context 기동을 확인하기 위한 로컬 smoke다. 실제 GitHub Packages에서 받아오는 검증은 `starter-v0.1.0` tag publish가 끝난 뒤 `GITHUB_PACKAGES_USERNAME`과 `GITHUB_PACKAGES_TOKEN`을 입력한 별도 consumer 프로젝트에서 수행한다.
+Maven Central publish가 끝나면 `mavenCentral()`만 둔 clean consumer 프로젝트에서 같은 dependency를 받아 최종 공개 소비자 검증을 수행한다.

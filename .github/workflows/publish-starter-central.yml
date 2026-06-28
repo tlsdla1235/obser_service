@@ -1,0 +1,118 @@
+name: Publish starter to Maven Central
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Starter version to publish, for example 0.1.0"
+        required: true
+        type: string
+      publishing_type:
+        description: "Central Portal publishing mode"
+        required: true
+        default: USER_MANAGED
+        type: choice
+        options:
+          - USER_MANAGED
+          - AUTOMATIC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: starter-central-publish-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  publish-central:
+    name: Publish starter Central bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Validate release inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "version must use MAJOR.MINOR.PATCH, for example 0.1.0." >&2
+            exit 1
+          fi
+
+          case "${{ inputs.publishing_type }}" in
+            USER_MANAGED|AUTOMATIC) ;;
+            *)
+              echo "publishing_type must be USER_MANAGED or AUTOMATIC." >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Run starter tests
+        run: >-
+          ./gradlew
+          :observability-spring-boot-starter:check
+          -PstarterVersion=${{ inputs.version }}
+          --no-daemon
+          --stacktrace
+
+      - name: Stage signed Maven publication
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: >-
+          ./gradlew
+          :observability-spring-boot-starter:publishMavenJavaPublicationToCentralPortalStagingRepository
+          -PstarterVersion=${{ inputs.version }}
+          --no-daemon
+          --stacktrace
+
+      - name: Build Central Portal bundle
+        run: >-
+          ./scripts/release/build-central-portal-bundle.sh
+          observability-spring-boot-starter/build/central-portal-staging
+          build/central-portal/observability-spring-boot-starter-${{ inputs.version }}.zip
+
+      - name: Upload Central Portal bundle
+        id: central-upload
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          deployment_id="$(
+            ./scripts/release/upload-central-portal-bundle.sh \
+              --name "observability-spring-boot-starter-${{ inputs.version }}" \
+              --publishing-type "${{ inputs.publishing_type }}" \
+              build/central-portal/observability-spring-boot-starter-${{ inputs.version }}.zip
+          )"
+
+          echo "deployment_id=${deployment_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Summarize Central deployment
+        run: |
+          {
+            echo "## Maven Central deployment"
+            echo
+            echo "- version: \`${{ inputs.version }}\`"
+            echo "- publishing type: \`${{ inputs.publishing_type }}\`"
+            echo "- deployment id: \`${{ steps.central-upload.outputs.deployment_id }}\`"
+            echo
+            if [[ "${{ inputs.publishing_type }}" == "USER_MANAGED" ]]; then
+              echo "The deployment is validated and waiting for manual publish in Central Portal."
+            else
+              echo "The deployment reached Maven Central publish completion."
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
