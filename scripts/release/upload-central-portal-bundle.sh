@@ -100,7 +100,7 @@ PY
 
 json_field() {
   local field="$1"
-  python3 - "$field" <<'PY'
+  python3 -c '
 import json
 import sys
 
@@ -111,7 +111,7 @@ if isinstance(value, (dict, list)):
     print(json.dumps(value, ensure_ascii=False))
 else:
     print(value)
-PY
+' "$field"
 }
 
 auth_token="$(printf '%s:%s' "${MAVEN_CENTRAL_USERNAME}" "${MAVEN_CENTRAL_PASSWORD}" | base64 | tr -d '\n')"
